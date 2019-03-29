@@ -19,7 +19,7 @@
 #include "../common/operations.h"
 #include "adapter.h"
 #include "cuda_util.h"
-#include "mpi_ops.h"
+#include "ops.h"
 #include "ready_event.h"
 #include "tensor_util.h"
 
@@ -53,7 +53,7 @@ void DoPush(NDArray* input, const std::string& name,
                  Callback on_complete) {
   ThrowIfError(common::CheckInitialized());
 
-  auto device = TensorUtil::GetDevice(tensor);
+  auto device = TensorUtil::GetDevice(input);
   auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
   auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
 
@@ -70,7 +70,7 @@ void DoPull(NDArray* output, const std::string& name,
                  Callback on_complete) {
   ThrowIfError(common::CheckInitialized());
 
-  auto device = TensorUtil::GetDevice(tensor);
+  auto device = TensorUtil::GetDevice(output);
   auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
   auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, output);
 
@@ -88,13 +88,13 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
   MX_API_BEGIN();
 
   std::string op_name = GetOpName("push", name);
-  auto allreduce_async_fn = [input, op_name](RunContext rctx,
+  auto push_async_fn = [input, op_name](RunContext rctx,
                                       Callback on_complete) mutable {
     DoPush(input, op_name, on_complete);
   };
 
 
-  Engine::Get()->PushAsync(allreduce_async_cpu_fn, input->ctx(),
+  Engine::Get()->PushAsync(push_async_fn, input->ctx(),
                              {input->var()}, {},
                              FnProperty::kNormal, 0, "BytePSPush");
 
@@ -107,13 +107,13 @@ extern "C" int byteps_mxnet_pull_async(NDArray* output,
   MX_API_BEGIN();
 
   std::string op_name = GetOpName("pull", name);
-  auto allreduce_async_fn = [output, op_name](RunContext rctx,
+  auto pull_async_fn = [output, op_name](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPush(output, op_name, on_complete);
+    DoPull(output, op_name, on_complete);
   };
 
 
-  Engine::Get()->PushAsync(allreduce_async_cpu_fn, output->ctx(),
+  Engine::Get()->PushAsync(pull_async_fn, output->ctx(),
                              {}, {output->var()},
                              FnProperty::kNormal, 0, "BytePSPull");
 

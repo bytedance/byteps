@@ -315,7 +315,7 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
     mxnet_lib.include_dirs = options['INCLUDES']
     mxnet_lib.sources = options['SOURCES'] + \
-        ['byteps/mxnet/mpi_ops.cc',
+        ['byteps/mxnet/ops.cc',
          'byteps/mxnet/ready_event.cc',
          'byteps/mxnet/tensor_util.cc',
          'byteps/mxnet/cuda_util.cc',

@@ -37,7 +37,8 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                               std::shared_ptr<ReadyEvent> ready_event,
                               const std::string name, const int device,
                               StatusCallback callback) {
-  return Status::OK();
+    callback(Status::OK());
+    return Status::OK();
 }
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
@@ -45,7 +46,8 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                               std::shared_ptr<ReadyEvent> ready_event,
                               const std::string name, const int device,
                               StatusCallback callback) {
-  return Status::OK();
+    callback(Status::OK());
+    return Status::OK();
 }
 
 
