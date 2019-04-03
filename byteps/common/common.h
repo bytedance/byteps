@@ -142,6 +142,8 @@ struct TensorTableEntry {
   std::shared_ptr<Tensor> tensor;
   // Pre-allocated output tensor.
   std::shared_ptr<Tensor> output;
+  // Priroity
+  int priority = 0;
   // Root rank for broadcast operation.
   int root_rank = 0;
   // Event indicating that data is ready.

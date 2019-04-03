@@ -209,7 +209,9 @@ def get_common_options(build_ext):
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
     INCLUDES = []
-    SOURCES = []
+    SOURCES = ['byteps/common/common.cc',
+               'byteps/common/operations.cc',
+               'byteps/common/global.cc']
     COMPILE_FLAGS = cpp_flags
     LINK_FLAGS = link_flags
     LIBRARY_DIRS = []

@@ -15,17 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include <atomic>
-#include <cassert>
 #include <cstring>
-#include <queue>
-#include <sstream>
-#include <thread>
-#include <map>
-#include <unordered_map>
-#include <set>
-#include <unordered_set>
+#include <memory>
 
+#include "global.h"
 #include "operations.h"
 
 namespace byteps {
@@ -36,7 +29,20 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                               std::shared_ptr<Tensor> input,
                               std::shared_ptr<ReadyEvent> ready_event,
                               const std::string name, const int device,
+                              const int priority,
                               StatusCallback callback) {
+    std::share_ptr<TensorTableEntry> e(new TensorTableEntry);
+    e->tensor_name = name;
+    e->context = context;
+    e->tensor = input;
+    e->output = NULL;
+    e->ready_event = ready_event;
+    e->device = device;
+    e->priority = priority;
+    e->callback = callback;
+
+    BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
+
     callback(Status::OK());
     return Status::OK();
 }
@@ -45,7 +51,17 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                               std::shared_ptr<Tensor> output,
                               std::shared_ptr<ReadyEvent> ready_event,
                               const std::string name, const int device,
+                              const int priority,
                               StatusCallback callback) {
+    TensorTableEntry e;
+    e.tensor_name = name;
+    e.context = context;
+    e.tensor = NULL;
+    e.output = output;
+    e.ready_event = ready_event;
+    e.device = device;
+    e.priority = priority;
+    e.callback = callback;
     callback(Status::OK());
     return Status::OK();
 }

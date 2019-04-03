@@ -49,7 +49,7 @@ inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
   }
 }
 
-void DoPush(NDArray* input, const std::string& name,
+void DoPush(NDArray* input, const std::string& name, int priority,
                  Callback on_complete) {
   ThrowIfError(common::CheckInitialized());
 
@@ -66,7 +66,7 @@ void DoPush(NDArray* input, const std::string& name,
   ThrowIfError(enqueue_result);
 }
 
-void DoPull(NDArray* output, const std::string& name,
+void DoPull(NDArray* output, const std::string& name, int priority,
                  Callback on_complete) {
   ThrowIfError(common::CheckInitialized());
 
@@ -90,7 +90,7 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
   std::string op_name = GetOpName("push", name);
   auto push_async_fn = [input, op_name](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPush(input, op_name, on_complete);
+    DoPush(input, op_name, priority, on_complete);
   };
 
 
@@ -109,7 +109,7 @@ extern "C" int byteps_mxnet_pull_async(NDArray* output,
   std::string op_name = GetOpName("pull", name);
   auto pull_async_fn = [output, op_name](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPull(output, op_name, on_complete);
+    DoPull(output, op_name, priority, on_complete);
   };
 
 
