@@ -59,7 +59,7 @@ void DoPush(NDArray* input, const std::string& name, int priority,
 
   auto enqueue_result =
       EnqueueTensorPush(byteps_context, byteps_input, nullptr,
-                             name, device,
+                             name, device, priority, -1,
                              [on_complete](const Status& status) {
                                InvokeCompleteCallback(on_complete, status);
                              });
@@ -76,7 +76,7 @@ void DoPull(NDArray* output, const std::string& name, int priority,
 
   auto enqueue_result =
       EnqueueTensorPull(byteps_context, byteps_output, nullptr,
-                             name, device,
+                             name, device, priority, -1,
                              [on_complete](const Status& status) {
                                InvokeCompleteCallback(on_complete, status);
                              });
@@ -88,7 +88,7 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
   MX_API_BEGIN();
 
   std::string op_name = GetOpName("push", name);
-  auto push_async_fn = [input, op_name](RunContext rctx,
+  auto push_async_fn = [input, op_name, priority](RunContext rctx,
                                       Callback on_complete) mutable {
     DoPush(input, op_name, priority, on_complete);
   };
@@ -107,7 +107,7 @@ extern "C" int byteps_mxnet_pull_async(NDArray* output,
   MX_API_BEGIN();
 
   std::string op_name = GetOpName("pull", name);
-  auto pull_async_fn = [output, op_name](RunContext rctx,
+  auto pull_async_fn = [output, op_name, priority](RunContext rctx,
                                       Callback on_complete) mutable {
     DoPull(output, op_name, priority, on_complete);
   };

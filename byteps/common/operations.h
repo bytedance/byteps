@@ -30,38 +30,26 @@ Status CheckInitialized();
 extern "C" {
 
 // C interface to initialize byteps.
-void byteps_init(const int *ranks, int nranks) {
-    return;
-}
+void byteps_init(const int *ranks, int nranks);
 
 // C interface to shut down byteps.
-void byteps_shutdown() {
-    return;
-}
+void byteps_shutdown();
 
 // C interface to get index of current byteps process.
 // Returns -1 if byteps is not initialized.
-int byteps_rank() {
-    return 0;
-}
+int byteps_rank();
 
 // C interface to get index of current byteps process in the node it is on.
 // Returns -1 if byteps is not initialized.
-int byteps_local_rank() {
-    return 0;
-}
+int byteps_local_rank();
 
 // C interface to return number of byteps processes.
 // Returns -1 if byteps is not initialized.
-int byteps_size() {
-    return 0;
-}
+int byteps_size();
 
 // C interface to return number of byteps processes in the node it is on.
 // Returns -1 if byteps is not initialized.
-int byteps_local_size() {
-    return 0;
-}
+int byteps_local_size();
 
 // C interface to return flag indicating whether MPI multi-threading is
 // supported. Returns -1 if byteps is not initialized.
@@ -71,12 +59,14 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> intput,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string name, const int device,
+                        const int priority, const int version,
                         StatusCallback callback);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string name, const int device,
+                        const int priority, const int version,
                         StatusCallback callback);
 
 } // namespace common

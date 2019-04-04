@@ -18,6 +18,7 @@
 
 #include <deque>
 #include <memory>
+#include <mutex>
 #include "common.h"
 
 namespace byteps {
@@ -29,15 +30,15 @@ enum BytePSOp { PUSH, PULL };
 class BytePSScheduledQueue {
 
 public:
-    void addTask(std::share_ptr<TensorTableEntry>);
-    std::share_ptr<TensorTableEntry> peakTask();
-    std::share_ptr<TensorTableEntry> getTask();
+    void addTask(std::shared_ptr<TensorTableEntry>);
+    std::shared_ptr<TensorTableEntry> peakTask();
+    std::shared_ptr<TensorTableEntry> getTask();
+    int pendingSize();
 
 private:
     // TODO: use priority queue or heap
-    std::deque<std::share_ptr<TensorTableEntry>> _sq;
     // TODO: make this class thread-safe
-
+    std::deque<std::shared_ptr<TensorTableEntry>> _sq;
 };
 
 class BytePSGlobal {
@@ -45,11 +46,15 @@ class BytePSGlobal {
 public:
 
     static BytePSScheduledQueue* GetScheduledQueue(BytePSOp op);
+    static bool StartInit();
+    static void FinishInit();
 
 private:
 
     static BytePSScheduledQueue *_pushq;
     static BytePSScheduledQueue *_pullq;
+    static std::mutex _init_mutex;
+    static bool _initialized;
 
 };
 

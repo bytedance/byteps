@@ -18,22 +18,26 @@
 namespace byteps {
 namespace common {
 
-void BytePSScheduledQueue::addTask(std::share_ptr<TensorTableEntry> entry) {
+void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
     _sq.push_back(entry);
     return;
 }
 
-std::share_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
+std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     auto front = _sq.front();
     _sq.pop_front();
     return front;
 }
 
-std::share_ptr<TensorTableEntry> BytePSScheduledQueue::peakTask() {
+std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::peakTask() {
     return _sq.front();
 }
 
-static BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
+int BytePSScheduledQueue::pendingSize() {
+    return _sq.size();
+}
+
+BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
     switch (op) {
         case PUSH:
             if (_pushq == NULL) {
@@ -53,6 +57,21 @@ static BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
     return NULL;
 }
 
+bool BytePSGlobal::StartInit() {
+    _init_mutex.lock();
+    if (_initialized) {
+        _init_mutex.unlock();
+        return false;
+    }
+    // mutex will be unlocked in FinishInit()
+    return true;
+}
+
+void BytePSGlobal::FinishInit() {
+    _initialized = true;
+    _init_mutex.unlock();
+    return;
+}
 
 } // namespace common
 } // namespace byteps

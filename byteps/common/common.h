@@ -1,4 +1,5 @@
-// Copyright 2019 ByteDance, Inc. All Rights Reserved.
+// Copyright 2019 ByteDance Inc. or its affiliates. All Rights Reserved.
+// Copyright 2018 Uber Technologies, Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -144,6 +145,8 @@ struct TensorTableEntry {
   std::shared_ptr<Tensor> output;
   // Priroity
   int priority = 0;
+  // The version of tensor
+  int version = 0;
   // Root rank for broadcast operation.
   int root_rank = 0;
   // Event indicating that data is ready.
