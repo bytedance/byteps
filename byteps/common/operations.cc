@@ -22,6 +22,7 @@
 
 #include "global.h"
 #include "operations.h"
+#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -29,7 +30,9 @@ namespace common {
 bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
     while (q->pendingSize() > 0) {
-        q->getTask()->callback(Status::OK());
+        auto task = q->getTask();
+        task->callback(Status::OK());
+        LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
     }
     return true;
 }
@@ -37,7 +40,9 @@ bool RunPushLoopOnce() {
 bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
     while (q->pendingSize() > 0) {
-        q->getTask()->callback(Status::OK());
+        auto task = q->getTask();
+        task->callback(Status::OK());
+        LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
     }
     return true;
 }
@@ -60,15 +65,18 @@ Status CheckInitialized() {
 
 void byteps_init(const int *ranks, int nranks) {
     if (BytePSGlobal::StartInit()) {
-        std::thread(PushLoop);
-        std::thread(PullLoop);
+        BytePSGlobal::SetLoopThread(PUSH, new std::thread(PushLoop));
+        LOG(TRACE) << "PUSH thread starts.";
+        BytePSGlobal::SetLoopThread(PULL, new std::thread(PullLoop));
+        LOG(TRACE) << "PULL thread starts.";
         BytePSGlobal::FinishInit();
     }
     return;
 }
 
 void byteps_shutdown() {
-    BytePSGlobal::SetShutdown();
+    BytePSGlobal::Shutdown();
+    LOG(TRACE) << "BytePS is shutdown.";
     return;
 }
 
@@ -106,6 +114,7 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
+    LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name;
     return Status::OK();
 }
 
@@ -127,6 +136,7 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
+    LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name;
     return Status::OK();
 }
 

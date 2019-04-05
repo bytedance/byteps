@@ -211,7 +211,8 @@ def get_common_options(build_ext):
     INCLUDES = []
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
-               'byteps/common/global.cc']
+               'byteps/common/global.cc',
+               'byteps/common/logging.cc',]
     COMPILE_FLAGS = cpp_flags
     LINK_FLAGS = link_flags
     LIBRARY_DIRS = []

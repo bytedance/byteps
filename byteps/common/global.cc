@@ -19,49 +19,45 @@ namespace byteps {
 namespace common {
 
 void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
+    std::lock_guard<std::mutex> lock(_mutex);
     _sq.push_back(entry);
     return;
 }
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
+    std::lock_guard<std::mutex> lock(_mutex);
     auto front = _sq.front();
     _sq.pop_front();
     return front;
 }
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::peakTask() {
+    std::lock_guard<std::mutex> lock(_mutex);
     return _sq.front();
 }
 
 int BytePSScheduledQueue::pendingSize() {
+    std::lock_guard<std::mutex> lock(_mutex);
     return _sq.size();
 }
 
 // Define and init global variables
-BytePSScheduledQueue* BytePSGlobal::_pushq = NULL;
-BytePSScheduledQueue* BytePSGlobal::_pullq = NULL;
+std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
+BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_init_mutex;
 bool BytePSGlobal::_initialized = false;
 bool BytePSGlobal::_should_shutdown = false;
 
-BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
-    switch (op) {
-        case PUSH:
-            if (_pushq == NULL) {
-                _pushq = new BytePSScheduledQueue();
-            }
-            return _pushq;
-        
-        case PULL:
-            if (_pullq == NULL) {
-                _pullq = new BytePSScheduledQueue();
-            }
-            return _pullq;
-
-        default:
-            break;
+BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
+    if (!_queues[queueType]) {
+        _queues[queueType] = new BytePSScheduledQueue();
     }
-    return NULL;
+    return _queues[queueType];
+}
+
+void BytePSGlobal::SetLoopThread(QueueType queueType, std::thread* t) {
+    _threads[queueType] = t;
+    return;
 }
 
 // Try to start the init process
@@ -99,8 +95,14 @@ bool BytePSGlobal::ShouldShutdown() {
     return _should_shutdown;
 }
 
-void BytePSGlobal::SetShutdown() {
+void BytePSGlobal::Shutdown() {
     _should_shutdown = true;
+    for (int i=0; i<ThreadNum; i++) {
+        if (_threads[i]->joinable()) {
+            _threads[i]->join();
+            delete _threads[i];
+        }
+    }
     return;
 }
 

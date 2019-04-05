@@ -19,12 +19,15 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include "common.h"
 
 namespace byteps {
 namespace common {
 
-enum BytePSOp { PUSH, PULL };
+const int QueueNum = 2;
+const int ThreadNum = QueueNum;
+enum QueueType { PUSH, PULL };
 
 
 class BytePSScheduledQueue {
@@ -37,25 +40,26 @@ public:
 
 private:
     // TODO: use priority queue or heap
-    // TODO: make this class thread-safe
     std::deque<std::shared_ptr<TensorTableEntry>> _sq;
+    std::mutex _mutex;
 };
 
 class BytePSGlobal {
 
 public:
 
-    static BytePSScheduledQueue* GetScheduledQueue(BytePSOp op);
+    static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
+    static void SetLoopThread(QueueType queueType, std::thread* t);
     static bool StartInit();
     static Status CheckInit();
     static void FinishInit();
     static bool ShouldShutdown();
-    static void SetShutdown();
+    static void Shutdown();
 
 private:
 
-    static BytePSScheduledQueue *_pushq;
-    static BytePSScheduledQueue *_pullq;
+    static std::thread* _threads[ThreadNum];
+    static BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _init_mutex;
     static bool _initialized;
     static bool _should_shutdown;
