@@ -21,6 +21,7 @@
 #include <mutex>
 #include <thread>
 #include "common.h"
+#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -29,6 +30,7 @@ const int QueueNum = 2;
 const int ThreadNum = QueueNum;
 enum QueueType { PUSH, PULL };
 
+typedef void (*LoopFunction)();
 
 class BytePSScheduledQueue {
 
@@ -48,16 +50,25 @@ class BytePSGlobal {
 
 public:
 
-    static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
-    static void SetLoopThread(QueueType queueType, std::thread* t);
-    static bool StartInit();
+    static void Init(int rank, int local_rank, int size, int local_size, LoopFunction* func);
     static Status CheckInit();
-    static void FinishInit();
-    static bool ShouldShutdown();
+
+    static int GetRank() {return _rank;}
+    static int GetLocalRank() {return _local_rank;}
+    static int GetSize() {return _size;}
+    static int GetLocalSize() {return _local_size;}
+
+    static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
+
+    static bool ShouldShutdown() {return _should_shutdown;}
     static void Shutdown();
 
 private:
 
+    static int _rank;
+    static int _local_rank;
+    static int _size;
+    static int _local_size;
     static std::thread* _threads[ThreadNum];
     static BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _init_mutex;

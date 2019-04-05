@@ -30,12 +30,20 @@ from byteps.common import BytePSBasics as _BytePSBasics
 _basics = _BytePSBasics(__file__, 'c_lib')
 
 # import basic methods
-init = _basics.init
 shutdown = _basics.shutdown
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
+
+def init():
+    use_mpirun = os.getenv("BYTEPS_INIT_USING_HVD")
+    if use_mpirun is not None and use_mpirun != 0:
+        import horovod.mxnet as hvd
+        hvd.init()
+        _basics.init(hvd.rank(), hvd.local_rank(), hvd.size(), hvd.local_size())
+    else:
+        _basics.init()
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())

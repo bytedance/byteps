@@ -30,7 +30,7 @@ Status CheckInitialized();
 extern "C" {
 
 // C interface to initialize byteps.
-void byteps_init(const int *ranks, int nranks);
+void byteps_init(int rank, int local_rank, int size, int local_size);
 
 // C interface to shut down byteps.
 void byteps_shutdown();

@@ -59,18 +59,11 @@ void PullLoop() {
     }
 }
 
-Status CheckInitialized() {
-    return BytePSGlobal::CheckInit();
-}
+extern "C" {
 
-void byteps_init(const int *ranks, int nranks) {
-    if (BytePSGlobal::StartInit()) {
-        BytePSGlobal::SetLoopThread(PUSH, new std::thread(PushLoop));
-        LOG(TRACE) << "PUSH thread starts.";
-        BytePSGlobal::SetLoopThread(PULL, new std::thread(PullLoop));
-        LOG(TRACE) << "PULL thread starts.";
-        BytePSGlobal::FinishInit();
-    }
+void byteps_init(int rank, int local_rank, int size, int local_size) {
+    LoopFunction func[ThreadNum] = {PushLoop, PullLoop};
+    BytePSGlobal::Init(rank, local_rank, size, local_size, func);
     return;
 }
 
@@ -81,19 +74,25 @@ void byteps_shutdown() {
 }
 
 int byteps_rank() {
-    return 0;
+    return BytePSGlobal::GetRank();
 }
 
 int byteps_local_rank() {
-    return 0;
+    return BytePSGlobal::GetLocalRank();
 }
 
 int byteps_size() {
-    return 1;
+    return BytePSGlobal::GetSize();
 }
 
 int byteps_local_size() {
-    return 1;
+    return BytePSGlobal::GetLocalSize();
+}
+
+} // extern "C"
+
+Status CheckInitialized() {
+    return BytePSGlobal::CheckInit();
 }
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,

@@ -42,6 +42,10 @@ int BytePSScheduledQueue::pendingSize() {
 }
 
 // Define and init global variables
+int BytePSGlobal::_rank = 0;
+int BytePSGlobal::_local_rank = 0;
+int BytePSGlobal::_size = 1;
+int BytePSGlobal::_local_size = 1;
 std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
 BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_init_mutex;
@@ -55,22 +59,29 @@ BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return _queues[queueType];
 }
 
-void BytePSGlobal::SetLoopThread(QueueType queueType, std::thread* t) {
-    _threads[queueType] = t;
-    return;
-}
-
-// Try to start the init process
-// If already inited, will return false
-// Otherwise acquire the lock, return true
-bool BytePSGlobal::StartInit() {
-    _init_mutex.lock();
+void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size, LoopFunction* func) {
+    std::lock_guard<std::mutex> lock(_init_mutex);
+    
+    // We only init once
     if (_initialized) {
-        _init_mutex.unlock();
-        return false;
+        return;
     }
-    // mutex must be unlocked in FinishInit()
-    return true;
+
+    _rank = rank;
+    _local_rank = local_rank;
+    _size = size;
+    _local_size = local_size;
+
+    // Start background threads
+    for (int i = 0; i < ThreadNum; i++) {
+        _threads[i] = new std::thread(func[i]);
+        LOG(DEBUG) << "Background thread " << i << " starts.";
+    }
+
+    _initialized = true;
+    LOG(DEBUG) << "Inited rank=" << rank << " local_rank=" << local_rank
+               << " size=" << size << " local_size=" << local_size;
+    return;
 }
 
 const Status NOT_INITIALIZED_ERROR = Status::PreconditionError(
@@ -85,19 +96,9 @@ Status BytePSGlobal::CheckInit() {
     }
 }
 
-void BytePSGlobal::FinishInit() {
-    _initialized = true;
-    _init_mutex.unlock();
-    return;
-}
-
-bool BytePSGlobal::ShouldShutdown() {
-    return _should_shutdown;
-}
-
 void BytePSGlobal::Shutdown() {
     _should_shutdown = true;
-    for (int i=0; i<ThreadNum; i++) {
+    for (int i = 0; i < ThreadNum; i++) {
         if (_threads[i]->joinable()) {
             _threads[i]->join();
             delete _threads[i];

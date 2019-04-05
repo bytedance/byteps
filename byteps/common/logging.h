@@ -13,6 +13,9 @@
 // limitations under the License.
 // =============================================================================
 
+#ifndef BYTEPS_LOGGING_H
+#define BYTEPS_LOGGING_H
+
 #include <sstream>
 #include <string>
 
@@ -72,3 +75,5 @@ bool LogTimeFromEnv();
 
 }
 }
+
+#endif // BYTEPS_LOGGING_H

@@ -56,9 +56,24 @@ class BytePSBasics(object):
         full_path = get_extension_full_path(pkg_path, *args)
         self.MPI_LIB_CTYPES = ctypes.CDLL(full_path, mode=ctypes.RTLD_GLOBAL)
 
-    def init(self):
+    def init(self, rank=None, local_rank=None, size=None, local_size=None):
         """A function that inits BytePS."""
-        return self.MPI_LIB_CTYPES.byteps_init()
+        if rank is None or local_rank is None or size is None or local_size is None:
+            workers = os.getenv("BYTEPS_WORKER_HOSTS").split(",")
+            rank = int(os.getenv("BYTEPS_WORKER_ID"))
+            size = len(workers)
+            my_ip, my_port = workers[rank].split(":")
+            local_size = 0
+            for worker in workers:
+                _ip, _port = worker.split(":")
+                if _ip == my_ip:
+                    if _port == my_port:
+                        local_rank = local_size
+                    local_size += 1
+
+        return self.MPI_LIB_CTYPES.byteps_init(
+            ctypes.c_int(rank), ctypes.c_int(local_rank),
+            ctypes.c_int(size), ctypes.c_int(local_size))
 
     def shutdown(self):
         """A function that shuts BytePS down."""
