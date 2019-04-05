@@ -47,7 +47,10 @@ public:
 
     static BytePSScheduledQueue* GetScheduledQueue(BytePSOp op);
     static bool StartInit();
+    static Status CheckInit();
     static void FinishInit();
+    static bool ShouldShutdown();
+    static void SetShutdown();
 
 private:
 
@@ -55,6 +58,7 @@ private:
     static BytePSScheduledQueue *_pullq;
     static std::mutex _init_mutex;
     static bool _initialized;
+    static bool _should_shutdown;
 
 };
 

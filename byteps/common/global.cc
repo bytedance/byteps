@@ -37,6 +37,13 @@ int BytePSScheduledQueue::pendingSize() {
     return _sq.size();
 }
 
+// Define and init global variables
+BytePSScheduledQueue* BytePSGlobal::_pushq = NULL;
+BytePSScheduledQueue* BytePSGlobal::_pullq = NULL;
+std::mutex BytePSGlobal::_init_mutex;
+bool BytePSGlobal::_initialized = false;
+bool BytePSGlobal::_should_shutdown = false;
+
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
     switch (op) {
         case PUSH:
@@ -57,14 +64,29 @@ BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(BytePSOp op) {
     return NULL;
 }
 
+// Try to start the init process
+// If already inited, will return false
+// Otherwise acquire the lock, return true
 bool BytePSGlobal::StartInit() {
     _init_mutex.lock();
     if (_initialized) {
         _init_mutex.unlock();
         return false;
     }
-    // mutex will be unlocked in FinishInit()
+    // mutex must be unlocked in FinishInit()
     return true;
+}
+
+const Status NOT_INITIALIZED_ERROR = Status::PreconditionError(
+    "BytePS has not been initialized; use bps.init().");
+
+Status BytePSGlobal::CheckInit() {
+    if (_initialized) {
+        return Status::OK();
+    }
+    else {
+        return NOT_INITIALIZED_ERROR;
+    }
 }
 
 void BytePSGlobal::FinishInit() {
@@ -72,6 +94,16 @@ void BytePSGlobal::FinishInit() {
     _init_mutex.unlock();
     return;
 }
+
+bool BytePSGlobal::ShouldShutdown() {
+    return _should_shutdown;
+}
+
+void BytePSGlobal::SetShutdown() {
+    _should_shutdown = true;
+    return;
+}
+
 
 } // namespace common
 } // namespace byteps

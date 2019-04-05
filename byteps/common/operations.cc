@@ -26,10 +26,9 @@
 namespace byteps {
 namespace common {
 
-
 bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
-    if (q->pendingSize() > 0) {
+    while (q->pendingSize() > 0) {
         q->getTask()->callback(Status::OK());
     }
     return true;
@@ -37,22 +36,26 @@ bool RunPushLoopOnce() {
 
 bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
-    if (q->pendingSize() > 0) {
+    while (q->pendingSize() > 0) {
         q->getTask()->callback(Status::OK());
     }
     return true;
 }
 
 void PushLoop() {
-    while (RunPushLoopOnce()) {
+    while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
 }
 
 void PullLoop() {
-    while (RunPullLoopOnce()) {
+    while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
+}
+
+Status CheckInitialized() {
+    return BytePSGlobal::CheckInit();
 }
 
 void byteps_init(const int *ranks, int nranks) {
@@ -65,6 +68,7 @@ void byteps_init(const int *ranks, int nranks) {
 }
 
 void byteps_shutdown() {
+    BytePSGlobal::SetShutdown();
     return;
 }
 
@@ -77,11 +81,11 @@ int byteps_local_rank() {
 }
 
 int byteps_size() {
-    return 0;
+    return 1;
 }
 
 int byteps_local_size() {
-    return 0;
+    return 1;
 }
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
