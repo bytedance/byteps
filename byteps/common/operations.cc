@@ -32,7 +32,7 @@ bool RunPushLoopOnce() {
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
         task->callback(Status::OK());
-        LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
+        BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
     }
     return true;
 }
@@ -42,7 +42,7 @@ bool RunPullLoopOnce() {
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
         task->callback(Status::OK());
-        LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
+        BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
     }
     return true;
 }
@@ -69,7 +69,7 @@ void byteps_init(int rank, int local_rank, int size, int local_size) {
 
 void byteps_shutdown() {
     BytePSGlobal::Shutdown();
-    LOG(TRACE) << "BytePS is shutdown.";
+    BPS_LOG(TRACE) << "BytePS is shutdown.";
     return;
 }
 
@@ -113,7 +113,7 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
-    LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name;
+    BPS_LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name;
     return Status::OK();
 }
 
@@ -135,7 +135,7 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
-    LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name;
+    BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name;
     return Status::OK();
 }
 

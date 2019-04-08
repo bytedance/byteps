@@ -68,7 +68,7 @@ class LogMessageFatal : public LogMessage {
 #define _LOG_RANK(severity, rank) _BPS_LOG_##severity << "[" << rank << "]: "
 
 #define GET_LOG(_1, _2, NAME, ...) NAME
-#define LOG(...) GET_LOG(__VA_ARGS__, _LOG_RANK, _LOG)(__VA_ARGS__)
+#define BPS_LOG(...) GET_LOG(__VA_ARGS__, _LOG_RANK, _LOG)(__VA_ARGS__)
 
 LogLevel MinLogLevelFromEnv();
 bool LogTimeFromEnv();

@@ -51,6 +51,7 @@ BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_init_mutex;
 bool BytePSGlobal::_initialized = false;
 bool BytePSGlobal::_should_shutdown = false;
+ps::KVWorker<char>* _ps = NULL;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     if (!_queues[queueType]) {
@@ -72,14 +73,16 @@ void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size, Loop
     _size = size;
     _local_size = local_size;
 
+    _ps = new ps::KVWorker<char>(0, 0);
+
     // Start background threads
     for (int i = 0; i < ThreadNum; i++) {
         _threads[i] = new std::thread(func[i]);
-        LOG(DEBUG) << "Background thread " << i << " starts.";
+        BPS_LOG(DEBUG) << "Background thread " << i << " starts.";
     }
 
     _initialized = true;
-    LOG(DEBUG) << "Inited rank=" << rank << " local_rank=" << local_rank
+    BPS_LOG(DEBUG) << "Inited rank=" << rank << " local_rank=" << local_rank
                << " size=" << size << " local_size=" << local_size;
     return;
 }

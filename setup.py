@@ -21,15 +21,12 @@ import traceback
 MXNET_ROOT = "/root/mxnet-rdma/"
 os.environ["MXNET_INCLUDE_PATH"] = os.path.join(MXNET_ROOT, "include/")
 
-# TODO: check MXNet config.mk or Makefile
-os.environ["MXNET_USE_MKLDNN"] = "0"
-
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
 pytorch_lib = Extension('byteps.pytorch.c_lib', [])
 
 # Package meta-data.
 NAME = 'byteps'
-DESCRIPTION = 'Scheduler for distributed training'
+DESCRIPTION = 'A high-performance cross-framework Parameter Server for Deep Learning'
 URL = 'https://code.byted.org/zhuyibo/byteps'
 EMAIL = 'lab-hr@bytedance.com'
 AUTHOR = 'ByteDance Inc.'
@@ -208,7 +205,7 @@ def get_common_options(build_ext):
     link_flags = get_link_flags(build_ext)
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
-    INCLUDES = []
+    INCLUDES = ['3rdparty/ps-lite/include']
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
                'byteps/common/global.cc',
@@ -316,6 +313,9 @@ def build_mx_extension(build_ext, options):
     else:
         mxnet_lib.define_macros += [('MSHADOW_USE_CUDA', '0')]
     mxnet_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
+
+    # use MXNet's DMLC headers first instead of ps-lite's
+    options['INCLUDES'].insert(0, os.environ["MXNET_INCLUDE_PATH"])
     mxnet_lib.include_dirs = options['INCLUDES']
     mxnet_lib.sources = options['SOURCES'] + \
         ['byteps/mxnet/ops.cc',
@@ -326,17 +326,10 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         mx_compile_flags
     mxnet_lib.extra_link_args = options['LINK_FLAGS'] + mx_link_flags
+    mxnet_lib.extra_objects = ['3rdparty/lib/libps.a']
     mxnet_lib.library_dirs = options['LIBRARY_DIRS']
     mxnet_lib.libraries = options['LIBRARIES']
 
-    # MKLDNN
-    if "MXNET_USE_MKLDNN" in os.environ and int(os.environ["MXNET_USE_MKLDNN"]) > 0:
-        raise DistutilsError(
-            'byteps does not support MXNet with MKLDNN.')
-        mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '1')]
-        mxnet_lib.define_macros += [('USE_MKL', '1')]
-        mxnet_lib.include_dirs += [os.path.join(MXNET_ROOT, '3rdparty/mkldnn/include/')]
-        mxnet_lib.include_dirs += [os.path.join(MXNET_ROOT, 'src/operator/nn/mkldnn/')]
     # build mxnet from source code to have these headers
     # mxnet_lib.include_dirs += [os.path.join(MXNET_ROOT, 'include/'), os.path.join(MXNET_ROOT, '3rdparty/ps-lite/include/')]
     build_ext.build_extension(mxnet_lib)
@@ -407,6 +400,7 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/pytorch/cuda_util.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
                          extra_link_args=options['LINK_FLAGS'],
+                         extra_objects = ['3rdparty/lib/libps.a'],
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
@@ -420,26 +414,26 @@ class custom_build_ext(build_ext):
     def build_extensions(self):
         options = get_common_options(self)
         built_plugins = []
-        if not int(os.environ.get('byteps_WITHOUT_MXNET', 0)):
+        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
             try:
                 build_mx_extension(self, options)
                 built_plugins.append(True)
                 print('INFO: MXNet extension is built successfully.')
             except:
-                if not os.environ.get('byteps_WITH_MXNET'):
+                if not os.environ.get('BYTEPS_WITH_MXNET'):
                     print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
                           '%s' % traceback.format_exc())
                     built_plugins.append(False)
                 else:
                     raise
-        if not int(os.environ.get('byteps_WITHOUT_PYTORCH', 0)):
+        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
             try:
                 torch_version = check_torch_version()
                 build_torch_extension(self, options, torch_version)
                 built_plugins.append(True)
                 print('INFO: PyTorch extension is built successfully.')
             except:
-                if not int(os.environ.get('byteps_WITH_PYTORCH', 0)):
+                if not int(os.environ.get('BYTEPS_WITH_PYTORCH', 0)):
                     print('INFO: Unable to build PyTorch plugin, will skip it.\n\n'
                         '%s' % traceback.format_exc())
                     built_plugins.append(False)

@@ -22,6 +22,7 @@
 #include <thread>
 #include "common.h"
 #include "logging.h"
+#include "ps/ps.h"
 
 namespace byteps {
 namespace common {
@@ -74,6 +75,8 @@ private:
     static std::mutex _init_mutex;
     static bool _initialized;
     static bool _should_shutdown;
+
+    static ps::KVWorker<char>* _ps;
 
 };
 
