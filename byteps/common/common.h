@@ -22,6 +22,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "ps/ps.h"
 
 namespace byteps {
 namespace common {
@@ -29,18 +30,21 @@ namespace common {
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
 
+// Keep the order consistent with DMLC/mshadow
+// https://github.com/dmlc/mshadow/blob/master/mshadow/base.h
 enum DataType {
-  BYTEPS_UINT8 = 0,
-  BYTEPS_INT8 = 1,
-  BYTEPS_UINT16 = 2,
-  BYTEPS_INT16 = 3,
+  BYTEPS_FLOAT32 = 0,
+  BYTEPS_FLOAT64 = 1,
+  BYTEPS_FLOAT16 = 2,
+  BYTEPS_UINT8 = 3,
   BYTEPS_INT32 = 4,
-  BYTEPS_INT64 = 5,
-  BYTEPS_FLOAT16 = 6,
-  BYTEPS_FLOAT32 = 7,
-  BYTEPS_FLOAT64 = 8,
-  BYTEPS_BOOL = 9,
-  BYTEPS_BYTE = 10,
+  BYTEPS_INT8 = 5,
+  BYTEPS_INT64 = 6,
+  // below are not in mshadow, should avoid using these
+  // BYTEPS_UINT16 = 7,
+  // BYTEPS_INT16 = 8,
+  // BYTEPS_BOOL = 9,
+  // BYTEPS_BYTE = 10,
 };
 
 // List of supported frameworks.
@@ -157,6 +161,12 @@ struct TensorTableEntry {
   StatusCallback callback;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
+
+enum class RequestType {
+  kDefaultPushPull, kRowSparsePushPull, kCompressedPushPull
+};
+
+int GetCommandType(RequestType requestType, int d);
 
 } // namespace common
 } // namespace byteps

@@ -1,6 +1,4 @@
 // Copyright 2019 ByteDance Inc. or its affiliates. All Rights Reserved.
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-// Modifications copyright (C) 2019 Uber Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,9 +28,32 @@ namespace common {
 bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
     while (q->pendingSize() > 0) {
+        // TODO: allow merging
         auto task = q->getTask();
-        task->callback(Status::OK());
-        BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
+
+        // get metadata
+        size_t size = task->tensor->size();
+        const int dtype = task->tensor->dtype();
+
+        // convert to ps keys
+        ps::Key key = BytePSGlobal::GetKeyFromName(task->tensor_name);
+        ps::SArray<ps::Key> keys(&key, 1, true);
+
+        char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
+        // false means not to delete data when SArray is deleted
+        ps::SArray<char> vals(data, size, false);
+
+        int len = size;
+        ps::SArray<int> lens(&len, 1, true);
+
+        int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+        BytePSGlobal::GetPS()->ZPush(
+            keys, vals, lens, cmd,
+            [task]() {
+                task->callback(Status::OK());
+                BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
+            }
+        );
     }
     return true;
 }
@@ -40,9 +61,36 @@ bool RunPushLoopOnce() {
 bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
     while (q->pendingSize() > 0) {
+        // TODO: allow merging
         auto task = q->getTask();
-        task->callback(Status::OK());
-        BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
+
+        // get metadata      
+        size_t size = task->tensor->size();
+        const int dtype = task->tensor->dtype();
+
+        // convert to ps keys
+        ps::Key key = BytePSGlobal::GetKeyFromName(task->tensor_name);
+        ps::SArray<ps::Key> keys(&key, 1, true);
+
+        char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
+        // false means not to delete data when SArray is deleted
+        auto vals = new ps::SArray<char>(data, size, false);
+
+        int len = size;
+        auto lens = new ps::SArray<int>(&len, 1, true);
+
+        int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+
+        // issue pull
+        BytePSGlobal::GetPS()->ZPull(
+            keys, vals, lens, cmd,
+            [vals, lens, task]() {
+                delete vals;
+                delete lens;
+                task->callback(Status::OK());
+                BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
+            }
+        );
     }
     return true;
 }
@@ -136,6 +184,32 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
 
     BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
     BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name;
+    return Status::OK();
+}
+
+Status EnqueueTensorInit(std::shared_ptr<OpContext> context,
+                              std::shared_ptr<Tensor> output,
+                              std::shared_ptr<ReadyEvent> ready_event,
+                              const std::string name, const int device,
+                              StatusCallback callback) {
+    std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
+    e->tensor_name = name;
+    e->context = context;
+    e->tensor = NULL;
+    e->output = output;
+    e->ready_event = ready_event;
+    e->device = device;
+    e->priority = 0;
+    e->version = 0;
+    e->callback = callback;
+    if (BytePSGlobal::GetRank() == 0) {
+        BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
+    }
+    else {
+        BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
+    }
+    
+    BPS_LOG(TRACE) << "Init tensor: " << e->tensor_name;
     return Status::OK();
 }
 

@@ -87,10 +87,11 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
                                        char* name, int version, int priority) {
   MX_API_BEGIN();
 
-  std::string op_name = GetOpName("push", name);
-  auto push_async_fn = [input, op_name, version, priority](RunContext rctx,
+  // TODO: replace "byteps" with job ID
+  std::string tensor_name = GetOpName("byteps", name);
+  auto push_async_fn = [input, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPush(input, op_name, version, priority, on_complete);
+    DoPush(input, tensor_name, version, priority, on_complete);
   };
 
 
@@ -106,10 +107,11 @@ extern "C" int byteps_mxnet_pull_async(NDArray* output,
                                        char* name, int version, int priority) {
   MX_API_BEGIN();
 
-  std::string op_name = GetOpName("pull", name);
-  auto pull_async_fn = [output, op_name, version, priority](RunContext rctx,
+  // TODO: replace "byteps" with job ID
+  std::string tensor_name = GetOpName("byteps", name);
+  auto pull_async_fn = [output, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPull(output, op_name, version, priority, on_complete);
+    DoPull(output, tensor_name, version, priority, on_complete);
   };
 
 

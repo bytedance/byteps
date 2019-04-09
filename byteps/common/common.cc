@@ -110,5 +110,11 @@ int64_t TensorShape::num_elements() const {
   return result;
 }
 
+int GetCommandType(RequestType requestType, int d) {
+  int m = static_cast<int>(requestType);
+  return (((m + d) * (m + d + 1)) / 2) + d;
+}
+
+
 } // namespace common
 } // namespace byteps

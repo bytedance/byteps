@@ -20,6 +20,8 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
+#include <string>
 #include "common.h"
 #include "logging.h"
 #include "ps/ps.h"
@@ -54,16 +56,23 @@ public:
     static void Init(int rank, int local_rank, int size, int local_size, LoopFunction* func);
     static Status CheckInit();
 
-    static int GetRank() {return _rank;}
-    static int GetLocalRank() {return _local_rank;}
-    static int GetSize() {return _size;}
-    static int GetLocalSize() {return _local_size;}
+    static int GetRank() { return _rank; }
+    static int GetLocalRank() { return _local_rank; }
+    static int GetSize() { return _size; }
+    static int GetLocalSize() { return _local_size; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
 
-    static bool ShouldShutdown() {return _should_shutdown;}
+    static bool ShouldShutdown() { return _should_shutdown; }
     static void Shutdown();
 
+    static ps::KVWorker<char>* GetPS() { return _ps; }
+    // For performance, we deliberately avoid locks for _name_to_key
+    // EncodeNameToKey should only be called during parameter init (broadcast)
+    static ps::Key GetKeyFromName(const std::string &name) { return _name_to_key[name]; }
+    static void EncodeNameToKey(const std::string &name) { _name_to_key[name] = _name_to_key.size(); }
+
+    
 private:
 
     static int _rank;
@@ -73,11 +82,11 @@ private:
     static std::thread* _threads[ThreadNum];
     static BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _init_mutex;
-    static bool _initialized;
-    static bool _should_shutdown;
+    static volatile bool _initialized;
+    static volatile bool _should_shutdown;
 
     static ps::KVWorker<char>* _ps;
-
+    static std::unordered_map<std::string, ps::Key> _name_to_key;
 };
 
 

@@ -49,9 +49,10 @@ int BytePSGlobal::_local_size = 1;
 std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
 BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_init_mutex;
-bool BytePSGlobal::_initialized = false;
-bool BytePSGlobal::_should_shutdown = false;
-ps::KVWorker<char>* _ps = NULL;
+volatile bool BytePSGlobal::_initialized = false;
+volatile bool BytePSGlobal::_should_shutdown = false;
+ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
+std::unordered_map<std::string, ps::Key> BytePSGlobal::_name_to_key;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     if (!_queues[queueType]) {
@@ -73,6 +74,7 @@ void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size, Loop
     _size = size;
     _local_size = local_size;
 
+    // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);
 
     // Start background threads
@@ -107,6 +109,7 @@ void BytePSGlobal::Shutdown() {
             delete _threads[i];
         }
     }
+    ps::Finalize(0, true);
     return;
 }
 
