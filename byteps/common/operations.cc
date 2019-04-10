@@ -18,9 +18,7 @@
 #include <thread>
 #include <chrono>
 
-#include "global.h"
 #include "operations.h"
-#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -36,7 +34,7 @@ bool RunPushLoopOnce() {
         const int dtype = task->tensor->dtype();
 
         // convert to ps keys
-        ps::Key key = BytePSGlobal::GetKeyFromName(task->tensor_name);
+        ps::Key key = task->key;
         ps::SArray<ps::Key> keys(&key, 1, true);
 
         char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
@@ -49,7 +47,8 @@ bool RunPushLoopOnce() {
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
         BytePSGlobal::GetPS()->ZPush(
             keys, vals, lens, cmd,
-            [task]() {
+            [task, q]() {
+                q->reportFinish(task);
                 task->callback(Status::OK());
                 BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
             }
@@ -69,7 +68,7 @@ bool RunPullLoopOnce() {
         const int dtype = task->tensor->dtype();
 
         // convert to ps keys
-        ps::Key key = BytePSGlobal::GetKeyFromName(task->tensor_name);
+        ps::Key key = task->key;
         ps::SArray<ps::Key> keys(&key, 1, true);
 
         char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
@@ -84,9 +83,10 @@ bool RunPullLoopOnce() {
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
             keys, vals, lens, cmd,
-            [vals, lens, task]() {
+            [vals, lens, task, q]() {
                 delete vals;
                 delete lens;
+                q->reportFinish(task);
                 task->callback(Status::OK());
                 BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
             }
@@ -110,8 +110,9 @@ void PullLoop() {
 extern "C" {
 
 void byteps_init(int rank, int local_rank, int size, int local_size) {
+    BytePSGlobal::Init(rank, local_rank, size, local_size);
     LoopFunction func[ThreadNum] = {PushLoop, PullLoop};
-    BytePSGlobal::Init(rank, local_rank, size, local_size, func);
+    BytePSGlobal::Start(func);
     return;
 }
 
@@ -144,13 +145,14 @@ Status CheckInitialized() {
 }
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
-                              std::shared_ptr<Tensor> input,
-                              std::shared_ptr<ReadyEvent> ready_event,
-                              const std::string name, const int device,
-                              const int priority, const int version,
-                              StatusCallback callback) {
+                        std::shared_ptr<Tensor> input,
+                        std::shared_ptr<ReadyEvent> ready_event,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
+                        StatusCallback callback) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
+    e->key = key;
     e->context = context;
     e->tensor = input;
     e->output = NULL;
@@ -166,13 +168,14 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
 }
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
-                              std::shared_ptr<Tensor> output,
-                              std::shared_ptr<ReadyEvent> ready_event,
-                              const std::string name, const int device,
-                              const int priority, const int version,
-                              StatusCallback callback) {
+                        std::shared_ptr<Tensor> output,
+                        std::shared_ptr<ReadyEvent> ready_event,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
+                        StatusCallback callback) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
+    e->key = key;
     e->context = context;
     e->tensor = NULL;
     e->output = output;
@@ -187,32 +190,40 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     return Status::OK();
 }
 
-Status EnqueueTensorInit(std::shared_ptr<OpContext> context,
-                              std::shared_ptr<Tensor> output,
-                              std::shared_ptr<ReadyEvent> ready_event,
-                              const std::string name, const int device,
-                              StatusCallback callback) {
-    std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
-    e->tensor_name = name;
-    e->context = context;
-    e->tensor = NULL;
-    e->output = output;
-    e->ready_event = ready_event;
-    e->device = device;
-    e->priority = 0;
-    e->version = 0;
-    e->callback = callback;
-    if (BytePSGlobal::GetRank() == 0) {
-        BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
-    }
-    else {
-        BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
-    }
+Status InitTensor(std::shared_ptr<OpContext> context,
+                std::shared_ptr<Tensor> tensor,
+                std::shared_ptr<ReadyEvent> ready_event,
+                const std::string &name, const int device,
+                StatusCallback callback) {
     
-    BPS_LOG(TRACE) << "Init tensor: " << e->tensor_name;
+    // Only rank 0 pushes the initialization
+    if (BytePSGlobal::GetRank() == 0) {
+
+        // get metadata
+        size_t size = tensor->size();
+        const int dtype = tensor->dtype();
+
+        // convert to ps keys
+        ps::Key key = BytePSGlobal::GetKeyFromName(name);
+        ps::SArray<ps::Key> keys(&key, 1, true);
+
+        char* data = const_cast<char*> (static_cast<const char*> (tensor->data()));
+        // false means not to delete data when SArray is deleted
+        ps::SArray<char> vals(data, size, false);
+
+        int len = size;
+        ps::SArray<int> lens(&len, 1, true);
+
+        int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+        BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
+            keys, vals, lens, cmd));
+    }
+
+    ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+
+    BPS_LOG(TRACE) << "Init tensor: " << name;
     return Status::OK();
 }
-
 
 } // namespace common
 } // namespace byteps

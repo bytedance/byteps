@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from byteps.mxnet.ops import push_gradients, pull_gradients
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
@@ -40,11 +42,11 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                push_gradients(grad[i], version=0, priority=index[i], name=str(index[i]))
-                pull_gradients(grad[i], version=0, priority=index[i], name=str(index[i]))
+                push_gradients(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
+                pull_gradients(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
         else:
-            push_gradients(grad, version=0, priority=index, name=str(index))
-            pull_gradients(grad, version=0, priority=index, name=str(index))
+            push_gradients(grad, version=0, priority=index, name="gradient_"+str(index))
+            pull_gradients(grad, version=0, priority=index, name="gradient_"+str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
@@ -64,12 +66,12 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
         self._optimizer.set_wd_mult(args_wd_mult)
 
 # Wrapper to inject BytePS broadcast after parameter initialization
-def _append_broadcast_init(param, root_rank):
+def _append_broadcast_init(param, root_rank, index):
     init_impl = getattr(param, '_init_impl')
     def wrapped_init_impl(self, *args, **kwargs):
         init_impl(*args, **kwargs)
-        push_gradients(self.data(), version=0, priority=0, name="")
-        pull_gradients(self.data(), version=0, priority=0, name="")
+        push_gradients(self.data(), version=0, priority=0, name="parameter_"+str(index))
+        pull_gradients(self.data(), version=0, priority=0, name="parameter_"+str(index))
         self.data().wait_to_read()
     return wrapped_init_impl
 
@@ -90,21 +92,21 @@ def broadcast_parameters(params, root_rank=0):
     if isinstance(params, dict):
         tensors = [p for _, p in sorted(params.items())]
     elif isinstance(params, mx.gluon.parameter.ParameterDict):
-        for _, p in sorted(params.items()):
+        for i, p in sorted(params.items()):
             try:
                 tensors.append(p.data())
             except mx.gluon.parameter.DeferredInitializationError:
                 # Inject wrapper method with post-initialization broadcast to
                 # handle parameters with deferred initialization
-                new_init = _append_broadcast_init(p, root_rank)
+                new_init = _append_broadcast_init(p, root_rank, i)
                 p._init_impl = types.MethodType(new_init, p)
     else:
         raise ValueError('invalid params of type: %s' % type(params))
 
     # Run tensor initilization
     for i, tensor in enumerate(tensors):
-        push_gradients(tensor, version=0, priority=0, name=str(i))
-        pull_gradients(tensor, version=0, priority=0, name=str(i))
+        push_gradients(tensor, version=0, priority=0, name="parameter_"+str(i))
+        pull_gradients(tensor, version=0, priority=0, name="parameter_"+str(i))
 
     # Make sure tensors pushed to MXNet engine get processed such that all
     # workers are synced before starting training.

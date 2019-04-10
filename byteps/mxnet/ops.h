@@ -23,6 +23,8 @@
 #include <mxnet/engine.h>
 #include <mxnet/ndarray.h>
 
+#include "../common/operations.h"
+
 namespace byteps {
 namespace mxnet {
 

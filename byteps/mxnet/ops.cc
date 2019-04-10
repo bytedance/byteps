@@ -16,7 +16,6 @@
 
 #include <atomic>
 
-#include "../common/operations.h"
 #include "adapter.h"
 #include "cuda_util.h"
 #include "ops.h"
@@ -56,10 +55,11 @@ void DoPush(NDArray* input, const std::string& name, int version, int priority,
   auto device = TensorUtil::GetDevice(input);
   auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
   auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+  auto key = BytePSGlobal::GetKeyFromName(name);
 
   auto enqueue_result =
       EnqueueTensorPush(byteps_context, byteps_input, nullptr,
-                             name, device, priority, version,
+                             name, key, device, priority, version,
                              [on_complete](const Status& status) {
                                InvokeCompleteCallback(on_complete, status);
                              });
@@ -73,10 +73,11 @@ void DoPull(NDArray* output, const std::string& name, int version, int priority,
   auto device = TensorUtil::GetDevice(output);
   auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
   auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, output);
+  auto key = BytePSGlobal::GetKeyFromName(name);
 
   auto enqueue_result =
       EnqueueTensorPull(byteps_context, byteps_output, nullptr,
-                             name, device, priority, version,
+                             name, key, device, priority, version,
                              [on_complete](const Status& status) {
                                InvokeCompleteCallback(on_complete, status);
                              });
@@ -85,21 +86,37 @@ void DoPull(NDArray* output, const std::string& name, int version, int priority,
 
 extern "C" int byteps_mxnet_push_async(NDArray* input,
                                        char* name, int version, int priority) {
-  MX_API_BEGIN();
+    MX_API_BEGIN();
 
-  // TODO: replace "byteps" with job ID
-  std::string tensor_name = GetOpName("byteps", name);
-  auto push_async_fn = [input, tensor_name, version, priority](RunContext rctx,
+    // TODO: replace "byteps" with job ID
+    std::string tensor_name = GetOpName("byteps", name);
+
+    // check if we need to init the tensor
+    if (BytePSGlobal::EncodeNameToKey(tensor_name)) {
+        // we need to init this tensor. This is blocking to enforce the order
+        ThrowIfError(common::CheckInitialized());
+
+        auto device = TensorUtil::GetDevice(input);
+        auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+        auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+
+        auto enqueue_result = InitTensor(byteps_context, byteps_input, nullptr,
+                                        name, device,
+                                        [](const Status& status) {});
+
+        ThrowIfError(enqueue_result);
+    }
+
+    auto push_async_fn = [input, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-    DoPush(input, tensor_name, version, priority, on_complete);
-  };
+        DoPush(input, tensor_name, version, priority, on_complete);
+    };
 
+    Engine::Get()->PushAsync(push_async_fn, input->ctx(),
+                            {input->var()}, {},
+                            FnProperty::kNormal, 0, "BytePSPush");
 
-  Engine::Get()->PushAsync(push_async_fn, input->ctx(),
-                             {input->var()}, {},
-                             FnProperty::kNormal, 0, "BytePSPush");
-
-  MX_API_END();
+    MX_API_END();
 }
 
 

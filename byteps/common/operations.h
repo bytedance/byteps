@@ -18,7 +18,7 @@
 
 #include <functional>
 
-#include "common.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -56,18 +56,24 @@ int byteps_local_size();
 }
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
-                        std::shared_ptr<Tensor> intput,
+                        std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string name, const int device,
-                        const int priority, const int version,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
                         StatusCallback callback);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string name, const int device,
-                        const int priority, const int version,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
                         StatusCallback callback);
+
+Status InitTensor(std::shared_ptr<OpContext> context,
+                    std::shared_ptr<Tensor> tensor,
+                    std::shared_ptr<ReadyEvent> ready_event,
+                    const std::string &name, const int device,
+                    StatusCallback callback);
 
 } // namespace common
 } // namespace byteps

@@ -141,6 +141,8 @@ using StatusCallback = std::function<void(const Status&)>;
 struct TensorTableEntry {
   // Name of the tensor.
   std::string tensor_name;
+  // Key of the tensor
+  ps::Key key;
   // Operation context.
   std::shared_ptr<OpContext> context;
   // Input tensor.

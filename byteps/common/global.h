@@ -16,6 +16,7 @@
 #ifndef BYTEPS_GLOBAL_H
 #define BYTEPS_GLOBAL_H
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -39,22 +40,28 @@ class BytePSScheduledQueue {
 
 public:
     void addTask(std::shared_ptr<TensorTableEntry>);
-    std::shared_ptr<TensorTableEntry> peakTask();
+    std::shared_ptr<TensorTableEntry> peekTask();
     std::shared_ptr<TensorTableEntry> getTask();
-    int pendingSize();
+    uint32_t pendingSize();
+    void reportFinish(std::shared_ptr<TensorTableEntry> e);
+    uint64_t getFinishedNum() { return _finished; }
 
 private:
     // TODO: use priority queue or heap
     std::deque<std::shared_ptr<TensorTableEntry>> _sq;
     std::mutex _mutex;
+    std::atomic<uint64_t> _finished;
 };
 
 class BytePSGlobal {
 
 public:
 
-    static void Init(int rank, int local_rank, int size, int local_size, LoopFunction* func);
+    static void Init(int rank, int local_rank, int size, int local_size);
+    static void Start(LoopFunction* func);
     static Status CheckInit();
+    static bool ShouldShutdown() { return _should_shutdown; }
+    static void Shutdown();
 
     static int GetRank() { return _rank; }
     static int GetLocalRank() { return _local_rank; }
@@ -62,30 +69,30 @@ public:
     static int GetLocalSize() { return _local_size; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
-
-    static bool ShouldShutdown() { return _should_shutdown; }
-    static void Shutdown();
+    static bool IsQueueCreated(QueueType queueType) { return !_queues[queueType]; }
 
     static ps::KVWorker<char>* GetPS() { return _ps; }
-    // For performance, we deliberately avoid locks for _name_to_key
-    // EncodeNameToKey should only be called during parameter init (broadcast)
-    static ps::Key GetKeyFromName(const std::string &name) { return _name_to_key[name]; }
-    static void EncodeNameToKey(const std::string &name) { _name_to_key[name] = _name_to_key.size(); }
 
+    static bool EncodeNameToKey(const std::string &name);
+    static ps::Key GetKeyFromName(const std::string &name);
+    static uint32_t GetTensorCount();
     
 private:
+
+    static std::mutex _init_mutex;
+    static volatile bool _initialized;
+    static volatile bool _should_shutdown;
 
     static int _rank;
     static int _local_rank;
     static int _size;
     static int _local_size;
+
+    static volatile BytePSScheduledQueue* _queues[QueueNum];
     static std::thread* _threads[ThreadNum];
-    static BytePSScheduledQueue* _queues[QueueNum];
-    static std::mutex _init_mutex;
-    static volatile bool _initialized;
-    static volatile bool _should_shutdown;
 
     static ps::KVWorker<char>* _ps;
+    static std::mutex _encode_mutex;
     static std::unordered_map<std::string, ps::Key> _name_to_key;
 };
 
