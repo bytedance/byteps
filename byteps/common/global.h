@@ -23,6 +23,10 @@
 #include <thread>
 #include <unordered_map>
 #include <string>
+
+#define OMPI_SKIP_MPICXX
+#include "mpi.h"
+
 #include "common.h"
 #include "logging.h"
 #include "ps/ps.h"
@@ -57,7 +61,7 @@ class BytePSGlobal {
 
 public:
 
-    static void Init(int rank, int local_rank, int size, int local_size);
+    static void Init();
     static void Start(LoopFunction* func);
     static Status CheckInit();
     static bool ShouldShutdown() { return _should_shutdown; }
@@ -69,7 +73,6 @@ public:
     static int GetLocalSize() { return _local_size; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
-    static bool IsQueueCreated(QueueType queueType) { return !_queues[queueType]; }
 
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
@@ -79,6 +82,8 @@ public:
     
 private:
 
+    static void _InitComm();
+
     static std::mutex _init_mutex;
     static volatile bool _initialized;
     static volatile bool _should_shutdown;
@@ -87,8 +92,11 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
+    static MPI_Comm _local_comm;
+    static MPI_Comm _global_comm;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
+    static std::mutex _queues_mutex[QueueNum];
     static std::thread* _threads[ThreadNum];
 
     static ps::KVWorker<char>* _ps;

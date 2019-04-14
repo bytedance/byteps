@@ -48,26 +48,53 @@ void BytePSScheduledQueue::reportFinish(std::shared_ptr<TensorTableEntry> e) {
 }
 
 // Define and init global variables
+std::mutex BytePSGlobal::_init_mutex;
+volatile bool BytePSGlobal::_initialized = false;
+volatile bool BytePSGlobal::_should_shutdown = false;
+
 int BytePSGlobal::_rank = 0;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
-std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
+MPI_Comm BytePSGlobal::_local_comm;
+MPI_Comm BytePSGlobal::_global_comm;
+
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
-std::mutex BytePSGlobal::_init_mutex;
-volatile bool BytePSGlobal::_initialized = false;
-volatile bool BytePSGlobal::_should_shutdown = false;
+std::mutex BytePSGlobal::_queues_mutex[QueueNum];
+std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
+
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
+std::mutex BytePSGlobal::_encode_mutex;
 std::unordered_map<std::string, ps::Key> BytePSGlobal::_name_to_key;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
+    std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
         _queues[queueType] = new BytePSScheduledQueue();
     }
     return (BytePSScheduledQueue*)_queues[queueType];
 }
 
-void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size) {
+void BytePSGlobal::_InitComm() {
+
+    int provided;
+    MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
+
+    MPI_Comm_dup(MPI_COMM_WORLD, &_global_comm);
+
+    // Get MPI size to determine how many tensors to wait for before reducing.
+    MPI_Comm_rank(_global_comm, &_rank);
+    MPI_Comm_size(_global_comm, &_size);
+
+    // Determine local rank by querying the local communicator.
+    MPI_Comm_split_type(_global_comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL,
+                        &_local_comm);
+    MPI_Comm_rank(_local_comm, &_local_rank);
+    MPI_Comm_size(_local_comm, &_local_size);
+}
+
+
+void BytePSGlobal::Init() {
     std::lock_guard<std::mutex> lock(_init_mutex);
     
     // We only init once
@@ -75,10 +102,7 @@ void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size) {
         return;
     }
 
-    _rank = rank;
-    _local_rank = local_rank;
-    _size = size;
-    _local_size = local_size;
+    _InitComm();
 
     // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);
@@ -89,8 +113,8 @@ void BytePSGlobal::Init(int rank, int local_rank, int size, int local_size) {
     }
 
     _initialized = true;
-    BPS_LOG(DEBUG) << "Inited rank=" << rank << " local_rank=" << local_rank
-               << " size=" << size << " local_size=" << local_size;
+    BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
+               << " size=" << _size << " local_size=" << _local_size;
     return;
 }
 

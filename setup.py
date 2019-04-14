@@ -9,6 +9,8 @@ import os
 import sys
 from shutil import rmtree
 import textwrap
+import shlex
+import subprocess
 
 from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.build_ext import build_ext
@@ -140,6 +142,24 @@ def test_compile(build_ext, name, code, libraries=None, include_dirs=None, libra
 
     return shared_object_file
 
+def get_mpi_flags():
+    show_command = os.environ.get('BYTEPS_MPICXX_SHOW', 'mpicxx -show')
+    try:
+        mpi_show_output = subprocess.check_output(
+            shlex.split(show_command), universal_newlines=True).strip()
+        mpi_show_args = shlex.split(mpi_show_output)
+        if not mpi_show_args[0].startswith('-'):
+            # Open MPI and MPICH print compiler name as a first word, skip it
+            mpi_show_args = mpi_show_args[1:]
+        # strip off compiler call portion and always escape each arg
+        return ' '.join(['"' + arg.replace('"', '"\'"\'"') + '"'
+                         for arg in mpi_show_args])
+    except Exception:
+        raise DistutilsPlatformError(
+            '%s failed (see error below), is MPI in $PATH?\n'
+            'Note: If your version of MPI has a custom command to show compilation flags, '
+            'please specify it with the BYTEPS_MPICXX_SHOW environment variable.\n\n'
+            '%s' % (show_command, traceback.format_exc()))
 
 def get_cpp_flags(build_ext):
     last_err = None
@@ -203,6 +223,7 @@ def get_link_flags(build_ext):
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
     link_flags = get_link_flags(build_ext)
+    mpi_flags = get_mpi_flags()
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
     INCLUDES = ['3rdparty/ps-lite/include']
@@ -210,8 +231,8 @@ def get_common_options(build_ext):
                'byteps/common/operations.cc',
                'byteps/common/global.cc',
                'byteps/common/logging.cc',]
-    COMPILE_FLAGS = cpp_flags
-    LINK_FLAGS = link_flags
+    COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags)
+    LINK_FLAGS = link_flags + shlex.split(mpi_flags)
     LIBRARY_DIRS = []
     LIBRARIES = []
 

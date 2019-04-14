@@ -109,8 +109,8 @@ void PullLoop() {
 
 extern "C" {
 
-void byteps_init(int rank, int local_rank, int size, int local_size) {
-    BytePSGlobal::Init(rank, local_rank, size, local_size);
+void byteps_init() {
+    BytePSGlobal::Init();
     LoopFunction func[ThreadNum] = {PushLoop, PullLoop};
     BytePSGlobal::Start(func);
     return;
