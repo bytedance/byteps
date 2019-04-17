@@ -90,7 +90,6 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
 
     // TODO: replace "byteps" with job ID
     std::string tensor_name = GetOpName("byteps", name);
-
     // check if we need to init the tensor
     if (BytePSGlobal::EncodeNameToKey(tensor_name)) {
         // we need to init this tensor. This is blocking to enforce the order
@@ -101,7 +100,7 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
         auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
 
         auto enqueue_result = InitTensor(byteps_context, byteps_input, nullptr,
-                                        name, device,
+                                        tensor_name, device,
                                         [](const Status& status) {});
 
         ThrowIfError(enqueue_result);

@@ -66,6 +66,7 @@ std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
 std::unordered_map<std::string, ps::Key> BytePSGlobal::_name_to_key;
+unsigned int next_key_ = 0;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
@@ -159,7 +160,7 @@ ps::Key BytePSGlobal::GetKeyFromName(const std::string &name) {
 bool BytePSGlobal::EncodeNameToKey(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     if (_name_to_key.find(name) == _name_to_key.end()) {
-        _name_to_key[name] = _name_to_key.size();
+        _name_to_key[name] = (ps::Key) next_key_++;
         return true;
     }
     return false;
@@ -167,7 +168,7 @@ bool BytePSGlobal::EncodeNameToKey(const std::string &name) {
 
 uint32_t BytePSGlobal::GetTensorCount() {
     std::lock_guard<std::mutex> lock(_encode_mutex);
-    return _name_to_key.size();
+    return BytePSGlobal::_name_to_key.size();
 }
 
 } // namespace common
