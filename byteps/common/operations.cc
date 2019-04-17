@@ -233,6 +233,7 @@ Status InitTensor(std::shared_ptr<OpContext> context,
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
 
     BPS_LOG(TRACE) << "Init tensor: " << name << ", key=" << BytePSGlobal::GetKeyFromName(name) << ", size=" << tensor->size();
+    callback(Status::OK());
     return Status::OK();
 }
 

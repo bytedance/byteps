@@ -84,6 +84,23 @@ void DoPull(NDArray* output, const std::string& name, int version, int priority,
   ThrowIfError(enqueue_result);
 }
 
+void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
+    ThrowIfError(common::CheckInitialized());
+
+    auto device = TensorUtil::GetDevice(input);
+    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+    auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+
+    auto init_result = InitTensor(byteps_context, byteps_input, nullptr,
+                                  name, device,
+                                  [on_complete](const Status& status) {
+                                    InvokeCompleteCallback(on_complete, status);
+                                  });
+
+    ThrowIfError(init_result);
+}
+
+
 extern "C" int byteps_mxnet_push_async(NDArray* input,
                                        char* name, int version, int priority) {
     MX_API_BEGIN();
@@ -92,18 +109,15 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
     std::string tensor_name = GetOpName("byteps", name);
     // check if we need to init the tensor
     if (BytePSGlobal::EncodeNameToKey(tensor_name)) {
-        // we need to init this tensor. This is blocking to enforce the order
-        ThrowIfError(common::CheckInitialized());
+        // we need to init this tensor
+        auto init_async_fn = [input, tensor_name](RunContext rctx,
+                                      Callback on_complete) mutable {
+            DoInit(input, tensor_name, on_complete);
+        };
 
-        auto device = TensorUtil::GetDevice(input);
-        auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-        auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
-
-        auto enqueue_result = InitTensor(byteps_context, byteps_input, nullptr,
-                                        tensor_name, device,
-                                        [](const Status& status) {});
-
-        ThrowIfError(enqueue_result);
+        Engine::Get()->PushAsync(init_async_fn, input->ctx(),
+                                {input->var()}, {},
+                                FnProperty::kNormal, 0, "BytePSInit");
     }
 
     auto push_async_fn = [input, tensor_name, version, priority](RunContext rctx,
