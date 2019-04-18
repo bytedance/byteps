@@ -101,8 +101,8 @@ void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
 }
 
 
-extern "C" int byteps_mxnet_push_async(NDArray* input,
-                                       char* name, int version, int priority) {
+extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
+                                            char* name, int version, int priority) {
     MX_API_BEGIN();
 
     // TODO: replace "byteps" with job ID
@@ -110,46 +110,35 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
     // check if we need to init the tensor
     if (BytePSGlobal::EncodeNameToKey(tensor_name)) {
         // we need to init this tensor
-        auto init_async_fn = [input, tensor_name](RunContext rctx,
+        auto init_async_fn = [tensor, tensor_name](RunContext rctx,
                                       Callback on_complete) mutable {
-            DoInit(input, tensor_name, on_complete);
+            DoInit(tensor, tensor_name, on_complete);
         };
 
-        Engine::Get()->PushAsync(init_async_fn, input->ctx(),
-                                {}, {input->var()},
+        Engine::Get()->PushAsync(init_async_fn, tensor->ctx(),
+                                {}, {tensor->var()},
                                 FnProperty::kNormal, 0, "BytePSInit");
     }
 
-    auto push_async_fn = [input, tensor_name, version, priority](RunContext rctx,
+    auto push_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-        DoPush(input, tensor_name, version, priority, on_complete);
+        DoPush(tensor, tensor_name, version, priority, on_complete);
     };
 
-    Engine::Get()->PushAsync(push_async_fn, input->ctx(),
-                            {input->var()}, {},
+    Engine::Get()->PushAsync(push_async_fn, tensor->ctx(),
+                            {tensor->var()}, {},
                             FnProperty::kNormal, 0, "BytePSPush");
 
+    auto pull_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
+                                        Callback on_complete) mutable {
+      DoPull(tensor, tensor_name, version, priority, on_complete);
+    };
+
+    Engine::Get()->PushAsync(pull_async_fn, tensor->ctx(),
+                              {}, {tensor->var()},
+                              FnProperty::kNormal, 0, "BytePSPull");
+
     MX_API_END();
-}
-
-
-extern "C" int byteps_mxnet_pull_async(NDArray* output,
-                                       char* name, int version, int priority) {
-  MX_API_BEGIN();
-
-  // TODO: replace "byteps" with job ID
-  std::string tensor_name = GetOpName("byteps", name);
-  auto pull_async_fn = [output, tensor_name, version, priority](RunContext rctx,
-                                      Callback on_complete) mutable {
-    DoPull(output, tensor_name, version, priority, on_complete);
-  };
-
-
-  Engine::Get()->PushAsync(pull_async_fn, output->ctx(),
-                             {}, {output->var()},
-                             FnProperty::kNormal, 0, "BytePSPull");
-
-  MX_API_END();
 }
 
 } // namespace mxnet

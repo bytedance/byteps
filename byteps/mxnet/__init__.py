@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import threading
 
-from byteps.mxnet.ops import push_gradients, pull_gradients
+from byteps.mxnet.ops import byteps_push_pull
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
@@ -42,11 +42,9 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                push_gradients(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
-                pull_gradients(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
+                byteps_push_pull(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
         else:
-            push_gradients(grad, version=0, priority=index, name="gradient_"+str(index))
-            pull_gradients(grad, version=0, priority=index, name="gradient_"+str(index))
+            byteps_push_pull(grad, version=0, priority=index, name="gradient_"+str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
@@ -70,8 +68,7 @@ def _append_broadcast_init(param, root_rank, index):
     init_impl = getattr(param, '_init_impl')
     def wrapped_init_impl(self, *args, **kwargs):
         init_impl(*args, **kwargs)
-        push_gradients(self.data(), version=0, priority=0, name="parameter_"+str(index))
-        pull_gradients(self.data(), version=0, priority=0, name="parameter_"+str(index))
+        byteps_push_pull(self.data(), version=0, priority=0, name="parameter_"+str(index))
         self.data().wait_to_read()
     return wrapped_init_impl
 
@@ -105,8 +102,7 @@ def broadcast_parameters(params, root_rank=0):
 
     # Run tensor initilization
     for i, tensor in enumerate(tensors):
-        push_gradients(tensor, version=0, priority=0, name="parameter_"+str(i))
-        pull_gradients(tensor, version=0, priority=0, name="parameter_"+str(i))
+        byteps_push_pull(tensor, version=0, priority=0, name="parameter_"+str(i))
 
     # Make sure tensors pushed to MXNet engine get processed such that all
     # workers are synced before starting training.
