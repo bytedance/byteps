@@ -55,6 +55,13 @@ int byteps_local_size();
 // supported. Returns -1 if byteps is not initialized.
 }
 
+Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
+                        std::shared_ptr<Tensor> input,
+                        std::shared_ptr<ReadyEvent> ready_event,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
+                        StatusCallback callback);
+
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
@@ -63,6 +70,13 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         StatusCallback callback);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
+                        std::shared_ptr<Tensor> output,
+                        std::shared_ptr<ReadyEvent> ready_event,
+                        const std::string &name, ps::Key key,
+                        const int device, const int priority, const int version,
+                        StatusCallback callback);
+
+Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,

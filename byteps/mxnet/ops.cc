@@ -100,6 +100,23 @@ void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
     ThrowIfError(init_result);
 }
 
+void DoUpdate(NDArray* input, const std::string& name, int version, int priority,
+                 Callback on_complete) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto device = TensorUtil::GetDevice(input);
+  auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+  auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+  auto key = BytePSGlobal::GetKeyFromName(name);
+
+  auto enqueue_result =
+      EnqueueTensorReduce(byteps_context, byteps_input, nullptr,
+                             name, key, device, priority, version,
+                             [on_complete](const Status& status) {
+                               InvokeCompleteCallback(on_complete, status);
+                             });
+  ThrowIfError(enqueue_result);
+}
 
 extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                                             char* name, int version, int priority) {
@@ -120,23 +137,14 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                                 FnProperty::kNormal, 0, "BytePSInit");
     }
 
-    auto push_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
+    auto update_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-        DoPush(tensor, tensor_name, version, priority, on_complete);
+        DoUpdate(tensor, tensor_name, version, priority, on_complete);
     };
 
-    Engine::Get()->PushAsync(push_async_fn, tensor->ctx(),
-                            {tensor->var()}, {},
-                            FnProperty::kNormal, 0, "BytePSPush");
-
-    auto pull_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
-                                        Callback on_complete) mutable {
-      DoPull(tensor, tensor_name, version, priority, on_complete);
-    };
-
-    Engine::Get()->PushAsync(pull_async_fn, tensor->ctx(),
-                              {}, {tensor->var()},
-                              FnProperty::kNormal, 0, "BytePSPull");
+    Engine::Get()->PushAsync(update_async_fn, tensor->ctx(),
+                            {}, {tensor->var()},
+                            FnProperty::kNormal, 0, "BytePSUpdate");
 
     MX_API_END();
 }

@@ -34,9 +34,9 @@
 namespace byteps {
 namespace common {
 
-const int QueueNum = 2;
+const int QueueNum = 4;
 const int ThreadNum = QueueNum;
-enum QueueType { PUSH, PULL };
+enum QueueType { REDUCE, PUSH, PULL, BROADCAST };
 
 typedef void (*LoopFunction)();
 
