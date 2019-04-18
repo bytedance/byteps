@@ -143,6 +143,9 @@ struct TensorTableEntry {
   std::string tensor_name;
   // Key of the tensor
   ps::Key key;
+  // SArray for ps keys and lens
+  ps::SArray<ps::Key> keys;
+  ps::SArray<int> lens;
   // Operation context.
   std::shared_ptr<OpContext> context;
   // Input tensor.
