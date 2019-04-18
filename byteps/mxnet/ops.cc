@@ -116,7 +116,7 @@ extern "C" int byteps_mxnet_push_async(NDArray* input,
         };
 
         Engine::Get()->PushAsync(init_async_fn, input->ctx(),
-                                {input->var()}, {},
+                                {}, {input->var()},
                                 FnProperty::kNormal, 0, "BytePSInit");
     }
 
