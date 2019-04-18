@@ -323,10 +323,89 @@ def set_macro(macros, key, new_value):
     else:
         return macros + [(key, new_value)]
 
+def is_mx_cuda():
+    try:
+        from mxnet import runtime
+        features = runtime.Features()
+        return features.is_enabled('CUDA')
+    except Exception:
+        if 'linux' in sys.platform:
+            try:
+                import mxnet as mx
+                mx_libs = mx.libinfo.find_lib_path()
+                for mx_lib in mx_libs:
+                    output = subprocess.check_output(['readelf', '-d', mx_lib])
+                    if 'cuda' in str(output):
+                        return True
+                return False
+            except Exception:
+                return False
+    return False
+
+def get_cuda_dirs(build_ext, cpp_flags):
+    cuda_include_dirs = []
+    cuda_lib_dirs = []
+
+    cuda_home = os.environ.get('HOROVOD_CUDA_HOME')
+    if cuda_home:
+        cuda_include_dirs += ['%s/include' % cuda_home]
+        cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
+
+    cuda_include = os.environ.get('HOROVOD_CUDA_INCLUDE')
+    if cuda_include:
+        cuda_include_dirs += [cuda_include]
+
+    cuda_lib = os.environ.get('HOROVOD_CUDA_LIB')
+    if cuda_lib:
+        cuda_lib_dirs += [cuda_lib]
+
+    if not cuda_include_dirs and not cuda_lib_dirs:
+        # default to /usr/local/cuda
+        cuda_include_dirs += ['/usr/local/cuda/include']
+        cuda_lib_dirs += ['/usr/local/cuda/lib', '/usr/local/cuda/lib64']
+
+    try:
+        test_compile(build_ext, 'test_cuda', libraries=['cudart'], include_dirs=cuda_include_dirs,
+                     library_dirs=cuda_lib_dirs, extra_compile_preargs=cpp_flags,
+                     code=textwrap.dedent('''\
+            #include <cuda_runtime.h>
+            void test() {
+                cudaSetDevice(0);
+            }
+            '''))
+    except (CompileError, LinkError):
+        raise DistutilsPlatformError(
+            'CUDA library was not found (see error above).\n'
+            'Please specify correct CUDA location with the HOROVOD_CUDA_HOME '
+            'environment variable or combination of HOROVOD_CUDA_INCLUDE and '
+            'HOROVOD_CUDA_LIB environment variables.\n\n'
+            'HOROVOD_CUDA_HOME - path where CUDA include and lib directories can be found\n'
+            'HOROVOD_CUDA_INCLUDE - path to CUDA include directory\n'
+            'HOROVOD_CUDA_LIB - path to CUDA lib directory')
+
+    return cuda_include_dirs, cuda_lib_dirs
+
 def build_mx_extension(build_ext, options):
     check_mx_version()
     mx_compile_flags, mx_link_flags = get_mx_flags(
         build_ext, options['COMPILE_FLAGS'])
+
+    mx_have_cuda = is_mx_cuda()
+    macro_have_cuda = check_macro(options['MACROS'], 'HAVE_CUDA')
+    if not mx_have_cuda and macro_have_cuda:
+        raise DistutilsPlatformError(
+            'Horovod build with GPU support was requested, but this MXNet '
+            'installation does not support CUDA.')
+
+    # Update HAVE_CUDA to mean that MXNet supports CUDA. Internally, we will be checking
+    # HOROVOD_GPU_(ALLREDUCE|ALLGATHER|BROADCAST) to decide whether we should use GPU
+    # version or transfer tensors to CPU memory for those operations.
+    if mx_have_cuda and not macro_have_cuda:
+        cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
+        options['MACROS'] += [('HAVE_CUDA', '1')]
+        options['INCLUDES'] += cuda_include_dirs
+        options['LIBRARY_DIRS'] += cuda_lib_dirs
+        options['LIBRARIES'] += ['cudart']
 
     mxnet_lib.define_macros = options['MACROS']
     if check_macro(options['MACROS'], 'HAVE_CUDA'):
