@@ -35,14 +35,12 @@ bool RunPushLoopOnce() {
         const int dtype = task->tensor->dtype();
 
         // convert to ps keys
-        ps::Key key = task->key;
         auto& keys = task->keys;
 
         char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
-        int len = size;
         auto& lens = task->lens;
 
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
@@ -74,14 +72,12 @@ bool RunPullLoopOnce() {
         const int dtype = task->output->dtype();
 
         // convert to ps keys
-        ps::Key key = task->key;
         auto& keys = task->keys;
 
         char* data = const_cast<char*>(static_cast<const char*> (task->output->data()));
         // false means not to delete data when SArray is deleted
         auto vals = new ps::SArray<char>(data, size, false);
 
-        int len = size;
         auto& lens = task->lens;
 
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
@@ -163,8 +159,6 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
-    e->keys.push_back(key);
-    e->lens.push_back(e->tensor->size());
     e->context = context;
     e->tensor = input;
     e->output = NULL;
@@ -173,6 +167,8 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
+    e->keys.push_back(key);
+    e->lens.push_back(e->tensor->size());
 
     BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
     BPS_LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name << ", key=" << e->key << ", size=" << e->tensor->size() << ", device=" << device;
@@ -188,8 +184,6 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
-    e->keys.push_back(key);
-    e->lens.push_back(e->output->size());
     e->context = context;
     e->tensor = NULL;
     e->output = output;
@@ -198,6 +192,8 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
+    e->keys.push_back(key);
+    e->lens.push_back(e->output->size());
 
     BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
     BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name << ", key=" << e->key << ", size=" << e->output->size() << ", device=" << device;
