@@ -72,11 +72,14 @@ cudaStream_t* BytePSGlobal::_reduce_stream;
 cudaStream_t* BytePSGlobal::_broadcast_stream;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
+    return (BytePSScheduledQueue*)_queues[queueType];
+}
+
+void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
         _queues[queueType] = new BytePSScheduledQueue();
     }
-    return (BytePSScheduledQueue*)_queues[queueType];
 }
 
 void BytePSGlobal::_InitComm() {
@@ -96,7 +99,6 @@ void BytePSGlobal::_InitComm() {
     MPI_Comm_rank(_local_comm, &_local_rank);
     MPI_Comm_size(_local_comm, &_local_size);
 }
-
 
 void BytePSGlobal::Init() {
     std::lock_guard<std::mutex> lock(_init_mutex);
@@ -118,8 +120,14 @@ void BytePSGlobal::Init() {
 
     _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _broadcast_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    cudaStreamCreate(_reduce_stream);
-    cudaStreamCreate(_broadcast_stream);
+    cudaStreamCreateWithFlags(_reduce_stream, cudaStreamNonBlocking);
+    cudaStreamCreateWithFlags(_broadcast_stream, cudaStreamNonBlocking);
+
+    for (int i = 0; i < QueueNum; i++) {
+        BPS_LOG(DEBUG) << "Create schedule queue " << i;
+        auto type = static_cast<QueueType>(i);
+        BytePSGlobal::CreateScheduledQueue(type);
+    }
 
     _initialized = true;
     BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
@@ -157,6 +165,10 @@ void BytePSGlobal::Shutdown() {
         }
     }
     ps::Finalize(0, true);
+
+    cudaStreamDestroy(*_reduce_stream);
+    cudaStreamDestroy(*_broadcast_stream);
+
     return;
 }
 

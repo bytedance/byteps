@@ -80,7 +80,7 @@ public:
     static int GetLocalSize() { return _local_size; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
-
+    static void* CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
     static bool IsTensorInitialized(const std::string &name);
