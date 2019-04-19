@@ -72,6 +72,7 @@ def _append_broadcast_init(param, root_rank, index):
         self.data().wait_to_read()
     return wrapped_init_impl
 
+parameter_index = 0
 
 def broadcast_parameters(params, root_rank=0):
     """
@@ -89,22 +90,27 @@ def broadcast_parameters(params, root_rank=0):
     if isinstance(params, dict):
         tensors = [p for _, p in sorted(params.items())]
     elif isinstance(params, mx.gluon.parameter.ParameterDict):
-        for i, p in sorted(params.items()):
+        for _, p in sorted(params.items()):
             try:
                 tensors.append(p.data())
             except mx.gluon.parameter.DeferredInitializationError:
                 # Inject wrapper method with post-initialization broadcast to
                 # handle parameters with deferred initialization
-                new_init = _append_broadcast_init(p, root_rank, i)
+                global parameter_index
+                new_init = _append_broadcast_init(p, root_rank, parameter_index)
+                parameter_index += 1
                 p._init_impl = types.MethodType(new_init, p)
     else:
         raise ValueError('invalid params of type: %s' % type(params))
 
     # Run tensor initilization
-    for i, tensor in enumerate(tensors):
-        byteps_push_pull(tensor, version=0, priority=0, name="parameter_"+str(i))
+    for i in range(len(tensors)):
+        byteps_push_pull(tensors[i], version=0, priority=0, name="parameter_"+str(parameter_index))
+        parameter_index += 1
 
     # Make sure tensors pushed to MXNet engine get processed such that all
     # workers are synced before starting training.
     for tensor in tensors:
         tensor.wait_to_read()
+
+
