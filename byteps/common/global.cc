@@ -68,6 +68,9 @@ std::mutex BytePSGlobal::_encode_mutex;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 
+cudaStream_t* BytePSGlobal::_reduce_stream;
+cudaStream_t* BytePSGlobal::_broadcast_stream;
+
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
@@ -112,6 +115,11 @@ void BytePSGlobal::Init() {
         ps::Postoffice::Get()->Barrier(
             0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
+
+    _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _broadcast_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    cudaStreamCreate(_reduce_stream);
+    cudaStreamCreate(_broadcast_stream);
 
     _initialized = true;
     BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
@@ -169,6 +177,14 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name) {
 uint32_t BytePSGlobal::GetTensorCount() {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     return BytePSGlobal::_name_to_cxt.size();
+}
+
+cudaStream_t* BytePSGlobal::GetReduceStream() {
+    return BytePSGlobal::_reduce_stream;
+}
+
+cudaStream_t* BytePSGlobal::GetBroadcastStream() {
+    return BytePSGlobal::_broadcast_stream;
 }
 
 } // namespace common

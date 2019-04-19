@@ -22,11 +22,15 @@
 
 #include "operations.h"
 
-#define CUDA_CALL( call )                   \
-{                                           \
-    cudaError_t result = call;              \
-    if ( cudaSuccess != result )            \
-        std::cerr << "CUDA error " << result << " in " << __FILE__ << ":" << __LINE__ << ": " << cudaGetErrorString( result ) << " (" << #call << ")" << std::endl;  \
+#define CUDA_CALL( call )                     \
+{                                             \
+    cudaError_t result = call;                \
+    if ( cudaSuccess != result )              \
+        std::cerr << "CUDA error " << result  \
+                  << " in " << __FILE__       \
+                  << ":" << __LINE__          \
+                  << ": " << cudaGetErrorString( result ) \
+                  << " (" << #call << ")" << std::endl;   \
 }
 
 namespace byteps {
@@ -34,6 +38,7 @@ namespace common {
 
 bool RunReduceLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(REDUCE);
+    auto reduce_stream =  BytePSGlobal::GetReduceStream();
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
         BPS_CHECK(task->tensor);
@@ -43,8 +48,10 @@ bool RunReduceLoopOnce() {
             auto len = task->tensor->size();
             auto cpubuff = task->cpubuff;
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
-            BPS_LOG(TRACE) << name << ": cudaMemcpy " << len;
-            CUDA_CALL(cudaMemcpy(cpubuff, task->tensor->data(), len, cudaMemcpyDeviceToHost));
+            BPS_LOG(TRACE) << name << ": Copy from GPU to CPU (reduce), size=" << len;
+            CUDA_CALL(cudaMemcpyAsync(cpubuff, task->tensor->data(), len, cudaMemcpyDeviceToHost, *reduce_stream));
+            CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
+            BPS_LOG(TRACE) << name << " reduce succeed";
         }
 
         BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
@@ -138,6 +145,7 @@ bool RunPullLoopOnce() {
 
 bool RunBroadcastLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
+    auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
         BPS_CHECK(task->output);
@@ -147,10 +155,11 @@ bool RunBroadcastLoopOnce() {
             auto len = task->output->size();
             auto cpubuff = task->cpubuff;
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
-            BPS_LOG(TRACE) << name << ": cudaMemcpy " << len;
-
+            BPS_LOG(TRACE) << name << ": Copy from CPU to GPU (broadcast), size=" << len;
             char* gpu_addr = const_cast<char*> (static_cast<const char*> (task->output->data()));
-            CUDA_CALL(cudaMemcpy(gpu_addr, cpubuff, len, cudaMemcpyHostToDevice));
+            CUDA_CALL(cudaMemcpyAsync(gpu_addr, cpubuff, len, cudaMemcpyHostToDevice, *broadcast_stream));
+            CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
+            BPS_LOG(TRACE) << name << " broadcast succeed";
         }
 
         BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;

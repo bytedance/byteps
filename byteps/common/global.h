@@ -23,6 +23,7 @@
 #include <thread>
 #include <unordered_map>
 #include <string>
+#include <cuda_runtime.h>
 
 #define OMPI_SKIP_MPICXX
 #include "mpi.h"
@@ -86,6 +87,12 @@ public:
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
+
+    static cudaStream_t* GetReduceStream();
+    static cudaStream_t* GetBroadcastStream();
+
+    static cudaStream_t* _reduce_stream;
+    static cudaStream_t* _broadcast_stream;
     
 private:
 
