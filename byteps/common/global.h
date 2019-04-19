@@ -38,6 +38,12 @@ const int QueueNum = 4;
 const int ThreadNum = QueueNum;
 enum QueueType { REDUCE, PUSH, PULL, BROADCAST };
 
+typedef struct BytePSContext {
+    ps::Key key;
+    void* cpubuff;
+    size_t buff_len;
+} BPSContext;
+
 typedef void (*LoopFunction)();
 
 class BytePSScheduledQueue {
@@ -76,8 +82,9 @@ public:
 
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool EncodeNameToKey(const std::string &name);
+    static bool IsTensorInitialized(const std::string &name);
     static ps::Key GetKeyFromName(const std::string &name);
+    static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
     
 private:
@@ -101,7 +108,7 @@ private:
 
     static ps::KVWorker<char>* _ps;
     static std::mutex _encode_mutex;
-    static std::unordered_map<std::string, ps::Key> _name_to_key;
+    static std::unordered_map<std::string, BPSContext> _name_to_cxt;
 };
 
 

@@ -65,7 +65,7 @@ std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
 
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
-std::unordered_map<std::string, ps::Key> BytePSGlobal::_name_to_key;
+std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
@@ -152,23 +152,23 @@ void BytePSGlobal::Shutdown() {
     return;
 }
 
-ps::Key BytePSGlobal::GetKeyFromName(const std::string &name) {
+BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
-    return _name_to_key[name];
+    return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::EncodeNameToKey(const std::string &name) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
-    if (_name_to_key.find(name) == _name_to_key.end()) {
-        _name_to_key[name] = (ps::Key) next_key_++;
-        return true;
+    if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+        _name_to_cxt[name].key = (ps::Key) next_key_++;
+        return false;
     }
-    return false;
+    return true;
 }
 
 uint32_t BytePSGlobal::GetTensorCount() {
     std::lock_guard<std::mutex> lock(_encode_mutex);
-    return BytePSGlobal::_name_to_key.size();
+    return BytePSGlobal::_name_to_cxt.size();
 }
 
 } // namespace common

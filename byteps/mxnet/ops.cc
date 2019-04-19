@@ -30,58 +30,22 @@ namespace {
 std::atomic_int op_count;
 
 std::string GetOpName(std::string prefix, char* name) {
-  if (name != nullptr) {
-    return prefix + "." + std::string(name);
-  }
+    if (name != nullptr) {
+      return prefix + "." + std::string(name);
+    }
 
-  op_count.fetch_add(1);
-  return prefix + ".noname." + std::to_string(op_count);
+    op_count.fetch_add(1);
+    return prefix + ".noname." + std::to_string(op_count);
 }
 } // namespace
 
 inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
-  if (status.ok()) {
-    on_complete();
-  } else {
-    auto error = dmlc::Error(status.reason());
-    on_complete(&error);
-  }
-}
-
-void DoPush(NDArray* input, const std::string& name, int version, int priority,
-                 Callback on_complete) {
-  ThrowIfError(common::CheckInitialized());
-
-  auto device = TensorUtil::GetDevice(input);
-  auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-  auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
-  auto key = BytePSGlobal::GetKeyFromName(name);
-
-  auto enqueue_result =
-      EnqueueTensorPush(byteps_context, byteps_input, nullptr,
-                             name, key, device, priority, version,
-                             [on_complete](const Status& status) {
-                               InvokeCompleteCallback(on_complete, status);
-                             });
-  ThrowIfError(enqueue_result);
-}
-
-void DoPull(NDArray* output, const std::string& name, int version, int priority,
-                 Callback on_complete) {
-  ThrowIfError(common::CheckInitialized());
-
-  auto device = TensorUtil::GetDevice(output);
-  auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
-  auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, output);
-  auto key = BytePSGlobal::GetKeyFromName(name);
-
-  auto enqueue_result =
-      EnqueueTensorPull(byteps_context, byteps_output, nullptr,
-                             name, key, device, priority, version,
-                             [on_complete](const Status& status) {
-                               InvokeCompleteCallback(on_complete, status);
-                             });
-  ThrowIfError(enqueue_result);
+    if (status.ok()) {
+      on_complete();
+    } else {
+      auto error = dmlc::Error(status.reason());
+      on_complete(&error);
+    }
 }
 
 void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
@@ -102,20 +66,22 @@ void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
 
 void DoUpdate(NDArray* input, const std::string& name, int version, int priority,
                  Callback on_complete) {
-  ThrowIfError(common::CheckInitialized());
+    ThrowIfError(common::CheckInitialized());
 
-  auto device = TensorUtil::GetDevice(input);
-  auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-  auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
-  auto key = BytePSGlobal::GetKeyFromName(name);
+    auto device = TensorUtil::GetDevice(input);
+    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+    auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+    auto bps_cxt = BytePSGlobal::GetContextFromName(name);
+    auto key = bps_cxt.key;
+    auto cpubuff = bps_cxt.cpubuff;
 
-  auto enqueue_result =
-      EnqueueTensorReduce(byteps_context, byteps_input, nullptr,
-                             name, key, device, priority, version,
-                             [on_complete](const Status& status) {
-                               InvokeCompleteCallback(on_complete, status);
-                             });
-  ThrowIfError(enqueue_result);
+    auto enqueue_result =
+        EnqueueTensorReduce(byteps_context, byteps_input, nullptr,
+                               name, key, device, priority, version,
+                               [on_complete](const Status& status) {
+                                 InvokeCompleteCallback(on_complete, status);
+                               }, cpubuff);
+    ThrowIfError(enqueue_result);
 }
 
 extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
@@ -125,7 +91,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     // TODO: replace "byteps" with job ID
     std::string tensor_name = GetOpName("byteps", name);
     // check if we need to init the tensor
-    if (BytePSGlobal::EncodeNameToKey(tensor_name)) {
+    if (!BytePSGlobal::IsTensorInitialized(tensor_name)) {
         // we need to init this tensor
         auto init_async_fn = [tensor, tensor_name](RunContext rctx,
                                       Callback on_complete) mutable {

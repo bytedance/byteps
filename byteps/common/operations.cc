@@ -18,7 +18,16 @@
 #include <thread>
 #include <chrono>
 
+#include <cuda_runtime.h>
+
 #include "operations.h"
+
+#define CUDA_CALL( call )                   \
+{                                           \
+    cudaError_t result = call;              \
+    if ( cudaSuccess != result )            \
+        std::cerr << "CUDA error " << result << " in " << __FILE__ << ":" << __LINE__ << ": " << cudaGetErrorString( result ) << " (" << #call << ")" << std::endl;  \
+}
 
 namespace byteps {
 namespace common {
@@ -27,11 +36,20 @@ bool RunReduceLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(REDUCE);
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
-        BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
-        CHECK(task->tensor);
+        BPS_CHECK(task->tensor);
 
+        if (task->device != CPU_DEVICE_ID) { // GPU
+            auto name = task->tensor_name;
+            auto len = task->tensor->size();
+            auto cpubuff = task->cpubuff;
+            BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+            BPS_LOG(TRACE) << name << ": cudaMemcpy " << len;
+            CUDA_CALL(cudaMemcpy(cpubuff, task->tensor->data(), len, cudaMemcpyDeviceToHost));
+        }
+
+        BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
         EnqueueTensorPush(task->context, task->tensor, nullptr, task->tensor_name,
-            task->key, task->device, task->priority, task->version, task->callback);
+            task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
     }
     return true;
 }
@@ -41,7 +59,15 @@ bool RunPushLoopOnce() {
     while (q->pendingSize() > 0) {
         // TODO: allow merging
         auto task = q->getTask();
-        CHECK(task->tensor);
+
+        char* data;
+        if (task->device != CPU_DEVICE_ID) {
+            BPS_CHECK(task->cpubuff);
+            data = const_cast<char*> (static_cast<const char*> (task->cpubuff));
+        } else {
+            BPS_CHECK(task->tensor);
+            data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
+        }
 
         // get metadata
         size_t size = task->tensor->size();
@@ -49,7 +75,7 @@ bool RunPushLoopOnce() {
 
         auto& keys = task->keys;
 
-        char* data = const_cast<char*> (static_cast<const char*> (task->tensor->data()));
+
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
@@ -62,7 +88,7 @@ bool RunPushLoopOnce() {
             [task]() {
                 BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
                 EnqueueTensorPull(task->context, task->tensor, nullptr, task->tensor_name,
-                    task->key, task->device, task->priority, task->version, task->callback);
+                    task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
             }
         );
     }
@@ -74,7 +100,15 @@ bool RunPullLoopOnce() {
     while (q->pendingSize() > 0) {
         // TODO: allow merging
         auto task = q->getTask();
-        CHECK(task->output);
+
+        char* data;
+        if (task->device != CPU_DEVICE_ID) {
+            BPS_CHECK(task->cpubuff);
+            data = const_cast<char*> (static_cast<const char*> (task->cpubuff));
+        } else {
+            BPS_CHECK(task->output);
+            data = const_cast<char*> (static_cast<const char*> (task->output->data()));
+        }
 
         // get metadata
         size_t size = task->output->size();
@@ -82,7 +116,6 @@ bool RunPullLoopOnce() {
 
         auto& keys = task->keys;
 
-        char* data = const_cast<char*>(static_cast<const char*> (task->output->data()));
         // false means not to delete data when SArray is deleted
         auto vals = new ps::SArray<char>(data, size, false);
 
@@ -97,7 +130,7 @@ bool RunPullLoopOnce() {
                 delete vals;
                 BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
                 EnqueueTensorBroadcast(task->context, task->output, nullptr, task->tensor_name,
-                    task->key, task->device, task->priority, task->version, task->callback);
+                    task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
             });
     }
     return true;
@@ -107,7 +140,19 @@ bool RunBroadcastLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
     while (q->pendingSize() > 0) {
         auto task = q->getTask();
-        CHECK(task->output);
+        BPS_CHECK(task->output);
+
+        if (task->device != CPU_DEVICE_ID) { // GPU
+            auto name = task->tensor_name;
+            auto len = task->output->size();
+            auto cpubuff = task->cpubuff;
+            BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+            BPS_LOG(TRACE) << name << ": cudaMemcpy " << len;
+
+            char* gpu_addr = const_cast<char*> (static_cast<const char*> (task->output->data()));
+            CUDA_CALL(cudaMemcpy(gpu_addr, cpubuff, len, cudaMemcpyHostToDevice));
+        }
+
         BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;
         task->callback(Status::OK());
     }
@@ -180,7 +225,7 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback) {
+                        StatusCallback callback, void* cpubuff) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -193,9 +238,11 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
     e->version = version;
     e->callback = callback;
 
-    CHECK(e->tensor);
+    BPS_CHECK(e->tensor);
     e->keys.push_back(key);
     e->lens.push_back(e->tensor->size());
+
+    e->cpubuff = cpubuff;
 
     BPS_LOG(TRACE) << "EnqueueTensorReduce: " << e->tensor_name
                    << ", key=" << e->key
@@ -210,7 +257,7 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback) {
+                        StatusCallback callback, void* cpubuff) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -223,9 +270,11 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->version = version;
     e->callback = callback;
 
-    CHECK(e->tensor);
+    BPS_CHECK(e->tensor);
     e->keys.push_back(key);
     e->lens.push_back(e->tensor->size());
+
+    e->cpubuff = cpubuff;
 
     BPS_LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name
                    << ", key=" << e->key
@@ -240,7 +289,7 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback) {
+                        StatusCallback callback, void* cpubuff) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -253,9 +302,11 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->version = version;
     e->callback = callback;
 
-    CHECK(e->output);
+    BPS_CHECK(e->output);
     e->keys.push_back(key);
     e->lens.push_back(e->output->size());
+
+    e->cpubuff = cpubuff;
 
     BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name
                    << ", key=" << e->key
@@ -270,7 +321,7 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback) {
+                        StatusCallback callback, void* cpubuff) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -283,9 +334,11 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
     e->version = version;
     e->callback = callback;
 
-    CHECK(e->output);
+    BPS_CHECK(e->output);
     e->keys.push_back(key);
     e->lens.push_back(e->output->size());
+
+    e->cpubuff = cpubuff;
 
     BPS_LOG(TRACE) << "EnqueueTensorBroadcast: " << e->tensor_name
                    << ", key=" << e->key
@@ -300,19 +353,34 @@ Status InitTensor(std::shared_ptr<OpContext> context,
                 std::shared_ptr<ReadyEvent> ready_event,
                 const std::string &name, const int device,
                 StatusCallback callback) {
-    
+
+    auto& bps_cxt = BytePSGlobal::GetContextFromName(name);
+    ps::Key key = bps_cxt.key;
+    BPS_LOG(TRACE) << "Init " << name
+                   << ", size=" << tensor->size()
+                   << ", device=" << device;
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
-
         // get metadata
         size_t size = tensor->size();
         const int dtype = tensor->dtype();
 
+        char* data;
+        if (device != CPU_DEVICE_ID) { // GPU
+            BPS_LOG(TRACE) << "copying " << size << " from GPU to CPU";
+            CUDA_CALL(cudaHostAlloc((void **) &bps_cxt.cpubuff, size, cudaHostAllocMapped));
+            bps_cxt.buff_len = size;
+            CUDA_CALL(cudaMemcpy(bps_cxt.cpubuff, tensor->data(), size, cudaMemcpyDeviceToHost));
+            BPS_LOG(TRACE) << "copy succeed";
+            data = const_cast<char*> (static_cast<const char*> (bps_cxt.cpubuff));
+        } else { // CPU
+            data = const_cast<char*> (static_cast<const char*> (tensor->data()));
+        }
+
         // convert to ps keys
-        ps::Key key = BytePSGlobal::GetKeyFromName(name);
         ps::SArray<ps::Key> keys(&key, 1, false);
 
-        char* data = const_cast<char*> (static_cast<const char*> (tensor->data()));
+        //char* data = const_cast<char*> (static_cast<const char*> (tensor->data()));
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
@@ -326,10 +394,6 @@ Status InitTensor(std::shared_ptr<OpContext> context,
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
 
-    BPS_LOG(TRACE) << "Init tensor: " << name
-                   << ", key=" << BytePSGlobal::GetKeyFromName(name)
-                   << ", size=" << tensor->size()
-                   << ", device=" << device;
     callback(Status::OK());
     return Status::OK();
 }

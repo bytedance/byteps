@@ -60,28 +60,28 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback);
+                        StatusCallback callback, void* cpubuff);
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback);
+                        StatusCallback callback, void* cpubuff);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback);
+                        StatusCallback callback, void* cpubuff);
 
 Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback);
+                        StatusCallback callback, void* cpubuff);
 
 Status InitTensor(std::shared_ptr<OpContext> context,
                     std::shared_ptr<Tensor> tensor,
