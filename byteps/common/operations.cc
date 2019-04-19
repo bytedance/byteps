@@ -39,7 +39,7 @@ namespace common {
 bool RunReduceLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(REDUCE);
     auto reduce_stream =  BytePSGlobal::GetReduceStream();
-    while (q->pendingSize() > 0) {
+    if (q->pendingSize() > 0) {
         auto task = q->getTask();
         BPS_CHECK(task->tensor);
 
@@ -58,12 +58,15 @@ bool RunReduceLoopOnce() {
         EnqueueTensorPush(task->context, task->tensor, nullptr, task->tensor_name,
             task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
     }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
 bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
-    while (q->pendingSize() > 0) {
+    if (q->pendingSize() > 0) {
         // TODO: allow merging
         auto task = q->getTask();
 
@@ -99,12 +102,15 @@ bool RunPushLoopOnce() {
             }
         );
     }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
 bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
-    while (q->pendingSize() > 0) {
+    if (q->pendingSize() > 0) {
         // TODO: allow merging
         auto task = q->getTask();
 
@@ -140,13 +146,16 @@ bool RunPullLoopOnce() {
                     task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
             });
     }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
 bool RunBroadcastLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
     auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
-    while (q->pendingSize() > 0) {
+    if (q->pendingSize() > 0) {
         auto task = q->getTask();
         BPS_CHECK(task->output);
 
@@ -165,31 +174,26 @@ bool RunBroadcastLoopOnce() {
         BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;
         task->callback(Status::OK());
     }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
 void ReduceLoop() {
-    while (RunReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    }
+    while (RunReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void PushLoop() {
-    while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    }
+    while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void PullLoop() {
-    while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    }
+    while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void BroadcastLoop() {
-    while (RunBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    }
+    while (RunBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 extern "C" {
