@@ -29,6 +29,23 @@ enum class LogLevel {
 
 #define LOG_LEVELS "TDIWEF"
 
+// Always-on checking
+#define BPS_CHECK(x)                                                  \
+  if (!(x))                                                           \
+  common::LogMessageFatal(__FILE__, __LINE__) << "Check failed: " #x << ' '
+
+#define BPS_CHECK_LT(x, y) CHECK((x) < (y))
+#define BPS_CHECK_GT(x, y) CHECK((x) > (y))
+#define BPS_CHECK_LE(x, y) CHECK((x) <= (y))
+#define BPS_CHECK_GE(x, y) CHECK((x) >= (y))
+#define BPS_CHECK_EQ(x, y) CHECK((x) == (y))
+#define BPS_CHECK_NE(x, y) CHECK((x) != (y))
+#define BPS_CHECK_NOTNULL(x)                                                                 \
+  ((x) == NULL                                                                           \
+   ? common::LogMessageFatal(__FILE__, __LINE__) << "Check  notnull: " #x << ' ', \
+   (x) : (x))  // NOLINT(*)
+
+
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, LogLevel severity);
