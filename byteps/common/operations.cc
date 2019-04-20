@@ -37,7 +37,8 @@ namespace byteps {
 namespace common {
 
 bool RunReduceLoopOnce() {
-    auto q = BytePSGlobal::GetScheduledQueue(REDUCE);
+    QueueType this_op = REDUCE;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto reduce_stream =  BytePSGlobal::GetReduceStream();
     if (q->pendingSize() > 0) {
         auto task = q->getTask();
@@ -54,9 +55,13 @@ bool RunReduceLoopOnce() {
             BPS_LOG(TRACE) << name << " reduce succeed";
         }
 
-        BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
-        EnqueueTensorPush(task->context, task->tensor, nullptr, task->tensor_name,
-            task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
+        if (task->last_op != this_op) { // TODO: should check the boundary
+            BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name
+                           << ", passing it to the next queue " << this_op+1;
+            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+        } else {
+            task->callback(Status::OK());
+        }
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -65,6 +70,7 @@ bool RunReduceLoopOnce() {
 }
 
 bool RunPushLoopOnce() {
+    QueueType this_op = PUSH;
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
     if (q->pendingSize() > 0) {
         // TODO: allow merging
@@ -95,10 +101,16 @@ bool RunPushLoopOnce() {
 
         BytePSGlobal::GetPS()->ZPush(
             keys, vals, lens, cmd,
-            [task]() {
-                BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
-                EnqueueTensorPull(task->context, task->tensor, nullptr, task->tensor_name,
-                    task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
+            [task, this_op]() {
+                if (task->last_op != this_op) {
+                    BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
+                                   << ", passing it to the next queue " << this_op+1;
+                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+                } else {
+                    BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
+                                   << ", invoking callback.";
+                    task->callback(Status::OK());
+                }
             }
         );
     }
@@ -109,6 +121,7 @@ bool RunPushLoopOnce() {
 }
 
 bool RunPullLoopOnce() {
+    QueueType this_op = PULL;
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
     if (q->pendingSize() > 0) {
         // TODO: allow merging
@@ -139,11 +152,15 @@ bool RunPullLoopOnce() {
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
             keys, vals, &lens, cmd,
-            [vals, task]() {
+            [vals, task, this_op]() {
                 delete vals;
-                BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
-                EnqueueTensorBroadcast(task->context, task->output, nullptr, task->tensor_name,
-                    task->key, task->device, task->priority, task->version, task->callback, task->cpubuff);
+                if (task->last_op != this_op) {
+                    BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name
+                                   << ", passing it the next queue " << this_op+1;
+                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+                } else {
+                    task->callback(Status::OK());
+                }
             });
     }
     else {
@@ -153,6 +170,7 @@ bool RunPullLoopOnce() {
 }
 
 bool RunBroadcastLoopOnce() {
+    QueueType this_op = BROADCAST;
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
     auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
     if (q->pendingSize() > 0) {
@@ -172,6 +190,8 @@ bool RunBroadcastLoopOnce() {
         }
 
         BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;
+
+        BPS_CHECK_EQ(this_op, QueueNum-1) << "this should the last op";
         task->callback(Status::OK());
     }
     else {
@@ -238,7 +258,7 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -256,11 +276,13 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
     e->lens.push_back(e->tensor->size());
 
     e->cpubuff = cpubuff;
+    e->last_op = last_op;
 
     BPS_LOG(TRACE) << "EnqueueTensorReduce: " << e->tensor_name
                    << ", key=" << e->key
                    << ", size=" << e->tensor->size()
-                   << ", device=" << device;
+                   << ", device=" << device
+                   << ", last_op=" << last_op;
     BytePSGlobal::GetScheduledQueue(REDUCE)->addTask(e);
     return Status::OK();
 }
@@ -270,7 +292,7 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -288,11 +310,13 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->lens.push_back(e->tensor->size());
 
     e->cpubuff = cpubuff;
+    e->last_op = last_op;
 
     BPS_LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name
                    << ", key=" << e->key
                    << ", size=" << e->tensor->size()
-                   << ", device=" << device;
+                   << ", device=" << device
+                   << ", last_op=" << last_op;
     BytePSGlobal::GetScheduledQueue(PUSH)->addTask(e);
     return Status::OK();
 }
@@ -302,7 +326,7 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -320,11 +344,13 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->lens.push_back(e->output->size());
 
     e->cpubuff = cpubuff;
+    e->last_op = last_op;
 
     BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name
                    << ", key=" << e->key
                    << ", size=" << e->output->size()
-                   << ", device=" << device;
+                   << ", device=" << device
+                   << ", last_op=" << last_op;
     BytePSGlobal::GetScheduledQueue(PULL)->addTask(e);
     return Status::OK();
 }
@@ -334,7 +360,7 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -352,11 +378,13 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
     e->lens.push_back(e->output->size());
 
     e->cpubuff = cpubuff;
+    e->last_op = last_op;
 
     BPS_LOG(TRACE) << "EnqueueTensorBroadcast: " << e->tensor_name
                    << ", key=" << e->key
                    << ", size=" << e->output->size()
-                   << ", device=" << device;
+                   << ", device=" << device
+                   << ", last_op=" << last_op;
     BytePSGlobal::GetScheduledQueue(BROADCAST)->addTask(e);
     return Status::OK();
 }

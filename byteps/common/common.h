@@ -54,6 +54,9 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
+enum QueueType { REDUCE, PUSH, PULL, BROADCAST };
+const int QueueNum = 4;
+
 class Status {
 public:
   Status();
@@ -167,6 +170,8 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
+  // The last operation (queue) of this task
+  QueueType last_op;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 

@@ -35,9 +35,7 @@
 namespace byteps {
 namespace common {
 
-const int QueueNum = 4;
 const int ThreadNum = QueueNum;
-enum QueueType { REDUCE, PUSH, PULL, BROADCAST };
 
 typedef struct BytePSContext {
     ps::Key key;

@@ -64,7 +64,7 @@ void DoInit(NDArray* input, const std::string& name, Callback on_complete) {
     ThrowIfError(init_result);
 }
 
-void DoUpdate(NDArray* input, const std::string& name, int version, int priority,
+void DoFirstStage(NDArray* input, const std::string& name, int version, int priority,
                  Callback on_complete) {
     ThrowIfError(common::CheckInitialized());
 
@@ -80,7 +80,27 @@ void DoUpdate(NDArray* input, const std::string& name, int version, int priority
                                name, key, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, cpubuff);
+                               }, cpubuff, PUSH); // last op
+    ThrowIfError(enqueue_result);
+}
+
+void DoSecondStage(NDArray* input, const std::string& name, int version, int priority,
+                 Callback on_complete) {
+    ThrowIfError(common::CheckInitialized());
+
+    auto device = TensorUtil::GetDevice(input);
+    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+    auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
+    auto bps_cxt = BytePSGlobal::GetContextFromName(name);
+    auto key = bps_cxt.key;
+    auto cpubuff = bps_cxt.cpubuff;
+
+    auto enqueue_result =
+        EnqueueTensorPull(byteps_context, byteps_input, nullptr,
+                               name, key, device, priority, version,
+                               [on_complete](const Status& status) {
+                                 InvokeCompleteCallback(on_complete, status);
+                               }, cpubuff, BROADCAST); // last op
     ThrowIfError(enqueue_result);
 }
 
@@ -103,14 +123,23 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                                 FnProperty::kNormal, 0, "BytePSInit");
     }
 
-    auto update_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
+    auto first_stage_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-        DoUpdate(tensor, tensor_name, version, priority, on_complete);
+        DoFirstStage(tensor, tensor_name, version, priority, on_complete);
     };
 
-    Engine::Get()->PushAsync(update_async_fn, tensor->ctx(),
+    Engine::Get()->PushAsync(first_stage_async_fn, tensor->ctx(),
+                            {tensor->var()}, {},
+                            FnProperty::kNormal, 0, "BytePSFirstStage");
+
+    auto second_stage_async_fn = [tensor, tensor_name, version, priority](RunContext rctx,
+                                      Callback on_complete) mutable {
+        DoSecondStage(tensor, tensor_name, version, priority, on_complete);
+    };
+
+    Engine::Get()->PushAsync(second_stage_async_fn, tensor->ctx(),
                             {}, {tensor->var()},
-                            FnProperty::kNormal, 0, "BytePSUpdate");
+                            FnProperty::kNormal, 0, "BytePSSecondStage");
 
     MX_API_END();
 }
