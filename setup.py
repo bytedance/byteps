@@ -276,6 +276,7 @@ def get_mx_lib_dirs():
 
 def get_mx_libs(build_ext, lib_dirs, cpp_flags):
     last_err = None
+    cpp_flags.append('-DDMLC_USE_RDMA')
     for mx_libs in [['mxnet'], []]:
         try:
             lib_file = test_compile(build_ext, 'test_mx_libs',
@@ -285,7 +286,8 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
                     void test() {
                     }
                     '''))
-
+            mx_libs.append('rdmacm')
+            mx_libs.append('ibverbs')
             return mx_libs
         except (CompileError, LinkError):
             last_err = 'Unable to determine -l link flags to use with MXNet (see error above).'
