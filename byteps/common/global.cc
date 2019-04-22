@@ -185,12 +185,15 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-        _name_to_cxt[name].key = (ps::Key) next_key_++;
+        _name_to_cxt[name].key = (ps::Key) next_key_;
+        _name_to_cxt[name].keys.push_back((ps::Key) next_key_);
+        _name_to_cxt[name].lens.push_back(size);
         if (device != CPU_DEVICE_ID) { // GPU
             BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
             _name_to_cxt[name].buff_len = size;
         }
+        ++next_key_;
         return false;
     }
     return true;

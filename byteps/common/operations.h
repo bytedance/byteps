@@ -60,28 +60,32 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens);
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens);
 
 Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens);
 
 Status InitTensor(std::shared_ptr<OpContext> context,
                     std::shared_ptr<Tensor> tensor,

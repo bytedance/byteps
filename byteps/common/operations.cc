@@ -247,7 +247,8 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -261,8 +262,8 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BPS_CHECK(e->tensor);
-    e->keys.push_back(key);
-    e->lens.push_back(e->tensor->size());
+    e->keys = keys;
+    e->lens = lens;
 
     e->cpubuff = cpubuff;
     e->last_op = last_op;
@@ -281,7 +282,8 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -295,8 +297,8 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BPS_CHECK(e->tensor);
-    e->keys.push_back(key);
-    e->lens.push_back(e->tensor->size());
+    e->keys = keys;
+    e->lens = lens;
 
     e->cpubuff = cpubuff;
     e->last_op = last_op;
@@ -315,7 +317,8 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -329,8 +332,8 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BPS_CHECK(e->output);
-    e->keys.push_back(key);
-    e->lens.push_back(e->output->size());
+    e->keys = keys;
+    e->lens = lens;
 
     e->cpubuff = cpubuff;
     e->last_op = last_op;
@@ -349,7 +352,8 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op,
+                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -363,8 +367,8 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
     e->callback = callback;
 
     BPS_CHECK(e->output);
-    e->keys.push_back(key);
-    e->lens.push_back(e->output->size());
+    e->keys = keys;
+    e->lens = lens;
 
     e->cpubuff = cpubuff;
     e->last_op = last_op;
@@ -387,8 +391,10 @@ Status InitTensor(std::shared_ptr<OpContext> context,
     auto& bps_cxt = BytePSGlobal::GetContextFromName(name);
     ps::Key key = bps_cxt.key;
     BPS_LOG(TRACE) << "Init " << name
+                   << ", key=" << key
                    << ", size=" << tensor->size()
                    << ", device=" << device;
+
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
         // get metadata
@@ -405,15 +411,12 @@ Status InitTensor(std::shared_ptr<OpContext> context,
             data = const_cast<char*> (static_cast<const char*> (tensor->data()));
         }
 
-        // convert to ps keys
-        ps::SArray<ps::Key> keys(&key, 1, false);
+        auto keys = bps_cxt.keys;
 
-        //char* data = const_cast<char*> (static_cast<const char*> (tensor->data()));
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
-        int len = size;
-        ps::SArray<int> lens(&len, 1, false);
+        auto lens = bps_cxt.lens;
 
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
         BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(

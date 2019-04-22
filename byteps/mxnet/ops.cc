@@ -75,6 +75,9 @@ void DoFirstStage(NDArray* input, const std::string& name, int version, int prio
     auto bps_cxt = BytePSGlobal::GetContextFromName(name);
     auto key = bps_cxt.key;
     auto cpubuff = bps_cxt.cpubuff;
+    auto keys = bps_cxt.keys;
+    auto lens = bps_cxt.lens;
+
     if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << " (key=" << key << ") cpu buffer not initialized.";
 
     auto enqueue_result =
@@ -82,7 +85,8 @@ void DoFirstStage(NDArray* input, const std::string& name, int version, int prio
                                name, key, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, cpubuff, PUSH); // last op
+                               }, cpubuff, PUSH, // last op
+                               keys, lens);
     ThrowIfError(enqueue_result);
 }
 
@@ -97,6 +101,9 @@ void DoSecondStage(NDArray* input, const std::string& name, int version, int pri
     auto bps_cxt = BytePSGlobal::GetContextFromName(name);
     auto key = bps_cxt.key;
     auto cpubuff = bps_cxt.cpubuff;
+    auto keys = bps_cxt.keys;
+    auto lens = bps_cxt.lens;
+
     if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << " (key=" << key << ") cpu buffer not initialized.";
 
     auto enqueue_result =
@@ -104,7 +111,8 @@ void DoSecondStage(NDArray* input, const std::string& name, int version, int pri
                                name, key, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, cpubuff, BROADCAST); // last op
+                               }, cpubuff, BROADCAST, // last op
+                               keys, lens);
     ThrowIfError(enqueue_result);
 }
 
