@@ -22,17 +22,6 @@
 
 #include "operations.h"
 
-#define CUDA_CALL( call )                     \
-{                                             \
-    cudaError_t result = call;                \
-    if ( cudaSuccess != result )              \
-        std::cerr << "CUDA error " << result  \
-                  << " in " << __FILE__       \
-                  << ":" << __LINE__          \
-                  << ": " << cudaGetErrorString( result ) \
-                  << " (" << #call << ")" << std::endl;   \
-}
-
 namespace byteps {
 namespace common {
 
@@ -408,11 +397,9 @@ Status InitTensor(std::shared_ptr<OpContext> context,
 
         char* data;
         if (device != CPU_DEVICE_ID) { // GPU
-            BPS_LOG(TRACE) << "copying " << size << " from GPU to CPU";
-            CUDA_CALL(cudaHostAlloc((void **) &bps_cxt.cpubuff, size, cudaHostAllocMapped));
-            bps_cxt.buff_len = size;
+            BPS_CHECK_EQ(size, bps_cxt.buff_len);
+            BPS_CHECK(bps_cxt.cpubuff);
             CUDA_CALL(cudaMemcpy(bps_cxt.cpubuff, tensor->data(), size, cudaMemcpyDeviceToHost));
-            BPS_LOG(TRACE) << "copy succeed";
             data = const_cast<char*> (static_cast<const char*> (bps_cxt.cpubuff));
         } else { // CPU
             data = const_cast<char*> (static_cast<const char*> (tensor->data()));

@@ -44,7 +44,19 @@ enum class LogLevel {
   ((x) == NULL                                                                           \
    ? common::LogMessageFatal(__FILE__, __LINE__) << "Check  notnull: " #x << ' ', \
    (x) : (x))  // NOLINT(*)
-
+   
+/*!
+ * \brief Protected CUDA call.
+ * \param func Expression to call.
+ *
+ * It checks for CUDA errors after invocation of the expression.
+ */
+#define CUDA_CALL(func)                                                        \
+  {                                                                            \
+    cudaError_t e = (func);                                                    \
+    CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)                   \
+        << "CUDA: " << cudaGetErrorString(e);                                  \
+  }
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:

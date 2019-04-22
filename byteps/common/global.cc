@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "global.h"
+#include <cuda_runtime.h>
 
 namespace byteps {
 namespace common {
@@ -169,6 +170,9 @@ void BytePSGlobal::Shutdown() {
     cudaStreamDestroy(*_reduce_stream);
     cudaStreamDestroy(*_broadcast_stream);
 
+    for (auto &it:_name_to_cxt) {
+        CUDA_CALL(cudaFreeHost(it.second.cpubuff));
+    }
     return;
 }
 
@@ -177,10 +181,16 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
+    BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].key = (ps::Key) next_key_++;
+        if (device != CPU_DEVICE_ID) { // GPU
+            BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
+            CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
+            _name_to_cxt[name].buff_len = size;
+        }
         return false;
     }
     return true;
