@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <string>
 #include <cuda_runtime.h>
+#include <map>
 
 #define OMPI_SKIP_MPICXX
 #include "mpi.h"
@@ -46,6 +47,12 @@ typedef struct BytePSContext {
     // SArray for lens
     ps::SArray<int> lens;
 } BPSContext;
+
+struct PSKV {
+    ps::SArray<ps::Key> keys;  // n keys
+    ps::SArray<int> lens;  // the length of the i-th value
+    int size;
+};
 
 typedef void (*LoopFunction)();
 
@@ -90,6 +97,9 @@ public:
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
 
+    static std::unordered_map<int, PSKV> ps_kv_;
+    static PSKV& EncodeDefaultKey(int key, size_t len);
+
     static cudaStream_t* GetReduceStream();
     static cudaStream_t* GetBroadcastStream();
 
@@ -108,8 +118,7 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
-    static MPI_Comm _local_comm;
-    static MPI_Comm _global_comm;
+    static MPI_Comm _comm;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _queues_mutex[QueueNum];

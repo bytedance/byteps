@@ -78,18 +78,13 @@ bool RunPushLoopOnce() {
         size_t size = task->tensor->size();
         const int dtype = task->tensor->dtype();
 
-        auto& keys = task->keys;
-
-
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
-        auto& lens = task->lens;
-
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-
+        auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, size);
         BytePSGlobal::GetPS()->ZPush(
-            keys, vals, lens, cmd,
+            pskv.keys, vals, pskv.lens, cmd,
             [task, this_op]() {
                 if (task->last_op != this_op) {
                     BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
@@ -129,18 +124,14 @@ bool RunPullLoopOnce() {
         size_t size = task->output->size();
         const int dtype = task->output->dtype();
 
-        auto& keys = task->keys;
-
         // false means not to delete data when SArray is deleted
         auto vals = new ps::SArray<char>(data, size, false);
 
-        auto& lens = task->lens;
-
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-
+        auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, size);
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
-            keys, vals, &lens, cmd,
+            pskv.keys, vals, &pskv.lens, cmd,
             [vals, task, this_op]() {
                 delete vals;
                 if (task->last_op != this_op) {
@@ -388,15 +379,14 @@ Status InitTensor(std::shared_ptr<OpContext> context,
                 const std::string &name, const int device,
                 StatusCallback callback) {
 
-    auto& bps_cxt = BytePSGlobal::GetContextFromName(name);
-    ps::Key key = bps_cxt.key;
-    BPS_LOG(TRACE) << "Init " << name
-                   << ", key=" << key
-                   << ", size=" << tensor->size()
-                   << ", device=" << device;
-
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
+        auto& bps_cxt = BytePSGlobal::GetContextFromName(name);
+        ps::Key key = bps_cxt.key;
+        BPS_LOG(TRACE) << "Init " << name
+                       << ", key=" << key
+                       << ", size=" << tensor->size()
+                       << ", device=" << device;
         // get metadata
         size_t size = tensor->size();
         const int dtype = tensor->dtype();
@@ -411,16 +401,14 @@ Status InitTensor(std::shared_ptr<OpContext> context,
             data = const_cast<char*> (static_cast<const char*> (tensor->data()));
         }
 
-        auto keys = bps_cxt.keys;
-
         // false means not to delete data when SArray is deleted
         ps::SArray<char> vals(data, size, false);
 
-        auto lens = bps_cxt.lens;
-
         int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+
+        auto& pskv = BytePSGlobal::EncodeDefaultKey(key, size);
         BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
-            keys, vals, lens, cmd));
+            pskv.keys, vals, pskv.lens, cmd));
     }
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);

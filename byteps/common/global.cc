@@ -57,8 +57,8 @@ int BytePSGlobal::_rank = 0;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
-MPI_Comm BytePSGlobal::_local_comm;
-MPI_Comm BytePSGlobal::_global_comm;
+MPI_Comm BytePSGlobal::_comm;
+std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
@@ -84,21 +84,24 @@ void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
 }
 
 void BytePSGlobal::_InitComm() {
-
     int provided;
     MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
 
-    MPI_Comm_dup(MPI_COMM_WORLD, &_global_comm);
+    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
 
     // Get MPI size to determine how many tensors to wait for before reducing.
-    MPI_Comm_rank(_global_comm, &_rank);
-    MPI_Comm_size(_global_comm, &_size);
+    MPI_Comm_rank(_comm, &_local_rank);
+    MPI_Comm_size(_comm, &_local_size);
 
-    // Determine local rank by querying the local communicator.
-    MPI_Comm_split_type(_global_comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL,
-                        &_local_comm);
-    MPI_Comm_rank(_local_comm, &_local_rank);
-    MPI_Comm_size(_local_comm, &_local_size);
+    BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
+    BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
+    auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
+    auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
+
+    // we assume _local_size (i.e., # GPU) is consistent on all workers
+    _rank = _local_rank + worker_id * _local_size;
+    _size = num_worker * _local_size;
+
 }
 
 void BytePSGlobal::Init() {
@@ -197,6 +200,30 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int
         return false;
     }
     return true;
+}
+
+PSKV& BytePSGlobal::EncodeDefaultKey(int key, size_t len) {
+    _encode_mutex.lock();
+    PSKV& pskv = ps_kv_[key];
+    _encode_mutex.unlock();
+    if (!pskv.keys.empty()) {
+        BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
+            << "The value size cannot be changed " << len
+            << ". Key is " << key;
+    } else {
+        auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+        const int num_servers = krs.size();
+        BPS_CHECK_GT(num_servers, 0);
+        // send it to a single random picked server
+        int server = (key * 9973) % num_servers;
+        BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server;
+        ps::Key ps_key = krs[server].begin() + key;
+        BPS_CHECK_LT(ps_key, krs[server].end());
+        pskv.keys.push_back(ps_key);
+        pskv.lens.push_back(len);
+        pskv.size = len;
+    }
+    return pskv;
 }
 
 uint32_t BytePSGlobal::GetTensorCount() {
