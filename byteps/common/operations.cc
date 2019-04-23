@@ -238,8 +238,7 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op,
-                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -251,13 +250,9 @@ Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
-
-    BPS_CHECK(e->tensor);
-    e->keys = keys;
-    e->lens = lens;
-
     e->cpubuff = cpubuff;
     e->last_op = last_op;
+    BPS_CHECK(e->tensor);
 
     BPS_LOG(TRACE) << "EnqueueTensorReduce: " << e->tensor_name
                    << ", key=" << e->key
@@ -273,8 +268,7 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op,
-                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -286,13 +280,9 @@ Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
-
-    BPS_CHECK(e->tensor);
-    e->keys = keys;
-    e->lens = lens;
-
     e->cpubuff = cpubuff;
     e->last_op = last_op;
+    BPS_CHECK(e->tensor);
 
     BPS_LOG(TRACE) << "EnqueueTensorPush: " << e->tensor_name
                    << ", key=" << e->key
@@ -308,8 +298,7 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op,
-                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -321,13 +310,9 @@ Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
-
-    BPS_CHECK(e->output);
-    e->keys = keys;
-    e->lens = lens;
-
     e->cpubuff = cpubuff;
     e->last_op = last_op;
+    BPS_CHECK(e->output);
 
     BPS_LOG(TRACE) << "EnqueueTensorPull: " << e->tensor_name
                    << ", key=" << e->key
@@ -343,8 +328,7 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name, ps::Key key,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op,
-                        ps::SArray<ps::Key> keys, ps::SArray<int> lens) {
+                        StatusCallback callback, void* cpubuff, QueueType last_op) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
     e->key = key;
@@ -356,13 +340,9 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
     e->priority = priority;
     e->version = version;
     e->callback = callback;
-
-    BPS_CHECK(e->output);
-    e->keys = keys;
-    e->lens = lens;
-
     e->cpubuff = cpubuff;
     e->last_op = last_op;
+    BPS_CHECK(e->output);
 
     BPS_LOG(TRACE) << "EnqueueTensorBroadcast: " << e->tensor_name
                    << ", key=" << e->key

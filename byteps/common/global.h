@@ -42,10 +42,6 @@ typedef struct BytePSContext {
     ps::Key key;
     void* cpubuff;
     size_t buff_len;
-    // SArray for ps keys
-    ps::SArray<ps::Key> keys;
-    // SArray for lens
-    ps::SArray<int> lens;
 } BPSContext;
 
 struct PSKV {
