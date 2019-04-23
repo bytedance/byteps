@@ -157,6 +157,10 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                             {}, {tensor->var()},
                             FnProperty::kNormal, 0, "BytePSSecondStage");
 
+    // average the aggregated gradient
+    auto num_worker = ps::NumWorkers();
+    *tensor /= num_worker;
+
     MX_API_END();
 }
 
