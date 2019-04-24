@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <atomic>
 #include <vector>
 #include "ps/ps.h"
 
@@ -168,6 +169,14 @@ struct TensorTableEntry {
   void* cpubuff;
   // The last operation (queue) of this task
   QueueType last_op;
+  // The offset of this partition
+  unsigned int offset = 0;
+  // The length of this partition
+  unsigned int len = 0;
+  // Atomic counter
+  std::shared_ptr<std::atomic_int> counter_ptr;
+  // How many partitions
+  unsigned int total_partnum = 0;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 

@@ -57,6 +57,7 @@ int BytePSGlobal::_rank = 0;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
+uint32_t BytePSGlobal::_partition_bound = 512000;
 MPI_Comm BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -68,7 +69,6 @@ ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
-
 cudaStream_t* BytePSGlobal::_reduce_stream;
 cudaStream_t* BytePSGlobal::_broadcast_stream;
 
@@ -97,6 +97,9 @@ void BytePSGlobal::_InitComm() {
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
     auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
+
+    if (getenv("BYTEPS_PARTITION_BOUND")) _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bound << " (parameters)";
 
     // we assume _local_size (i.e., # GPU) is consistent on all workers
     _rank = _local_rank + worker_id * _local_size;
@@ -184,17 +187,58 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device) {
+void BytePSGlobal::ConvertBoundToBytes(DataType dtype, uint32_t& bound) {
+    int byte_per_param;
+    switch (dtype) {
+        case DataType::BYTEPS_UINT8:
+        case DataType::BYTEPS_INT8:
+            byte_per_param = 1;
+            break;
+        case DataType::BYTEPS_FLOAT16:
+            byte_per_param = 2;
+            break;
+        case DataType::BYTEPS_FLOAT32:
+        case DataType::BYTEPS_INT32:
+            byte_per_param = 4;
+            break;
+        case DataType::BYTEPS_FLOAT64:
+        case DataType::BYTEPS_INT64:
+            byte_per_param = 8;
+            break;
+    }
+    BPS_LOG(DEBUG) << "The partition bound is " << bound
+                   << " params (or "
+                   << (bound * byte_per_param) << " Bytes)";
+    bound *= byte_per_param;
+}
+
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
+
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-        _name_to_cxt[name].key = (ps::Key) next_key_;
+        if (next_key_ == 0) { // only do this once
+            ConvertBoundToBytes(dtype, _partition_bound);
+        }
+
         if (device != CPU_DEVICE_ID) { // GPU
-            BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
+            //BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
             _name_to_cxt[name].buff_len = size;
         }
-        ++next_key_;
+        auto accumulated = 0;
+        while (accumulated < size) {
+            _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);
+            accumulated += ((size - accumulated) > _partition_bound) ? _partition_bound : (size - accumulated);
+        }
+        BPS_LOG(DEBUG) << name << " partitioned to "
+                       << _name_to_cxt[name].key_list.size() << " part(s)"
+                       << ", total_len=" << size
+                       << ", key_range=["
+                       << _name_to_cxt[name].key_list.front()
+                       << ", "
+                       << _name_to_cxt[name].key_list.back()
+                       << "]";
         return false;
     }
     return true;

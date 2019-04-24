@@ -58,30 +58,34 @@ int byteps_local_size();
 Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, ps::Key key,
+                        const std::string &name, std::vector<ps::Key> key_list,
                         const int device, const int priority, const int version,
                         StatusCallback callback, void* cpubuff, QueueType last_op);
 
 Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, ps::Key key,
+                        const std::string &name, std::vector<ps::Key> key_list,
                         const int device, const int priority, const int version,
                         StatusCallback callback, void* cpubuff, QueueType last_op);
 
 Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, ps::Key key,
+                        const std::string &name, std::vector<ps::Key> key_list,
                         const int device, const int priority, const int version,
                         StatusCallback callback, void* cpubuff, QueueType last_op);
 
 Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, ps::Key key,
+                        const std::string &name, std::vector<ps::Key> key_list,
                         const int device, const int priority, const int version,
                         StatusCallback callback, void* cpubuff, QueueType last_op);
+
+void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
+                    std::vector<std::shared_ptr<TensorTableEntry> > &partitions,
+                    bool is_reduce_push);
 
 Status InitTensor(std::shared_ptr<OpContext> context,
                     std::shared_ptr<Tensor> tensor,

@@ -73,14 +73,14 @@ void DoFirstStage(NDArray* input, const std::string& name, int version, int prio
     auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
 
     auto bps_cxt = BytePSGlobal::GetContextFromName(name);
-    auto key = bps_cxt.key;
+    auto key_list = bps_cxt.key_list;
     auto cpubuff = bps_cxt.cpubuff;
 
-    if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << " (key=" << key << ") cpu buffer not initialized.";
+    if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << ": cpu buffer not initialized.";
 
     auto enqueue_result =
         EnqueueTensorReduce(byteps_context, byteps_input, nullptr,
-                               name, key, device, priority, version,
+                               name, key_list, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
                                }, cpubuff, PUSH); // last op
@@ -96,14 +96,14 @@ void DoSecondStage(NDArray* input, const std::string& name, int version, int pri
     auto byteps_context = std::make_shared<MXOpContext<NDArray>>(device, input);
 
     auto bps_cxt = BytePSGlobal::GetContextFromName(name);
-    auto key = bps_cxt.key;
+    auto key_list = bps_cxt.key_list;
     auto cpubuff = bps_cxt.cpubuff;
 
-    if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << " (key=" << key << ") cpu buffer not initialized.";
+    if (device != CPU_DEVICE_ID) BPS_CHECK(cpubuff) << name << ": cpu buffer not initialized.";
 
     auto enqueue_result =
         EnqueueTensorPull(byteps_context, byteps_input, nullptr,
-                               name, key, device, priority, version,
+                               name, key_list, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
                                }, cpubuff, BROADCAST); // last op
@@ -119,9 +119,10 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
 
     size_t size = TensorUtil::GetSize(tensor);
     auto device = TensorUtil::GetDevice(tensor);
+    auto dtype = TensorUtil::GetDType(tensor);
 
     // check if we need to init the tensor
-    if (!BytePSGlobal::IsTensorInitialized(tensor_name, size, device)) {
+    if (!BytePSGlobal::IsTensorInitialized(tensor_name, size, device, dtype)) {
         // we need to init this tensor
         auto init_async_fn = [tensor, tensor_name](RunContext rctx,
                                       Callback on_complete) mutable {

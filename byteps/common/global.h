@@ -39,7 +39,7 @@ namespace common {
 const int ThreadNum = QueueNum;
 
 typedef struct BytePSContext {
-    ps::Key key;
+    std::vector<ps::Key> key_list;
     void* cpubuff;
     size_t buff_len;
 } BPSContext;
@@ -88,19 +88,22 @@ public:
     static void* CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool IsTensorInitialized(const std::string &name, size_t size, int device);
+    static bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
 
     static std::unordered_map<int, PSKV> ps_kv_;
     static PSKV& EncodeDefaultKey(int key, size_t len);
+    static void ConvertBoundToBytes(DataType dtype, uint32_t& bound);
 
     static cudaStream_t* GetReduceStream();
     static cudaStream_t* GetBroadcastStream();
 
     static cudaStream_t* _reduce_stream;
     static cudaStream_t* _broadcast_stream;
+
+    static uint32_t _partition_bound;
     
 private:
 
