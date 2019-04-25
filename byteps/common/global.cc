@@ -58,7 +58,7 @@ int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 uint32_t BytePSGlobal::_partition_bound = 512000;
-MPI_Comm BytePSGlobal::_comm;
+std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
@@ -83,30 +83,6 @@ void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     }
 }
 
-void BytePSGlobal::_InitComm() {
-    int provided;
-    MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
-
-    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
-
-    // Get MPI size to determine how many tensors to wait for before reducing.
-    MPI_Comm_rank(_comm, &_local_rank);
-    MPI_Comm_size(_comm, &_local_size);
-
-    BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
-    BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-    auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
-    auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
-
-    if (getenv("BYTEPS_PARTITION_BOUND")) _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bound << " (parameters)";
-
-    // we assume _local_size (i.e., # GPU) is consistent on all workers
-    _rank = _local_rank + worker_id * _local_size;
-    _size = num_worker * _local_size;
-
-}
-
 void BytePSGlobal::Init() {
     std::lock_guard<std::mutex> lock(_init_mutex);
     
@@ -115,7 +91,11 @@ void BytePSGlobal::Init() {
         return;
     }
 
-    _InitComm();
+    _comm = std::make_shared<BytePSCommMPI>();
+    _comm->init(&_rank, &_size, &_local_rank, &_local_size);
+
+    if (getenv("BYTEPS_PARTITION_BOUND")) _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bound << " (parameters)";
 
     // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);

@@ -26,11 +26,9 @@
 #include <cuda_runtime.h>
 #include <map>
 
-#define OMPI_SKIP_MPICXX
-#include "mpi.h"
-
 #include "common.h"
 #include "logging.h"
+#include "communicator.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -83,6 +81,7 @@ public:
     static int GetLocalRank() { return _local_rank; }
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
+    static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
     static void* CreateScheduledQueue(QueueType queueType);
@@ -107,8 +106,6 @@ public:
     
 private:
 
-    static void _InitComm();
-
     static std::mutex _init_mutex;
     static volatile bool _initialized;
     static volatile bool _should_shutdown;
@@ -117,7 +114,7 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
-    static MPI_Comm _comm;
+    static std::shared_ptr<BytePSComm> _comm;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _queues_mutex[QueueNum];
