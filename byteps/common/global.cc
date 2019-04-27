@@ -58,7 +58,7 @@ int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 BytePSRole BytePSGlobal::_my_role;
-uint32_t BytePSGlobal::_partition_bound = 512000;
+uint32_t BytePSGlobal::_partition_bytes = 2048000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -102,10 +102,10 @@ void BytePSGlobal::Init() {
 
     _my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
 
-    if (getenv("BYTEPS_PARTITION_BOUND")) {
-        _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
+    if (getenv("BYTEPS_partition_bytes")) {
+        _partition_bytes = atoi(getenv("BYTEPS_partition_bytes"));
     }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bound << " (parameters)";
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (parameters)";
 
     // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);
@@ -177,29 +177,9 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-void BytePSGlobal::ConvertBoundToBytes(DataType dtype, uint32_t& bound) {
-    int byte_per_param;
-    switch (dtype) {
-        case DataType::BYTEPS_UINT8:
-        case DataType::BYTEPS_INT8:
-            byte_per_param = 1;
-            break;
-        case DataType::BYTEPS_FLOAT16:
-            byte_per_param = 2;
-            break;
-        case DataType::BYTEPS_FLOAT32:
-        case DataType::BYTEPS_INT32:
-            byte_per_param = 4;
-            break;
-        case DataType::BYTEPS_FLOAT64:
-        case DataType::BYTEPS_INT64:
-            byte_per_param = 8;
-            break;
-    }
-    BPS_LOG(DEBUG) << "The partition bound is " << bound
-                   << " params (or "
-                   << (bound * byte_per_param) << " Bytes)";
-    bound *= byte_per_param;
+void BytePSGlobal::AlignPartitionBound(int alignment, uint32_t& bound) {
+    bound = bound / alignment * alignment;
+    BPS_LOG(DEBUG) << "The partition bound is " << bound << " bytes";
 }
 
 bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
@@ -208,7 +188,7 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         if (next_key_ == 0) { // only do this once
-            ConvertBoundToBytes(dtype, _partition_bound);
+            AlignPartitionBound(4, _partition_bytes);
         }
 
         if (device != CPU_DEVICE_ID) { // GPU
@@ -219,7 +199,7 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int
         auto accumulated = 0;
         while (accumulated < size) {
             _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);
-            accumulated += ((size - accumulated) > _partition_bound) ? _partition_bound : (size - accumulated);
+            accumulated += ((size - accumulated) > _partition_bytes) ? _partition_bytes : (size - accumulated);
         }
         BPS_LOG(DEBUG) << name << " partitioned to "
                        << _name_to_cxt[name].key_list.size() << " part(s)"

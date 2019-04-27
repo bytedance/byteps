@@ -91,15 +91,11 @@ public:
 
     static std::unordered_map<int, PSKV> ps_kv_;
     static PSKV& EncodeDefaultKey(int key, size_t len);
-    static void ConvertBoundToBytes(DataType dtype, uint32_t& bound);
+
+    static uint32_t GetPartitionBound() { return _partition_bytes; }
 
     static cudaStream_t* GetReduceStream();
     static cudaStream_t* GetBroadcastStream();
-
-    static cudaStream_t* _reduce_stream;
-    static cudaStream_t* _broadcast_stream;
-
-    static uint32_t _partition_bound;
     
 private:
 
@@ -121,6 +117,12 @@ private:
     static ps::KVWorker<char>* _ps;
     static std::mutex _encode_mutex;
     static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+
+    static cudaStream_t* _reduce_stream;
+    static cudaStream_t* _broadcast_stream;
+
+    static uint32_t _partition_bytes;
+    static void AlignPartitionBound(int alignment, uint32_t& bound);
 };
 
 

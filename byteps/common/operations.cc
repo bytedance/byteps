@@ -246,7 +246,7 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
                     bool is_reduce_push) {
     BPS_CHECK(entry->counter_ptr) << entry->tensor_name << " counter pointer is null";
     auto size = is_reduce_push ? entry->tensor->size() : entry->output->size();
-    auto bound = BytePSGlobal::_partition_bound;
+    auto bound = BytePSGlobal::GetPartitionBound();
     auto accumulated = 0;
     int i = 0;
 
@@ -394,7 +394,7 @@ Status InitTensor(BPSContext &context,
             data = const_cast<char*> (static_cast<const char*> (tensor->data()));
         }
 
-        auto bound = BytePSGlobal::_partition_bound;
+        auto bound = BytePSGlobal::GetPartitionBound();
         unsigned int accumulated = 0;
         auto i = 0;
         BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
