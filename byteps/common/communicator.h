@@ -18,8 +18,12 @@
 
 #include <cstdlib> 
 
+#ifdef BYTEPS_USE_MPI
+
 #define OMPI_SKIP_MPICXX
 #include "mpi.h"
+
+#endif // BYTEPS_USE_MPI
 
 namespace byteps {
 namespace common {
@@ -59,6 +63,8 @@ public:
 
 };
 
+#ifdef BYTEPS_USE_MPI
+
 class BytePSCommMPI : public BytePSComm {
 
 public:
@@ -75,6 +81,8 @@ public:
     int broadcastSignal(int root, void* data, int len);
 
 };
+
+#endif // BYTEPS_USE_MPI
 
 }
 }

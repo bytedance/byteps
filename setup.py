@@ -223,7 +223,6 @@ def get_link_flags(build_ext):
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
     link_flags = get_link_flags(build_ext)
-    mpi_flags = get_mpi_flags()
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
     INCLUDES = ['3rdparty/ps-lite/include']
@@ -232,8 +231,13 @@ def get_common_options(build_ext):
                'byteps/common/global.cc',
                'byteps/common/logging.cc',
                'byteps/common/communicator.cc']
-    COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags)
-    LINK_FLAGS = link_flags + shlex.split(mpi_flags)
+    if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
+        mpi_flags = get_mpi_flags()
+        COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags) + ["-DBYTEPS_USE_MPI"]
+        LINK_FLAGS = link_flags + shlex.split(mpi_flags)
+    else:
+        COMPILE_FLAGS = cpp_flags
+        LINK_FLAGS = link_flags
     LIBRARY_DIRS = []
     LIBRARIES = []
 

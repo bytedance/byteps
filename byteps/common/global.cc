@@ -91,7 +91,12 @@ void BytePSGlobal::Init() {
         return;
     }
 
+#ifdef BYTEPS_USE_MPI
     _comm = std::make_shared<BytePSCommMPI>();
+#else
+    _comm = std::make_shared<BytePSCommSocket>();
+#endif // BYTEPS_USE_MPI
+
     _comm->init(&_rank, &_size, &_local_rank, &_local_size);
 
     if (getenv("BYTEPS_PARTITION_BOUND")) _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));

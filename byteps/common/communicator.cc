@@ -36,6 +36,26 @@ int BytePSComm::_p2pGPUCopy(void* from, void* to, int len) {
 void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size) {
     // We should init rank, size, etc. using getenv
     // _comm should be a vector<int>, which stores UNIX socket fd to each rank
+
+    BPS_CHECK(getenv("BYTEPS_LOCAL_RANK")) << "error: env BYTEPS_LOCAL_RANK not set";
+    BPS_CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
+    *local_rank = atoi(getenv("BYTEPS_LOCAL_RANK"));
+    *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
+
+    BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
+    BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
+    auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
+    auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
+
+    // we assume _local_size (i.e., # GPU) is consistent on all workers
+    *rank = (*local_rank) + worker_id * (*local_size);
+    *size = num_worker * (*local_size);
+
+    _rank = *rank;
+    _size = *size;
+    _local_rank = *local_rank;
+    _local_size = *local_size;
+
 }
 
 int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
@@ -50,6 +70,7 @@ int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
     return 0;
 }
 
+#ifdef BYTEPS_USE_MPI
 
 void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size) {
 
@@ -94,7 +115,7 @@ int BytePSCommMPI::broadcastSignal(int root, void* data, int len) {
     return 0;
 }
 
-
+#endif // BYTEPS_USE_MPI
 
 }
 }
