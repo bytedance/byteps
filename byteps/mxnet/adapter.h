@@ -26,17 +26,6 @@ namespace mxnet {
 
 using namespace byteps::common;
 
-class MXPersistentBuffer : public PersistentBuffer {
-public:
-  MXPersistentBuffer(int device, int64_t size);
-  virtual const void*
-  AccessData(std::shared_ptr<OpContext> context) const override;
-
-private:
-  int device_;
-  void* buffer_;
-};
-
 template <class T> class MXTensor : public Tensor {
 public:
   MXTensor(T* tensor);
@@ -47,28 +36,6 @@ public:
 
 protected:
   T* tensor_;
-};
-
-template <class T> class MXTemporaryBuffer : public MXTensor<T> {
-public:
-  MXTemporaryBuffer(int device, int dtype);
-  ~MXTemporaryBuffer();
-  virtual T* tensor() const;
-};
-
-template <class T> class MXOpContext : public OpContext {
-public:
-  MXOpContext(int device, T* output);
-  virtual Status
-  AllocatePersistent(int64_t size,
-                     std::shared_ptr<PersistentBuffer>* tensor) override;
-  virtual Status AllocateOutput(TensorShape shape,
-                                std::shared_ptr<Tensor>* tensor) override;
-  virtual Framework framework() const override;
-
-private:
-  int device_;
-  T* output_;
 };
 
 inline void ThrowIfError(const Status& status) {

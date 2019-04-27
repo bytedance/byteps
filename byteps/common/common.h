@@ -24,6 +24,7 @@
 #include <atomic>
 #include <vector>
 #include "ps/ps.h"
+#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -106,6 +107,12 @@ public:
   virtual ~ReadyEvent() = default;
 };
 
+typedef struct BytePSContext {
+    std::vector<ps::Key> key_list;
+    void* cpubuff;
+    size_t buff_len;
+} BPSContext;
+
 class OpContext;
 
 class PersistentBuffer {
@@ -123,18 +130,6 @@ public:
   virtual ~Tensor() = default;
 };
 
-class OpContext {
-public:
-  // These allocators are fully synchronous, unlike TensorFlow counterparts.
-  virtual Status
-  AllocatePersistent(int64_t size,
-                     std::shared_ptr<PersistentBuffer>* tensor) = 0;
-  virtual Status AllocateOutput(TensorShape shape,
-                                std::shared_ptr<Tensor>* tensor) = 0;
-  virtual Framework framework() const = 0;
-  virtual ~OpContext() = default;
-};
-
 // A callback to call after the MPI communication completes. Since the
 // allreduce and allgather ops are asynchronous, this callback is what resumes
 // computation after the reduction is completed.
@@ -148,7 +143,7 @@ struct TensorTableEntry {
   // Key of the tensor
   ps::Key key;
   // Operation context.
-  std::shared_ptr<OpContext> context;
+  BPSContext* context;
   // Input tensor.
   std::shared_ptr<Tensor> tensor;
   // Pre-allocated output tensor.

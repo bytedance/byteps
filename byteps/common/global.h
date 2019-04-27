@@ -34,13 +34,9 @@
 namespace byteps {
 namespace common {
 
-const int ThreadNum = QueueNum;
+enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
-typedef struct BytePSContext {
-    std::vector<ps::Key> key_list;
-    void* cpubuff;
-    size_t buff_len;
-} BPSContext;
+const int ThreadNum = QueueNum;
 
 struct PSKV {
     ps::SArray<ps::Key> keys;  // n keys
@@ -81,6 +77,7 @@ public:
     static int GetLocalRank() { return _local_rank; }
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
+    static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
@@ -114,6 +111,7 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
+    static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _comm;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];

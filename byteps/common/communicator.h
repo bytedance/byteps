@@ -84,7 +84,7 @@ public:
 
 #endif // BYTEPS_USE_MPI
 
-}
-}
+} // namespace common
+} // namespace byteps
 
 #endif // BYTEPS_COMMUNICATOR_H

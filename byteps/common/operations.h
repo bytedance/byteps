@@ -18,7 +18,7 @@
 
 #include <functional>
 
-#include "global.h"
+#include "common.h"
 
 namespace byteps {
 namespace common {
@@ -55,43 +55,30 @@ int byteps_local_size();
 // supported. Returns -1 if byteps is not initialized.
 }
 
-Status EnqueueTensorReduce(std::shared_ptr<OpContext> context,
+// Below are all for Framework plugins
+Status EnqueueTensorPush(BPSContext &context,
                         std::shared_ptr<Tensor> input,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, std::vector<ps::Key> key_list,
+                        const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, QueueType last_op);
 
-Status EnqueueTensorPush(std::shared_ptr<OpContext> context,
-                        std::shared_ptr<Tensor> input,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, std::vector<ps::Key> key_list,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
-
-Status EnqueueTensorPull(std::shared_ptr<OpContext> context,
+Status EnqueueTensorPull(BPSContext &context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, std::vector<ps::Key> key_list,
+                        const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+                        StatusCallback callback, QueueType last_op);
 
-Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
-                        std::shared_ptr<Tensor> output,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name, std::vector<ps::Key> key_list,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, void* cpubuff, QueueType last_op);
+Status InitTensor(BPSContext &context,
+                  std::shared_ptr<Tensor> tensor,
+                  std::shared_ptr<ReadyEvent> ready_event,
+                  const std::string &name, const int device,
+                  StatusCallback callback);
 
-void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
-                    std::vector<std::shared_ptr<TensorTableEntry> > &partitions,
-                    bool is_reduce_push);
-
-Status InitTensor(std::shared_ptr<OpContext> context,
-                    std::shared_ptr<Tensor> tensor,
-                    std::shared_ptr<ReadyEvent> ready_event,
-                    const std::string &name, const int device,
-                    StatusCallback callback);
+// Only call these in Framework plugins for the best performance
+bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);
+BPSContext& GetContextFromName(const std::string &name);
 
 } // namespace common
 } // namespace byteps

@@ -57,6 +57,7 @@ int BytePSGlobal::_rank = 0;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
+BytePSRole BytePSGlobal::_my_role;
 uint32_t BytePSGlobal::_partition_bound = 512000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
@@ -99,7 +100,11 @@ void BytePSGlobal::Init() {
 
     _comm->init(&_rank, &_size, &_local_rank, &_local_size);
 
-    if (getenv("BYTEPS_PARTITION_BOUND")) _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
+    _my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+
+    if (getenv("BYTEPS_PARTITION_BOUND")) {
+        _partition_bound = atoi(getenv("BYTEPS_PARTITION_BOUND"));
+    }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bound << " (parameters)";
 
     // init low-level ps implementation

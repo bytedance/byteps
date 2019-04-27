@@ -25,35 +25,6 @@
 namespace byteps {
 namespace mxnet {
 
-// This class intentionally does not have destructor at the moment.
-//
-// Unfortunately, by the time this destructor would be called in normal
-// circumstances (application shutdown), CUDA context would already be destroyed
-// and cudaFree() operations would print nasty errors in the log - in a pretty
-// normal termination scenario.
-//
-// If we add functionality to terminate BytePS without terminating the
-// application, we should revisit this logic.
-MXPersistentBuffer::MXPersistentBuffer(int device, int64_t size)
-    : device_(device) {
-  with_device device_context(device_);
-  if (device_ == CPU_DEVICE_ID) {
-    buffer_ = new char[size];
-  } else {
-#if HAVE_CUDA
-    CUDA_CALL(cudaMalloc((void**)&buffer_, size));
-#else
-    throw std::logic_error("Internal error. Requested MXPersistentBuffer "
-                           "with GPU device but not compiled with CUDA.");
-#endif
-  }
-}
-
-const void*
-MXPersistentBuffer::AccessData(std::shared_ptr<OpContext> context) const {
-  return buffer_;
-}
-
 template <class T> MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
 
 template <class T> const DataType MXTensor<T>::dtype() const {
@@ -79,53 +50,7 @@ template <class T> int64_t MXTensor<T>::size() const {
   return TensorUtil::GetSize(tensor_);
 }
 
-template <class T>
-MXTemporaryBuffer<T>::MXTemporaryBuffer(int device, int dtype)
-    : MXTensor<T>(nullptr) {
-  this->tensor_ = TensorUtil::New(device, dtype);
-}
-
-template <class T> MXTemporaryBuffer<T>::~MXTemporaryBuffer() {
-  TensorUtil::Free(this->tensor_);
-}
-
-template <class T> T* MXTemporaryBuffer<T>::tensor() const {
-  return this->tensor_;
-}
-
-template <class T>
-MXOpContext<T>::MXOpContext(int device, T* output)
-    : device_(device), output_(output) {}
-
-template <class T>
-Status
-MXOpContext<T>::AllocatePersistent(int64_t size,
-                                   std::shared_ptr<PersistentBuffer>* tensor) {
-  // Allocation errors are handled using PyMX exceptions.
-  *tensor = std::make_shared<MXPersistentBuffer>(device_, size);
-  return Status::OK();
-}
-
-template <class T>
-Status MXOpContext<T>::AllocateOutput(TensorShape shape,
-                                      std::shared_ptr<Tensor>* tensor) {
-  int64_t* shape_array = new int64_t[shape.dims()];
-  for (int idx = 0; idx < shape.dims(); idx++) {
-    shape_array[idx] = shape.dim_size(idx);
-  }
-  TensorUtil::ResizeNd(output_, shape.dims(), shape_array);
-  delete[] shape_array;
-  *tensor = std::make_shared<MXTensor<T>>(output_);
-  return Status::OK();
-}
-
-template <class T> Framework MXOpContext<T>::framework() const {
-  return Framework::MXNET;
-}
-
 template class MXTensor<NDArray>;
-template class MXTemporaryBuffer<NDArray>;
-template class MXOpContext<NDArray>;
 
 } // namespace mxnet
 } // namespace byteps
