@@ -302,7 +302,9 @@ Status EnqueueTensorPush(BPSContext &context,
 
     std::vector<std::shared_ptr<TensorTableEntry> > partitions;
     PartitionTensor(e, partitions, true);
-    BPS_CHECK_EQ(context.key_list.size(), partitions.size());
+    BPS_CHECK_EQ(context.key_list.size(), partitions.size()) << name
+            << ": " << context.key_list.size()
+            << ", " << partitions.size();
 
     unsigned int accumulated = 0;
     for (unsigned int i = 0; i < partitions.size(); ++i) {
@@ -347,7 +349,9 @@ Status EnqueueTensorPull(BPSContext &context,
 
     std::vector<std::shared_ptr<TensorTableEntry> > partitions;
     PartitionTensor(e, partitions, false);
-    BPS_CHECK_EQ(context.key_list.size(), partitions.size());
+    BPS_CHECK_EQ(context.key_list.size(), partitions.size()) << name
+            << ": " << context.key_list.size()
+            << ", " << partitions.size();
 
     unsigned int accumulated = 0;
     for (unsigned int i = 0; i < partitions.size(); ++i) {
@@ -380,6 +384,7 @@ Status InitTensor(BPSContext &context,
                        << ", size=" << tensor->size()
                        << ", parts=" << key_list.size()
                        << ", device=" << device;
+        BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
         // get metadata
         size_t size = tensor->size();
         const int dtype = tensor->dtype();
@@ -401,6 +406,7 @@ Status InitTensor(BPSContext &context,
                        << key_list.size()
                        << ", size=" << size
                        << ", bound=" << bound;
+
         while (accumulated < size) {
             auto key = key_list[i];
             int len = ((size - accumulated) > bound) ? bound : (size - accumulated);

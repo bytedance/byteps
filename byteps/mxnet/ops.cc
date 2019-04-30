@@ -119,7 +119,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     // check if we need to init the tensor
     if (!common::IsTensorInitialized(tensor_name, size, device, dtype)) {
         // we need to init this tensor with PS
-        auto context = common::GetContextFromName(name);
+        auto& context = common::GetContextFromName(tensor_name);
         auto init_async_fn = [&context, tensor, tensor_name](RunContext rctx,
                                       Callback on_complete) mutable {
             DoInit(context, tensor, tensor_name, on_complete);
@@ -130,7 +130,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                                 FnProperty::kNormal, 0, "BytePSInit");
     }
 
-    auto context = common::GetContextFromName(name);
+    auto& context = common::GetContextFromName(tensor_name);
     auto first_stage_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
         DoFirstStage(context, tensor, tensor_name, version, priority, on_complete);
