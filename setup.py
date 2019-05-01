@@ -20,7 +20,11 @@ import traceback
 # Not sure why the OS global env does not work
 # Manually add MXNet include path
 # TODO: find this path automatically
-MXNET_ROOT = "/root/mxnet-rdma/"
+if os.path.exists("/root/mxnet-rdma"): 
+    tmp_mxnet_dir = "/root/mxnet-rdma"
+else:
+    tmp_mxnet_dir = "/root/mxnet15-rdma"
+MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
 os.environ["MXNET_INCLUDE_PATH"] = os.path.join(MXNET_ROOT, "include/")
 
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
