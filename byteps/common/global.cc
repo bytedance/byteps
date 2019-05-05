@@ -102,10 +102,10 @@ void BytePSGlobal::Init() {
 
     _my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
 
-    if (getenv("BYTEPS_partition_bytes")) {
-        _partition_bytes = atoi(getenv("BYTEPS_partition_bytes"));
+    if (getenv("BYTEPS_PARTITION_BYTES")) {
+        _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (parameters)";
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (bytes)";
 
     // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);
