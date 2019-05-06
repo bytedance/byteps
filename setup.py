@@ -28,7 +28,7 @@ MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
 os.environ["MXNET_INCLUDE_PATH"] = os.path.join(MXNET_ROOT, "include/")
 
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
-pytorch_lib = Extension('byteps.pytorch.c_lib', [])
+pytorch_lib = Extension('byteps.torch.c_lib', [])
 
 # Package meta-data.
 NAME = 'byteps'
@@ -484,16 +484,18 @@ def build_torch_extension(build_ext, options, torch_version):
             'byteps build with GPU support was requested, but this PyTorch '
             'installation does not support CUDA.')
 
-    # Update HAVE_CUDA to mean that PyTorch supports CUDA. Internally, we will be checking
-    # HOROVOD_GPU_(ALLREDUCE|ALLGATHER|BROADCAST) to decide whether we should use GPU
-    # version or transfer tensors to CPU memory for those operations.
+    # Update HAVE_CUDA to mean that PyTorch supports CUDA.
     updated_macros = set_macro(
         options['MACROS'], 'HAVE_CUDA', str(int(have_cuda)))
 
     # Export TORCH_VERSION equal to our representation of torch.__version__. Internally it's
     # used for backwards compatibility checks.
+    # TODO: better handle torch version with ".post"
+    # updated_macros = set_macro(
+    #    updated_macros, 'TORCH_VERSION', str(torch_version))
     updated_macros = set_macro(
-        updated_macros, 'TORCH_VERSION', str(torch_version))
+        updated_macros, 'TORCH_VERSION', str(1000000000))
+
 
     # Always set _GLIBCXX_USE_CXX11_ABI, since PyTorch can only detect whether it was set to 1.
     import torch
@@ -512,9 +514,11 @@ def build_torch_extension(build_ext, options, torch_version):
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
                          include_dirs=options['INCLUDES'],
-                         sources=options['SOURCES'] + ['byteps/pytorch/c_lib.cc',
-                                                       'byteps/pytorch/ready_event.cc',
-                                                       'byteps/pytorch/cuda_util.cc'],
+                         sources=options['SOURCES'] + ['byteps/torch/ops.cc',
+                                                       'byteps/torch/ready_event.cc',
+                                                       'byteps/torch/cuda_util.cc',
+                                                       'byteps/torch/adapter.cc',
+                                                       'byteps/torch/handle_manager.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
                          extra_link_args=options['LINK_FLAGS'],
                          extra_objects = ['3rdparty/lib/libps.a'],
