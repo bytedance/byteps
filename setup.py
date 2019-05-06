@@ -445,6 +445,12 @@ def build_mx_extension(build_ext, options):
     # mxnet_lib.include_dirs += [os.path.join(MXNET_ROOT, 'include/'), os.path.join(MXNET_ROOT, '3rdparty/ps-lite/include/')]
     build_ext.build_extension(mxnet_lib)
 
+def dummy_import_torch():
+    try:
+        import torch
+    except:
+        pass
+
 def check_torch_version():
     try:
         import torch
@@ -525,6 +531,12 @@ class custom_build_ext(build_ext):
     def build_extensions(self):
         options = get_common_options(self)
         built_plugins = []
+
+        # If PyTorch is installed, it must be imported before others, otherwise
+        # we may get an error: dlopen: cannot load any more object with static TLS
+        if not os.environ.get('BYTEPS_WITHOUT_PYTORCH'):
+            dummy_import_torch()
+
         if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
             try:
                 build_mx_extension(self, options)
