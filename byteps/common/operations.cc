@@ -432,6 +432,16 @@ void InitTensor(BPSContext &context,
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
 }
 
+Status EnqueueTensorInit(BPSContext &context,
+                  std::shared_ptr<Tensor> tensor,
+                  std::shared_ptr<ReadyEvent> ready_event,
+                  const std::string &name, const int device,
+                  StatusCallback callback) {
+    InitTensor(context, tensor, ready_event, name, device);
+    callback(Status::OK());
+    return Status::OK();
+}
+
 BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
