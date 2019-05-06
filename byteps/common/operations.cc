@@ -371,16 +371,15 @@ Status EnqueueTensorPull(BPSContext &context,
     return Status::OK();
 }
 
-Status InitTensor(BPSContext &context,
+void InitTensor(BPSContext &context,
                   std::shared_ptr<Tensor> tensor,
                   std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device,
-                  StatusCallback callback) {
+                  const std::string &name, const int device) {
 
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
         auto key_list = context.key_list;
-        BPS_LOG(TRACE) << "Init " << name
+        BPS_LOG(TRACE) << "Init (push) " << name
                        << ", size=" << tensor->size()
                        << ", parts=" << key_list.size()
                        << ", device=" << device;
@@ -425,12 +424,12 @@ Status InitTensor(BPSContext &context,
         }
         BPS_CHECK_EQ(accumulated, size);
         BPS_CHECK_EQ((unsigned int) i, key_list.size());
+    } else {
+        BPS_LOG(TRACE) << "Init (wait for barrier) " << name
+                       << ", size=" << tensor->size();
     }
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
-
-    callback(Status::OK());
-    return Status::OK();
 }
 
 BPSContext& GetContextFromName(const std::string &name) {

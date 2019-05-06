@@ -58,7 +58,7 @@ int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 BytePSRole BytePSGlobal::_my_role;
-uint32_t BytePSGlobal::_partition_bytes = 2048000;
+uint32_t BytePSGlobal::_partition_bytes = 1024000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 

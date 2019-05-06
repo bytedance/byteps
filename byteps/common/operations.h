@@ -70,11 +70,10 @@ Status EnqueueTensorPull(BPSContext &context,
                         const int device, const int priority, const int version,
                         StatusCallback callback, QueueType last_op);
 
-Status InitTensor(BPSContext &context,
+void InitTensor(BPSContext &context,
                   std::shared_ptr<Tensor> tensor,
                   std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device,
-                  StatusCallback callback);
+                  const std::string &name, const int device);
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);

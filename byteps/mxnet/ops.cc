@@ -50,21 +50,6 @@ inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
     }
 }
 
-void DoInit(BPSContext &context, NDArray* input, const std::string& name, Callback on_complete) {
-    ThrowIfError(common::CheckInitialized());
-
-    auto device = TensorUtil::GetDevice(input);
-    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-
-    auto init_result = common::InitTensor(context, byteps_input, nullptr,
-                                  name, device,
-                                  [on_complete](const Status& status) {
-                                    InvokeCompleteCallback(on_complete, status);
-                                  });
-
-    ThrowIfError(init_result);
-}
-
 void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, int version, int priority,
                  Callback on_complete) {
     ThrowIfError(common::CheckInitialized());
@@ -120,14 +105,10 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     if (!common::IsTensorInitialized(tensor_name, size, device, dtype)) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
-        auto init_async_fn = [&context, tensor, tensor_name](RunContext rctx,
-                                      Callback on_complete) mutable {
-            DoInit(context, tensor, tensor_name, on_complete);
-        };
-
-        Engine::Get()->PushAsync(init_async_fn, tensor->ctx(),
-                                {}, {tensor->var()},
-                                FnProperty::kNormal, 0, "BytePSInit");
+        auto device = TensorUtil::GetDevice(tensor);
+        auto byteps_input = std::make_shared<MXTensor<NDArray>>(tensor);
+        // the following init is blocking, in order to guarantee the order
+        common::InitTensor(context, byteps_input, nullptr, tensor_name, device);
     }
 
     auto& context = common::GetContextFromName(tensor_name);
