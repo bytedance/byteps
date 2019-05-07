@@ -26,8 +26,8 @@ import torch
 # PyTorch v2 API starts with 1.0.0 (including nightly builds)
 _v2_api = LooseVersion(torch.__version__) >= LooseVersion('1.0.0')
 if _v2_api:
-    from byteps.common import BytePSBasics as _BytePSBasics
     from byteps.torch import c_lib
+    from byteps.common import BytePSBasics as _BytePSBasics
     _basics = _BytePSBasics(__file__, 'c_lib')
     _NULL = ""
 else:

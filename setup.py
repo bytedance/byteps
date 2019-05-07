@@ -525,7 +525,7 @@ def build_torch_extension(build_ext, options, torch_version):
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
-    # Patch an existing torch_mpi_lib_v2 extension object.
+    # Patch an existing pytorch_lib extension object.
     for k, v in ext.__dict__.items():
         pytorch_lib.__dict__[k] = v
     build_ext.build_extension(pytorch_lib)
