@@ -50,7 +50,7 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 
 } // namespace
 
-int DoPushPull(::torch::Tensor tensor, int average,
+int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
                 const std::string& name, int version, int priority) {
     ThrowIfError(common::CheckInitialized());
 
@@ -58,6 +58,7 @@ int DoPushPull(::torch::Tensor tensor, int average,
     auto device = GetDeviceID(tensor);
     auto ready_event = RecordReadyEvent(device);
     auto byteps_input = std::make_shared<TorchTensor>(tensor);
+    auto byteps_output = std::make_shared<TorchTensor>(output);
 
     std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
     size_t size = byteps_input->size();
@@ -74,7 +75,7 @@ int DoPushPull(::torch::Tensor tensor, int average,
     auto& context = common::GetContextFromName(tensor_name);
 
     auto enqueue_result = common::EnqueueTensorPush(
-        context, byteps_input, ready_event,
+        context, byteps_input, byteps_output, ready_event,
         tensor_name, device, priority, version,
         [handle, average, tensor](const Status& status) mutable {
             // Will execute in the `device` context.

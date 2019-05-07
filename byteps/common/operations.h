@@ -58,6 +58,7 @@ int byteps_local_size();
 // Below are all for Framework plugins
 Status EnqueueTensorPush(BPSContext &context,
                         std::shared_ptr<Tensor> input,
+                        std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,

@@ -279,6 +279,7 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
 
 Status EnqueueTensorPush(BPSContext &context,
                         std::shared_ptr<Tensor> input,
+                        std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,
@@ -289,7 +290,7 @@ Status EnqueueTensorPush(BPSContext &context,
     e->tensor_name = name;
     e->context = &context;
     e->tensor = input;
-    e->output = NULL;
+    e->output = output;
     e->ready_event = ready_event;
     e->device = device;
     e->priority = priority;

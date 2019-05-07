@@ -32,7 +32,7 @@ using namespace byteps::common;
 
 #define PUSHPULL_H(torch_Tensor, THTensor)                                    \
   extern "C" int byteps_torch_push_pull_async_##torch_Tensor(                 \
-      THTensor* tensor, int average, char* name, int version, int priority);
+      THTensor* tensor, THTensor* output, int average, char* name, int version, int priority);
 
 PUSHPULL_H(torch_IntTensor, THIntTensor)
 PUSHPULL_H(torch_LongTensor, THLongTensor)

@@ -62,7 +62,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
     }
 
     auto enqueue_result =
-        common::EnqueueTensorPush(context, byteps_input, nullptr,
+        common::EnqueueTensorPush(context, byteps_input, nullptr, nullptr,
                                name, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
