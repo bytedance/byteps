@@ -520,8 +520,13 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/torch/adapter.cc',
                                                        'byteps/torch/handle_manager.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
-                         extra_link_args=options['LINK_FLAGS'],
-                         extra_objects = ['3rdparty/lib/libps.a'],
+                         extra_link_args=options['LINK_FLAGS'] + ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
+                                                                  '-L3rdparty/ps-lite/deps/lib',
+                                                                  '-lrdmacm',
+                                                                  '-libverbs',
+                                                                  '-lprotobuf',
+                                                                  '-lzmq'],
+                         extra_objects = ['3rdparty/ps-lite/build/libps.a'],
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
