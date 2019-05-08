@@ -7,6 +7,7 @@
 import io
 import os
 import sys
+import re
 from shutil import rmtree
 import textwrap
 import shlex
@@ -451,16 +452,39 @@ def dummy_import_torch():
     except:
         pass
 
+def parse_version(version_str):
+    if "dev" in version_str:
+        return 9999999999
+    m = re.match('^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?', version_str)
+    if m is None:
+        return None
+
+    # turn version string to long integer
+    version = int(m.group(1)) * 10 ** 9
+    if m.group(2) is not None:
+        version += int(m.group(2)) * 10 ** 6
+    if m.group(3) is not None:
+        version += int(m.group(3)) * 10 ** 3
+    if m.group(4) is not None:
+        version += int(m.group(4))
+    return version
+
 def check_torch_version():
     try:
         import torch
-        if torch.__version__ < '1.0.0':
+        if torch.__version__ < '1.0.1':
             raise DistutilsPlatformError(
                 'Your torch version %s is outdated.  '
-                'Horovod requires torch>=1.0.0' % torch.__version__)
-        return torch.__version__
+                'Horovod requires torch>=1.0.1' % torch.__version__)
     except ImportError:
             print('import torch failed, is it installed?\n\n%s' % traceback.format_exc())
+
+    # parse version
+    version = parse_version(torch.__version__)
+    if version is None:
+        raise DistutilsPlatformError(
+            'Unable to determine PyTorch version from the version string \'%s\'' % torch.__version__)
+    return version
 
 def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
     try:
@@ -490,12 +514,8 @@ def build_torch_extension(build_ext, options, torch_version):
 
     # Export TORCH_VERSION equal to our representation of torch.__version__. Internally it's
     # used for backwards compatibility checks.
-    # TODO: better handle torch version with ".post"
-    # updated_macros = set_macro(
-    #    updated_macros, 'TORCH_VERSION', str(torch_version))
     updated_macros = set_macro(
-        updated_macros, 'TORCH_VERSION', str(1000000000))
-
+       updated_macros, 'TORCH_VERSION', str(torch_version))
 
     # Always set _GLIBCXX_USE_CXX11_ABI, since PyTorch can only detect whether it was set to 1.
     import torch
