@@ -246,10 +246,9 @@ Status CheckInitialized() {
 }
 
 void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
-                    std::vector<std::shared_ptr<TensorTableEntry> > &partitions,
-                    bool is_reduce_push) {
+                    std::vector<std::shared_ptr<TensorTableEntry> > &partitions) {
     BPS_CHECK(entry->counter_ptr) << entry->tensor_name << " counter pointer is null";
-    auto size = is_reduce_push ? entry->tensor->size() : entry->output->size();
+    auto size = entry->tensor ? entry->tensor->size() : entry->output->size();
     auto bound = BytePSGlobal::GetPartitionBound();
     auto accumulated = 0;
     int i = 0;
@@ -267,8 +266,8 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
         e->callback = entry->callback;
         e->cpubuff = entry->cpubuff;
         e->last_op = entry->last_op;
-        e->tensor = is_reduce_push ? BPS_CHECK_NOTNULL(entry->tensor) : NULL;
-        e->output = is_reduce_push ? NULL : BPS_CHECK_NOTNULL(entry->output);
+        e->tensor = entry->tensor;
+        e->output = entry->output;
         e->offset = accumulated;
         e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
         e->counter_ptr = entry->counter_ptr;
@@ -289,6 +288,9 @@ Status EnqueueTensorPush(BPSContext &context,
                         const int device, const int priority, const int version,
                         StatusCallback callback, QueueType last_op) {
     BPS_CHECK(input) << name << " tensor is null";
+    if (output) {
+        BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
+    }
 
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
     e->tensor_name = name;
@@ -306,7 +308,7 @@ Status EnqueueTensorPush(BPSContext &context,
     e->total_partnum = context.key_list.size();
 
     std::vector<std::shared_ptr<TensorTableEntry> > partitions;
-    PartitionTensor(e, partitions, true);
+    PartitionTensor(e, partitions);
     BPS_CHECK_EQ(context.key_list.size(), partitions.size()) << name
             << ": " << context.key_list.size()
             << ", " << partitions.size();
@@ -326,6 +328,7 @@ Status EnqueueTensorPush(BPSContext &context,
     }
     BPS_CHECK_EQ(accumulated, e->tensor->size()) << "accumulated partition size not equal to original tensor size";
 
+    BPS_LOG(TRACE) << "EnqueueTensorPush finished: " << name;
     return Status::OK();
 }
 
@@ -353,7 +356,7 @@ Status EnqueueTensorPull(BPSContext &context,
     e->total_partnum = context.key_list.size();
 
     std::vector<std::shared_ptr<TensorTableEntry> > partitions;
-    PartitionTensor(e, partitions, false);
+    PartitionTensor(e, partitions);
     BPS_CHECK_EQ(context.key_list.size(), partitions.size()) << name
             << ": " << context.key_list.size()
             << ", " << partitions.size();
@@ -373,6 +376,7 @@ Status EnqueueTensorPull(BPSContext &context,
     }
     BPS_CHECK_EQ(accumulated, e->output->size()) << "accumulated partition size not equal to original tensor size";
 
+    BPS_LOG(TRACE) << "EnqueueTensorPull finished: " << name;
     return Status::OK();
 }
 
@@ -392,6 +396,12 @@ void InitTensor(BPSContext &context,
         // get metadata
         size_t size = tensor->size();
         const int dtype = tensor->dtype();
+
+        if (ready_event) {
+            while (!ready_event->Ready()) {
+                std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+            }
+        }
 
         char* data;
         if (device != CPU_DEVICE_ID) { // GPU
@@ -435,6 +445,7 @@ void InitTensor(BPSContext &context,
     }
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+    BPS_LOG(TRACE) << "Init finish " << name;
 }
 
 Status EnqueueTensorInit(BPSContext &context,

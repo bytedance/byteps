@@ -28,7 +28,11 @@ namespace common {
 class BytePSScheduledQueue {
 
 public:
-    BytePSScheduledQueue(uint64_t credits) { _credits = credits; }
+    BytePSScheduledQueue(QueueType type, uint64_t credits) {
+        _qt = type;
+        _credits = credits;
+    }
+    QueueType getQueueType() { return _qt; }
     void addTask(std::shared_ptr<TensorTableEntry>);
     std::shared_ptr<TensorTableEntry> getTask();
     uint32_t pendingSize();
@@ -39,6 +43,7 @@ private:
     std::vector<std::shared_ptr<TensorTableEntry>> _sq;
     std::mutex _mutex;
     std::atomic<uint64_t> _credits;
+    QueueType _qt;
 };
 
 

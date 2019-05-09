@@ -27,6 +27,7 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
         [](std::shared_ptr<TensorTableEntry> a, std::shared_ptr<TensorTableEntry> b) {
             return (a->priority > b->priority); // from large to small
     });
+    BPS_LOG(TRACE) << "Queue " << _qt << " addTask: " << entry->tensor_name;
     return;
 }
 
@@ -45,6 +46,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
         task = *it;
         _sq.erase(it);
         _credits -= task->len;
+        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name;
         return task;
     }
     return nullptr;

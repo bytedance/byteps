@@ -51,7 +51,7 @@ BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
-        _queues[queueType] = new BytePSScheduledQueue(34359738368);
+        _queues[queueType] = new BytePSScheduledQueue(queueType, 34359738368);
     }
 }
 
