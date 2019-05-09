@@ -39,7 +39,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
                 continue;
             }
         }
-        if ((*it)->len > task->len) {
+        if ((*it)->len > _credits) {
             continue;
         }
         task = *it;
