@@ -18,16 +18,6 @@ from setuptools.command.build_ext import build_ext
 from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError
 import traceback
 
-# Not sure why the OS global env does not work
-# Manually add MXNet include path
-# TODO: find this path automatically
-if os.path.exists("/root/mxnet-rdma"): 
-    tmp_mxnet_dir = "/root/mxnet-rdma"
-else:
-    tmp_mxnet_dir = "/root/mxnet15-rdma"
-MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
-os.environ["MXNET_INCLUDE_PATH"] = os.path.join(MXNET_ROOT, "include/")
-
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
 pytorch_lib = Extension('byteps.torch.c_lib', [])
 
@@ -230,7 +220,11 @@ def get_common_options(build_ext):
     link_flags = get_link_flags(build_ext)
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
-    INCLUDES = ['3rdparty/ps-lite/include']
+    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
+    if server_mxnet_path:
+        INCLUDES = [server_mxnet_path + '/3rdparty/ps-lite/include']
+    else:
+        INCLUDES = ['3rdparty/ps-lite/include']
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
                'byteps/common/global.cc',
@@ -247,6 +241,11 @@ def get_common_options(build_ext):
     LIBRARY_DIRS = []
     LIBRARIES = []
 
+    nccl_include_dirs, nccl_lib_dirs, nccl_libs = get_nccl_vals()
+    INCLUDES += nccl_include_dirs
+    LIBRARY_DIRS += nccl_lib_dirs
+    LIBRARIES += nccl_libs
+
     return dict(MACROS=MACROS,
                 INCLUDES=INCLUDES,
                 SOURCES=SOURCES,
@@ -255,28 +254,30 @@ def get_common_options(build_ext):
                 LIBRARY_DIRS=LIBRARY_DIRS,
                 LIBRARIES=LIBRARIES)
 
-
 def check_mx_version():
     try:
         import mxnet as mx
         if mx.__version__ < '1.4.0':
             raise DistutilsPlatformError(
                 'Your MXNet version %s is outdated.  '
-                'byteps requires mxnet>=1.4.0' % mx.__version__)
+                'BytePS requires mxnet>=1.4.0' % mx.__version__)
     except ImportError:
         raise DistutilsPlatformError(
             'import mxnet failed, is it installed?\n\n%s' % traceback.format_exc())
     except AttributeError:
         raise DistutilsPlatformError(
-            'Your MXNet version is outdated. byteps requires mxnet>1.3.0')
+            'Your MXNet version is outdated. BytePS requires mxnet>=1.4.0')
 
 def get_mx_include_dirs():
     import mxnet as mx
-    if mx.__version__ < '1.4.0':
+    try:
+        path = mx.libinfo.find_include_path()
+        return path
+    except:
+        # Try to find the path automatically
+        tmp_mxnet_dir = os.getenv("BYTEPS_SERVER_MXNET_PATH", "/root/mxnet15-rdma")
+        MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
         return os.path.join(MXNET_ROOT, 'include/')
-    else:
-        return [mx.libinfo.find_include_path()]
-
 
 def get_mx_lib_dirs():
     import mxnet as mx
@@ -309,7 +310,7 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
     raise DistutilsPlatformError(last_err)
 
 def get_mx_flags(build_ext, cpp_flags):
-    mx_include_dirs = get_mx_include_dirs()
+    mx_include_dirs = [get_mx_include_dirs()]
     mx_lib_dirs = get_mx_lib_dirs()
     mx_libs = get_mx_libs(build_ext, mx_lib_dirs, cpp_flags)
 
@@ -359,22 +360,22 @@ def get_cuda_dirs(build_ext, cpp_flags):
     cuda_include_dirs = []
     cuda_lib_dirs = []
 
-    cuda_home = os.environ.get('HOROVOD_CUDA_HOME')
+    cuda_home = os.environ.get('BYTEPS_CUDA_HOME')
     if cuda_home:
         cuda_include_dirs += ['%s/include' % cuda_home]
         cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
 
-    cuda_include = os.environ.get('HOROVOD_CUDA_INCLUDE')
+    cuda_include = os.environ.get('BYTEPS_CUDA_INCLUDE')
     if cuda_include:
         cuda_include_dirs += [cuda_include]
 
-    cuda_lib = os.environ.get('HOROVOD_CUDA_LIB')
+    cuda_lib = os.environ.get('BYTEPS_CUDA_LIB')
     if cuda_lib:
         cuda_lib_dirs += [cuda_lib]
 
     if not cuda_include_dirs and not cuda_lib_dirs:
         # default to /usr/local/cuda
-        cuda_include_dirs += ['/usr/local/cuda/include', '/usr/local/nccl/include']
+        cuda_include_dirs += ['/usr/local/cuda/include']
         cuda_lib_dirs += ['/usr/local/cuda/lib', '/usr/local/cuda/lib64']
 
     try:
@@ -389,14 +390,32 @@ def get_cuda_dirs(build_ext, cpp_flags):
     except (CompileError, LinkError):
         raise DistutilsPlatformError(
             'CUDA library was not found (see error above).\n'
-            'Please specify correct CUDA location with the HOROVOD_CUDA_HOME '
-            'environment variable or combination of HOROVOD_CUDA_INCLUDE and '
-            'HOROVOD_CUDA_LIB environment variables.\n\n'
-            'HOROVOD_CUDA_HOME - path where CUDA include and lib directories can be found\n'
-            'HOROVOD_CUDA_INCLUDE - path to CUDA include directory\n'
-            'HOROVOD_CUDA_LIB - path to CUDA lib directory')
+            'Please specify correct CUDA location with the BYTEPS_CUDA_HOME '
+            'environment variable or combination of BYTEPS_CUDA_INCLUDE and '
+            'BYTEPS_CUDA_LIB environment variables.\n\n'
+            'BYTEPS_CUDA_HOME - path where CUDA include and lib directories can be found\n'
+            'BYTEPS_CUDA_INCLUDE - path to CUDA include directory\n'
+            'BYTEPS_CUDA_LIB - path to CUDA lib directory')
 
     return cuda_include_dirs, cuda_lib_dirs
+
+def get_nccl_vals():
+    nccl_include_dirs = []
+    nccl_lib_dirs = []
+    nccl_libs = []
+
+    nccl_home = os.environ.get('BYTEPS_NCCL_HOME', '/usr/local/nccl')
+    if nccl_home:
+        nccl_include_dirs += ['%s/include' % nccl_home]
+        nccl_lib_dirs += ['%s/lib' % nccl_home, '%s/lib64' % nccl_home]
+
+    nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'STATIC')
+    if nccl_link_mode.upper() == 'SHARED':
+        nccl_libs += ['nccl']
+    else:
+        nccl_libs += ['nccl_static']
+
+    return nccl_include_dirs, nccl_lib_dirs, nccl_libs
 
 def build_mx_extension(build_ext, options):
     check_mx_version()
@@ -407,12 +426,10 @@ def build_mx_extension(build_ext, options):
     macro_have_cuda = check_macro(options['MACROS'], 'HAVE_CUDA')
     if not mx_have_cuda and macro_have_cuda:
         raise DistutilsPlatformError(
-            'Horovod build with GPU support was requested, but this MXNet '
+            'BytePS build with GPU support was requested, but this MXNet '
             'installation does not support CUDA.')
 
-    # Update HAVE_CUDA to mean that MXNet supports CUDA. Internally, we will be checking
-    # HOROVOD_GPU_(ALLREDUCE|ALLGATHER|BROADCAST) to decide whether we should use GPU
-    # version or transfer tensors to CPU memory for those operations.
+    # Update HAVE_CUDA to mean that MXNet supports CUDA.
     if mx_have_cuda and not macro_have_cuda:
         cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
         options['MACROS'] += [('HAVE_CUDA', '1')]
@@ -428,7 +445,7 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
 
     # use MXNet's DMLC headers first instead of ps-lite's
-    options['INCLUDES'].insert(0, os.environ["MXNET_INCLUDE_PATH"])
+    options['INCLUDES'].insert(0, get_mx_include_dirs())
     mxnet_lib.include_dirs = options['INCLUDES']
     mxnet_lib.sources = options['SOURCES'] + \
         ['byteps/mxnet/ops.cc',
@@ -439,12 +456,15 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         mx_compile_flags
     mxnet_lib.extra_link_args = options['LINK_FLAGS'] + mx_link_flags
-    mxnet_lib.extra_objects = ['3rdparty/lib/libps.a']
+    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
+    if server_mxnet_path:
+        # Hoepfully this will not mess with a different MXNet version
+        mxnet_lib.extra_objects = [server_mxnet_path + '/3rdparty/ps-lite/build/libps.a']
+    else:
+        mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a']
     mxnet_lib.library_dirs = options['LIBRARY_DIRS']
     mxnet_lib.libraries = options['LIBRARIES']
 
-    # build mxnet from source code to have these headers
-    # mxnet_lib.include_dirs += [os.path.join(MXNET_ROOT, 'include/'), os.path.join(MXNET_ROOT, '3rdparty/ps-lite/include/')]
     build_ext.build_extension(mxnet_lib)
 
 def dummy_import_torch():
@@ -476,7 +496,7 @@ def check_torch_version():
         if torch.__version__ < '1.0.1':
             raise DistutilsPlatformError(
                 'Your torch version %s is outdated.  '
-                'Horovod requires torch>=1.0.1' % torch.__version__)
+                'BytePS requires torch>=1.0.1' % torch.__version__)
     except ImportError:
             print('import torch failed, is it installed?\n\n%s' % traceback.format_exc())
 
@@ -532,6 +552,19 @@ def build_torch_extension(build_ext, options, torch_version):
     else:
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
+
+    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
+    if server_mxnet_path:
+        extra_objects = []
+        extra_link_args = ['-Wl,-rpath,' + server_mxnet_path + '/lib',
+                           '-L' + server_mxnet_path + '/lib',
+                           '-lrdmacm', '-libverbs', '-lmxnet']
+    else:
+        extra_objects=['3rdparty/ps-lite/build/libps.a']
+        extra_link_args = ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
+                           '-L3rdparty/ps-lite/deps/lib',
+                           '-lrdmacm', '-libverbs', '-lprotobuf', '-lzmq']
+
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
                          include_dirs=options['INCLUDES'],
@@ -541,13 +574,8 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/torch/adapter.cc',
                                                        'byteps/torch/handle_manager.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
-                         extra_link_args=options['LINK_FLAGS'] + ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
-                                                                  '-L3rdparty/ps-lite/deps/lib',
-                                                                  '-lrdmacm',
-                                                                  '-libverbs',
-                                                                  '-lprotobuf',
-                                                                  '-lzmq'],
-                         extra_objects = ['3rdparty/ps-lite/build/libps.a'],
+                         extra_link_args=options['LINK_FLAGS'] + extra_link_args,
+                         extra_objects=extra_objects,
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
@@ -564,7 +592,7 @@ class custom_build_ext(build_ext):
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS
-        if not os.environ.get('BYTEPS_WITHOUT_PYTORCH'):
+        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
             dummy_import_torch()
 
         if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
@@ -573,7 +601,7 @@ class custom_build_ext(build_ext):
                 built_plugins.append(True)
                 print('INFO: MXNet extension is built successfully.')
             except:
-                if not os.environ.get('BYTEPS_WITH_MXNET'):
+                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
                     print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
                           '%s' % traceback.format_exc())
                     built_plugins.append(False)
