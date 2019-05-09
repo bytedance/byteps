@@ -374,7 +374,7 @@ def get_cuda_dirs(build_ext, cpp_flags):
 
     if not cuda_include_dirs and not cuda_lib_dirs:
         # default to /usr/local/cuda
-        cuda_include_dirs += ['/usr/local/cuda/include']
+        cuda_include_dirs += ['/usr/local/cuda/include', '/usr/local/nccl/include']
         cuda_lib_dirs += ['/usr/local/cuda/lib', '/usr/local/cuda/lib64']
 
     try:

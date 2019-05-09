@@ -17,6 +17,20 @@
 #define BYTEPS_COMMUNICATOR_H
 
 #include <cstdlib> 
+#include <vector>
+#include <stdio.h>
+#include <time.h>
+#include <sys/mman.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <nccl.h>
+#include "logging.h"
 
 #ifdef BYTEPS_USE_MPI
 
@@ -25,15 +39,18 @@
 
 #endif // BYTEPS_USE_MPI
 
+#define BASE_PORT 10000
+
 namespace byteps {
 namespace common {
+enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
 class BytePSComm {
 
 public:
     BytePSComm() { _comm = nullptr; }
 
-    virtual void init(int* rank, int* size, int* local_rank, int* local_size) = 0;
+    virtual void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) = 0;
     virtual int sendSignal(int destination, void* data, int len) = 0;
     virtual int recvSignal(int* source, void* data, int len) = 0;
     virtual int broadcastSignal(int root, void* data, int len) = 0;
@@ -56,11 +73,12 @@ protected:
 class BytePSCommSocket : public BytePSComm {
 
 public:
-    void init(int* rank, int* size, int* local_rank, int* local_size);
+    void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
     int recvSignal(int* source, void* data, int len);
     int broadcastSignal(int root, void* data, int len);
 
+    std::vector<int> sockfd_list_;
 };
 
 #ifdef BYTEPS_USE_MPI
@@ -75,7 +93,7 @@ public:
         }
     }
 
-    void init(int* rank, int* size, int* local_rank, int* local_size);
+    void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
     int recvSignal(int* source, void* data, int len);
     int broadcastSignal(int root, void* data, int len);

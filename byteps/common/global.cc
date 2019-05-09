@@ -69,9 +69,7 @@ void BytePSGlobal::Init() {
     _comm = std::make_shared<BytePSCommSocket>();
 #endif // BYTEPS_USE_MPI
 
-    _comm->init(&_rank, &_size, &_local_rank, &_local_size);
-
-    _my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+    _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_my_role);
 
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));

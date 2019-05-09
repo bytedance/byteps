@@ -34,12 +34,12 @@ enum class LogLevel {
   if (!(x))                                                           \
   common::LogMessageFatal(__FILE__, __LINE__) << "Check failed: " #x << ' '
 
-#define BPS_CHECK_LT(x, y) CHECK((x) < (y))
-#define BPS_CHECK_GT(x, y) CHECK((x) > (y))
-#define BPS_CHECK_LE(x, y) CHECK((x) <= (y))
-#define BPS_CHECK_GE(x, y) CHECK((x) >= (y))
-#define BPS_CHECK_EQ(x, y) CHECK((x) == (y))
-#define BPS_CHECK_NE(x, y) CHECK((x) != (y))
+#define BPS_CHECK_LT(x, y) BPS_CHECK((x) < (y))
+#define BPS_CHECK_GT(x, y) BPS_CHECK((x) > (y))
+#define BPS_CHECK_LE(x, y) BPS_CHECK((x) <= (y))
+#define BPS_CHECK_GE(x, y) BPS_CHECK((x) >= (y))
+#define BPS_CHECK_EQ(x, y) BPS_CHECK((x) == (y))
+#define BPS_CHECK_NE(x, y) BPS_CHECK((x) != (y))
 #define BPS_CHECK_NOTNULL(x)                                                                 \
   ((x) == NULL                                                                           \
    ? common::LogMessageFatal(__FILE__, __LINE__) << "Check  notnull: " #x << ' ', \
@@ -57,6 +57,17 @@ enum class LogLevel {
     CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)                   \
         << "CUDA: " << cudaGetErrorString(e);                                  \
   }
+
+/*
+ * \brief Protected NCCL call.
+ */
+#define NCCLCHECK(cmd) do {                        \
+  ncclResult_t r = (cmd);                          \
+  CHECK(r == ncclSuccess)                          \
+    << "Failed, NCCL error %s:%d '%s'\n"           \
+    << __FILE__,__LINE__,ncclGetErrorString(r);    \
+    exit(EXIT_FAILURE);                            \
+} while(0)
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:

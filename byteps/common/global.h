@@ -33,8 +33,6 @@
 namespace byteps {
 namespace common {
 
-enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
-
 const int ThreadNum = QueueNum;
 
 struct PSKV {
