@@ -25,21 +25,21 @@ TorchTensor::TorchTensor(::torch::Tensor tensor) : tensor_(tensor) {}
 const DataType TorchTensor::dtype() const {
   switch (tensor_.scalar_type()) {
   case ::torch::kByte:
-    return common::BYTEPS_UINT8;
+    return DataType::BYTEPS_UINT8;
   case ::torch::kChar:
-    return common::BYTEPS_INT8;
+    return DataType::BYTEPS_INT8;
   // case ::torch::kShort:
-  //   return common::BYTEPS_INT16;
+  //   return DataType::BYTEPS_INT16;
   case ::torch::kInt:
-    return common::BYTEPS_INT32;
+    return DataType::BYTEPS_INT32;
   case ::torch::kLong:
-    return common::BYTEPS_INT64;
+    return DataType::BYTEPS_INT64;
   case ::torch::kHalf:
-    return common::BYTEPS_FLOAT16;
+    return DataType::BYTEPS_FLOAT16;
   case ::torch::kFloat:
-    return common::BYTEPS_FLOAT32;
+    return DataType::BYTEPS_FLOAT32;
   case ::torch::kDouble:
-    return common::BYTEPS_FLOAT64;
+    return DataType::BYTEPS_FLOAT64;
   default:
     throw std::logic_error("Invalid or unsupported tensor type.");
   }

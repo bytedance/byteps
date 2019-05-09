@@ -42,9 +42,9 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_push_pull(grad[i], version=0, priority=index[i], name="gradient_"+str(index[i]))
+                byteps_push_pull(grad[i], version=0, priority=-index[i], name="gradient_"+str(index[i]))
         else:
-            byteps_push_pull(grad, version=0, priority=index, name="gradient_"+str(index))
+            byteps_push_pull(grad, version=0, priority=-index, name="gradient_"+str(index))
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)

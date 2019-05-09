@@ -19,35 +19,6 @@
 namespace byteps {
 namespace common {
 
-void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _sq.push_back(entry);
-    return;
-}
-
-std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    auto front = _sq.front();
-    _sq.pop_front();
-    return front;
-}
-
-std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::peekTask() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _sq.front();
-}
-
-uint32_t BytePSScheduledQueue::pendingSize() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _sq.size();
-}
-
-void BytePSScheduledQueue::reportFinish(std::shared_ptr<TensorTableEntry> e) {
-    // TODO: return credit based on TensorTableEntry
-    _finished++;
-    return;
-}
-
 // Define and init global variables
 std::mutex BytePSGlobal::_init_mutex;
 volatile bool BytePSGlobal::_initialized = false;
@@ -80,7 +51,7 @@ BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
-        _queues[queueType] = new BytePSScheduledQueue();
+        _queues[queueType] = new BytePSScheduledQueue(34359738368);
     }
 }
 

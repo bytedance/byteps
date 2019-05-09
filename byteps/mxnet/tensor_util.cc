@@ -38,7 +38,7 @@ const DataType TensorUtil::GetDType(NDArray* tensor) {
     return DataType::BYTEPS_INT64;
   default:
     throw std::logic_error("GetDType: Type " + std::to_string(tensor->dtype()) +
-                           " is not supported in MPI mode.");
+                           " is not supported.");
   }
 }
 

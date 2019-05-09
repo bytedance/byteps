@@ -16,8 +16,6 @@
 #ifndef BYTEPS_GLOBAL_H
 #define BYTEPS_GLOBAL_H
 
-#include <atomic>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -29,6 +27,7 @@
 #include "common.h"
 #include "logging.h"
 #include "communicator.h"
+#include "scheduled_queue.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -45,23 +44,6 @@ struct PSKV {
 };
 
 typedef void (*LoopFunction)();
-
-class BytePSScheduledQueue {
-
-public:
-    void addTask(std::shared_ptr<TensorTableEntry>);
-    std::shared_ptr<TensorTableEntry> peekTask();
-    std::shared_ptr<TensorTableEntry> getTask();
-    uint32_t pendingSize();
-    void reportFinish(std::shared_ptr<TensorTableEntry> e);
-    uint64_t getFinishedNum() { return _finished; }
-
-private:
-    // TODO: use priority queue or heap
-    std::deque<std::shared_ptr<TensorTableEntry>> _sq;
-    std::mutex _mutex;
-    std::atomic<uint64_t> _finished;
-};
 
 class BytePSGlobal {
 

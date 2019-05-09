@@ -29,8 +29,8 @@ bool RunReduceLoopOnce() {
     QueueType this_op = REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto reduce_stream =  BytePSGlobal::GetReduceStream();
-    if (q->pendingSize() > 0) {
-        auto task = q->getTask();
+    auto task = q->getTask();
+    if (task) {
         BPS_CHECK(task->tensor);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
@@ -50,6 +50,7 @@ bool RunReduceLoopOnce() {
         } else {
             task->callback(Status::OK());
         }
+        q->reportFinish(task->len);
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -60,9 +61,9 @@ bool RunReduceLoopOnce() {
 bool RunPushLoopOnce() {
     QueueType this_op = PUSH;
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
-    if (q->pendingSize() > 0) {
+    auto task = q->getTask();
+    if (task) {
         // TODO: allow merging
-        auto task = q->getTask();
         auto offset = task->offset;
         auto len = task->len;
 
@@ -85,7 +86,7 @@ bool RunPushLoopOnce() {
         auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
         BytePSGlobal::GetPS()->ZPush(
             pskv.keys, vals, pskv.lens, cmd,
-            [task, this_op]() {
+            [task, this_op, q]() {
                 if (task->last_op != this_op) {
                     BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
                                    << ", passing it to the next queue " << this_op+1;
@@ -99,6 +100,7 @@ bool RunPushLoopOnce() {
                         task->callback(Status::OK());
                     }
                 }
+                q->reportFinish(task->len);
             }
         );
     }
@@ -111,9 +113,9 @@ bool RunPushLoopOnce() {
 bool RunPullLoopOnce() {
     QueueType this_op = PULL;
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
-    if (q->pendingSize() > 0) {
+    auto task = q->getTask();
+    if (task) {
         // TODO: allow merging
-        auto task = q->getTask();
         auto offset = task->offset;
         auto len = task->len;
 
@@ -137,7 +139,7 @@ bool RunPullLoopOnce() {
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
             pskv.keys, vals, &pskv.lens, cmd,
-            [vals, task, this_op]() {
+            [vals, task, this_op, q]() {
                 delete vals;
                 if (task->last_op != this_op) {
                     BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name
@@ -146,6 +148,7 @@ bool RunPullLoopOnce() {
                 } else {
                     task->callback(Status::OK());
                 }
+                q->reportFinish(task->len);
             });
     }
     else {
@@ -158,8 +161,8 @@ bool RunBroadcastLoopOnce() {
     QueueType this_op = BROADCAST;
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
     auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
-    if (q->pendingSize() > 0) {
-        auto task = q->getTask();
+    auto task = q->getTask();
+    if (task) {
         BPS_CHECK(task->output);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
@@ -174,13 +177,14 @@ bool RunBroadcastLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
         }
 
-        BPS_CHECK_EQ(this_op, QueueNum-1) << "this should the last op";
+        BPS_CHECK_EQ(this_op, QueueNum-1) << "BROADCAST should be the last op";
         BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
         int v = task->counter_ptr.get()->fetch_add(1);
         if (v == (task->total_partnum-1)) {
             BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;
             task->callback(Status::OK());
         }
+        q->reportFinish(task->len);
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
