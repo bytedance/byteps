@@ -15,7 +15,8 @@ import subprocess
 
 from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.build_ext import build_ext
-from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError
+from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError, DistutilsSetupError
+from distutils import log as distutils_logger
 import traceback
 
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
@@ -220,11 +221,7 @@ def get_common_options(build_ext):
     link_flags = get_link_flags(build_ext)
     
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
-    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
-    if server_mxnet_path:
-        INCLUDES = [server_mxnet_path + '/3rdparty/ps-lite/include']
-    else:
-        INCLUDES = ['3rdparty/ps-lite/include']
+    INCLUDES = ['3rdparty/ps-lite/include']
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
                'byteps/common/global.cc',
@@ -456,12 +453,7 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         mx_compile_flags
     mxnet_lib.extra_link_args = options['LINK_FLAGS'] + mx_link_flags
-    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
-    if server_mxnet_path:
-        # Hoepfully this will not mess with a different MXNet version
-        mxnet_lib.extra_objects = [server_mxnet_path + '/3rdparty/ps-lite/build/libps.a']
-    else:
-        mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a']
+    mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a']
     mxnet_lib.library_dirs = options['LIBRARY_DIRS']
     mxnet_lib.libraries = options['LIBRARIES']
 
@@ -553,17 +545,10 @@ def build_torch_extension(build_ext, options, torch_version):
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
 
-    server_mxnet_path = os.getenv("BYTEPS_SERVER_MXNET_PATH", 0)
-    if server_mxnet_path:
-        extra_objects = []
-        extra_link_args = ['-Wl,-rpath,' + server_mxnet_path + '/lib',
-                           '-L' + server_mxnet_path + '/lib',
-                           '-lrdmacm', '-libverbs', '-lmxnet']
-    else:
-        extra_objects=['3rdparty/ps-lite/build/libps.a']
-        extra_link_args = ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
-                           '-L3rdparty/ps-lite/deps/lib',
-                           '-lrdmacm', '-libverbs', '-lprotobuf', '-lzmq']
+    extra_objects=['3rdparty/ps-lite/build/libps.a']
+    extra_link_args = ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
+                        '-L3rdparty/ps-lite/deps/lib',
+                        '-lrdmacm', '-libverbs', '-lprotobuf', '-lzmq']
 
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
@@ -587,6 +572,17 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
+        make_process = subprocess.Popen('make -j USE_RDMA=1',
+                                         cwd='3rdparty/ps-lite',
+                                         stdout=sys.stdout,
+                                         stderr=sys.stderr,
+                                         shell=True)
+        make_process.communicate()
+        if make_process.returncode :
+            raise DistutilsSetupError('An ERROR occured while running the '
+                                      'Makefile for the ps-lite library. '
+                                      'Exit code: {0}'.format(make_process.returncode))
+
         options = get_common_options(self)
         built_plugins = []
 
