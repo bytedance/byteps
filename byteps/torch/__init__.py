@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from byteps.torch.compression import Compression
-#from byteps.torch.ops import allgather, allgather_async, push_pull_async, push_pull_, push_pull_async_
-#from byteps.torch.ops import broadcast, broadcast_async, broadcast_, broadcast_async_
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import poll, synchronize
 from byteps.torch.ops import init, shutdown
@@ -207,6 +205,8 @@ def broadcast_parameters(params, root_rank):
     # Run asynchronous broadcasts.
     handles = []
     for name, p in params:
+        # Broadcast is implemented as push + pull in BytePS
+        # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
         handle = byteps_push_pull(p, True, name)
         handles.append(handle)
 

@@ -15,7 +15,7 @@
 # ==============================================================================
 """Gradient compression algorithms."""
 
-import torch
+import tensorflow as tf
 
 
 class Compressor(object):
@@ -50,9 +50,9 @@ class FP16Compressor(Compressor):
     def compress(tensor):
         """Downcasts the tensor to 16-bit."""
         tensor_compressed = tensor
-        if tensor.dtype.is_floating_point:
+        if tensor.dtype.is_floating:
             # Only allow compression from other floating point types
-            tensor_compressed = tensor.type(torch.float16)
+            tensor_compressed = tf.cast(tensor, dtype=tf.float16)
         return tensor_compressed, tensor.dtype
 
     @staticmethod
@@ -60,8 +60,8 @@ class FP16Compressor(Compressor):
         """Upcasts the tensor to the initialization dtype."""
         tensor_decompressed = tensor
         dtype = ctx
-        if dtype.is_floating_point:
-            tensor_decompressed = tensor.type(dtype)
+        if dtype.is_floating:
+            tensor_decompressed = tf.cast(tensor, dtype=dtype)
         return tensor_decompressed
 
 

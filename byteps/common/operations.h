@@ -51,8 +51,6 @@ int byteps_size();
 // Returns -1 if byteps is not initialized.
 int byteps_local_size();
 
-// C interface to return flag indicating whether MPI multi-threading is
-// supported. Returns -1 if byteps is not initialized.
 }
 
 // Below are all for Framework plugins
