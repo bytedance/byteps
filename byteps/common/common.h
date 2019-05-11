@@ -24,7 +24,6 @@
 #include <atomic>
 #include <vector>
 #include "ps/ps.h"
-#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -111,15 +110,9 @@ typedef struct BytePSContext {
     std::vector<ps::Key> key_list;
     void* cpubuff;
     size_t buff_len;
+    int priority;
+    bool initialized;
 } BPSContext;
-
-class OpContext;
-
-class PersistentBuffer {
-public:
-  virtual const void* AccessData(std::shared_ptr<OpContext> context) const = 0;
-  virtual ~PersistentBuffer() = default;
-};
 
 class Tensor {
 public:

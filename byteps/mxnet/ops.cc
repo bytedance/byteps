@@ -57,16 +57,12 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
 
-    if (device != CPU_DEVICE_ID) {
-      BPS_CHECK(context.cpubuff) << name << ": cpu buffer not initialized.";
-    }
-
     auto enqueue_result =
         common::EnqueueTensorPush(context, byteps_input, nullptr, nullptr,
                                name, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, PUSH); // last op
+                               }, common::PUSH); // last op
     ThrowIfError(enqueue_result);
 }
 
@@ -77,16 +73,12 @@ void DoSecondStage(BPSContext &context, NDArray* input, const std::string& name,
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
 
-    if (device != CPU_DEVICE_ID) {
-      BPS_CHECK(context.cpubuff) << name << ": cpu buffer not initialized.";
-    }
-
     auto enqueue_result =
         common::EnqueueTensorPull(context, byteps_input, nullptr,
                                name, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, BROADCAST); // last op
+                               }, common::BROADCAST); // last op
     ThrowIfError(enqueue_result);
 }
 
@@ -99,10 +91,9 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
 
     size_t size = TensorUtil::GetSize(tensor);
     auto device = TensorUtil::GetDevice(tensor);
-    auto dtype = TensorUtil::GetDType(tensor);
 
     // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size, device, dtype)) {
+    if (!common::IsTensorInitialized(tensor_name, size, (device != CPU_DEVICE_ID))) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         auto device = TensorUtil::GetDevice(tensor);

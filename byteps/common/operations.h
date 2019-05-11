@@ -81,7 +81,7 @@ void InitTensor(BPSContext &context,
                   const std::string &name, const int device);
 
 // Only call these in Framework plugins for the best performance
-bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);
+bool IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf);
 BPSContext& GetContextFromName(const std::string &name);
 
 } // namespace common

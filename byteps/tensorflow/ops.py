@@ -21,11 +21,15 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import os
+import ctypes
+
 import tensorflow as tf
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
+from byteps.common import get_ext_suffix
 from byteps.common import BytePSBasics as _BytePSBasics
 from byteps.tensorflow.util import _executing_eagerly
 
@@ -42,7 +46,7 @@ def _load_library(name):
     return library
 
 
-C_LIB = _load_library('c_lib.so')
+C_LIB = _load_library('c_lib' + get_ext_suffix())
 
 _basics = _BytePSBasics(__file__, 'c_lib')
 
@@ -54,6 +58,9 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 
+dll_path = os.path.join(os.path.dirname(__file__),
+                        'c_lib' + get_ext_suffix())
+TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 def _normalize_name(name):
     """Normalizes operation name to TensorFlow rules."""
@@ -71,6 +78,11 @@ def _push_pull(tensor, name=None):
     """
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    tensor_shape = tensor.get_shape()
+    num_rows = tensor_shape[0].value
+    num_cols = tensor_shape[1].value
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(name,
+                                                   ctypes.c_int(num_rows*num_cols))
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
@@ -100,6 +112,11 @@ def broadcast(tensor, root_rank, name=None):
     # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
+    tensor_shape = tensor.get_shape()
+    num_rows = tensor_shape[0].value
+    num_cols = tensor_shape[1].value
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(name,
+                                                   ctypes.c_int(num_rows*num_cols))
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 

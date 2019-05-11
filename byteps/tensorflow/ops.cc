@@ -19,18 +19,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
-
-#define EIGEN_USE_THREADS
-
-#if HAVE_CUDA
-#include "tensorflow/stream_executor/stream.h"
-#endif
-
-#include "../common/common.h"
-#include "../common/operations.h"
+#include "ops.h"
 
 using namespace tensorflow;
 using namespace byteps;
@@ -39,6 +28,8 @@ namespace byteps {
 namespace tensorflow {
 
 namespace {
+
+std::atomic_int tensor_count;
 
 Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
@@ -74,28 +65,16 @@ common::Status ConvertStatus(const Status& status) {
   }
 }
 
-#if HAVE_CUDA
-class TFReadyEvent : public common::ReadyEvent {
-public:
-  TFReadyEvent(DeviceContext* device_context);
-  bool Ready() const override;
+int GetDeviceID(OpKernelContext* context) {
+  int device = CPU_DEVICE_ID;
+  if (context->device() != nullptr &&
+      context->device()->tensorflow_gpu_device_info() != nullptr) {
+    device = context->device()->tensorflow_gpu_device_info()->gpu_id;
+  }
+  return device;
+}
 
-private:
-  std::shared_ptr<perftools::gputools::Event> event_;
-};
-#endif
-
-class TFTensor : public common::Tensor {
-public:
-  TFTensor(::tensorflow::Tensor& tensor);
-  virtual const common::DataType dtype() const override;
-  virtual const common::TensorShape shape() const override;
-  virtual const void* data() const override;
-  virtual int64_t size() const override;
-
-protected:
-  ::tensorflow::Tensor tensor_;
-};
+} // namespace
 
 #if HAVE_CUDA
 TFReadyEvent::TFReadyEvent(DeviceContext* device_context) {
@@ -153,15 +132,6 @@ const void* TFTensor::data() const { return (const void*)tensor_.tensor_data().d
 
 int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
-int GetDeviceID(OpKernelContext* context) {
-  int device = CPU_DEVICE_ID;
-  if (context->device() != nullptr &&
-      context->device()->tensorflow_gpu_device_info() != nullptr) {
-    device = context->device()->tensorflow_gpu_device_info()->gpu_id;
-  }
-  return device;
-}
-
 // On GPU this event will signal that data is ready, and tensors are
 // allocated.
 common::ReadyEvent* RecordReadyEvent(OpKernelContext* context) {
@@ -174,7 +144,15 @@ common::ReadyEvent* RecordReadyEvent(OpKernelContext* context) {
   return nullptr;
 }
 
-} // namespace
+extern "C" void byteps_tensorflow_declare_tensor(const std::string& name, int size) {
+    // For now, we always allocate cpu buffer
+    // TODO: get the device and decide whether to allocate cpu buffer
+    if (!common::IsTensorInitialized(name, size, true)){
+        auto& byteps_context = common::GetContextFromName(name);
+        byteps_context.priority = - tensor_count.fetch_add(1);
+    }
+    return;
+}
 
 class BytePSPushPullOp : public AsyncOpKernel {
 public:
@@ -188,8 +166,6 @@ public:
     auto node_name = name();
     auto device = GetDeviceID(context);
     auto tensor = context->input(0);
-    auto version = context->input(1);
-    auto priority = context->input(2);
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, tensor.shape(), &output), done);
@@ -197,27 +173,20 @@ public:
     auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
 
     auto byteps_input = std::make_shared<TFTensor>(tensor);
-    auto byteps_output = std::make_shared<TFTensor>(output);
-    size_t size = byteps_input->size();
-    auto dtype = byteps_input->dtype();
+    auto byteps_output = std::make_shared<TFTensor>(*output);
 
-    // check if we need to init the tensor
-    if (!common::IsTensorInitialized(node_name, size, device, dtype)) {
-        // we need to init this tensor with PS
-        auto& byteps_context = common::GetContextFromName(node_name);
-        // the following init is blocking, in order to guarantee the order
+    auto& byteps_context = common::GetContextFromName(node_name);
+    if (!byteps_context.initialized) {
         common::InitTensor(byteps_context, byteps_input, ready_event, node_name, device);
     }
 
-    auto byteps_context = common::GetContextFromName(node_name);
-
     auto enqueue_result = EnqueueTensorPush(
         byteps_context, byteps_input, byteps_output, ready_event,
-        node_name, device, priority, version,
+        node_name, device, byteps_context.priority, 0,
         [context, done](const common::Status& status) {
           context->SetStatus(ConvertStatus(status));
           done();
-        });
+        }, common::BROADCAST);
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
   }
 };
@@ -230,15 +199,13 @@ REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(DEVICE_GPU),
 REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Input("tensor: T")
-    .Input("version: int32")
-    .Input("priority: int32")
     .Output("sum: T")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       return Status::OK();
     })
     .Doc(R"doc(
-Perform an MPI PushPull on a tensor. All other processes that do a reduction
+Perform an PushPull on a tensor. All other processes that do a reduction
 on a tensor with the same name must have the same dimension for that tensor.
 Tensors are reduced with other tensors that have the same node name for the
 push_pull.

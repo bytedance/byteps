@@ -64,7 +64,7 @@ public:
     static void* CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);
+    static bool IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf);
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
@@ -102,7 +102,6 @@ private:
     static cudaStream_t* _broadcast_stream;
 
     static uint32_t _partition_bytes;
-    static void AlignPartitionBound(int alignment, uint32_t& bound);
 };
 
 

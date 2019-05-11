@@ -74,7 +74,9 @@ void BytePSGlobal::Init() {
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (bytes)";
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
+    _partition_bytes = _partition_bytes / 4 * 4; // align by 4
+    BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     // init low-level ps implementation
     _ps = new ps::KVWorker<char>(0, 0);
@@ -146,21 +148,14 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-void BytePSGlobal::AlignPartitionBound(int alignment, uint32_t& bound) {
-    bound = bound / alignment * alignment;
-    BPS_LOG(DEBUG) << "The partition bound is " << bound << " bytes";
-}
-
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-        if (next_key_ == 0) { // only do this once
-            AlignPartitionBound(4, _partition_bytes);
-        }
+        _name_to_cxt[name].initialized = false;
 
-        if (device != CPU_DEVICE_ID) { // GPU
+        if (alloc_cpu_buf) {
             //BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
             _name_to_cxt[name].buff_len = size;

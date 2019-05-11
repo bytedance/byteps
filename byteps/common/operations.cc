@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cuda_runtime.h>
 
+#include "logging.h"
 #include "operations.h"
 #include "global.h"
 
@@ -445,6 +446,7 @@ void InitTensor(BPSContext &context,
     }
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+    context.initialized = true;
     BPS_LOG(TRACE) << "Init finish " << name;
 }
 
@@ -462,8 +464,8 @@ BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
 
-bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
-    return BytePSGlobal::IsTensorInitialized(name, size, device, dtype);
+bool IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf) {
+    return BytePSGlobal::IsTensorInitialized(name, size, alloc_cpu_buf);
 }
 
 } // namespace common
