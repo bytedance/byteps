@@ -16,20 +16,18 @@
 #ifndef BYTEPS_COMMUNICATOR_H
 #define BYTEPS_COMMUNICATOR_H
 
-#include <cstdlib> 
+#include <cstdlib>
+#include <cstdio>
 #include <vector>
-#include <stdio.h>
-#include <time.h>
 #include <sys/mman.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/un.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <nccl.h>
+#include <thread>
 #include "logging.h"
 
 #ifdef BYTEPS_USE_MPI
@@ -39,7 +37,10 @@
 
 #endif // BYTEPS_USE_MPI
 
-#define BASE_PORT 10000
+#define BASE_SOCKET_PATH "/usr/local/socket_"
+#define BASE_SOCKET_PATH_SEND "/usr/local/socket_send_"
+#define BASE_SOCKET_PATH_RECV "/usr/local/socket_recv_"
+#define MAX_LINE 8000
 
 namespace byteps {
 namespace common {
@@ -67,18 +68,29 @@ protected:
     int _local_size;
 
     void* _comm;
-
 };
 
 class BytePSCommSocket : public BytePSComm {
 
 public:
+
+    ~BytePSCommSocket() {
+        _listen_thread->join();
+        close(_send_fd);
+        close(_recv_fd);
+    }
+
     void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
     int recvSignal(int* source, void* data, int len);
     int broadcastSignal(int root, void* data, int len);
+    void startListenThread();
 
-    std::vector<int> sockfd_list_;
+    std::thread* _listen_thread;
+
+    int _recv_fd;
+    int _send_fd;
+
 };
 
 #ifdef BYTEPS_USE_MPI

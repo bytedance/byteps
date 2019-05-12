@@ -76,12 +76,14 @@ void BytePSGlobal::Init() {
     }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (bytes)";
 
-    // init low-level ps implementation
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
-    if (!ps::Postoffice::Get()->is_recovery()) {
-        ps::Postoffice::Get()->Barrier(
-            0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+    if (_my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
+        // init low-level ps implementation
+        _ps = new ps::KVWorker<char>(0, 0);
+        ps::StartAsync(0, "byteps\0");
+        if (!ps::Postoffice::Get()->is_recovery()) {
+            ps::Postoffice::Get()->Barrier(
+                0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+        }
     }
 
     _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);

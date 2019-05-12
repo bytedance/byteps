@@ -33,9 +33,10 @@ int BytePSComm::_p2pGPUCopy(void* from, void* to, int len) {
 }
 
 void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) {
-    // We should init rank, size, etc. using getenv
+
     BPS_LOG(DEBUG) << "Using Communicator=Socket";
 
+    // We should init rank, size, etc. using getenv
     // do env check
     BPS_CHECK(getenv("BYTEPS_LOCAL_RANK")) << "error: env BYTEPS_LOCAL_RANK not set";
     BPS_CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
@@ -44,7 +45,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
 
     *local_rank = atoi(getenv("BYTEPS_LOCAL_RANK"));
     *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER; // revisit here if root changes
     auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
@@ -58,33 +59,69 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_size = *local_size;
 
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
-    int socket_num =  is_root ? (_local_size-1) : 1;
 
-    for (int i = 0; i < socket_num; ++i) {
-        struct sockaddr_in sock_addr;
-      	memset(&sock_addr, 0, sizeof(sock_addr));
+    // init the socket
+    _recv_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    BPS_CHECK_GE(_recv_fd, 0) << "recv socket create failed";
 
-        // filling server information
-        sock_addr.sin_family = AF_INET; // IPv4
-        sock_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // local
+    _send_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    BPS_CHECK_GE(_send_fd, 0) << "send socket create failed";
 
-        // TODO: check if the port is available before allocating
-        sock_addr.sin_port = htons(BASE_PORT + 2*(_local_rank+i) + (is_root?1:0)); // odd number for root, even number for non-root
+    int ret;
 
-        // create the socket
-        int fd;
-        BPS_CHECK_GE((fd = socket(AF_INET, SOCK_DGRAM, 0)), 0)
-              << "socket " << i << " create failed";
-        sockfd_list_.push_back(fd);
-        // bind the socket to sock_addr
-        BPS_CHECK_GE(bind(sockfd_list_.at(i), (struct sockaddr *)&sock_addr, sizeof(sock_addr)), 0)
-              << "socket " << i << " bind failed";
+    // server
+    struct sockaddr_un server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+
+    // socket path name
+    std::string server_fd_path;
+    server_fd_path.append(BASE_SOCKET_PATH_RECV);
+    server_fd_path += std::to_string(*local_rank); // should use the rank id to guarantee no conflict
+
+    // filling addr information
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, server_fd_path.c_str(), sizeof(server_addr.sun_path)-1);
+
+    // bind the socket to server_addr
+    ret = bind(_recv_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    BPS_CHECK_GE(ret, 0) << server_fd_path << " bind failed: " << strerror(errno);
+
+    // not sure whether need this or not:
+    // unlink(server_fd_path.c_str());
+
+    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
+                   << " device, socket create successfully";
+
+    _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
+}
+
+void BytePSCommSocket::startListenThread() {
+    BPS_LOG(DEBUG) << "Listening on socket " << _local_rank;
+    char buffer[MAX_LINE];
+    while (true) {
+        int rc;
+        while ((rc=read(_recv_fd, buffer, sizeof(buffer))) > 0) {
+            BPS_LOG(TRACE) << "socket recved len=" << rc;
+            // do the processing here
+        }
+        BPS_CHECK_GE(rc, 0);
     }
-    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER") << " device, all "
-                   << socket_num << " sockets create successfully";
 }
 
 int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
+    struct sockaddr_un destaddr;
+    memset(&destaddr, 0, sizeof(destaddr));
+    destaddr.sun_family = AF_UNIX;
+
+    std::string fd_path;
+    fd_path.append(BASE_SOCKET_PATH_RECV);
+    fd_path += std::to_string(destination);
+    strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
+
+    auto ret = sendto(_send_fd, data, len, 0,
+        (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
+
+    BPS_CHECK_GE(ret, 0);
     return 0;
 }
 
