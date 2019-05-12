@@ -367,9 +367,7 @@ def build_tf_extension(build_ext, options):
     tf_compile_flags, tf_link_flags = get_tf_flags(
         build_ext, options['COMPILE_FLAGS'])
 
-    extra_link_args = ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
-                        '-L3rdparty/ps-lite/deps/lib',
-                        '-lrdmacm', '-libverbs', '-lprotobuf', '-lzmq']
+    extra_link_args = ['-lrdmacm', '-libverbs']
 
     # We assume we have CUDA
     cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
@@ -387,7 +385,9 @@ def build_tf_extension(build_ext, options):
     tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags + extra_link_args
     tensorflow_lib.library_dirs = options['LIBRARY_DIRS']
     tensorflow_lib.libraries = options['LIBRARIES']
-    tensorflow_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a']
+    tensorflow_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a',
+                                    '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
+                                    '3rdparty/ps-lite/deps/lib/libzmq.a']
 
     build_ext.build_extension(tensorflow_lib)
 
@@ -593,7 +593,9 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         mx_compile_flags
     mxnet_lib.extra_link_args = options['LINK_FLAGS'] + mx_link_flags
-    mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a']
+    mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a',
+                               '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
+                               '3rdparty/ps-lite/deps/lib/libzmq.a']
     mxnet_lib.library_dirs = options['LIBRARY_DIRS']
     mxnet_lib.libraries = options['LIBRARIES']
 
@@ -685,9 +687,7 @@ def build_torch_extension(build_ext, options, torch_version):
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
 
-    extra_link_args = ['-Wl,-rpath,3rdparty/ps-lite/deps/lib',
-                        '-L3rdparty/ps-lite/deps/lib',
-                        '-lrdmacm', '-libverbs', '-lprotobuf', '-lzmq']
+    extra_link_args = ['-lrdmacm', '-libverbs']
 
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
@@ -699,7 +699,9 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/torch/handle_manager.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
                          extra_link_args=options['LINK_FLAGS'] + extra_link_args,
-                         extra_objects=['3rdparty/ps-lite/build/libps.a'],
+                         extra_objects=['3rdparty/ps-lite/build/libps.a',
+                                        '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
+                                        '3rdparty/ps-lite/deps/lib/libzmq.a'],
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
@@ -771,10 +773,10 @@ class custom_build_ext(build_ext):
 
         if not built_plugins:
             raise DistutilsError(
-                'MXNet, PyTorch plugins were excluded from build. Aborting.')
+                'TensorFlow, MXNet, PyTorch plugins were excluded from build. Aborting.')
         if not any(built_plugins):
             raise DistutilsError(
-                'None of MXNet, PyTorch plugins were built. See errors above.')
+                'None of TensorFlow, MXNet, PyTorch plugins were built. See errors above.')
 
 # Where the magic happens:
 setup(
