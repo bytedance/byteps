@@ -58,6 +58,7 @@ class BytePSBasics(object):
 
     def init(self):
         """A function that inits BytePS."""
+        atexit.register(self.shutdown)
         return self.C_LIB_CTYPES.byteps_init()
 
     def shutdown(self):

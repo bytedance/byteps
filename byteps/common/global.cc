@@ -132,13 +132,15 @@ void BytePSGlobal::Shutdown() {
             delete _threads[i];
         }
     }
-    ps::Finalize(0, true);
+    ps::Finalize(0, false);
 
     cudaStreamDestroy(*_reduce_stream);
     cudaStreamDestroy(*_broadcast_stream);
 
     for (auto &it:_name_to_cxt) {
-        CUDA_CALL(cudaFreeHost(it.second.cpubuff));
+        if (it.second.cpubuff) {
+            CUDA_CALL(cudaFreeHost(it.second.cpubuff));
+        }
     }
     return;
 }
@@ -160,6 +162,10 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, boo
             //BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
             _name_to_cxt[name].buff_len = size;
+        }
+        else {
+            _name_to_cxt[name].cpubuff = nullptr;
+            _name_to_cxt[name].buff_len = 0;
         }
         auto accumulated = 0;
         while (accumulated < size) {
