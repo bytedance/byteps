@@ -67,7 +67,7 @@ def _normalize_name(name):
     return re.sub('[^a-zA-Z0-9_]', '_', name)
 
 
-def _push_pull(tensor, name=None):
+def _push_pull(tensor, scope='', name=None):
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
     shape must be the same on all BytePS processes for a given name. The reduction
@@ -79,10 +79,10 @@ def _push_pull(tensor, name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
     tensor_shape = tensor.get_shape()
-    num_rows = tensor_shape[0].value
-    num_cols = tensor_shape[1].value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(name,
-                                                   ctypes.c_int(num_rows*num_cols))
+    tensor_size = tensor.dtype.size
+    for dimension in tensor_shape:
+        tensor_size = tensor_size * dimension.value
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name), tensor_size)
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
@@ -113,10 +113,10 @@ def broadcast(tensor, root_rank, name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     tensor_shape = tensor.get_shape()
-    num_rows = tensor_shape[0].value
-    num_cols = tensor_shape[1].value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(name,
-                                                   ctypes.c_int(num_rows*num_cols))
+    tensor_size = tensor.dtype.size
+    for dimension in tensor_shape:
+        tensor_size = tensor_size * dimension.value
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name), tensor_size)
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 

@@ -28,18 +28,17 @@ from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
 
-def push_pull(tensor, average=True, device_dense='', device_sparse='',
+def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
               compression=Compression.none):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
     Arguments:
         tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
                 The shape of the input must be identical across all ranks.
+        scope: the graph name scope
         average: If True, computes the average over all ranks.
                  Otherwise, computes the sum over all ranks.
-        device_dense: Device to be used for dense tensors. Uses GPU by default
-                      if BytePS was built with BYTEPS_GPU_ALLREDUCE.
-        device_sparse: Device to be used for sparse tensors. Uses GPU by default
-                       if BytePS was built with BYTEPS_GPU_ALLGATHER.
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
         compression: Compression algorithm used to reduce the amount of data
                      sent and received by each worker node.  Defaults to not
                      using compression.
@@ -50,7 +49,7 @@ def push_pull(tensor, average=True, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull(tensor_compressed)
+        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         new_tensor = (tf.div(summed_tensor, byteps_size)
                         if average else summed_tensor)
@@ -131,11 +130,9 @@ class DistributedOptimizer(tf.train.Optimizer):
             Whether to use locking when updating variables.
             See Optimizer.__init__ for more info.
           device_dense:
-            Device to be used for dense tensors. Uses GPU by default
-            if BytePS was build with BYTEPS_GPU_ALLREDUCE.
+            Device to be used for dense tensors. Uses GPU by default.
           device_sparse:
-            Device to be used for sparse tensors. Uses GPU by default
-            if BytePS was build with BYTEPS_GPU_ALLGATHER.
+            Device to be used for sparse tensors. Uses GPU by default.
           compression:
             Compression algorithm used during push_pull to reduce the amount
             of data sent during the each parameter update step.  Defaults to
@@ -155,13 +152,13 @@ class DistributedOptimizer(tf.train.Optimizer):
         self._sparse_as_dense = sparse_as_dense
 
         def push_pull_grads(grads):
-            with tf.name_scope(self._name + "_Allreduce"):
+            with tf.name_scope(self._name + "_Push_Pull") as scope:
                 if self._sparse_as_dense:
                     grads = [tf.convert_to_tensor(grad)
                              if grad is not None and isinstance(grad, tf.IndexedSlices)
                              else grad for grad in grads]
 
-                return [push_pull(grad,
+                return [push_pull(grad, scope,
                                   device_dense=self._device_dense,
                                   device_sparse=self._device_sparse,
                                   compression=self._compression)
@@ -226,12 +223,12 @@ if hasattr(tf, 'GradientTape'):
             self._sparse_as_dense = sparse_as_dense
 
             def push_pull_grads(grads):
-                with tf.name_scope(self._name + "_Allreduce"):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
                     if self._sparse_as_dense:
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
                                  else grad for grad in grads]
-                    return [push_pull(grad,
+                    return [push_pull(grad, scope,
                                       device_dense=self._device_dense,
                                       device_sparse=self._device_sparse,
                                       compression=self._compression)
@@ -257,11 +254,9 @@ def DistributedGradientTape(gradtape, device_dense='', device_sparse='',
       gradtape:
         GradientTape to use for computing gradients and applying updates.
       device_dense:
-        Device to be used for dense tensors. Uses GPU by default
-        if BytePS was build with BYTEPS_GPU_ALLREDUCE.
+        Device to be used for dense tensors. Uses GPU by default.
       device_sparse:
-        Device to be used for sparse tensors. Uses GPU by default
-        if BytePS was build with BYTEPS_GPU_ALLGATHER.
+        Device to be used for sparse tensors. Uses GPU by default.
       compression:
         Compression algorithm used during push_pull to reduce the amount
         of data sent during the each parameter update step.  Defaults to

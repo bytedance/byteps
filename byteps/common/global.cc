@@ -145,6 +145,7 @@ void BytePSGlobal::Shutdown() {
 
 BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
+    BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end()) << name << " is not initialized";
     return _name_to_cxt[name];
 }
 

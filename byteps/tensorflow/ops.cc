@@ -144,11 +144,16 @@ common::ReadyEvent* RecordReadyEvent(OpKernelContext* context) {
   return nullptr;
 }
 
-extern "C" void byteps_tensorflow_declare_tensor(const std::string& name, int size) {
+extern "C" void byteps_tensorflow_declare_tensor(char* name, int size) {
     // For now, we always allocate cpu buffer
     // TODO: get the device and decide whether to allocate cpu buffer
-    if (!common::IsTensorInitialized(name, size, true)){
-        auto& byteps_context = common::GetContextFromName(name);
+    std::string tensor_name(name);
+#if HAVE_CUDA
+    if (!common::IsTensorInitialized(tensor_name, size, true)) {
+#else
+    if (!common::IsTensorInitialized(tensor_name, size, false)) {
+#endif
+        auto& byteps_context = common::GetContextFromName(tensor_name);
         byteps_context.priority = - tensor_count.fetch_add(1);
     }
     return;

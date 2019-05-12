@@ -10,7 +10,7 @@ def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
-    subprocess.check_call(command, env=my_env, shell=True)
+    subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
     print "BytePS launching " + os.environ["DMLC_ROLE"]
