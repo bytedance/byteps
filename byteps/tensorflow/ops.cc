@@ -153,14 +153,11 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype
     // For now, we always allocate cpu buffer
     // TODO: get the device and decide whether to allocate cpu buffer
     std::string tensor_name(name);
-#if HAVE_CUDA
-    if (!common::IsTensorInitialized(tensor_name, size, true)) {
-#else
-    if (!common::IsTensorInitialized(tensor_name, size, false)) {
-#endif
+
+    if (!common::IsTensorInitialized(tensor_name, size)) {
         auto& byteps_context = common::GetContextFromName(tensor_name);
         byteps_context.priority = - tensor_count.fetch_add(1);
-        common::InitTensor(byteps_context, tensor_name, ConvertDType(dtype));
+        common::InitTensor(byteps_context, tensor_name, ConvertDType(dtype), nullptr);
     }
     return;
 }
@@ -187,13 +184,28 @@ public:
     auto byteps_output = std::make_shared<TFTensor>(*output);
     auto& byteps_context = common::GetContextFromName(node_name);
 
-    auto enqueue_result = EnqueueTensorPush(
+    std::vector<common::QueueType> queue_list;
+    // TODO: now only create 1 gpu testcase
+    if (common::IsRootDevice()) {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
+    else {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
+
+    auto enqueue_result = EnqueueTensor(
         byteps_context, byteps_input, byteps_output, ready_event,
         node_name, device, byteps_context.priority, 0,
         [context, done](const common::Status& status) {
           context->SetStatus(ConvertStatus(status));
           done();
-        }, common::BROADCAST);
+        }, queue_list);
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
   }
 };

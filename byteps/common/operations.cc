@@ -317,14 +317,13 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
     }
 }
 
-Status EnqueueTensorPush(BPSContext &context,
-                        std::shared_ptr<Tensor> input,
-                        std::shared_ptr<Tensor> output,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, std::vector<QueueType> queue_list) {
-    BPS_CHECK(input) << name << " tensor is null";
+Status EnqueueTensor(BPSContext &context,
+                     std::shared_ptr<Tensor> input,
+                     std::shared_ptr<Tensor> output,
+                     std::shared_ptr<ReadyEvent> ready_event,
+                     const std::string &name,
+                     const int device, const int priority, const int version,
+                     StatusCallback callback, std::vector<QueueType> queue_list) {
     if (output) {
         BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
     }
@@ -354,7 +353,7 @@ Status EnqueueTensorPush(BPSContext &context,
     for (unsigned int i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
-        BPS_LOG(TRACE) << "EnqueueTensorPush: " << task->tensor_name
+        BPS_LOG(TRACE) << "EnqueueTensor: " << task->tensor_name
                        << ", key=" << task->key
                        << ", offset=" << task->offset
                        << ", len=" << task->len
@@ -364,63 +363,30 @@ Status EnqueueTensorPush(BPSContext &context,
     }
     BPS_CHECK_EQ(accumulated, e->tensor->size()) << "accumulated partition size not equal to original tensor size";
 
-    BPS_LOG(TRACE) << "EnqueueTensorPush finished: " << name;
+    BPS_LOG(TRACE) << "EnqueueTensor finished: " << name;
     return Status::OK();
 }
 
-Status EnqueueTensorPull(BPSContext &context,
-                        std::shared_ptr<Tensor> output,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, std::vector<QueueType> queue_list) {
-    BPS_CHECK(output) << name << " tensor is null";
+void InitTensor(BPSContext &context, const std::string &name, int dtype, void *cpubuff) {
 
-    std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
-    e->tensor_name = name;
-    e->context = &context;
-    e->tensor = NULL;
-    e->output = output;
-    e->ready_event = ready_event;
-    e->device = device;
-    e->priority = priority;
-    e->version = version;
-    e->callback = callback;
-    e->cpubuff = context.cpubuff;
-    e->queue_list = queue_list;
-    e->counter_ptr = std::make_shared<std::atomic_int>(0);
-    e->total_partnum = context.key_list.size();
-
-    std::vector<std::shared_ptr<TensorTableEntry> > partitions;
-    PartitionTensor(e, partitions);
-    BPS_CHECK_EQ(context.key_list.size(), partitions.size()) << name
-            << ": " << context.key_list.size()
-            << ", " << partitions.size();
-
-    unsigned int accumulated = 0;
-    for (unsigned int i = 0; i < partitions.size(); ++i) {
-        auto task = partitions[i];
-        task->key = context.key_list[i]; // assign the key now
-        BPS_LOG(TRACE) << "EnqueueTensorPull: " << task->tensor_name
-                       << ", key=" << task->key
-                       << ", offset=" << task->offset
-                       << ", len=" << task->len
-                       << ", device=" << task->device;
-        BytePSGlobal::GetScheduledQueue(e->queue_list.at(0))->addTask(task);
-        accumulated += task->len;
+    // only root needs to init the tensor
+    if (!IsRootDevice()) {
+        return;
     }
-    BPS_CHECK_EQ(accumulated, e->output->size()) << "accumulated partition size not equal to original tensor size";
 
-    BPS_LOG(TRACE) << "EnqueueTensorPull finished: " << name;
-    return Status::OK();
-}
-
-void InitTensor(BPSContext &context, const std::string &name, int dtype) {
+    size_t size = context.buff_len;
+    if (cpubuff) {
+        LOG(INFO) << name << " is already on cpu, len=" << size;
+        context.cpubuff = cpubuff;
+    }
+    else {
+        CUDA_CALL(cudaHostAlloc((void **) &(context.cpubuff), size, cudaHostAllocMapped));
+        BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
+    }
 
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
         auto key_list = context.key_list;
-        size_t size = context.buff_len;
         BPS_LOG(TRACE) << "Init (push) " << name
                        << ", size=" << size
                        << ", parts=" << key_list.size();
@@ -464,9 +430,9 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype) {
     BPS_LOG(TRACE) << "Init finish " << name;
 }
 
-Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype,
+Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void *cpubuff,
                          StatusCallback callback) {
-    InitTensor(context, name, dtype);
+    InitTensor(context, name, dtype, cpubuff);
     callback(Status::OK());
     return Status::OK();
 }
@@ -475,8 +441,12 @@ BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
 
-bool IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
-    return BytePSGlobal::IsTensorInitialized(name, size, on_gpu);
+bool IsTensorInitialized(const std::string &name, size_t size) {
+    return BytePSGlobal::IsTensorInitialized(name, size);
+}
+
+bool IsRootDevice() {
+    return BytePSGlobal::IsRootDevice();
 }
 
 } // namespace common

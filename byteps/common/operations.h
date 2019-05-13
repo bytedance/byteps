@@ -54,29 +54,23 @@ int byteps_local_size();
 }
 
 // Below are all for Framework plugins
-Status EnqueueTensorPush(BPSContext &context,
-                        std::shared_ptr<Tensor> input,
-                        std::shared_ptr<Tensor> output,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, std::vector<QueueType> queue_list);
+Status EnqueueTensor(BPSContext &context,
+                     std::shared_ptr<Tensor> input,
+                     std::shared_ptr<Tensor> output,
+                     std::shared_ptr<ReadyEvent> ready_event,
+                     const std::string &name,
+                     const int device, const int priority, const int version,
+                     StatusCallback callback, std::vector<QueueType> queue_list);
 
-Status EnqueueTensorPull(BPSContext &context,
-                        std::shared_ptr<Tensor> output,
-                        std::shared_ptr<ReadyEvent> ready_event,
-                        const std::string &name,
-                        const int device, const int priority, const int version,
-                        StatusCallback callback, std::vector<QueueType> queue_list);
-
-Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype,
+Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void* cpubuff,
                          StatusCallback callback);
 
-void InitTensor(BPSContext &context, const std::string &name, int dtype);
+void InitTensor(BPSContext &context, const std::string &name, int dtype, void* cpubuff);
 
 // Only call these in Framework plugins for the best performance
-bool IsTensorInitialized(const std::string &name, size_t size, bool on_gpu);
+bool IsTensorInitialized(const std::string &name, size_t size);
 BPSContext& GetContextFromName(const std::string &name);
+bool IsRootDevice();
 
 } // namespace common
 } // namespace byteps

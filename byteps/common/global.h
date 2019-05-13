@@ -65,7 +65,7 @@ public:
     static void* CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf);
+    static bool IsTensorInitialized(const std::string &name, size_t size);
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();

@@ -156,17 +156,14 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
 
-        if (on_gpu) {
-            CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
-            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
-        }
+        // _name_to_cxt[name].cpubuff will be inited later
         _name_to_cxt[name].buff_len = size;
         auto accumulated = 0;
         while (accumulated < size) {

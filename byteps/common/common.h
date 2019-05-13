@@ -30,6 +30,7 @@ namespace common {
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
+#define UNDECIDED_DEVICE_ID (-2)
 
 // Keep the order consistent with DMLC/mshadow
 // https://github.com/dmlc/mshadow/blob/master/mshadow/base.h
