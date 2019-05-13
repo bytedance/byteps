@@ -45,7 +45,6 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
 
     *local_rank = atoi(getenv("BYTEPS_LOCAL_RANK"));
     *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER; // revisit here if root changes
     auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
@@ -58,13 +57,14 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_rank = *local_rank;
     _local_size = *local_size;
 
+    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER; // revisit here if root changes
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
 
     // init the socket
-    _recv_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    _recv_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     BPS_CHECK_GE(_recv_fd, 0) << "recv socket create failed";
 
-    _send_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    _send_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     BPS_CHECK_GE(_send_fd, 0) << "send socket create failed";
 
     int ret;
@@ -87,7 +87,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     BPS_CHECK_GE(ret, 0) << server_fd_path << " bind failed: " << strerror(errno);
 
     // not sure whether need this or not:
-    // unlink(server_fd_path.c_str());
+    unlink(server_fd_path.c_str());
 
     BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
                    << " device, socket create successfully";
