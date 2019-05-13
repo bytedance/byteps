@@ -15,6 +15,8 @@
 
 #include "global.h"
 #include <cuda_runtime.h>
+#include <malloc.h>
+#include <unistd.h>
 
 namespace byteps {
 namespace common {
@@ -75,7 +77,7 @@ void BytePSGlobal::Init() {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
-    _partition_bytes = _partition_bytes / 4 * 4; // align by 4
+    _partition_bytes = _partition_bytes / 8 * 8; // align by 8 (the size of a double or int64)
     BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     // init low-level ps implementation
@@ -151,22 +153,22 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
 
-        if (alloc_cpu_buf) {
-            //BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
+        if (on_gpu) {
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
-            _name_to_cxt[name].buff_len = size;
+            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
         }
         else {
-            _name_to_cxt[name].cpubuff = nullptr;
-            _name_to_cxt[name].buff_len = 0;
+            _name_to_cxt[name].cpubuff = memalign(sysconf(_SC_PAGESIZE), size);
+            BPS_LOG(TRACE) << name << ": memalign with len=" << size;
         }
+        _name_to_cxt[name].buff_len = size;
         auto accumulated = 0;
         while (accumulated < size) {
             _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);

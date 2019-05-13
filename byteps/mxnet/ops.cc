@@ -91,6 +91,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
 
     size_t size = TensorUtil::GetSize(tensor);
     auto device = TensorUtil::GetDevice(tensor);
+    auto dtype = TensorUtil::GetDType(tensor);
 
     // check if we need to init the tensor
     if (!common::IsTensorInitialized(tensor_name, size, (device != CPU_DEVICE_ID))) {
@@ -99,7 +100,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
         auto device = TensorUtil::GetDevice(tensor);
         auto byteps_input = std::make_shared<MXTensor<NDArray>>(tensor);
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, byteps_input, nullptr, tensor_name, device);
+        common::InitTensor(context, tensor_name, dtype);
     }
 
     auto& context = common::GetContextFromName(tensor_name);

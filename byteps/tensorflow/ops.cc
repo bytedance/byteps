@@ -74,27 +74,9 @@ int GetDeviceID(OpKernelContext* context) {
   return device;
 }
 
-} // namespace
-
-#if HAVE_CUDA
-TFReadyEvent::TFReadyEvent(DeviceContext* device_context) {
-  auto executor = device_context->stream()->parent();
-  auto ready_event = new perftools::gputools::Event(executor);
-  ready_event->Init();
-  device_context->stream()->ThenRecordEvent(ready_event);
-  event_ = std::shared_ptr<perftools::gputools::Event>(ready_event);
-}
-
-bool TFReadyEvent::Ready() const {
-  return event_->PollForStatus() !=
-         perftools::gputools::Event::Status::kPending;
-}
-#endif
-
-TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
-
-const common::DataType TFTensor::dtype() const {
-  switch (tensor_.dtype()) {
+// Define all types for TensorUtil.
+const common::DataType ConvertDType(int dtype) {
+  switch (dtype) {
   case DT_UINT8:
     return common::BYTEPS_UINT8;
   case DT_INT8:
@@ -118,6 +100,29 @@ const common::DataType TFTensor::dtype() const {
   default:
     throw std::logic_error("Invalid tensor type.");
   }
+}
+
+} // namespace
+
+#if HAVE_CUDA
+TFReadyEvent::TFReadyEvent(DeviceContext* device_context) {
+  auto executor = device_context->stream()->parent();
+  auto ready_event = new perftools::gputools::Event(executor);
+  ready_event->Init();
+  device_context->stream()->ThenRecordEvent(ready_event);
+  event_ = std::shared_ptr<perftools::gputools::Event>(ready_event);
+}
+
+bool TFReadyEvent::Ready() const {
+  return event_->PollForStatus() !=
+         perftools::gputools::Event::Status::kPending;
+}
+#endif
+
+TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
+
+const common::DataType TFTensor::dtype() const {
+  return ConvertDType(tensor_.dtype());
 }
 
 const common::TensorShape TFTensor::shape() const {
@@ -144,7 +149,7 @@ common::ReadyEvent* RecordReadyEvent(OpKernelContext* context) {
   return nullptr;
 }
 
-extern "C" void byteps_tensorflow_declare_tensor(char* name, int size) {
+extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype) {
     // For now, we always allocate cpu buffer
     // TODO: get the device and decide whether to allocate cpu buffer
     std::string tensor_name(name);
@@ -155,6 +160,7 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name, int size) {
 #endif
         auto& byteps_context = common::GetContextFromName(tensor_name);
         byteps_context.priority = - tensor_count.fetch_add(1);
+        common::InitTensor(byteps_context, tensor_name, ConvertDType(dtype));
     }
     return;
 }
@@ -179,11 +185,7 @@ public:
 
     auto byteps_input = std::make_shared<TFTensor>(tensor);
     auto byteps_output = std::make_shared<TFTensor>(*output);
-
     auto& byteps_context = common::GetContextFromName(node_name);
-    if (!byteps_context.initialized) {
-        common::InitTensor(byteps_context, byteps_input, ready_event, node_name, device);
-    }
 
     auto enqueue_result = EnqueueTensorPush(
         byteps_context, byteps_input, byteps_output, ready_event,

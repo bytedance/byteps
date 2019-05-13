@@ -82,7 +82,8 @@ def _push_pull(tensor, scope='', name=None):
     tensor_size = tensor.dtype.size
     for dimension in tensor_shape:
         tensor_size = tensor_size * dimension.value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name), tensor_size)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name),
+        tensor_size, tensor.dtype.as_datatype_enum)
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
@@ -116,7 +117,8 @@ def broadcast(tensor, root_rank, name=None):
     tensor_size = tensor.dtype.size
     for dimension in tensor_shape:
         tensor_size = tensor_size * dimension.value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name), tensor_size)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name),
+        tensor_size, tensor.dtype.as_datatype_enum)
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
