@@ -60,14 +60,14 @@ Status EnqueueTensorPush(BPSContext &context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, QueueType last_op);
+                        StatusCallback callback, std::vector<QueueType> queue_list);
 
 Status EnqueueTensorPull(BPSContext &context,
                         std::shared_ptr<Tensor> output,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, QueueType last_op);
+                        StatusCallback callback, std::vector<QueueType> queue_list);
 
 Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype,
                          StatusCallback callback);

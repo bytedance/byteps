@@ -26,6 +26,16 @@
 namespace byteps {
 namespace common {
 
+bool RunCoordinateLoopOnce() {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+}
+
+bool RunCopyDevice2HostLoopOnce() {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+}
+
 bool RunReduceLoopOnce() {
     QueueType this_op = REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -33,6 +43,8 @@ bool RunReduceLoopOnce() {
     auto task = q->getTask();
     if (task) {
         BPS_CHECK(task->tensor);
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             auto name = task->tensor_name;
@@ -44,10 +56,9 @@ bool RunReduceLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
         }
 
-        if (task->last_op != this_op) { // TODO: should check the boundary
-            BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name
-                           << ", passing it to the next queue " << this_op+1;
-            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+        if (task->queue_list.size() > 0) { // TODO: should check the boundary
+            BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
+            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
         } else {
             task->callback(Status::OK());
         }
@@ -64,6 +75,8 @@ bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PUSH);
     auto task = q->getTask();
     if (task) {
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -87,11 +100,10 @@ bool RunPushLoopOnce() {
         auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
         BytePSGlobal::GetPS()->ZPush(
             pskv.keys, vals, pskv.lens, cmd,
-            [task, this_op, q]() {
-                if (task->last_op != this_op) {
-                    BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
-                                   << ", passing it to the next queue " << this_op+1;
-                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+            [task, q]() {
+                if (task->queue_list.size() > 0) {
+                    BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
+                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
                 } else {
                     BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
                     int v = task->counter_ptr.get()->fetch_add(1);
@@ -116,6 +128,8 @@ bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(PULL);
     auto task = q->getTask();
     if (task) {
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -140,12 +154,11 @@ bool RunPullLoopOnce() {
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
             pskv.keys, vals, &pskv.lens, cmd,
-            [vals, task, this_op, q]() {
+            [vals, task, q]() {
                 delete vals;
-                if (task->last_op != this_op) {
-                    BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name
-                                   << ", passing it the next queue " << this_op+1;
-                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(this_op+1))->addTask(task);
+                if (task->queue_list.size() > 0) {
+                    BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
+                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
                 } else {
                     task->callback(Status::OK());
                 }
@@ -158,6 +171,11 @@ bool RunPullLoopOnce() {
     return true;
 }
 
+bool RunCopyHost2DeviceLoopOnce() {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+}
+
 bool RunBroadcastLoopOnce() {
     QueueType this_op = BROADCAST;
     auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
@@ -165,6 +183,8 @@ bool RunBroadcastLoopOnce() {
     auto task = q->getTask();
     if (task) {
         BPS_CHECK(task->output);
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             auto name = task->tensor_name;
@@ -178,7 +198,9 @@ bool RunBroadcastLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
         }
 
-        BPS_CHECK_EQ(this_op, QueueNum-1) << "BROADCAST should be the last op";
+        BPS_CHECK_EQ(task->queue_list.size(), 0)
+            << "BROADCAST should be the last op, remain queue_list size: " << task->queue_list.size();
+
         BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
         int v = task->counter_ptr.get()->fetch_add(1);
         if (v == (task->total_partnum-1)) {
@@ -193,6 +215,14 @@ bool RunBroadcastLoopOnce() {
     return true;
 }
 
+void CoordinateLoop() {
+    while (RunCoordinateLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
+void CopyDevice2HostLoop() {
+    while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
 void ReduceLoop() {
     while (RunReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
@@ -205,15 +235,21 @@ void PullLoop() {
     while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
+void CopyHost2DeviceLoop() {
+    while (RunCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
 void BroadcastLoop() {
     while (RunBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
+
+
 
 extern "C" {
 
 void byteps_init() {
     BytePSGlobal::Init();
-    LoopFunction func[ThreadNum] = {ReduceLoop, PushLoop, PullLoop, BroadcastLoop};
+    LoopFunction func[ThreadNum] = {CoordinateLoop, CopyDevice2HostLoop, ReduceLoop, PushLoop, PullLoop, CopyHost2DeviceLoop, BroadcastLoop};
     BytePSGlobal::Start(func);
     return;
 }
@@ -266,7 +302,7 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
         e->version = entry->version;
         e->callback = entry->callback;
         e->cpubuff = entry->cpubuff;
-        e->last_op = entry->last_op;
+        e->queue_list = entry->queue_list;
         e->tensor = entry->tensor;
         e->output = entry->output;
         e->offset = accumulated;
@@ -287,7 +323,7 @@ Status EnqueueTensorPush(BPSContext &context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, QueueType last_op) {
+                        StatusCallback callback, std::vector<QueueType> queue_list) {
     BPS_CHECK(input) << name << " tensor is null";
     if (output) {
         BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
@@ -304,7 +340,7 @@ Status EnqueueTensorPush(BPSContext &context,
     e->version = version;
     e->callback = callback;
     e->cpubuff = context.cpubuff;
-    e->last_op = last_op;
+    e->queue_list = queue_list;
     e->counter_ptr = std::make_shared<std::atomic_int>(0);
     e->total_partnum = context.key_list.size();
 
@@ -322,9 +358,8 @@ Status EnqueueTensorPush(BPSContext &context,
                        << ", key=" << task->key
                        << ", offset=" << task->offset
                        << ", len=" << task->len
-                       << ", device=" << task->device
-                       << ", last_op=" << task->last_op;
-        BytePSGlobal::GetScheduledQueue(REDUCE)->addTask(task);
+                       << ", device=" << task->device;
+        BytePSGlobal::GetScheduledQueue(e->queue_list.at(0))->addTask(task);
         accumulated += task->len;
     }
     BPS_CHECK_EQ(accumulated, e->tensor->size()) << "accumulated partition size not equal to original tensor size";
@@ -338,7 +373,7 @@ Status EnqueueTensorPull(BPSContext &context,
                         std::shared_ptr<ReadyEvent> ready_event,
                         const std::string &name,
                         const int device, const int priority, const int version,
-                        StatusCallback callback, QueueType last_op) {
+                        StatusCallback callback, std::vector<QueueType> queue_list) {
     BPS_CHECK(output) << name << " tensor is null";
 
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
@@ -352,7 +387,7 @@ Status EnqueueTensorPull(BPSContext &context,
     e->version = version;
     e->callback = callback;
     e->cpubuff = context.cpubuff;
-    e->last_op = last_op;
+    e->queue_list = queue_list;
     e->counter_ptr = std::make_shared<std::atomic_int>(0);
     e->total_partnum = context.key_list.size();
 
@@ -370,9 +405,8 @@ Status EnqueueTensorPull(BPSContext &context,
                        << ", key=" << task->key
                        << ", offset=" << task->offset
                        << ", len=" << task->len
-                       << ", device=" << task->device
-                       << ", last_op=" << task->last_op;
-        BytePSGlobal::GetScheduledQueue(PULL)->addTask(task);
+                       << ", device=" << task->device;
+        BytePSGlobal::GetScheduledQueue(e->queue_list.at(0))->addTask(task);
         accumulated += task->len;
     }
     BPS_CHECK_EQ(accumulated, e->output->size()) << "accumulated partition size not equal to original tensor size";

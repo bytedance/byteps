@@ -17,6 +17,7 @@
 #include <atomic>
 
 #include "../common/operations.h"
+#include "../common/global.h"
 
 #include "adapter.h"
 #include "cuda_util.h"
@@ -57,12 +58,23 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
 
+    std::vector<QueueType> queue_list;
+
+    // TODO: now only create 1 gpu testcase
+    if (BytePSGlobal::IsRootDevice()) {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+    } else {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+    }
+
     auto enqueue_result =
         common::EnqueueTensorPush(context, byteps_input, nullptr, nullptr,
                                name, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, common::PUSH); // last op
+                               }, queue_list);
     ThrowIfError(enqueue_result);
 }
 
@@ -73,12 +85,23 @@ void DoSecondStage(BPSContext &context, NDArray* input, const std::string& name,
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
 
+    std::vector<QueueType> queue_list;
+
+    // TODO: now only create 1 gpu testcase
+    if (BytePSGlobal::IsRootDevice()) {
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    } else {
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
+
     auto enqueue_result =
         common::EnqueueTensorPull(context, byteps_input, nullptr,
                                name, device, priority, version,
                                [on_complete](const Status& status) {
                                  InvokeCompleteCallback(on_complete, status);
-                               }, common::BROADCAST); // last op
+                               }, queue_list);
     ThrowIfError(enqueue_result);
 }
 

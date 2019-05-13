@@ -44,7 +44,6 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
 
     *local_rank = atoi(getenv("BYTEPS_LOCAL_RANK"));
     *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
@@ -57,6 +56,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_rank = *local_rank;
     _local_size = *local_size;
 
+    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
     int socket_num =  is_root ? (_local_size-1) : 1;
 
