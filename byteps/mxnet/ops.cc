@@ -99,6 +99,10 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
         auto& context = common::GetContextFromName(tensor_name);
         auto device = TensorUtil::GetDevice(tensor);
         auto byteps_input = std::make_shared<MXTensor<NDArray>>(tensor);
+        if (device == CPU_DEVICE_ID) {
+            LOG(INFO) << tensor_name << " is on cpu, len=" << context.buff_len;
+            context.cpubuff = (void*) byteps_input->data();
+        }
         // the following init is blocking, in order to guarantee the order
         common::InitTensor(context, tensor_name, dtype);
     }

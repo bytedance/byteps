@@ -164,10 +164,6 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, boo
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
             BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
         }
-        else {
-            _name_to_cxt[name].cpubuff = memalign(sysconf(_SC_PAGESIZE), size);
-            BPS_LOG(TRACE) << name << ": memalign with len=" << size;
-        }
         _name_to_cxt[name].buff_len = size;
         auto accumulated = 0;
         while (accumulated < size) {
