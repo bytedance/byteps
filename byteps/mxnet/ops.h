@@ -14,8 +14,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_MXNET_MPI_OPS_H
-#define BYTEPS_MXNET_MPI_OPS_H
+#ifndef BYTEPS_MXNET_OPS_H
+#define BYTEPS_MXNET_OPS_H
 
 #include <mxnet/base.h>
 #include <mxnet/c_api.h>
@@ -38,4 +38,4 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* input,
 } // namespace mxnet
 } // namespace byteps
 
-#endif // BYTEPS_MXNET_MPI_OPS_H
+#endif // BYTEPS_MXNET_OPS_H

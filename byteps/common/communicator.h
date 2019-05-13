@@ -33,7 +33,7 @@
 #ifdef BYTEPS_USE_MPI
 
 #define OMPI_SKIP_MPICXX
-#include "mpi.h"
+#include <mpi.h>
 
 #endif // BYTEPS_USE_MPI
 

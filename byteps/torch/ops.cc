@@ -65,11 +65,11 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
     auto dtype = byteps_input->dtype();
 
     // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size, device, dtype)) {
+    if (!common::IsTensorInitialized(tensor_name, size, (device != CPU_DEVICE_ID))) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, byteps_input, ready_event, tensor_name, device);
+        common::InitTensor(context, tensor_name, dtype);
     }
 
     auto& context = common::GetContextFromName(tensor_name);
@@ -83,7 +83,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
                 tensor.div_(byteps_size());
             }
             handle_manager.MarkDone(handle, status);
-        }, BROADCAST);
+        }, common::BROADCAST);
 
     ThrowIfError(enqueue_result);
 

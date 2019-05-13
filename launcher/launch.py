@@ -4,12 +4,13 @@ import os
 import subprocess
 import threading
 import sys
+import time
 
 def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
-    subprocess.check_call(command, env=my_env, shell=True)
+    subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
     print "BytePS launching " + os.environ["DMLC_ROLE"]
@@ -31,5 +32,8 @@ if __name__ == "__main__":
             t[i].join() 
 
     else:
-        os.system("python /opt/tiger/byteps/example/mxnet/train_imagenet_horovod.py")
-
+        sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
+        import mxnet
+        # TODO: terminates when workers quit
+        while True:
+            time.sleep(3600)

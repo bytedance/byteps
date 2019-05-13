@@ -39,7 +39,7 @@ local_rank = _basics.local_rank
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
-MPI_MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
+MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 
 def byteps_push_pull(tensor, version=0, priority=0, name=None):
@@ -67,10 +67,10 @@ def byteps_push_pull(tensor, version=0, priority=0, name=None):
 
     c_in = tensor.handle
     if isinstance(name, string_types):
-        check_call(MPI_MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
+        check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
                    c_str(name), ctypes.c_int(version), ctypes.c_int(priority)))
     else:
-        check_call(MPI_MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
+        check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
                    name, ctypes.c_int(version), ctypes.c_int(priority)))
 
     return

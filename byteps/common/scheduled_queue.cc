@@ -15,6 +15,7 @@
 
 #include <algorithm>
 
+#include "logging.h"
 #include "scheduled_queue.h"
 
 namespace byteps {
@@ -23,17 +24,24 @@ namespace common {
 void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
     std::lock_guard<std::mutex> lock(_mutex);
     _sq.push_back(entry);
+    // TODO: below can be optimized to O(n)
     std::sort(_sq.begin(), _sq.end(),
         [](std::shared_ptr<TensorTableEntry> a, std::shared_ptr<TensorTableEntry> b) {
-            return (a->priority > b->priority); // from large to small
+            if (a->priority == b->priority) {
+                return (a->key < b->key); // from the first partition to the last
+            }
+            return (a->priority > b->priority); // from higher priority to lower
     });
-    BPS_LOG(TRACE) << "Queue " << _qt << " addTask: " << entry->tensor_name;
+    BPS_LOG(TRACE) << "Queue " << _qt << " addTask: " << entry->tensor_name
+                   << " key: " << entry->key;
     return;
 }
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;
+    // TODO: below can be optimimized
+    // If we take task from the tail, erase() can be faster
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
         if ((*it)->ready_event) {
             if (!(*it)->ready_event->Ready()) {
@@ -46,7 +54,8 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
         task = *it;
         _sq.erase(it);
         _credits -= task->len;
-        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name;
+        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name
+                       << " key: " << task->key;
         return task;
     }
     return nullptr;

@@ -15,6 +15,8 @@
 
 #include "global.h"
 #include <cuda_runtime.h>
+#include <malloc.h>
+#include <unistd.h>
 
 namespace byteps {
 namespace common {
@@ -74,7 +76,9 @@ void BytePSGlobal::Init() {
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " (bytes)";
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
+    _partition_bytes = _partition_bytes / 8 * 8; // align by 8 (the size of a double or int64)
+    BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     if (_my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
         // init low-level ps implementation
@@ -132,41 +136,41 @@ void BytePSGlobal::Shutdown() {
             delete _threads[i];
         }
     }
-    ps::Finalize(0, true);
+    ps::Finalize(0, false);
 
     cudaStreamDestroy(*_reduce_stream);
     cudaStreamDestroy(*_broadcast_stream);
 
     for (auto &it:_name_to_cxt) {
-        CUDA_CALL(cudaFreeHost(it.second.cpubuff));
+        if (it.second.cpubuff) {
+            CUDA_CALL(cudaFreeHost(it.second.cpubuff));
+        }
     }
     return;
 }
 
 BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
+    BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end()) << name << " is not initialized";
     return _name_to_cxt[name];
 }
 
-void BytePSGlobal::AlignPartitionBound(int alignment, uint32_t& bound) {
-    bound = bound / alignment * alignment;
-    BPS_LOG(DEBUG) << "The partition bound is " << bound << " bytes";
-}
-
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-        if (next_key_ == 0) { // only do this once
-            AlignPartitionBound(4, _partition_bytes);
-        }
+        _name_to_cxt[name].initialized = false;
 
-        if (device != CPU_DEVICE_ID) { // GPU
-            //BPS_LOG(TRACE) << name << ": Init the associated CPU buffer with len=" << size;
+        if (on_gpu) {
             CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
-            _name_to_cxt[name].buff_len = size;
+            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
         }
+        else {
+            _name_to_cxt[name].cpubuff = memalign(sysconf(_SC_PAGESIZE), size);
+            BPS_LOG(TRACE) << name << ": memalign with len=" << size;
+        }
+        _name_to_cxt[name].buff_len = size;
         auto accumulated = 0;
         while (accumulated < size) {
             _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);

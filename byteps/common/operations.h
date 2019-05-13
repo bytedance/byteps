@@ -51,8 +51,6 @@ int byteps_size();
 // Returns -1 if byteps is not initialized.
 int byteps_local_size();
 
-// C interface to return flag indicating whether MPI multi-threading is
-// supported. Returns -1 if byteps is not initialized.
 }
 
 // Below are all for Framework plugins
@@ -71,19 +69,13 @@ Status EnqueueTensorPull(BPSContext &context,
                         const int device, const int priority, const int version,
                         StatusCallback callback, QueueType last_op);
 
-Status EnqueueTensorInit(BPSContext &context,
-                  std::shared_ptr<Tensor> tensor,
-                  std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device,
-                  StatusCallback callback);
+Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype,
+                         StatusCallback callback);
 
-void InitTensor(BPSContext &context,
-                  std::shared_ptr<Tensor> tensor,
-                  std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device);
+void InitTensor(BPSContext &context, const std::string &name, int dtype);
 
 // Only call these in Framework plugins for the best performance
-bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype);
+bool IsTensorInitialized(const std::string &name, size_t size, bool on_gpu);
 BPSContext& GetContextFromName(const std::string &name);
 
 } // namespace common

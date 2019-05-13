@@ -73,7 +73,7 @@ const void* TensorUtil::GetData(NDArray* tensor) {
     return static_cast<void*>(tensor->data().dptr<int64_t>());
   default:
     throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
-                           " is not supported in MPI mode.");
+                           " is not supported in BytePS.");
   }
 }
 
@@ -104,7 +104,7 @@ int64_t TensorUtil::GetSize(NDArray* tensor) {
     break;
   default:
     throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
-                           " is not supported in MPI mode.");
+                           " is not supported in BytePS.");
   }
   return (int64_t)(tensor->shape().Size()) * element_size;
 }

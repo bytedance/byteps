@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cuda_runtime.h>
 
+#include "logging.h"
 #include "operations.h"
 #include "global.h"
 
@@ -380,39 +381,19 @@ Status EnqueueTensorPull(BPSContext &context,
     return Status::OK();
 }
 
-void InitTensor(BPSContext &context,
-                  std::shared_ptr<Tensor> tensor,
-                  std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device) {
+void InitTensor(BPSContext &context, const std::string &name, int dtype) {
 
     // Only rank 0 pushes the initialization
     if (BytePSGlobal::GetRank() == 0) {
         auto key_list = context.key_list;
+        size_t size = context.buff_len;
         BPS_LOG(TRACE) << "Init (push) " << name
-                       << ", size=" << tensor->size()
-                       << ", parts=" << key_list.size()
-                       << ", device=" << device;
+                       << ", size=" << size
+                       << ", parts=" << key_list.size();
         BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
         // get metadata
-        size_t size = tensor->size();
-        const int dtype = tensor->dtype();
 
-        if (ready_event) {
-            while (!ready_event->Ready()) {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-            }
-        }
-
-        char* data;
-        if (device != CPU_DEVICE_ID) { // GPU
-            BPS_CHECK_EQ(size, context.buff_len);
-            BPS_CHECK(context.cpubuff);
-            CUDA_CALL(cudaMemcpy(context.cpubuff, tensor->data(), size, cudaMemcpyDeviceToHost));
-            data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
-        } else { // CPU
-            data = const_cast<char*> (static_cast<const char*> (tensor->data()));
-        }
-
+        char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
         auto bound = BytePSGlobal::GetPartitionBound();
         unsigned int accumulated = 0;
         auto i = 0;
@@ -441,19 +422,17 @@ void InitTensor(BPSContext &context,
         BPS_CHECK_EQ((unsigned int) i, key_list.size());
     } else {
         BPS_LOG(TRACE) << "Init (wait for barrier) " << name
-                       << ", size=" << tensor->size();
+                       << ", size=" << context.buff_len;
     }
 
     ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+    context.initialized = true;
     BPS_LOG(TRACE) << "Init finish " << name;
 }
 
-Status EnqueueTensorInit(BPSContext &context,
-                  std::shared_ptr<Tensor> tensor,
-                  std::shared_ptr<ReadyEvent> ready_event,
-                  const std::string &name, const int device,
-                  StatusCallback callback) {
-    InitTensor(context, tensor, ready_event, name, device);
+Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype,
+                         StatusCallback callback) {
+    InitTensor(context, name, dtype);
     callback(Status::OK());
     return Status::OK();
 }
@@ -462,8 +441,8 @@ BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
 
-bool IsTensorInitialized(const std::string &name, size_t size, int device, DataType dtype) {
-    return BytePSGlobal::IsTensorInitialized(name, size, device, dtype);
+bool IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
+    return BytePSGlobal::IsTensorInitialized(name, size, on_gpu);
 }
 
 } // namespace common

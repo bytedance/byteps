@@ -14,8 +14,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_TORCH_MPI_OPS_H
-#define BYTEPS_TORCH_MPI_OPS_H
+#ifndef BYTEPS_TORCH_OPS_H
+#define BYTEPS_TORCH_OPS_H
 
 #include <TH/TH.h>
 
@@ -52,4 +52,4 @@ extern "C" void byteps_torch_wait_and_clear(int handle);
 } // namespace torch
 } // namespace byteps
 
-#endif // BYTEPS_TORCH_MPI_OPS_H
+#endif // BYTEPS_TORCH_OPS_H

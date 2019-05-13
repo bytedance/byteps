@@ -19,6 +19,7 @@
 
 #include "common.h"
 
+
 namespace byteps {
 namespace common {
 

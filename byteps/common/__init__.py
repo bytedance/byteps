@@ -54,22 +54,23 @@ class BytePSBasics(object):
 
     def __init__(self, pkg_path, *args):
         full_path = get_extension_full_path(pkg_path, *args)
-        self.MPI_LIB_CTYPES = ctypes.CDLL(full_path, mode=ctypes.RTLD_GLOBAL)
+        self.C_LIB_CTYPES = ctypes.CDLL(full_path, mode=ctypes.RTLD_GLOBAL)
 
     def init(self):
         """A function that inits BytePS."""
-        return self.MPI_LIB_CTYPES.byteps_init()
+        atexit.register(self.shutdown)
+        return self.C_LIB_CTYPES.byteps_init()
 
     def shutdown(self):
         """A function that shuts BytePS down."""
-        return self.MPI_LIB_CTYPES.byteps_shutdown()
+        return self.C_LIB_CTYPES.byteps_shutdown()
 
     def size(self):
         """A function that returns the number of BytePS processes.
         Returns:
           An integer scalar containing the number of BytePS processes.
         """
-        size = self.MPI_LIB_CTYPES.byteps_size()
+        size = self.C_LIB_CTYPES.byteps_size()
         if size == -1:
             raise ValueError(
                 'BytePS has not been initialized; use hvd.init().')
@@ -81,7 +82,7 @@ class BytePSBasics(object):
         Returns:
           An integer scalar containing the number of local BytePS processes.
         """
-        local_size = self.MPI_LIB_CTYPES.byteps_local_size()
+        local_size = self.C_LIB_CTYPES.byteps_local_size()
         if local_size == -1:
             raise ValueError(
                 'BytePS has not been initialized; use hvd.init().')
@@ -92,7 +93,7 @@ class BytePSBasics(object):
         Returns:
           An integer scalar with the BytePS rank of the calling process.
         """
-        rank = self.MPI_LIB_CTYPES.byteps_rank()
+        rank = self.C_LIB_CTYPES.byteps_rank()
         if rank == -1:
             raise ValueError(
                 'BytePS has not been initialized; use hvd.init().')
@@ -105,7 +106,7 @@ class BytePSBasics(object):
         Returns:
           An integer scalar with the local BytePS rank of the calling process.
         """
-        local_rank = self.MPI_LIB_CTYPES.byteps_local_rank()
+        local_rank = self.C_LIB_CTYPES.byteps_local_rank()
         if local_rank == -1:
             raise ValueError(
                 'BytePS has not been initialized; use hvd.init().')

@@ -24,7 +24,6 @@
 #include <atomic>
 #include <vector>
 #include "ps/ps.h"
-#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -111,15 +110,9 @@ typedef struct BytePSContext {
     std::vector<ps::Key> key_list;
     void* cpubuff;
     size_t buff_len;
+    int priority;
+    bool initialized;
 } BPSContext;
-
-class OpContext;
-
-class PersistentBuffer {
-public:
-  virtual const void* AccessData(std::shared_ptr<OpContext> context) const = 0;
-  virtual ~PersistentBuffer() = default;
-};
 
 class Tensor {
 public:
@@ -130,9 +123,7 @@ public:
   virtual ~Tensor() = default;
 };
 
-// A callback to call after the MPI communication completes. Since the
-// allreduce and allgather ops are asynchronous, this callback is what resumes
-// computation after the reduction is completed.
+// A callback to call after the PS communication completes.
 using StatusCallback = std::function<void(const Status&)>;
 
 // Table storing Tensors to be reduced, keyed by unique name.

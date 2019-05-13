@@ -93,7 +93,7 @@ def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
 
 
 class BytePSPushPull(torch.autograd.Function):
-    """An autograd function that performs allreduce on a tensor."""
+    """An autograd function that performs push_pull on a tensor."""
 
     @staticmethod
     def forward(ctx, tensor, average, name, version, priority):
@@ -127,7 +127,7 @@ def push_pull_compress(tensor, average=True, name=None, version=0, priority=0, c
         average: A flag indicating whether to compute average or summation,
                  defaults to average.
         name: A name of the reduction operation.
-        compression: Compression algorithm used during allreduce to reduce the amount
+        compression: Compression algorithm used during push_pull to reduce the amount
                      of data sent during the each parameter update step.  Defaults to
                      not using compression.
     Returns:
@@ -153,7 +153,7 @@ def push_pull_async_inplace(tensor, average=True, name=None, version=0, priority
                  defaults to average.
         name: A name of the reduction operation.
     Returns:
-        A handle to the allreduce operation that can be used with `poll()` or
+        A handle to the push_pull operation that can be used with `poll()` or
         `synchronize()`.
     """
     return _do_push_pull_async(tensor, tensor, average, name, version, priority)
@@ -181,11 +181,11 @@ def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0):
 
 def poll(handle):
     """
-    Polls an allreduce, allgather or broadcast handle to determine whether underlying
+    Polls an push_pull handle to determine whether underlying
     asynchronous operation has completed. After `poll()` returns `True`, `synchronize()`
     will return without blocking.
     Arguments:
-        handle: A handle returned by an allreduce, allgather or broadcast asynchronous
+        handle: A handle returned by an push_pull asynchronous
                 operation.
     Returns:
         A flag indicating whether the operation has completed.
@@ -195,10 +195,10 @@ def poll(handle):
 
 def synchronize(handle):
     """
-    Synchronizes an asynchronous allreduce, allgather or broadcast operation until
+    Synchronizes an asynchronous push_pull operation until
     it's completed. Returns the result of the operation.
     Arguments:
-        handle: A handle returned by an allreduce, allgather or broadcast asynchronous
+        handle: A handle returned by an push_pull asynchronous
                 operation.
     Returns:
         An output tensor of the operation.
