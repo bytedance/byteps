@@ -555,6 +555,8 @@ def get_nccl_vals():
     return nccl_include_dirs, nccl_lib_dirs, nccl_libs
 
 def build_mx_extension(build_ext, options):
+    # clear ROLE -- installation does not need this
+    os.environ.pop("DMLC_ROLE", None)
     check_mx_version()
     mx_compile_flags, mx_link_flags = get_mx_flags(
         build_ext, options['COMPILE_FLAGS'])
