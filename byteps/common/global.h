@@ -77,7 +77,14 @@ public:
 
     static cudaStream_t* GetReduceStream();
     static cudaStream_t* GetBroadcastStream();
-    
+    static cudaStream_t* GetCopyDevice2HostStream();
+    static cudaStream_t* GetCopyHost2DeviceStream();
+
+    // methods to access or modify the _ready_table
+    static bool IsKeyReady(int key);
+    static int AddReadyCount(int key);
+    static void ClearReadyCount(int key);
+
 private:
 
     static std::mutex _init_mutex;
@@ -102,8 +109,15 @@ private:
 
     static cudaStream_t* _reduce_stream;
     static cudaStream_t* _broadcast_stream;
+    static cudaStream_t* _copy_device2host_stream;
+    static cudaStream_t* _copy_host2device_stream;
 
     static uint32_t _partition_bytes;
+
+    // (key, ready_signal_count) pair, only valid for root device
+    static std::unordered_map<int, int> _ready_table;
+    // use this mutex to access/modify the _ready_table
+    static std::mutex _table_mutex;
 };
 
 

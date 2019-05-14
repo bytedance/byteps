@@ -17,6 +17,7 @@
 
 #include "logging.h"
 #include "scheduled_queue.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -40,7 +41,7 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;
-    // TODO: below can be optimimized
+    // TODO: below can be optimized
     // If we take task from the tail, erase() can be faster
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
         if ((*it)->ready_event) {
@@ -49,6 +50,60 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
             }
         }
         if ((*it)->len > _credits) {
+            continue;
+        }
+        task = *it;
+        _sq.erase(it);
+        _credits -= task->len;
+        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name
+                       << " key: " << task->key;
+        return task;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::shared_ptr<TensorTableEntry> task;
+    // TODO: below can be optimized
+    // If we take task from the tail, erase() can be faster
+    for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
+        if ((*it)->ready_event) {
+            if (!(*it)->ready_event->Ready()) {
+                continue;
+            }
+        }
+        if ((*it)->len > _credits) {
+            continue;
+        }
+        if ((*it)->key != key) {
+            continue;
+        }
+        task = *it;
+        _sq.erase(it);
+        _credits -= task->len;
+        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name
+                       << " key: " << task->key;
+        return task;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTaskFromReadyTable(){
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::shared_ptr<TensorTableEntry> task;
+    // TODO: below can be optimized
+    // If we take task from the tail, erase() can be faster
+    for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
+        if ((*it)->ready_event) {
+            if (!(*it)->ready_event->Ready()) {
+                continue;
+            }
+        }
+        if ((*it)->len > _credits) {
+            continue;
+        }
+        if (!BytePSGlobal::IsKeyReady((*it)->key)) {
             continue;
         }
         task = *it;

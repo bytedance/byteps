@@ -19,7 +19,7 @@
 #include <atomic>
 #include <vector>
 #include <memory>
-
+#include <unordered_map>
 #include "common.h"
 
 namespace byteps {
@@ -35,6 +35,8 @@ public:
     QueueType getQueueType() { return _qt; }
     void addTask(std::shared_ptr<TensorTableEntry>);
     std::shared_ptr<TensorTableEntry> getTask();
+    std::shared_ptr<TensorTableEntry> getTask(int key);
+    std::shared_ptr<TensorTableEntry> getTaskFromReadyTable();
     uint32_t pendingSize();
     void reportFinish(int size);
 

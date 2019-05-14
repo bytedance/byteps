@@ -27,12 +27,14 @@ namespace byteps {
 namespace common {
 
 bool RunCoordinateLoopOnce() {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    return true;
-}
-
-bool RunCopyDevice2HostLoopOnce() {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    QueueType this_op = COORDINATE;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto task = q->getTask();
+    if (task){
+        BPS_CHECK(!IsRootDevice()) << "only non-root device should enter COORDINATE loop";
+    } else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
@@ -56,7 +58,7 @@ bool RunReduceLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
         }
 
-        if (task->queue_list.size() > 0) { // TODO: should check the boundary
+        if (task->queue_list.size() > 0) {
             BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
             BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
         } else {
@@ -70,9 +72,45 @@ bool RunReduceLoopOnce() {
     return true;
 }
 
+bool RunCopyDevice2HostLoopOnce() {
+    QueueType this_op = COPYD2H;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
+    auto task = q->getTask();
+    if (task) {
+        BPS_CHECK(IsRootDevice()) << "only root device should enter COPYD2H loop";
+        BPS_CHECK(task->tensor);
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
+
+        if (task->device != CPU_DEVICE_ID) { // GPU
+            auto name = task->tensor_name;
+            auto len = task->len;
+            auto offset = task->offset;
+            auto cpubuff = task->cpubuff + offset;
+            BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+            CUDA_CALL(cudaMemcpyAsync(cpubuff, task->tensor->data() + offset, len, cudaMemcpyDeviceToHost, *copy_d2h_Stream));
+            CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
+        }
+
+        if (task->queue_list.size() > 0) {
+            BPS_LOG(TRACE) << "Finish COPYD2H tensor: " << task->tensor_name;
+            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
+        } else {
+            task->callback(Status::OK());
+        }
+        q->reportFinish(task->len);
+    }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
+    return true;
+}
+
 bool RunPushLoopOnce() {
+    BPS_CHECK(IsRootDevice()) << "only root device should enter PUSH loop";
     QueueType this_op = PUSH;
-    auto q = BytePSGlobal::GetScheduledQueue(PUSH);
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
         BPS_CHECK_GE(task->queue_list.size(), 1);
@@ -124,8 +162,9 @@ bool RunPushLoopOnce() {
 }
 
 bool RunPullLoopOnce() {
+    BPS_CHECK(IsRootDevice()) << "only root device should enter PULL loop";
     QueueType this_op = PULL;
-    auto q = BytePSGlobal::GetScheduledQueue(PULL);
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
         BPS_CHECK_GE(task->queue_list.size(), 1);
@@ -172,13 +211,48 @@ bool RunPullLoopOnce() {
 }
 
 bool RunCopyHost2DeviceLoopOnce() {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    BPS_CHECK(IsRootDevice()) << "only root device should enter COPYH2D loop";
+    QueueType this_op = COPYH2D;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
+    auto task = q->getTask();
+    if (task) {
+        BPS_CHECK(task->output);
+        BPS_CHECK_GE(task->queue_list.size(), 1);
+        task->queue_list.erase(task->queue_list.begin());
+
+        if (task->device != CPU_DEVICE_ID) { // GPU
+            auto name = task->tensor_name;
+            auto len = task->len;
+            auto offset = task->offset;
+
+            auto cpubuff = task->cpubuff + offset;
+            BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+            char* gpu_addr = const_cast<char*> (static_cast<const char*> (task->output->data() + offset));
+            CUDA_CALL(cudaMemcpyAsync(gpu_addr, cpubuff, len, cudaMemcpyHostToDevice, *copy_h2d_Stream));
+            CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
+        }
+
+        BPS_CHECK_EQ(task->queue_list.size(), 0)
+            << "This should be the last op, remain queue_list size: " << task->queue_list.size();
+
+        BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
+        int v = task->counter_ptr.get()->fetch_add(1);
+        if (v == (task->total_partnum-1)) {
+            BPS_LOG(TRACE) << "Finish COPYH2D tensor: " << task->tensor_name;
+            task->callback(Status::OK());
+        }
+        q->reportFinish(task->len);
+    }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
     return true;
 }
 
 bool RunBroadcastLoopOnce() {
     QueueType this_op = BROADCAST;
-    auto q = BytePSGlobal::GetScheduledQueue(BROADCAST);
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
     auto task = q->getTask();
     if (task) {
@@ -249,7 +323,11 @@ extern "C" {
 
 void byteps_init() {
     BytePSGlobal::Init();
-    LoopFunction func[ThreadNum] = {CoordinateLoop, CopyDevice2HostLoop, ReduceLoop, PushLoop, PullLoop, CopyHost2DeviceLoop, BroadcastLoop};
+    // TODO: can optimize below
+    // e.g., non-root process does not need to start COPYD2H/PUSH/PULL/COPYH2D threads
+    LoopFunction func[ThreadNum] = {CoordinateLoop, ReduceLoop,
+                                    CopyDevice2HostLoop, PushLoop, PullLoop,
+                                    CopyHost2DeviceLoop, BroadcastLoop};
     BytePSGlobal::Start(func);
     return;
 }

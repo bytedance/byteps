@@ -61,10 +61,10 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
 
     // TODO: now only create 1 gpu testcase
     if (common::IsRootDevice()) {
-        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::COPYD2H);
         queue_list.push_back(common::PUSH);
     } else {
-        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::COPYD2H);
         queue_list.push_back(common::PUSH);
     }
 
@@ -89,10 +89,10 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
     // TODO: now only create 1 gpu testcase
     if (common::IsRootDevice()) {
         queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
+        queue_list.push_back(common::COPYH2D);
     } else {
         queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
+        queue_list.push_back(common::COPYH2D);
     }
 
     auto enqueue_result =
@@ -112,7 +112,6 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     std::string tensor_name = GetOpName("byteps", name);
 
     size_t size = TensorUtil::GetSize(tensor);
-    auto device = TensorUtil::GetDevice(tensor);
     auto dtype = TensorUtil::GetDType(tensor);
 
     // check if we need to init the tensor

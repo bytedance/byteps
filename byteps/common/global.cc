@@ -42,10 +42,14 @@ std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
 
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
+std::mutex BytePSGlobal::_table_mutex;
+std::unordered_map<int, int> BytePSGlobal::_ready_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_reduce_stream;
 cudaStream_t* BytePSGlobal::_broadcast_stream;
+cudaStream_t* BytePSGlobal::_copy_device2host_stream;
+cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -95,8 +99,12 @@ void BytePSGlobal::Init() {
 
     _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _broadcast_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _copy_host2device_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _copy_device2host_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     cudaStreamCreateWithFlags(_reduce_stream, cudaStreamNonBlocking);
     cudaStreamCreateWithFlags(_broadcast_stream, cudaStreamNonBlocking);
+    cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking);
+    cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking);
 
     for (int i = 0; i < QueueNum; i++) {
         BPS_LOG(DEBUG) << "Create schedule queue " << i;
@@ -221,6 +229,32 @@ cudaStream_t* BytePSGlobal::GetReduceStream() {
 
 cudaStream_t* BytePSGlobal::GetBroadcastStream() {
     return BytePSGlobal::_broadcast_stream;
+}
+
+cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
+    return BytePSGlobal::_copy_device2host_stream;
+}
+
+cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
+    return BytePSGlobal::_copy_host2device_stream;
+}
+
+// below are methods for accessing/modifying the _ready_table
+bool BytePSGlobal::IsKeyReady(int key) {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    return _ready_table[key] == (_local_size - 1);
+}
+
+int BytePSGlobal::AddReadyCount(int key) {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    BPS_CHECK_LT(_ready_table[key], _local_size-1)
+        << _ready_table[key] << ", " << (_local_size-1);
+    return ++_ready_table[key];
+}
+
+void BytePSGlobal::ClearReadyCount(int key) {
+    std::lock_guard<std::mutex> lock(_table_mutex);
+    _ready_table[key] = 0;
 }
 
 } // namespace common
