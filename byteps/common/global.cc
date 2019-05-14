@@ -14,7 +14,6 @@
 // =============================================================================
 
 #include "global.h"
-#include <cuda_runtime.h>
 #include <malloc.h>
 #include <unistd.h>
 
@@ -50,9 +49,15 @@ cudaStream_t* BytePSGlobal::_reduce_stream;
 cudaStream_t* BytePSGlobal::_broadcast_stream;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
+ncclUniqueId* BytePSGlobal::_nccl_id;
+ncclComm_t BytePSGlobal::_nccl_comm;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
+}
+
+bool BytePSGlobal::IsRootDevice() {
+    return _is_root_device;
 }
 
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
@@ -79,7 +84,6 @@ void BytePSGlobal::Init() {
     _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_my_role);
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
-    BPS_LOG(DEBUG) << "THIS IS " << (_is_root_device ? "ROOT" : "NON-ROOT");
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
@@ -97,14 +101,15 @@ void BytePSGlobal::Init() {
         }
     }
 
+    CUDA_CALL(cudaSetDevice(_local_rank)); // set to associated GPU
     _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _broadcast_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_host2device_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_device2host_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    cudaStreamCreateWithFlags(_reduce_stream, cudaStreamNonBlocking);
-    cudaStreamCreateWithFlags(_broadcast_stream, cudaStreamNonBlocking);
-    cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking);
-    cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking);
+    CUDA_CALL(cudaStreamCreateWithFlags(_reduce_stream, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_broadcast_stream, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
 
     for (int i = 0; i < QueueNum; i++) {
         BPS_LOG(DEBUG) << "Create schedule queue " << i;
@@ -115,6 +120,24 @@ void BytePSGlobal::Init() {
     _initialized = true;
     BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
                << " size=" << _size << " local_size=" << _local_size;
+
+    // init NCCL
+    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
+    if (_is_root_device) { // only root create nccl id
+        NCCLCHECK(ncclGetUniqueId(_nccl_id));
+        // the log is just for debug, the actual length of nccl id is 128
+        BPS_LOG(DEBUG) << "root NCCL id is " << reinterpret_cast<uint64_t>(_nccl_id);
+        for (int i = 0; i < _local_size; ++i) {
+            if (i == _local_rank) continue;
+            _comm->sendSignal(i, (void *)_nccl_id, sizeof(ncclUniqueId));
+        }
+    } else {
+        int src;
+        _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
+    }
+
+    BPS_LOG(DEBUG) << "local_rank=" << _local_rank
+                   << " finish init";
     return;
 }
 

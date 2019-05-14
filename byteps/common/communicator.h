@@ -76,7 +76,6 @@ public:
 
     ~BytePSCommSocket() {
         _listen_thread->join();
-        close(_send_fd);
         close(_recv_fd);
     }
 
@@ -89,7 +88,6 @@ public:
     std::thread* _listen_thread;
 
     int _recv_fd;
-    int _send_fd;
 
 };
 

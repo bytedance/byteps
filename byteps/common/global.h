@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <string>
 #include <cuda_runtime.h>
+#include <nccl.h>
 #include <map>
 
 #include "common.h"
@@ -57,7 +58,7 @@ public:
     static int GetLocalRank() { return _local_rank; }
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
-    static bool IsRootDevice() { return _is_root_device; }
+    static bool IsRootDevice();
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
 
@@ -118,6 +119,9 @@ private:
     static std::unordered_map<int, int> _ready_table;
     // use this mutex to access/modify the _ready_table
     static std::mutex _table_mutex;
+
+    static ncclUniqueId* _nccl_id;
+    static ncclComm_t _nccl_comm;
 };
 
 

@@ -15,6 +15,8 @@
 
 #include "logging.h"
 #include "communicator.h"
+#include <cerrno>
+#include <cstring>
 namespace byteps {
 namespace common {
 
@@ -64,9 +66,6 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _recv_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     BPS_CHECK_GE(_recv_fd, 0) << "recv socket create failed";
 
-    _send_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    BPS_CHECK_GE(_send_fd, 0) << "send socket create failed";
-
     int ret;
 
     // server
@@ -82,17 +81,18 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     server_addr.sun_family = AF_UNIX;
     strncpy(server_addr.sun_path, server_fd_path.c_str(), sizeof(server_addr.sun_path)-1);
 
+    // before bind, release socket path first in case of last round remain
+    unlink(server_fd_path.c_str());
+
     // bind the socket to server_addr
     ret = bind(_recv_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
     BPS_CHECK_GE(ret, 0) << server_fd_path << " bind failed: " << strerror(errno);
 
-    // not sure whether need this or not:
-    unlink(server_fd_path.c_str());
 
     BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
                    << " device, socket create successfully";
 
-    _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
+    if (is_root) _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
 }
 
 void BytePSCommSocket::startListenThread() {
@@ -100,11 +100,10 @@ void BytePSCommSocket::startListenThread() {
     char buffer[MAX_LINE];
     while (true) {
         int rc;
-        while ((rc=read(_recv_fd, buffer, sizeof(buffer))) > 0) {
-            BPS_LOG(TRACE) << "socket recved len=" << rc;
-            // do the processing here
-        }
-        BPS_CHECK_GE(rc, 0);
+        rc=read(_recv_fd, buffer, sizeof(buffer));
+        BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+
+        BPS_LOG(TRACE) << "socket recved len=" << rc << ", rank=" << _local_rank;
     }
 }
 
@@ -118,14 +117,21 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     fd_path += std::to_string(destination);
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 
-    auto ret = sendto(_send_fd, data, len, 0,
+    auto ret = sendto(_recv_fd, data, len, 0,
         (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
 
-    BPS_CHECK_GE(ret, 0);
+    BPS_CHECK_GE(ret, 0) << std::strerror(errno)
+                         << ", rank=" << _local_rank;
     return 0;
 }
 
 int BytePSCommSocket::recvSignal(int* source, void* data, int len) {
+    char buffer[MAX_LINE];
+    int rc;
+    rc=recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
+    BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+
+    BPS_LOG(TRACE) << "socket recved len=" << rc << ", rank=" << _local_rank;
     return 0;
 }
 

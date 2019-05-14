@@ -31,7 +31,7 @@ bool RunCoordinateLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task){
-        BPS_CHECK(!IsRootDevice()) << "only non-root device should enter COORDINATE loop";
+        BPS_CHECK(!IsRoot()) << "only non-root device should enter COORDINATE loop";
     } else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
@@ -78,7 +78,7 @@ bool RunCopyDevice2HostLoopOnce() {
     auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
     auto task = q->getTask();
     if (task) {
-        BPS_CHECK(IsRootDevice()) << "only root device should enter COPYD2H loop";
+        BPS_CHECK(IsRoot()) << "only root device should enter COPYD2H loop";
         BPS_CHECK(task->tensor);
         BPS_CHECK_GE(task->queue_list.size(), 1);
         task->queue_list.erase(task->queue_list.begin());
@@ -108,11 +108,11 @@ bool RunCopyDevice2HostLoopOnce() {
 }
 
 bool RunPushLoopOnce() {
-    BPS_CHECK(IsRootDevice()) << "only root device should enter PUSH loop";
     QueueType this_op = PUSH;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
+        BPS_CHECK(IsRoot()) << "only root device should enter PUSH loop";
         BPS_CHECK_GE(task->queue_list.size(), 1);
         task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
@@ -162,11 +162,11 @@ bool RunPushLoopOnce() {
 }
 
 bool RunPullLoopOnce() {
-    BPS_CHECK(IsRootDevice()) << "only root device should enter PULL loop";
     QueueType this_op = PULL;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
+        BPS_CHECK(IsRoot()) << "only root device should enter PULL loop";
         BPS_CHECK_GE(task->queue_list.size(), 1);
         task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
@@ -211,12 +211,12 @@ bool RunPullLoopOnce() {
 }
 
 bool RunCopyHost2DeviceLoopOnce() {
-    BPS_CHECK(IsRootDevice()) << "only root device should enter COPYH2D loop";
     QueueType this_op = COPYH2D;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
     auto task = q->getTask();
     if (task) {
+        BPS_CHECK(IsRoot()) << "only root device should enter COPYH2D loop";
         BPS_CHECK(task->output);
         BPS_CHECK_GE(task->queue_list.size(), 1);
         task->queue_list.erase(task->queue_list.begin());
@@ -293,12 +293,12 @@ void CoordinateLoop() {
     while (RunCoordinateLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
-void CopyDevice2HostLoop() {
-    while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
-}
-
 void ReduceLoop() {
     while (RunReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
+void CopyDevice2HostLoop() {
+    while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void PushLoop() {
@@ -431,6 +431,12 @@ Status EnqueueTensor(BPSContext &context,
     for (unsigned int i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
+        if (e->queue_list.size() == 0) {
+            BPS_LOG(TRACE) << task->tensor_name
+                       << ", key=" << task->key
+                       << " has no queue_list assigned, thus do not enqueue";
+            continue;
+        }
         BPS_LOG(TRACE) << "EnqueueTensor: " << task->tensor_name
                        << ", key=" << task->key
                        << ", offset=" << task->offset
@@ -449,7 +455,7 @@ Status EnqueueTensor(BPSContext &context,
 void InitTensor(BPSContext &context, const std::string &name, int dtype, void *cpubuff) {
 
     // only root needs to init the tensor
-    if (!IsRootDevice()) {
+    if (!IsRoot()) {
         return;
     }
 
@@ -524,7 +530,7 @@ bool IsTensorInitialized(const std::string &name, size_t size) {
     return BytePSGlobal::IsTensorInitialized(name, size);
 }
 
-bool IsRootDevice() {
+bool IsRoot() {
     return BytePSGlobal::IsRootDevice();
 }
 

@@ -70,7 +70,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void* c
 // Only call these in Framework plugins for the best performance
 bool IsTensorInitialized(const std::string &name, size_t size);
 BPSContext& GetContextFromName(const std::string &name);
-bool IsRootDevice();
+bool IsRoot();
 
 } // namespace common
 } // namespace byteps

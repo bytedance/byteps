@@ -54,20 +54,19 @@ enum class LogLevel {
 #define CUDA_CALL(func)                                                        \
   {                                                                            \
     cudaError_t e = (func);                                                    \
-    CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)                   \
+    BPS_CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)                   \
         << "CUDA: " << cudaGetErrorString(e);                                  \
   }
 
 /*
  * \brief Protected NCCL call.
  */
-#define NCCLCHECK(cmd) do {                        \
+#define NCCLCHECK(cmd)                             \
+{                                                  \
   ncclResult_t r = (cmd);                          \
-  CHECK(r == ncclSuccess)                          \
-    << "Failed, NCCL error %s:%d '%s'\n"           \
-    << __FILE__,__LINE__,ncclGetErrorString(r);    \
-    exit(EXIT_FAILURE);                            \
-} while(0)
+  BPS_CHECK(r == ncclSuccess)                      \
+    << "NCCL error: " << ncclGetErrorString(r);    \
+}
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:
