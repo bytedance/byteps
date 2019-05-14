@@ -57,7 +57,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_rank = *local_rank;
     _local_size = *local_size;
 
-    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER; // revisit here if root changes
+    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
 
     // init the socket

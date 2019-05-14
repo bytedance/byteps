@@ -57,28 +57,50 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
 
+    std::vector<QueueType> queue_list;
+
+    // TODO: now only create 1 gpu testcase
+    if (common::IsRootDevice()) {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+    } else {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+    }
+
     auto enqueue_result =
-        common::EnqueueTensorPush(context, byteps_input, nullptr, nullptr,
-                               name, device, priority, version,
-                               [on_complete](const Status& status) {
-                                 InvokeCompleteCallback(on_complete, status);
-                               }, common::PUSH); // last op
+        common::EnqueueTensor(context, byteps_input, nullptr, nullptr,
+                              name, device, priority, version,
+                              [on_complete](const Status& status) {
+                                InvokeCompleteCallback(on_complete, status);
+                              }, queue_list);
     ThrowIfError(enqueue_result);
 }
 
-void DoSecondStage(BPSContext &context, NDArray* input, const std::string& name, int version, int priority,
+void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name, int version, int priority,
                  Callback on_complete) {
     ThrowIfError(common::CheckInitialized());
 
-    auto device = TensorUtil::GetDevice(input);
-    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+    auto device = TensorUtil::GetDevice(output);
+    auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
+
+    std::vector<QueueType> queue_list;
+
+    // TODO: now only create 1 gpu testcase
+    if (common::IsRootDevice()) {
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    } else {
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
 
     auto enqueue_result =
-        common::EnqueueTensorPull(context, byteps_input, nullptr,
-                               name, device, priority, version,
-                               [on_complete](const Status& status) {
-                                 InvokeCompleteCallback(on_complete, status);
-                               }, common::BROADCAST); // last op
+        common::EnqueueTensor(context, nullptr, byteps_output, nullptr,
+                              name, device, priority, version,
+                              [on_complete](const Status& status) {
+                                InvokeCompleteCallback(on_complete, status);
+                              }, queue_list);
     ThrowIfError(enqueue_result);
 }
 
@@ -94,17 +116,15 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     auto dtype = TensorUtil::GetDType(tensor);
 
     // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size, (device != CPU_DEVICE_ID))) {
+    if (!common::IsTensorInitialized(tensor_name, size)) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         auto device = TensorUtil::GetDevice(tensor);
         auto byteps_input = std::make_shared<MXTensor<NDArray>>(tensor);
-        if (device == CPU_DEVICE_ID) {
-            LOG(INFO) << tensor_name << " is on cpu, len=" << context.buff_len;
-            context.cpubuff = (void*) byteps_input->data();
-        }
+
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, tensor_name, dtype);
+        common::InitTensor(context, tensor_name, dtype,
+            (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
     }
 
     auto& context = common::GetContextFromName(tensor_name);

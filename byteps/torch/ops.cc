@@ -65,16 +65,32 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
     auto dtype = byteps_input->dtype();
 
     // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size, (device != CPU_DEVICE_ID))) {
+    if (!common::IsTensorInitialized(tensor_name, size)) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, tensor_name, dtype);
+        common::InitTensor(context, tensor_name, dtype,
+          (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
     }
 
     auto& context = common::GetContextFromName(tensor_name);
 
-    auto enqueue_result = common::EnqueueTensorPush(
+    std::vector<common::QueueType> queue_list;
+    // TODO: now only create 1 gpu testcase
+    if (common::IsRootDevice()) {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
+    else {
+        queue_list.push_back(common::REDUCE);
+        queue_list.push_back(common::PUSH);
+        queue_list.push_back(common::PULL);
+        queue_list.push_back(common::BROADCAST);
+    }
+
+    auto enqueue_result = common::EnqueueTensor(
         context, byteps_input, byteps_output, ready_event,
         tensor_name, device, priority, version,
         [handle, average, tensor](const Status& status) mutable {
@@ -83,7 +99,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
                 tensor.div_(byteps_size());
             }
             handle_manager.MarkDone(handle, status);
-        }, common::BROADCAST);
+        }, queue_list);
 
     ThrowIfError(enqueue_result);
 

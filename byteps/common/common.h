@@ -30,6 +30,7 @@ namespace common {
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
+#define UNDECIDED_DEVICE_ID (-2)
 
 // Keep the order consistent with DMLC/mshadow
 // https://github.com/dmlc/mshadow/blob/master/mshadow/base.h
@@ -55,8 +56,8 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { REDUCE, PUSH, PULL, BROADCAST };
-const int QueueNum = 4;
+enum QueueType { COORDINATE, REDUCE, COPYD2H, PUSH, PULL, COPYH2D, BROADCAST };
+const int QueueNum = 7;
 
 class Status {
 public:
@@ -153,8 +154,8 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
-  // The last operation (queue) of this task
-  QueueType last_op;
+  // The queue list of this task
+  std::vector<QueueType> queue_list;
   // The offset of this partition
   unsigned int offset = 0;
   // The length of this partition

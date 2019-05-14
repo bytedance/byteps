@@ -31,6 +31,7 @@ int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 BytePSRole BytePSGlobal::_my_role;
+bool BytePSGlobal::_is_root_device;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
@@ -73,6 +74,8 @@ void BytePSGlobal::Init() {
 
     _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_my_role);
 
+    _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+    BPS_LOG(DEBUG) << "THIS IS " << (_is_root_device ? "ROOT" : "NON-ROOT");
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
@@ -155,23 +158,21 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size, bool on_gpu) {
+bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
 
-        if (on_gpu) {
-            CUDA_CALL(cudaHostAlloc((void **) &_name_to_cxt[name].cpubuff, size, cudaHostAllocMapped));
-            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
-        }
+        // _name_to_cxt[name].cpubuff will be inited later
         _name_to_cxt[name].buff_len = size;
         auto accumulated = 0;
         while (accumulated < size) {
             _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);
             accumulated += ((size - accumulated) > _partition_bytes) ? _partition_bytes : (size - accumulated);
         }
+
         BPS_LOG(DEBUG) << name << " partitioned to "
                        << _name_to_cxt[name].key_list.size() << " part(s)"
                        << ", total_len=" << size

@@ -57,6 +57,7 @@ public:
     static int GetLocalRank() { return _local_rank; }
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
+    static bool IsRootDevice() { return _is_root_device; }
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
 
@@ -64,7 +65,7 @@ public:
     static void* CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool IsTensorInitialized(const std::string &name, size_t size, bool alloc_cpu_buf);
+    static bool IsTensorInitialized(const std::string &name, size_t size);
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
@@ -87,6 +88,7 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
+    static bool _is_root_device;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _comm;
 
