@@ -324,7 +324,7 @@ Status EnqueueTensor(BPSContext &context,
                      const std::string &name,
                      const int device, const int priority, const int version,
                      StatusCallback callback, std::vector<QueueType> queue_list) {
-    if (output) {
+    if (input && output) {
         BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
     }
 
@@ -361,7 +361,8 @@ Status EnqueueTensor(BPSContext &context,
         BytePSGlobal::GetScheduledQueue(e->queue_list.at(0))->addTask(task);
         accumulated += task->len;
     }
-    BPS_CHECK_EQ(accumulated, e->tensor->size()) << "accumulated partition size not equal to original tensor size";
+    BPS_CHECK_EQ(accumulated, (e->tensor ? e->tensor->size(): e->output->size()))
+        << "accumulated partition size not equal to original tensor size";
 
     BPS_LOG(TRACE) << "EnqueueTensor finished: " << name;
     return Status::OK();
@@ -376,7 +377,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
 
     size_t size = context.buff_len;
     if (cpubuff) {
-        LOG(INFO) << name << " is already on cpu, len=" << size;
+        BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
         context.cpubuff = cpubuff;
     }
     else {
