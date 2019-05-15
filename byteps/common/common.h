@@ -111,6 +111,7 @@ typedef struct BytePSContext {
     std::vector<ps::Key> key_list;
     void* cpubuff;
     size_t buff_len;
+    bool reuse_buff;
     int priority;
     bool initialized;
 } BPSContext;
