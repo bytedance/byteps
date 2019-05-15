@@ -37,14 +37,20 @@
 
 #endif // BYTEPS_USE_MPI
 
-#define BASE_SOCKET_PATH "/usr/local/socket_"
-#define BASE_SOCKET_PATH_SEND "/usr/local/socket_send_"
-#define BASE_SOCKET_PATH_RECV "/usr/local/socket_recv_"
+#define BASE_SOCKET_PATH_RECV   "/usr/local/socket_recv_"
+#define BASE_SOCKET_PATH_SEND   "/usr/local/socket_send_"
+#define BASE_SOCKET_PATH_REDUCE "/usr/local/socket_recv_reduce_"
+#define BASE_SOCKET_PATH_BDCAST "/usr/local/socket_recv_broadcast_"
 #define MAX_LINE 8000
 
 namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
+
+enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_BDCAST,
+                      ROOT_SEND_TO_RECV, NON_ROOT_SEND,
+                      ROOT_RECV, NON_ROOT_RECV,
+                      NON_ROOT_RECV_REDUCE, NON_ROOT_RECV_BDCAST };
 
 class BytePSComm {
 
@@ -52,9 +58,9 @@ public:
     BytePSComm() { _comm = nullptr; }
 
     virtual void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) = 0;
-    virtual int sendSignal(int destination, void* data, int len) = 0;
-    virtual int recvSignal(int* source, void* data, int max_len) = 0;
-    virtual int broadcastSignal(int root, void* data, int len) = 0;
+    virtual int sendSignal(int destination, void* data, int len, BytePSCommFlag flag) = 0;
+    virtual int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) = 0;
+    virtual int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) = 0;
 
     int broadcast(int root, void* data, int len);
     int reduce(int root, void* data, int len);
@@ -77,17 +83,25 @@ public:
     ~BytePSCommSocket() {
         _listen_thread->join();
         close(_recv_fd);
+        close(_send_fd);
+        close(_reduce_fd);
+        close(_bdcast_fd);
     }
 
     void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
-    int sendSignal(int destination, void* data, int len);
-    int recvSignal(int* source, void* data, int max_len);
-    int broadcastSignal(int root, void* data, int len);
+    int sendSignal(int destination, void* data, int len, BytePSCommFlag flag);
+    int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag);
+    int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag);
     void startListenThread();
+
+    int initSocket(int rank, const char* path);
 
     std::thread* _listen_thread;
 
     int _recv_fd;
+    int _send_fd;
+    int _reduce_fd;
+    int _bdcast_fd;
 
 };
 
@@ -104,9 +118,9 @@ public:
     }
 
     void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
-    int sendSignal(int destination, void* data, int len);
-    int recvSignal(int* source, void* data, int max_len);
-    int broadcastSignal(int root, void* data, int len);
+    int sendSignal(int destination, void* data, int len, BytePSCommFlag flag);
+    int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag);
+    int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag);
 
 };
 

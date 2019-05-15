@@ -427,16 +427,17 @@ Status EnqueueTensor(BPSContext &context,
             << ": " << context.key_list.size()
             << ", " << partitions.size();
 
+    if (e->queue_list.size() == 0) { // only for test now
+        BPS_LOG(TRACE) << e->tensor_name
+            << ", key=" << e->key
+            << " has no queue_list assigned, skipped";
+        return Status::OK();
+    }
+
     unsigned int accumulated = 0;
     for (unsigned int i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
-        if (e->queue_list.size() == 0) {
-            BPS_LOG(TRACE) << task->tensor_name
-                       << ", key=" << task->key
-                       << " has no queue_list assigned, thus do not enqueue";
-            continue;
-        }
         BPS_LOG(TRACE) << "EnqueueTensor: " << task->tensor_name
                        << ", key=" << task->key
                        << ", offset=" << task->offset

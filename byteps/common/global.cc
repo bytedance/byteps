@@ -127,10 +127,12 @@ void BytePSGlobal::Init() {
         NCCLCHECK(ncclGetUniqueId(_nccl_id));
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root NCCL id is " << (*(long long int*)_nccl_id);
-        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
+
+        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId),
+              BytePSCommFlag::ROOT_SEND_TO_RECV); //
     } else {
         int src;
-        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
+        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
         BPS_LOG(DEBUG) << "recv root NCCL id " << (*(long long int*)_nccl_id)
                        << ", local_rank=" << _local_rank;

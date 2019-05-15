@@ -62,38 +62,52 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
 
+    // init socket comm
+    if (is_root) { // root
+        _send_fd = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
+        _recv_fd = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
+
+        BPS_LOG(DEBUG) << "This is ROOT device, sockets create successfully";
+        _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
+    } else { // non-root
+        _send_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
+        _recv_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
+        _reduce_fd = initSocket(_local_rank, BASE_SOCKET_PATH_REDUCE);
+        _bdcast_fd = initSocket(_local_rank, BASE_SOCKET_PATH_BDCAST);
+
+        BPS_LOG(DEBUG) << "This is WORKER device, rank=" << _local_rank
+                       << ", sockets create successfully";
+    }
+}
+
+int BytePSCommSocket::initSocket(int rank, const char* path) {
+    int fd;
     // init the socket
-    _recv_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    BPS_CHECK_GE(_recv_fd, 0) << "recv socket create failed";
+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    BPS_CHECK_GE(fd, 0) << "recv socket create failed";
 
-    int ret;
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
 
-    // server
-    struct sockaddr_un server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-
-    // socket path name
-    std::string server_fd_path;
-    server_fd_path.append(BASE_SOCKET_PATH_RECV);
-    server_fd_path += std::to_string(*local_rank); // should use the rank id to guarantee no conflict
+    // TODO: use absolute unique socket path name (consider multi-tenancy)
+    std::string fd_path;
+    fd_path.append(path);
+    fd_path += std::to_string(rank); // should use the rank id to guarantee no conflict
 
     // filling addr information
-    server_addr.sun_family = AF_UNIX;
-    strncpy(server_addr.sun_path, server_fd_path.c_str(), sizeof(server_addr.sun_path)-1);
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, fd_path.c_str(), sizeof(addr.sun_path)-1);
 
-    // before bind, release socket path first in case of last round remain
-    unlink(server_fd_path.c_str());
+    // before bind, clear the path first
+    unlink(fd_path.c_str());
 
-    // bind the socket to server_addr
-    ret = bind(_recv_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    BPS_CHECK_GE(ret, 0) << server_fd_path << " bind failed: " << strerror(errno);
+    // bind the socket to addr
+    int ret = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    BPS_CHECK_GE(ret, 0) << fd_path << " bind failed: " << strerror(errno);
 
-
-    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
-                   << " device, socket create successfully";
-
-    if (is_root) _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
+    return fd;
 }
+
 
 void BytePSCommSocket::startListenThread() {
     BPS_LOG(DEBUG) << "Listening on socket " << _local_rank;
@@ -107,17 +121,30 @@ void BytePSCommSocket::startListenThread() {
     }
 }
 
-int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
+int BytePSCommSocket::sendSignal(int destination, void* data, int len, BytePSCommFlag flag) {
     struct sockaddr_un destaddr;
     memset(&destaddr, 0, sizeof(destaddr));
     destaddr.sun_family = AF_UNIX;
 
     std::string fd_path;
-    fd_path.append(BASE_SOCKET_PATH_RECV);
+    switch (flag) {
+        case ROOT_SEND_TO_RECV:
+        case NON_ROOT_SEND:
+            fd_path.append(BASE_SOCKET_PATH_RECV);
+            break;
+        case ROOT_SEND_TO_REDUCE:
+            fd_path.append(BASE_SOCKET_PATH_REDUCE);
+            break;
+        case ROOT_SEND_TO_BDCAST:
+            fd_path.append(BASE_SOCKET_PATH_BDCAST);
+            break;
+        default:
+            BPS_CHECK(0) << "inappropriate flag: " << flag;
+    }
     fd_path += std::to_string(destination);
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 
-    auto ret = sendto(_recv_fd, data, len, 0,
+    auto ret = sendto(_send_fd, data, len, 0,
         (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
 
     BPS_CHECK_GE(ret, 0) << std::strerror(errno)
@@ -125,9 +152,22 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     return 0;
 }
 
-int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
+int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) {
     int rc;
-    rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL); // this should be blocking
+    switch (flag) {
+        case NON_ROOT_RECV:
+        case ROOT_RECV:
+            rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
+            break;
+        case NON_ROOT_RECV_REDUCE:
+            rc = recv(_reduce_fd, data, MAX_LINE, MSG_WAITALL);
+            break;
+        case NON_ROOT_RECV_BDCAST:
+            rc = recv(_bdcast_fd, data, MAX_LINE, MSG_WAITALL);
+            break;
+        default:
+            BPS_CHECK(0) << "inappropriate flag: " << flag;
+    }
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len) << "recv_len=" << rc << ", but given max_len=" << max_len;
 
@@ -135,10 +175,10 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
     return rc;
 }
 
-int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
+int BytePSCommSocket::broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) {
     for (int i = 0; i < _local_size; ++i) {
         if (i == _local_rank) continue;
-        sendSignal(i, (void *)data, len);
+        sendSignal(i, (void *)data, len, flag);
     }
     return 0;
 }
@@ -177,15 +217,15 @@ void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size,
     return;
 }
 
-int BytePSCommMPI::sendSignal(int destination, void* data, int len) {
+int BytePSCommMPI::sendSignal(int destination, void* data, int len, BytePSCommFlag flag) {
     return 0;
 }
 
-int BytePSCommMPI::recvSignal(int* source, void* data, int max_len) {
+int BytePSCommMPI::recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) {
     return 0;
 }
 
-int BytePSCommMPI::broadcastSignal(int root, void* data, int len) {
+int BytePSCommMPI::broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) {
     return 0;
 }
 
