@@ -59,6 +59,7 @@ public:
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
     static bool IsRootDevice();
+    static int GetRoot();
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
 
@@ -85,6 +86,8 @@ public:
     static bool IsKeyReady(int key);
     static int AddReadyCount(int key);
     static void ClearReadyCount(int key);
+
+    static ncclComm_t getNcclComm() { return _nccl_comm; }
 
 private:
 

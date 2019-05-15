@@ -60,6 +60,10 @@ bool BytePSGlobal::IsRootDevice() {
     return _is_root_device;
 }
 
+int BytePSGlobal::GetRoot() {
+    return _local_size-1;
+}
+
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
@@ -128,8 +132,7 @@ void BytePSGlobal::Init() {
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root NCCL id is " << (*(long long int*)_nccl_id);
 
-        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId),
-              BytePSCommFlag::ROOT_SEND_TO_RECV); //
+        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
     } else {
         int src;
         int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);

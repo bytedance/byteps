@@ -52,6 +52,14 @@ enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_BDCAST,
                       ROOT_RECV, NON_ROOT_RECV,
                       NON_ROOT_RECV_REDUCE, NON_ROOT_RECV_BDCAST };
 
+enum BytePSCommSignal { REDUCE_READY, DO_REDUCE, DO_BROADCAST };
+
+struct BytePSCommMsg {
+    int src;
+    BytePSCommSignal signal;
+    int key;
+};
+
 class BytePSComm {
 
 public:

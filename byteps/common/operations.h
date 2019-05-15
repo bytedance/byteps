@@ -71,6 +71,8 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void* c
 bool IsTensorInitialized(const std::string &name, size_t size);
 BPSContext& GetContextFromName(const std::string &name);
 bool IsRoot();
+int GetRoot();
+int GetMyLocalRank();
 
 } // namespace common
 } // namespace byteps

@@ -15,6 +15,7 @@
 
 #include "logging.h"
 #include "communicator.h"
+#include "global.h"
 #include <cerrno>
 #include <cstring>
 namespace byteps {
@@ -109,7 +110,7 @@ int BytePSCommSocket::initSocket(int rank, const char* path) {
 }
 
 
-void BytePSCommSocket::startListenThread() {
+void BytePSCommSocket::startListenThread() { // only root starts this in background thread
     BPS_LOG(DEBUG) << "Listening on socket " << _local_rank;
     char buffer[MAX_LINE];
     while (true) {
@@ -117,7 +118,14 @@ void BytePSCommSocket::startListenThread() {
         rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
         BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
 
-        BPS_LOG(TRACE) << "socket recved len=" << rc << ", rank=" << _local_rank;
+        auto message = *(BytePSCommMsg*) buffer;
+        BPS_CHECK_EQ(message.signal, REDUCE_READY) << message.signal;
+
+        BytePSGlobal::AddReadyCount(message.key);
+
+        BPS_LOG(TRACE) << "socket recved: src=" << message.src
+                       << ", signal=" << message.signal
+                       << ", key=" << message.key;
     }
 }
 
@@ -171,7 +179,9 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len) << "recv_len=" << rc << ", but given max_len=" << max_len;
 
-    BPS_LOG(TRACE) << "socket recv_len=" << rc << ", rank=" << _local_rank;
+    auto message = *(BytePSCommMsg*) data;
+    *source = message.src;
+    BPS_LOG(DEBUG) << "socket recv_len=" << rc << ", rank=" << _local_rank;
     return rc;
 }
 
