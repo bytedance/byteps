@@ -121,23 +121,24 @@ void BytePSGlobal::Init() {
     BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
                << " size=" << _size << " local_size=" << _local_size;
 
-    // init NCCL
+    // init and sycn NCCL id using out-of-band socket
     _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
     if (_is_root_device) { // only root create nccl id
         NCCLCHECK(ncclGetUniqueId(_nccl_id));
         // the log is just for debug, the actual length of nccl id is 128
-        BPS_LOG(DEBUG) << "root NCCL id is " << reinterpret_cast<uint64_t>(_nccl_id);
-        for (int i = 0; i < _local_size; ++i) {
-            if (i == _local_rank) continue;
-            _comm->sendSignal(i, (void *)_nccl_id, sizeof(ncclUniqueId));
-        }
+        BPS_LOG(DEBUG) << "root NCCL id is " << (*(long long int*)_nccl_id);
+        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
     } else {
         int src;
-        _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
+        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
+        BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
+        BPS_LOG(DEBUG) << "recv root NCCL id " << (*(long long int*)_nccl_id)
+                       << ", local_rank=" << _local_rank;
     }
 
-    BPS_LOG(DEBUG) << "local_rank=" << _local_rank
-                   << " finish init";
+    //initializing NCCL rank
+    NCCLCHECK(ncclCommInitRank(&_nccl_comm, _local_size, *_nccl_id, _local_rank));
+
     return;
 }
 

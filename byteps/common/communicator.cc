@@ -100,7 +100,7 @@ void BytePSCommSocket::startListenThread() {
     char buffer[MAX_LINE];
     while (true) {
         int rc;
-        rc=read(_recv_fd, buffer, sizeof(buffer));
+        rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
         BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
 
         BPS_LOG(TRACE) << "socket recved len=" << rc << ", rank=" << _local_rank;
@@ -125,17 +125,21 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     return 0;
 }
 
-int BytePSCommSocket::recvSignal(int* source, void* data, int len) {
-    char buffer[MAX_LINE];
+int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
     int rc;
-    rc=recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
+    rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL); // this should be blocking
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+    BPS_CHECK_LE(rc, max_len) << "recv_len=" << rc << ", but given max_len=" << max_len;
 
-    BPS_LOG(TRACE) << "socket recved len=" << rc << ", rank=" << _local_rank;
-    return 0;
+    BPS_LOG(TRACE) << "socket recv_len=" << rc << ", rank=" << _local_rank;
+    return rc;
 }
 
 int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
+    for (int i = 0; i < _local_size; ++i) {
+        if (i == _local_rank) continue;
+        sendSignal(i, (void *)data, len);
+    }
     return 0;
 }
 
@@ -177,7 +181,7 @@ int BytePSCommMPI::sendSignal(int destination, void* data, int len) {
     return 0;
 }
 
-int BytePSCommMPI::recvSignal(int* source, void* data, int len) {
+int BytePSCommMPI::recvSignal(int* source, void* data, int max_len) {
     return 0;
 }
 

@@ -61,9 +61,12 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
 
     // TODO: only test case now
     if (common::IsRoot()) {
+        //queue_list.push_back(common::REDUCE);
         queue_list.push_back(common::COPYD2H);
         queue_list.push_back(common::PUSH);
     } else {
+        //queue_list.push_back(common::COORDINATE);
+        //queue_list.push_back(common::REDUCE);
     }
 
     auto enqueue_result =
@@ -88,7 +91,9 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
     if (common::IsRoot()) {
         queue_list.push_back(common::PULL);
         queue_list.push_back(common::COPYH2D);
+        //queue_list.push_back(common::BROADCAST);
     } else {
+        //queue_list.push_back(common::BROADCAST);
     }
 
     auto enqueue_result =

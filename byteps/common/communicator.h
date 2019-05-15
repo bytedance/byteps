@@ -53,7 +53,7 @@ public:
 
     virtual void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) = 0;
     virtual int sendSignal(int destination, void* data, int len) = 0;
-    virtual int recvSignal(int* source, void* data, int len) = 0;
+    virtual int recvSignal(int* source, void* data, int max_len) = 0;
     virtual int broadcastSignal(int root, void* data, int len) = 0;
 
     int broadcast(int root, void* data, int len);
@@ -81,7 +81,7 @@ public:
 
     void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
-    int recvSignal(int* source, void* data, int len);
+    int recvSignal(int* source, void* data, int max_len);
     int broadcastSignal(int root, void* data, int len);
     void startListenThread();
 
@@ -105,7 +105,7 @@ public:
 
     void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
-    int recvSignal(int* source, void* data, int len);
+    int recvSignal(int* source, void* data, int max_len);
     int broadcastSignal(int root, void* data, int len);
 
 };
