@@ -65,7 +65,7 @@ class BytePSComm {
 public:
     BytePSComm() { _comm = nullptr; }
 
-    virtual void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) = 0;
+    virtual void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) = 0;
     virtual int sendSignal(int destination, void* data, int len, BytePSCommFlag flag) = 0;
     virtual int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) = 0;
     virtual int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) = 0;
@@ -80,6 +80,7 @@ protected:
     int _size;
     int _local_rank;
     int _local_size;
+    int _worker_id;
 
     void* _comm;
 };
@@ -96,7 +97,7 @@ public:
         close(_bdcast_fd);
     }
 
-    void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
+    void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len, BytePSCommFlag flag);
     int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag);
     int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag);
@@ -125,7 +126,7 @@ public:
         }
     }
 
-    void init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role);
+    void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len, BytePSCommFlag flag);
     int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag);
     int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag);

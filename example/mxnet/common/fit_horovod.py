@@ -187,6 +187,7 @@ def fit(args, network, data_loader, **kwargs):
     if args.cpu_train:
         devs = [mx.cpu(hvd.local_rank())]
     else:
+        logging.info('Launch BytePS process on GPU-%d', hvd.local_rank())
         devs = [mx.gpu(hvd.local_rank())]
 
     # learning rate

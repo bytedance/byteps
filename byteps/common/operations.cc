@@ -38,22 +38,15 @@ bool RunCoordinateLoopOnce() {
         int root = GetRoot();
         int rank = GetMyLocalRank();
         int key  = task->key;
-        if (task->device != CPU_DEVICE_ID) {
-            struct BytePSCommMsg msg = { rank, REDUCE_READY, key };
-            BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg), NON_ROOT_SEND);
 
-            BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
-                           << "root=" << root
-                           << ", rank=" << rank
-                           << ", key=" << key;
-        } else {
-            BPS_LOG(TRACE) << task->tensor_name << " enters coordinate queue, but on CPU: "
-                           << "root=" << root
-                           << ", rank=" << rank
-                           << ", key=" << key;
-        }
+        struct BytePSCommMsg msg = { rank, REDUCE_READY, key };
+        BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg), NON_ROOT_SEND);
 
-        BPS_LOG(TRACE) << "Finish coordinating tensor: " << task->tensor_name;
+        BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
+                       << "root=" << root
+                       << ", rank=" << rank
+                       << ", key=" << key;
+
         if (task->queue_list.size() > 0) {
             BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
         } else {
@@ -70,9 +63,12 @@ bool RunCoordinateLoopOnce() {
 bool RunReduceLoopOnce() {
     QueueType this_op = REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
+
     auto reduce_stream = BytePSGlobal::GetReduceStream();
+    auto nccl_comm = BytePSGlobal::getNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
+    CUDA_CALL(cudaSetDevice(rank));
 
     if (IsRoot()) { // root
         auto task = q->getTaskFromReadyTable();
@@ -81,29 +77,38 @@ bool RunReduceLoopOnce() {
             BPS_CHECK_EQ(rank, root);
             BPS_CHECK_GE(task->queue_list.size(), 1);
             task->queue_list.erase(task->queue_list.begin());
+            int key  = task->key;
+            auto len = task->len;
+            auto offset = task->offset;
+
+            // notify non-root devices
+            struct BytePSCommMsg msg = { rank, DO_REDUCE, key };
+            BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_REDUCE);
 
             if (task->device != CPU_DEVICE_ID) { // GPU
-                auto len = task->len;
-                auto offset = task->offset;
-                int key  = task->key;
+                BPS_CHECK(task->tensor->data());
+                BPS_CHECK(task->tensor->data()+offset) << offset;
 
-                // notify non-root devices
-                struct BytePSCommMsg msg = { rank, DO_REDUCE, key };
-                BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_REDUCE);
+                auto num_elements = task->tensor->shape().num_elements();
+                auto nccl_dtype = getNcclDataType(task->tensor->dtype());
 
-                NCCLCHECK(ncclReduce((const void*) task->tensor->data()+offset,
-                                     (void*) task->tensor->data()+offset,
-                                     len, ncclFloat, ncclSum, root,
-                                     BytePSGlobal::getNcclComm(), *reduce_stream));
+                BPS_LOG(TRACE) << task->tensor_name << " calling ncclReduce "
+                               << "(root=" << rank
+                               << ") key=" << key
+                               << ", elements=" << num_elements
+                               << ", device=" << task->device;
+
+                NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
+                                     (void*) (task->tensor->data()+offset),
+                                     num_elements, nccl_dtype, ncclSum, root,
+                                     *nccl_comm, *reduce_stream));
 
                 CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
-
-                BytePSGlobal::ClearReadyCount(key);
             }
 
             if (task->queue_list.size() > 0) {
-                BPS_LOG(TRACE) << "Root (rank=" << rank
-                               << ") finishes ncclReduce tensor: " << task->tensor_name
+                BPS_LOG(TRACE) << "rank=" << rank
+                               << " finishes Reducing tensor: " << task->tensor_name
                                << ", key=" << task->key;
                 BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
             } else {
@@ -135,15 +140,26 @@ bool RunReduceLoopOnce() {
             BPS_CHECK(task->tensor);
             BPS_CHECK_GE(task->queue_list.size(), 1);
             task->queue_list.erase(task->queue_list.begin());
+            auto len = task->len;
+            auto offset = task->offset;
 
             if (task->device != CPU_DEVICE_ID) { // GPU
-                auto len = task->len;
-                auto offset = task->offset;
+                BPS_CHECK(task->tensor->data());
+                BPS_CHECK(task->tensor->data()+offset) << offset;
 
-                NCCLCHECK(ncclReduce((const void*) task->tensor->data()+offset,
-                                     (void*) task->tensor->data()+offset,
-                                     len, ncclFloat, ncclSum, root,
-                                     BytePSGlobal::getNcclComm(), *reduce_stream));
+                auto num_elements = task->tensor->shape().num_elements();
+                auto nccl_dtype = getNcclDataType(task->tensor->dtype());
+
+                BPS_LOG(TRACE) << task->tensor_name << " calling ncclReduce "
+                               << "(rank=" << rank
+                               << ") key=" << key
+                               << ", elements=" << num_elements
+                               << ", device=" << task->device;
+
+                NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
+                                     (void*) (task->tensor->data()+offset),
+                                     num_elements, nccl_dtype, ncclSum, root,
+                                     *nccl_comm, *reduce_stream));
 
                 CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
             }
@@ -173,8 +189,12 @@ bool RunReduceLoopOnce() {
 bool RunCopyDevice2HostLoopOnce() {
     QueueType this_op = COPYD2H;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
+
     auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
     auto task = q->getTask();
+    int rank = GetMyLocalRank();
+    CUDA_CALL(cudaSetDevice(rank));
+
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYD2H loop";
         BPS_CHECK(task->tensor);
@@ -313,6 +333,8 @@ bool RunCopyHost2DeviceLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
     auto task = q->getTask();
+    int rank = GetMyLocalRank();
+    CUDA_CALL(cudaSetDevice(rank));
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYH2D loop";
         BPS_CHECK(task->output);
@@ -332,6 +354,10 @@ bool RunCopyHost2DeviceLoopOnce() {
         }
 
         if (task->queue_list.size() > 0) {
+            BPS_LOG(TRACE) << "Finish COPY_HOST_TO_DEVICE tensor: "
+                           << task->tensor_name
+                           << ", passing to next queue";
+
             BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
         } else {
             BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
@@ -354,30 +380,44 @@ bool RunBroadcastLoopOnce() {
     QueueType this_op = BROADCAST;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
+    auto nccl_comm = BytePSGlobal::getNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
+    CUDA_CALL(cudaSetDevice(rank));
 
     if (IsRoot()) { // root
         auto task = q->getTask();
-        int key  = task->key;
         if (task) {
+            int key  = task->key;
             BPS_CHECK(task->output);
             BPS_CHECK_EQ(root, rank);
             BPS_CHECK_GE(task->queue_list.size(), 1);
             task->queue_list.erase(task->queue_list.begin());
+
+            struct BytePSCommMsg msg = { rank, DO_BROADCAST, key };
+            BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_BDCAST);
 
             if (task->device != CPU_DEVICE_ID) { // GPU
                 auto name = task->tensor_name;
                 auto len = task->len;
                 auto offset = task->offset;
 
-                struct BytePSCommMsg msg = { rank, DO_BROADCAST, key };
-                BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_BDCAST);
+                BPS_CHECK(task->output->data());
+                BPS_CHECK(task->output->data()+offset) << offset;
 
-                NCCLCHECK(ncclBroadcast((const void*) task->output->data()+offset,
-                                     (void*) task->output->data()+offset,
-                                     len, ncclFloat, root,
-                                     BytePSGlobal::getNcclComm(), *broadcast_stream));
+                auto num_elements = task->output->shape().num_elements();
+                auto nccl_dtype = getNcclDataType(task->output->dtype());
+
+                BPS_LOG(TRACE) << task->tensor_name << " calling broadcast "
+                               << "(rank=" << rank
+                               << ") key=" << key
+                               << ", elements=" << num_elements
+                               << ", device=" << task->device;
+
+                NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                       (void*) (task->output->data()+offset),
+                                       num_elements, nccl_dtype, root,
+                                       *nccl_comm, *broadcast_stream));
 
                 CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
             }
@@ -388,7 +428,8 @@ bool RunBroadcastLoopOnce() {
             BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
             int v = task->counter_ptr.get()->fetch_add(1);
             if (v == (task->total_partnum-1)) {
-                BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name;
+                BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name
+                               << ", rank=" << rank;
                 task->callback(Status::OK());
             }
             q->reportFinish(task->len);
@@ -416,10 +457,22 @@ bool RunBroadcastLoopOnce() {
                 auto len = task->len;
                 auto offset = task->offset;
 
-                NCCLCHECK(ncclBroadcast((const void*) task->output->data()+offset,
-                                     (void*) task->output->data()+offset,
-                                     len, ncclFloat, root,
-                                     BytePSGlobal::getNcclComm(), *broadcast_stream));
+                BPS_CHECK(task->output->data());
+                BPS_CHECK(task->output->data()+offset) << offset;
+
+                auto num_elements = task->output->shape().num_elements();
+                auto nccl_dtype = getNcclDataType(task->output->dtype());
+
+                BPS_LOG(TRACE) << task->tensor_name << " calling broadcast "
+                               << "(rank=" << rank
+                               << ") key=" << key
+                               << ", elements=" << num_elements
+                               << ", device=" << task->device;
+
+                NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                     (void*) (task->output->data()+offset),
+                                     num_elements, nccl_dtype, root,
+                                     *nccl_comm, *broadcast_stream));
 
                 CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
             }
@@ -615,7 +668,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
     size_t size = context.buff_len;
 
     // Only local root needs to init cpubuff
-    if (IsRootDevice()) {
+    if (IsRoot()) {
         if (cpubuff) {
             BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
             context.cpubuff = cpubuff;
@@ -632,24 +685,25 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
     auto key_list = context.key_list;
     char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
     auto bound = BytePSGlobal::GetPartitionBound();
-    unsigned int accumulated = 0;
-    unsigned int i = 0;
 
-    BPS_LOG(TRACE) << "Init " << name
-                    << ", size=" << size
-                    << ", parts=" << key_list.size();
+    BPS_LOG(TRACE) << "Begin init " << name
+                   << ", size=" << size
+                   << ", parts=" << key_list.size();
+
     BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
     BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
                     << key_list.size()
                     << ", size=" << size
                     << ", bound=" << bound;
 
+    unsigned int accumulated = 0;
+    unsigned int i = 0;
     while (accumulated < size) {
         auto key = key_list[i];
         int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-        auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
 
-        if (IsRootDevice() && (BytePSGlobal::GetRank() < BytePSGlobal::GetLocalSize())) {
+        if (IsRoot() && (BytePSGlobal::GetWorkerID() == 0)) { // only worker0 pushes init data
+            auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
             // false means not to delete data when SArray is deleted
             ps::SArray<char> vals(data + accumulated, len, false);
             int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
@@ -657,18 +711,22 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
                 pskv.keys, vals, pskv.lens, cmd));
         }
 
-        accumulated += len;
-        ++i;
-
-        if (IsRootDevice()) {
+        if (IsRoot()) { // all worker need to sync
             ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
         }
+
+        accumulated += len;
+        ++i;
     }
+
     BPS_CHECK_EQ(accumulated, size);
     BPS_CHECK_EQ(i, key_list.size());
 
     context.initialized = true;
-    BPS_LOG(TRACE) << "Init finish " << name;
+
+    BPS_LOG(TRACE) << "Finish Init " << name
+                   << ", size=" << size
+                   << ", parts=" << key_list.size();
 }
 
 Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void *cpubuff,

@@ -29,6 +29,7 @@ int BytePSGlobal::_rank = 0;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
+int BytePSGlobal::_worker_id = 0;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
@@ -85,7 +86,7 @@ void BytePSGlobal::Init() {
     _comm = std::make_shared<BytePSCommSocket>();
 #endif // BYTEPS_USE_MPI
 
-    _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_my_role);
+    _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {
@@ -105,26 +106,6 @@ void BytePSGlobal::Init() {
         }
     }
 
-    CUDA_CALL(cudaSetDevice(_local_rank)); // set to associated GPU
-    _reduce_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    _broadcast_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    _copy_host2device_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    _copy_device2host_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    CUDA_CALL(cudaStreamCreateWithFlags(_reduce_stream, cudaStreamNonBlocking));
-    CUDA_CALL(cudaStreamCreateWithFlags(_broadcast_stream, cudaStreamNonBlocking));
-    CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
-    CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
-
-    for (int i = 0; i < QueueNum; i++) {
-        BPS_LOG(DEBUG) << "Create schedule queue " << i;
-        auto type = static_cast<QueueType>(i);
-        BytePSGlobal::CreateScheduledQueue(type);
-    }
-
-    _initialized = true;
-    BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
-               << " size=" << _size << " local_size=" << _local_size;
-
     // init and sycn NCCL id using out-of-band socket
     _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
     if (_is_root_device) { // only root create nccl id
@@ -140,6 +121,37 @@ void BytePSGlobal::Init() {
         BPS_LOG(DEBUG) << "recv root NCCL id " << (*(long long int*)_nccl_id)
                        << ", local_rank=" << _local_rank;
     }
+
+    // set to associated GPU
+    CUDA_CALL(cudaSetDevice(_local_rank));
+
+    _reduce_stream            = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _broadcast_stream         = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    _copy_device2host_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+
+    CUDA_CALL(cudaStreamCreateWithFlags(_reduce_stream,           cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_broadcast_stream,        cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
+
+    CUDA_CALL(cudaStreamSynchronize(*_reduce_stream));
+    CUDA_CALL(cudaStreamSynchronize(*_broadcast_stream));
+    CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
+    CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+
+    for (int i = 0; i < QueueNum; i++) {
+        BPS_LOG(DEBUG) << "Create schedule queue " << i;
+        auto type = static_cast<QueueType>(i);
+        BytePSGlobal::CreateScheduledQueue(type);
+    }
+
+    _initialized = true;
+    BPS_LOG(DEBUG) << "Inited rank=" << _rank
+                   << " local_rank=" << _local_rank
+                   << " size=" << _size
+                   << " local_size=" << _local_size
+                   << " worker_id=" << _worker_id;
 
     //initializing NCCL rank
     NCCLCHECK(ncclCommInitRank(&_nccl_comm, _local_size, *_nccl_id, _local_rank));
@@ -178,8 +190,10 @@ void BytePSGlobal::Shutdown() {
     }
     ps::Finalize(0, false);
 
-    cudaStreamDestroy(*_reduce_stream);
-    cudaStreamDestroy(*_broadcast_stream);
+    CUDA_CALL(cudaStreamDestroy(*_reduce_stream));
+    CUDA_CALL(cudaStreamDestroy(*_broadcast_stream));
+    CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
+    CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
 
     for (auto &it:_name_to_cxt) {
         if (it.second.cpubuff && !it.second.reuse_buff) {

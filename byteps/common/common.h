@@ -24,6 +24,8 @@
 #include <atomic>
 #include <vector>
 #include "ps/ps.h"
+#include <nccl.h>
+#include <cuda_runtime.h>
 
 namespace byteps {
 namespace common {
@@ -173,6 +175,8 @@ enum class RequestType {
 };
 
 int GetCommandType(RequestType requestType, int d);
+
+ncclDataType_t getNcclDataType(DataType dtype);
 
 } // namespace common
 } // namespace byteps

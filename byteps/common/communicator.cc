@@ -35,7 +35,7 @@ int BytePSComm::_p2pGPUCopy(void* from, void* to, int len) {
     return 0;
 }
 
-void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) {
+void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) {
 
     BPS_LOG(DEBUG) << "Using Communicator=Socket";
 
@@ -48,17 +48,18 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
 
     *local_rank = atoi(getenv("BYTEPS_LOCAL_RANK"));
     *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-    auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
+    *worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
     // we assume _local_size (i.e., # GPU) is consistent on all workers
-    *rank = (*local_rank) + worker_id * (*local_size);
+    *rank = (*local_rank) + (*worker_id) * (*local_size);
     *size = num_worker * (*local_size);
 
     _rank = *rank;
     _size = *size;
     _local_rank = *local_rank;
     _local_size = *local_size;
+    _worker_id = *worker_id;
 
     *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
@@ -181,7 +182,6 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
 
     auto message = *(BytePSCommMsg*) data;
     *source = message.src;
-    BPS_LOG(DEBUG) << "socket recv_len=" << rc << ", rank=" << _local_rank;
     return rc;
 }
 
@@ -195,7 +195,7 @@ int BytePSCommSocket::broadcastSignal(int root, void* data, int len, BytePSCommF
 
 #ifdef BYTEPS_USE_MPI
 
-void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size, BytePSRole* my_role) {
+void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) {
     BPS_LOG(DEBUG) << "Using Communicator=MPI";
 
     int provided;
@@ -212,7 +212,7 @@ void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size,
 
     BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-    auto worker_id = atoi(getenv("DMLC_WORKER_ID"));
+    *worker_id = atoi(getenv("DMLC_WORKER_ID"));
     auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
     // we assume _local_size (i.e., # GPU) is consistent on all workers

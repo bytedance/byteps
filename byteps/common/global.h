@@ -21,8 +21,6 @@
 #include <thread>
 #include <unordered_map>
 #include <string>
-#include <cuda_runtime.h>
-#include <nccl.h>
 #include <map>
 
 #include "common.h"
@@ -58,6 +56,7 @@ public:
     static int GetLocalRank() { return _local_rank; }
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
+    static int GetWorkerID() { return _worker_id; }
     static bool IsRootDevice();
     static int GetRoot();
     static BytePSRole GetMyRole() { return _my_role; }
@@ -87,7 +86,7 @@ public:
     static int AddReadyCount(int key);
     static void ClearReadyCount(int key);
 
-    static ncclComm_t getNcclComm() { return _nccl_comm; }
+    static ncclComm_t* getNcclComm() { return &_nccl_comm; }
 
 private:
 
@@ -99,6 +98,7 @@ private:
     static int _local_rank;
     static int _size;
     static int _local_size;
+    static int _worker_id;
     static bool _is_root_device;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _comm;

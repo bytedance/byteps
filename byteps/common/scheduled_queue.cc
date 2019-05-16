@@ -106,6 +106,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTaskFromReadyTable(){
         if (!BytePSGlobal::IsKeyReady((*it)->key)) {
             continue;
         }
+        BytePSGlobal::ClearReadyCount((*it)->key);
         task = *it;
         _sq.erase(it);
         _credits -= task->len;

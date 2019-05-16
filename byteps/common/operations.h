@@ -17,7 +17,6 @@
 #define BYTEPS_OPERATIONS_H
 
 #include <functional>
-
 #include "common.h"
 
 namespace byteps {
@@ -69,9 +68,13 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void* c
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorInitialized(const std::string &name, size_t size);
+
 BPSContext& GetContextFromName(const std::string &name);
+
 bool IsRoot();
+
 int GetRoot();
+
 int GetMyLocalRank();
 
 } // namespace common

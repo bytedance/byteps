@@ -18,7 +18,7 @@
 #include <cassert>
 
 #include "common.h"
-
+#include "logging.h"
 
 namespace byteps {
 namespace common {
@@ -114,6 +114,27 @@ int64_t TensorShape::num_elements() const {
 int GetCommandType(RequestType requestType, int d) {
   int m = static_cast<int>(requestType);
   return (((m + d) * (m + d + 1)) / 2) + d;
+}
+
+ncclDataType_t getNcclDataType(DataType dtype) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return ncclFloat32;
+    case BYTEPS_FLOAT64:
+      return ncclFloat64;
+    case BYTEPS_FLOAT16:
+      return ncclFloat16;
+    case BYTEPS_UINT8:
+      return ncclUint8;
+    case BYTEPS_INT32:
+      return ncclInt32;
+    case BYTEPS_INT8:
+      return ncclInt8;
+    case BYTEPS_INT64:
+      return ncclUint64;
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
 }
 
 
