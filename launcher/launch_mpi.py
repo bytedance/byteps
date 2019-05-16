@@ -3,34 +3,39 @@
 import os
 import sys
 import re
+import time
 
 whitelist_wildcards = [
-    "DMLC_*"
+    "DMLC_*",
+    "PS_VERBOSE",
+    "BYTEPS_*"
 ]
 
 wildcards = [re.compile(x) for x in whitelist_wildcards]
 
 if __name__ == "__main__":
-    env_str = ""
+    print "BytePS launching " + os.environ["DMLC_ROLE"]
+    sys.stdout.flush()
 
-    for env in os.environ:
-        whitelisted = False
-        for w in wildcards:
-            if re.match(w, env):
-                whitelisted = True
-                break
-        if whitelisted:
-            env_str += "-x %s " % env
+    if os.environ["DMLC_ROLE"] == "worker":
+        env_str = ""
 
-    command_line = sys.argv[1:]
+        for env in os.environ:
+            whitelisted = False
+            for w in wildcards:
+                if re.match(w, env):
+                    whitelisted = True
+                    break
+            if whitelisted:
+                env_str += "-x %s " % env
 
-    if "NVIDIA_VISIBLE_DEVICES" in os.environ:
-        gpu = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
+        command_line = sys.argv[1:]
+        os.system("mpirun " + env_str + command_line)
+
     else:
-        gpu = 1
-
-    os.system(
-        "mpirun --allow-run-as-root -n %d -mca pml ob1 -x NCCL_DEBUG=INFO " % gpu + 
-        env_str + " " +
-        " ".join(command_line))
-
+        sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
+        import mxnet
+        print "BytePS Server MXNet version: " + mxnet.__version__
+        # TODO: terminates when workers quit
+        while True:
+            time.sleep(3600)

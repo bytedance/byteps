@@ -612,63 +612,61 @@ Status EnqueueTensor(BPSContext &context,
 
 void InitTensor(BPSContext &context, const std::string &name, int dtype, void *cpubuff) {
 
-    // only root needs to init the tensor
-    if (!IsRoot()) {
-        return;
-    }
-
     size_t size = context.buff_len;
-    if (cpubuff) {
-        BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
-        context.cpubuff = cpubuff;
+
+    // Only local root needs to init cpubuff
+    if (IsRootDevice()) {
+        if (cpubuff) {
+            BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
+            context.cpubuff = cpubuff;
+            context.reuse_buff = true;
+        }
+        else {
+            CUDA_CALL(cudaHostAlloc((void **) &(context.cpubuff), size, cudaHostAllocMapped));
+            context.reuse_buff = false;
+            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
+        }
     }
-    else {
-        CUDA_CALL(cudaHostAlloc((void **) &(context.cpubuff), size, cudaHostAllocMapped));
-        BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
-    }
 
-    // Only rank 0 pushes the initialization
-    if (BytePSGlobal::GetRank() == 0) {
-        auto key_list = context.key_list;
-        BPS_LOG(TRACE) << "Init (push) " << name
-                       << ", size=" << size
-                       << ", parts=" << key_list.size();
-        BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
-        // get metadata
+    // Get metadata
+    auto key_list = context.key_list;
+    char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
+    auto bound = BytePSGlobal::GetPartitionBound();
+    unsigned int accumulated = 0;
+    unsigned int i = 0;
 
-        char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
-        auto bound = BytePSGlobal::GetPartitionBound();
-        unsigned int accumulated = 0;
-        auto i = 0;
-        BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
-                       << key_list.size()
-                       << ", size=" << size
-                       << ", bound=" << bound;
+    BPS_LOG(TRACE) << "Init " << name
+                    << ", size=" << size
+                    << ", parts=" << key_list.size();
+    BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
+    BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
+                    << key_list.size()
+                    << ", size=" << size
+                    << ", bound=" << bound;
 
-        while (accumulated < size) {
-            auto key = key_list[i];
-            int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
+    while (accumulated < size) {
+        auto key = key_list[i];
+        int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
+        auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
 
+        if (IsRootDevice() && (BytePSGlobal::GetRank() < BytePSGlobal::GetLocalSize())) {
             // false means not to delete data when SArray is deleted
             ps::SArray<char> vals(data + accumulated, len, false);
-
             int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-
-            auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
             BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
                 pskv.keys, vals, pskv.lens, cmd));
-
-            accumulated += len;
-            ++i;
         }
-        BPS_CHECK_EQ(accumulated, size);
-        BPS_CHECK_EQ((unsigned int) i, key_list.size());
-    } else {
-        BPS_LOG(TRACE) << "Init (wait for barrier) " << name
-                       << ", size=" << context.buff_len;
-    }
 
-    ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+        accumulated += len;
+        ++i;
+
+        if (IsRootDevice()) {
+            ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+        }
+    }
+    BPS_CHECK_EQ(accumulated, size);
+    BPS_CHECK_EQ(i, key_list.size());
+
     context.initialized = true;
     BPS_LOG(TRACE) << "Init finish " << name;
 }

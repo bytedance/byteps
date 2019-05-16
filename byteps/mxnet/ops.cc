@@ -114,18 +114,6 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     size_t size = TensorUtil::GetSize(tensor);
     auto dtype = TensorUtil::GetDType(tensor);
 
-    // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size)) {
-        // we need to init this tensor with PS
-        auto& context = common::GetContextFromName(tensor_name);
-        auto device = TensorUtil::GetDevice(tensor);
-        auto byteps_input = std::make_shared<MXTensor<NDArray>>(tensor);
-
-        // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, tensor_name, dtype,
-            (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
-    }
-
     auto& context = common::GetContextFromName(tensor_name);
     auto first_stage_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
@@ -151,6 +139,23 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
 
     MX_API_END();
 }
+
+extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
+    std::string tensor_name = GetOpName("byteps", name);
+    size_t size = TensorUtil::GetSize(tensor);
+
+    if (!common::IsTensorInitialized(tensor_name, size)) {
+        auto& byteps_context = common::GetContextFromName(tensor_name);    
+        auto dtype = TensorUtil::GetDType(tensor);
+        auto device = TensorUtil::GetDevice(tensor);
+
+        void* cpubuff = (device == CPU_DEVICE_ID) ? 
+            const_cast<void*>(std::make_shared<MXTensor<NDArray>>(tensor)->data()) : nullptr;
+        common::InitTensor(byteps_context, tensor_name, dtype, cpubuff);
+    }
+    return;
+}
+
 
 } // namespace mxnet
 } // namespace byteps

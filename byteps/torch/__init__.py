@@ -97,7 +97,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         tensor = p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
 
-        handle = byteps_push_pull(tensor_compressed, average=True, name=name)
+        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p):
@@ -202,17 +202,13 @@ def broadcast_parameters(params, root_rank):
     else:
         raise ValueError('invalid params of type: %s' % type(params))
 
-    # Run asynchronous broadcasts.
-    handles = []
+    # Run synchronous broadcasts.
     for name, p in params:
         # Broadcast is implemented as push + pull in BytePS
         # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
-        handle = byteps_push_pull(p, True, name)
-        handles.append(handle)
-
-    # Wait for completion.
-    for handle in handles:
+        handle = byteps_push_pull(p, True, "Parameter."+name)
         synchronize(handle)
+
 
 
 def broadcast_optimizer_state(optimizer, root_rank):

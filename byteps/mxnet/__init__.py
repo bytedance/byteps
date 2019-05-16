@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import threading
 
-from byteps.mxnet.ops import byteps_push_pull
+from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
@@ -42,8 +42,10 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
+                byteps_declare_tensor(grad[i], "gradient_"+str(index[i]))
                 byteps_push_pull(grad[i], version=0, priority=-index[i], name="gradient_"+str(index[i]))
         else:
+            byteps_declare_tensor(grad, "gradient_"+str(index))
             byteps_push_pull(grad, version=0, priority=-index, name="gradient_"+str(index))
 
     def update(self, index, weight, grad, state):
@@ -99,6 +101,7 @@ def broadcast_parameters(params, root_rank=0):
                 # Inject wrapper method with post-initialization broadcast to
                 # handle parameters with deferred initialization
                 global parameter_index
+                byteps_declare_tensor(p.data(), "parameter_"+str(parameter_index))
                 new_init = _append_broadcast_init(p, root_rank, parameter_index)
                 parameter_index += 1
                 p._init_impl = types.MethodType(new_init, p)
@@ -107,6 +110,7 @@ def broadcast_parameters(params, root_rank=0):
 
     # Run tensor initilization
     for i in range(len(tensors)):
+        byteps_declare_tensor(tensors[i], "parameter_"+str(parameter_index))
         # Broadcast is implemented as push + pull in BytePS
         # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
         byteps_push_pull(tensors[i], version=0, priority=0, name="parameter_"+str(parameter_index))

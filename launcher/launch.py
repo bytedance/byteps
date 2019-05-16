@@ -34,6 +34,7 @@ if __name__ == "__main__":
     else:
         sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
         import mxnet
+        print "BytePS Server MXNet version: " + mxnet.__version__
         # TODO: terminates when workers quit
         while True:
             time.sleep(3600)
