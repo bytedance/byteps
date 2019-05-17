@@ -76,8 +76,7 @@ public:
 
     static uint32_t GetPartitionBound() { return _partition_bytes; }
 
-    static cudaStream_t* GetReduceStream();
-    static cudaStream_t* GetBroadcastStream();
+    static cudaStream_t* GetNcclStream();
     static cudaStream_t* GetCopyDevice2HostStream();
     static cudaStream_t* GetCopyHost2DeviceStream();
 
@@ -86,7 +85,10 @@ public:
     static int AddReadyCount(int key);
     static void ClearReadyCount(int key);
 
-    static ncclComm_t* getNcclComm() { return &_nccl_comm; }
+    static ncclComm_t* getNcclReduceComm() { return &_nccl_reduce_comm; }
+    static ncclComm_t* getNcclBroadcastComm() { return &_nccl_broadcast_comm; }
+    static std::mutex _nccl_mutex;
+
 
 private:
 
@@ -111,8 +113,7 @@ private:
     static std::mutex _encode_mutex;
     static std::unordered_map<std::string, BPSContext> _name_to_cxt;
 
-    static cudaStream_t* _reduce_stream;
-    static cudaStream_t* _broadcast_stream;
+    static cudaStream_t* _nccl_stream;
     static cudaStream_t* _copy_device2host_stream;
     static cudaStream_t* _copy_host2device_stream;
 
@@ -123,8 +124,10 @@ private:
     // use this mutex to access/modify the _ready_table
     static std::mutex _table_mutex;
 
-    static ncclUniqueId* _nccl_id;
-    static ncclComm_t _nccl_comm;
+    static ncclUniqueId* _nccl_reduce_id;
+    static ncclUniqueId* _nccl_broadcast_id;
+    static ncclComm_t _nccl_reduce_comm;
+    static ncclComm_t _nccl_broadcast_comm;
 };
 
 

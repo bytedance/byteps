@@ -124,9 +124,10 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
 
         BytePSGlobal::AddReadyCount(message.key);
 
-        BPS_LOG(TRACE) << "socket recved: src=" << message.src
+        BPS_LOG(TRACE) << "root socket recved: src=" << message.src
                        << ", signal=" << message.signal
-                       << ", key=" << message.key;
+                       << ", key=" << message.key
+                       << ", myrank=" << _local_rank;
     }
 }
 
@@ -182,6 +183,12 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
 
     auto message = *(BytePSCommMsg*) data;
     *source = message.src;
+
+    BPS_LOG(TRACE) << "non-root socket recved: src=" << message.src
+                   << ", signal=" << message.signal
+                   << ", key=" << message.key
+                   << ", myrank=" << _local_rank;
+
     return rc;
 }
 

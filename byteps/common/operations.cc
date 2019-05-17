@@ -64,8 +64,8 @@ bool RunReduceLoopOnce() {
     QueueType this_op = REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
 
-    auto reduce_stream = BytePSGlobal::GetReduceStream();
-    auto nccl_comm = BytePSGlobal::getNcclComm();
+    auto nccl_stream = BytePSGlobal::GetNcclStream();
+    auto nccl_reduce_comm = BytePSGlobal::getNcclReduceComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
     CUDA_CALL(cudaSetDevice(rank));
@@ -93,17 +93,26 @@ bool RunReduceLoopOnce() {
                 auto nccl_dtype = getNcclDataType(task->tensor->dtype());
 
                 BPS_LOG(TRACE) << task->tensor_name << " calling ncclReduce "
-                               << "(root=" << rank
+                               << "(rank=" << rank
                                << ") key=" << key
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
-                NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
-                                     (void*) (task->tensor->data()+offset),
-                                     num_elements, nccl_dtype, ncclSum, root,
-                                     *nccl_comm, *reduce_stream));
+                {
+                    std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
-                CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
+                    cudaEvent_t cuda_event;
+                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
+                    NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
+                                         (void*) (task->tensor->data()+offset),
+                                         num_elements, nccl_dtype, ncclSum, root,
+                                         *nccl_reduce_comm, *nccl_stream));
+
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                }
+
             }
 
             if (task->queue_list.size() > 0) {
@@ -156,12 +165,21 @@ bool RunReduceLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
-                NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
-                                     (void*) (task->tensor->data()+offset),
-                                     num_elements, nccl_dtype, ncclSum, root,
-                                     *nccl_comm, *reduce_stream));
+                {
+                    std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
-                CUDA_CALL(cudaStreamSynchronize(*reduce_stream));
+                    cudaEvent_t cuda_event;
+                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
+                    NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
+                                         (void*) (task->tensor->data()+offset),
+                                         num_elements, nccl_dtype, ncclSum, root,
+                                         *nccl_reduce_comm, *nccl_stream));
+
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                }
+
             }
 
             if (task->queue_list.size() > 0) {
@@ -317,7 +335,13 @@ bool RunPullLoopOnce() {
                     BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
                     BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
                 } else {
-                    task->callback(Status::OK());
+                    BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
+                    int v = task->counter_ptr.get()->fetch_add(1);
+                    if (v == (task->total_partnum-1)) {
+                        BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name
+                                   << ", invoking callback.";
+                        task->callback(Status::OK());
+                    }
                 }
                 q->reportFinish(task->len);
             });
@@ -379,8 +403,8 @@ bool RunCopyHost2DeviceLoopOnce() {
 bool RunBroadcastLoopOnce() {
     QueueType this_op = BROADCAST;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
-    auto broadcast_stream = BytePSGlobal::GetBroadcastStream();
-    auto nccl_comm = BytePSGlobal::getNcclComm();
+    auto nccl_stream = BytePSGlobal::GetNcclStream();
+    auto nccl_broadcast_comm = BytePSGlobal::getNcclBroadcastComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
     CUDA_CALL(cudaSetDevice(rank));
@@ -414,12 +438,21 @@ bool RunBroadcastLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
-                NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                                       (void*) (task->output->data()+offset),
-                                       num_elements, nccl_dtype, root,
-                                       *nccl_comm, *broadcast_stream));
+                {
+                    std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
-                CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
+                    cudaEvent_t cuda_event;
+                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
+                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                           (void*) (task->output->data()+offset),
+                                           num_elements, nccl_dtype, root,
+                                           *nccl_broadcast_comm, *nccl_stream));
+
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                }
+
             }
 
             BPS_CHECK_EQ(task->queue_list.size(), 0)
@@ -469,12 +502,22 @@ bool RunBroadcastLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
-                NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                                     (void*) (task->output->data()+offset),
-                                     num_elements, nccl_dtype, root,
-                                     *nccl_comm, *broadcast_stream));
 
-                CUDA_CALL(cudaStreamSynchronize(*broadcast_stream));
+                {
+                    std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
+
+                    cudaEvent_t cuda_event;
+                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
+                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                         (void*) (task->output->data()+offset),
+                                         num_elements, nccl_dtype, root,
+                                         *nccl_broadcast_comm, *nccl_stream));
+
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                }
+
             }
 
             BPS_CHECK_EQ(task->queue_list.size(), 0)
@@ -485,7 +528,9 @@ bool RunBroadcastLoopOnce() {
             BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
             int v = task->counter_ptr.get()->fetch_add(1);
             if (v == (task->total_partnum-1)) {
-                BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
+                BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name
+                               << ", rank=" << rank;
+
                 task->callback(Status::OK());
             }
 
