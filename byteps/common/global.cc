@@ -110,33 +110,45 @@ void BytePSGlobal::Init() {
 
     // init and sycn NCCL-reduce-id using out-of-band socket
     _nccl_reduce_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
+
     if (_is_root_device) { // only root create nccl id
+
         NCCLCHECK(ncclGetUniqueId(_nccl_reduce_id));
+
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_reduce_id);
 
         _comm->broadcastSignal(_local_rank, _nccl_reduce_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
+
     } else {
         int src;
         int rc = _comm->recvSignal(&src, _nccl_reduce_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
+
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
-        BPS_LOG(DEBUG) << "recv nccl_reduce_id " << (*(long long int*)_nccl_reduce_id)
+
+        BPS_LOG(DEBUG) << "recv nccl_reduce_id is " << (*(long long int*)_nccl_reduce_id)
                        << ", local_rank=" << _local_rank;
     }
 
 
     // init and sycn NCCL-broadcast-id using out-of-band socket
     _nccl_broadcast_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
+
     if (_is_root_device) { // only root create nccl id
+
         NCCLCHECK(ncclGetUniqueId(_nccl_broadcast_id));
+
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root nccl_broadcast_id is " << (*(long long int*)_nccl_broadcast_id);
 
         _comm->broadcastSignal(_local_rank, _nccl_broadcast_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
+
     } else {
         int src;
         int rc = _comm->recvSignal(&src, _nccl_broadcast_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
+
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
+
         BPS_LOG(DEBUG) << "recv nccl_broadcast_id is " << (*(long long int*)_nccl_broadcast_id)
                        << ", local_rank=" << _local_rank;
     }

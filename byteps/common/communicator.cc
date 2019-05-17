@@ -132,6 +132,7 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
 }
 
 int BytePSCommSocket::sendSignal(int destination, void* data, int len, BytePSCommFlag flag) {
+    std::lock_guard<std::mutex> lock(_socket_mu);
     struct sockaddr_un destaddr;
     memset(&destaddr, 0, sizeof(destaddr));
     destaddr.sun_family = AF_UNIX;
@@ -166,7 +167,6 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
     int rc;
     switch (flag) {
         case NON_ROOT_RECV:
-        case ROOT_RECV:
             rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
             break;
         case NON_ROOT_RECV_REDUCE:
@@ -176,7 +176,7 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
             rc = recv(_bdcast_fd, data, MAX_LINE, MSG_WAITALL);
             break;
         default:
-            BPS_CHECK(0) << "inappropriate flag: " << flag;
+            BPS_CHECK(0) << "invalid flag: " << flag;
     }
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len) << "recv_len=" << rc << ", but given max_len=" << max_len;
