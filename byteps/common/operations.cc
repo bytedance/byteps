@@ -98,11 +98,11 @@ bool RunReduceLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
+                cudaEvent_t cuda_event;
+                CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
-
-                    cudaEvent_t cuda_event;
-                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
                     NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
                                          (void*) (task->tensor->data()+offset),
@@ -110,8 +110,9 @@ bool RunReduceLoopOnce() {
                                          *nccl_reduce_comm, *nccl_stream));
 
                     CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
+
+                CUDA_CALL(cudaEventSynchronize(cuda_event));
 
             }
 
@@ -165,11 +166,11 @@ bool RunReduceLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
+                cudaEvent_t cuda_event;
+                CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
-
-                    cudaEvent_t cuda_event;
-                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
                     NCCLCHECK(ncclReduce((const void*) (task->tensor->data()+offset),
                                          (void*) (task->tensor->data()+offset),
@@ -177,8 +178,9 @@ bool RunReduceLoopOnce() {
                                          *nccl_reduce_comm, *nccl_stream));
 
                     CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
+
+                CUDA_CALL(cudaEventSynchronize(cuda_event));
 
             }
 
@@ -438,11 +440,11 @@ bool RunBroadcastLoopOnce() {
                                << ", elements=" << num_elements
                                << ", device=" << task->device;
 
+                cudaEvent_t cuda_event;
+                CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
-
-                    cudaEvent_t cuda_event;
-                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
                     NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
                                            (void*) (task->output->data()+offset),
@@ -450,8 +452,9 @@ bool RunBroadcastLoopOnce() {
                                            *nccl_broadcast_comm, *nccl_stream));
 
                     CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
+
+                CUDA_CALL(cudaEventSynchronize(cuda_event));
 
             }
 
@@ -503,11 +506,11 @@ bool RunBroadcastLoopOnce() {
                                << ", device=" << task->device;
 
 
+                cudaEvent_t cuda_event;
+                CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
+
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
-
-                    cudaEvent_t cuda_event;
-                    CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
                     NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
                                          (void*) (task->output->data()+offset),
@@ -515,8 +518,9 @@ bool RunBroadcastLoopOnce() {
                                          *nccl_broadcast_comm, *nccl_stream));
 
                     CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
+
+                CUDA_CALL(cudaEventSynchronize(cuda_event));
 
             }
 
