@@ -460,14 +460,14 @@ bool RunBroadcastLoopOnce() {
                     struct BytePSCommMsg msg = { rank, DO_BROADCAST, key };
                     BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_BDCAST);
 
-                    // NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                    //                        (void*) (task->output->data()+offset),
-                    //                        len/unit_len, nccl_dtype, root,
-                    //                        *nccl_broadcast_comm, *nccl_stream));
+                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                           (void*) (task->output->data()+offset),
+                                           len/unit_len, nccl_dtype, root,
+                                           *nccl_broadcast_comm, *nccl_stream));
 
-                    // CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
 
-                    // CUDA_CALL(cudaEventSynchronize(cuda_event));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
 
                 CUDA_CALL(cudaEventDestroy(cuda_event));
@@ -537,14 +537,14 @@ bool RunBroadcastLoopOnce() {
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
-                    // NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                    //                      (void*) (task->output->data()+offset),
-                    //                      len/unit_len, nccl_dtype, root,
-                    //                      *nccl_broadcast_comm, *nccl_stream));
+                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                                         (void*) (task->output->data()+offset),
+                                         len/unit_len, nccl_dtype, root,
+                                         *nccl_broadcast_comm, *nccl_stream));
 
-                    // CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
 
-                    // CUDA_CALL(cudaEventSynchronize(cuda_event));
+                    CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
 
                 CUDA_CALL(cudaEventDestroy(cuda_event));
