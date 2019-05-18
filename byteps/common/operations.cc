@@ -71,7 +71,6 @@ bool RunReduceLoopOnce() {
     auto nccl_reduce_comm = BytePSGlobal::getNcclReduceComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
-    CUDA_CALL(cudaSetDevice(rank));
 
     if (IsRoot()) { // root
         auto task = q->getTaskFromReadyTable();
@@ -101,7 +100,7 @@ bool RunReduceLoopOnce() {
                 cudaEvent_t cuda_event;
                 CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
-                {
+                if (BytePSGlobal::GetLocalSize() > 1) {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
                     // notify non-root devices
@@ -230,7 +229,6 @@ bool RunCopyDevice2HostLoopOnce() {
     auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
     auto task = q->getTask();
     int rank = GetMyLocalRank();
-    CUDA_CALL(cudaSetDevice(rank));
 
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYD2H loop";
@@ -377,7 +375,7 @@ bool RunCopyHost2DeviceLoopOnce() {
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
     auto task = q->getTask();
     int rank = GetMyLocalRank();
-    CUDA_CALL(cudaSetDevice(rank));
+
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYH2D loop";
         BPS_CHECK(task->output);
@@ -426,7 +424,6 @@ bool RunBroadcastLoopOnce() {
     auto nccl_broadcast_comm = BytePSGlobal::getNcclBroadcastComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
-    CUDA_CALL(cudaSetDevice(rank));
 
     if (IsRoot()) { // root
         auto task = q->getTask();
@@ -457,20 +454,20 @@ bool RunBroadcastLoopOnce() {
                 cudaEvent_t cuda_event;
                 CUDA_CALL(cudaEventCreateWithFlags(&cuda_event, cudaEventBlockingSync));
 
-                {
+                if (BytePSGlobal::GetLocalSize() > 1) {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
                     struct BytePSCommMsg msg = { rank, DO_BROADCAST, key };
                     BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_BDCAST);
 
-                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                                           (void*) (task->output->data()+offset),
-                                           len/unit_len, nccl_dtype, root,
-                                           *nccl_broadcast_comm, *nccl_stream));
+                    // NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                    //                        (void*) (task->output->data()+offset),
+                    //                        len/unit_len, nccl_dtype, root,
+                    //                        *nccl_broadcast_comm, *nccl_stream));
 
-                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    // CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
 
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                    // CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
 
                 CUDA_CALL(cudaEventDestroy(cuda_event));
@@ -540,14 +537,14 @@ bool RunBroadcastLoopOnce() {
                 {
                     std::lock_guard<std::mutex> lock(BytePSGlobal::_nccl_mutex);
 
-                    NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
-                                         (void*) (task->output->data()+offset),
-                                         len/unit_len, nccl_dtype, root,
-                                         *nccl_broadcast_comm, *nccl_stream));
+                    // NCCLCHECK(ncclBroadcast((const void*) (task->output->data()+offset),
+                    //                      (void*) (task->output->data()+offset),
+                    //                      len/unit_len, nccl_dtype, root,
+                    //                      *nccl_broadcast_comm, *nccl_stream));
 
-                    CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
+                    // CUDA_CALL(cudaEventRecord(cuda_event, *nccl_stream));
 
-                    CUDA_CALL(cudaEventSynchronize(cuda_event));
+                    // CUDA_CALL(cudaEventSynchronize(cuda_event));
                 }
 
                 CUDA_CALL(cudaEventDestroy(cuda_event));
@@ -581,10 +578,12 @@ void CoordinateLoop() {
 }
 
 void ReduceLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void CopyDevice2HostLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
@@ -597,10 +596,12 @@ void PullLoop() {
 }
 
 void CopyHost2DeviceLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void BroadcastLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
