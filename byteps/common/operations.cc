@@ -93,7 +93,7 @@ bool RunRootNcclLoopOnce() {
     ncclGroupStart();
     for (auto this_op : nccl_ops) {
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < BytePSGlobal::getNcclGroupSize(); i++) {
             auto task = q->getTask();
             if (!task) { break; }
             tasks.push_back(task);
@@ -425,18 +425,24 @@ extern "C" {
 
 void byteps_init() {
     BytePSGlobal::Init();
+    std::vector<LoopFunction> func;
+
     if (IsRoot()) {
-        std::vector<LoopFunction> func = { RootNcclLoop,
-                                           CopyDevice2HostLoop, PushLoop,
-                                           PullLoop, CopyHost2DeviceLoop };
-        BytePSGlobal::Start(func);
+        func.push_back(RootNcclLoop);
+        if (IsDistributedJob()) {
+            func.push_back(CopyDevice2HostLoop);
+            func.push_back(PushLoop);
+            func.push_back(PullLoop);
+            func.push_back(CopyHost2DeviceLoop);
+        }
     }
     else {
-        std::vector<LoopFunction> func= { CoordinateReduceLoop, NonRootNcclLoop,
-                                          CoordinateBroadcastLoop };
-        BytePSGlobal::Start(func);
+        func.push_back(CoordinateReduceLoop);
+        func.push_back(NonRootNcclLoop);
+        func.push_back(CoordinateBroadcastLoop);
     }
     
+    BytePSGlobal::Start(func);
     return;
 }
 
@@ -602,7 +608,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
         auto key = key_list[i];
         int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
-        if (IsRoot() && (BytePSGlobal::GetWorkerID() == 0)) { // only worker0 pushes init data
+        if (IsDistributedJob() && IsRoot() && (BytePSGlobal::GetWorkerID() == 0)) { // only worker0 pushes init data
             auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
             // false means not to delete data when SArray is deleted
             ps::SArray<char> vals(data + accumulated, len, false);
@@ -611,7 +617,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
                 pskv.keys, vals, pskv.lens, cmd));
         }
 
-        if (IsRoot()) { // all worker need to sync
+        if (IsDistributedJob() && IsRoot()) { // all worker need to sync
             ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
         }
 
@@ -654,6 +660,10 @@ int GetRoot() {
 
 int GetMyLocalRank() {
     return BytePSGlobal::GetLocalRank();
+}
+
+bool IsDistributedJob() {
+    return BytePSGlobal::IsDistributed();
 }
 
 } // namespace common

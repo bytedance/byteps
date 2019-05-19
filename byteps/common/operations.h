@@ -77,6 +77,8 @@ int GetRoot();
 
 int GetMyLocalRank();
 
+bool IsDistributedJob();
+
 } // namespace common
 } // namespace byteps
 

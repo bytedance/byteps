@@ -185,13 +185,14 @@ public:
     auto& byteps_context = common::GetContextFromName(node_name);
 
     std::vector<common::QueueType> queue_list;
-    // TODO: now only create 1 gpu testcase
     if (common::IsRoot()) {
         queue_list.push_back(common::REDUCE);
-        queue_list.push_back(common::COPYD2H);
-        queue_list.push_back(common::PUSH);
-        queue_list.push_back(common::PULL);
-        queue_list.push_back(common::COPYH2D);
+        if (common::IsDistributedJob()) {
+            queue_list.push_back(common::COPYD2H);
+            queue_list.push_back(common::PUSH);
+            queue_list.push_back(common::PULL);
+            queue_list.push_back(common::COPYH2D);
+        }
         queue_list.push_back(common::BROADCAST);
     }
     else {

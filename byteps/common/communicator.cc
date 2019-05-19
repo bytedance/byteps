@@ -50,20 +50,21 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
 
+    _send_fd = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
+    _recv_fd = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
+
     // init socket comm
     if (is_root) { // root
-        _send_fd = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
-        _recv_fd = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
-
-        BPS_LOG(DEBUG) << "This is ROOT device, sockets create successfully";
         _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
-    } else { // non-root
-        _send_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
-        _recv_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
 
-        BPS_LOG(DEBUG) << "This is WORKER device, rank=" << _local_rank
-                       << ", sockets create successfully";
+        // Just in case launching root earlier than non-root
+        // TODO: use retry instead of sleep
+        if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
+
+    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
+                   << " device, rank=" << _local_rank
+                   << ", all sockets create successfully";
 }
 
 int BytePSCommSocket::initSocket(int rank, const char* path) {
@@ -131,10 +132,9 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 
     auto ret = sendto(_send_fd, data, len, 0,
-        (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
+            (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
 
-    BPS_CHECK_GE(ret, 0) << std::strerror(errno)
-                         << ", rank=" << _local_rank;
+    BPS_CHECK_GE(ret, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     return 0;
 }
 

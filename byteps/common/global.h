@@ -56,7 +56,9 @@ public:
     static int GetSize() { return _size; }
     static int GetLocalSize() { return _local_size; }
     static int GetWorkerID() { return _worker_id; }
+    static int GetNumWorker() { return _num_worker; }
     static bool IsRootDevice();
+    static bool IsDistributed();
     static int GetRoot();
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
@@ -85,6 +87,10 @@ public:
 
     static ncclComm_t* getNcclComm() { return &_nccl_comm; }
 
+    // global user-defined env related
+    static void initGlobalEnv();
+    static int getNcclGroupSize() { return _nccl_group_size; }
+
 private:
 
     static std::mutex _init_mutex;
@@ -96,7 +102,9 @@ private:
     static int _size;
     static int _local_size;
     static int _worker_id;
+    static int _num_worker;
     static bool _is_root_device;
+    static bool _is_distributed_job;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _comm;
 
@@ -121,6 +129,9 @@ private:
     static ncclUniqueId* _nccl_id;
     static ncclUniqueId* _nccl_broadcast_id;
     static ncclComm_t _nccl_comm;
+
+    // global user-defined env
+    static int _nccl_group_size;
 };
 
 

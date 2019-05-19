@@ -30,9 +30,13 @@ int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 int BytePSGlobal::_worker_id = 0;
+int BytePSGlobal::_num_worker = 1;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
+bool BytePSGlobal::_is_distributed_job;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
+int BytePSGlobal::_nccl_group_size = 4;
+
 std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -61,6 +65,10 @@ bool BytePSGlobal::IsRootDevice() {
     return _is_root_device;
 }
 
+bool BytePSGlobal::IsDistributed() {
+    return _is_distributed_job;
+}
+
 int BytePSGlobal::GetRoot() {
     return _local_size-1;
 }
@@ -80,6 +88,8 @@ void BytePSGlobal::Init() {
         return;
     }
 
+    initGlobalEnv();
+
 #ifdef BYTEPS_USE_MPI
     _comm = std::make_shared<BytePSCommMPI>();
 #else
@@ -96,7 +106,17 @@ void BytePSGlobal::Init() {
     _partition_bytes = _partition_bytes / 8 * 8; // align by 8 (the size of a double or int64)
     BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
-    if (_my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
+    BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
+    BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: env DMLC_NUM_SERVER not set";
+
+    _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
+
+    _is_distributed_job = (_num_worker>1) ? true : false;
+    BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
+                   << (IsDistributed() ? "" : "non-") << "distributed job";
+
+
+    if (IsDistributed() && _my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
         // init low-level ps implementation
         _ps = new ps::KVWorker<char>(0, 0);
         ps::StartAsync(0, "byteps\0");
@@ -161,6 +181,13 @@ void BytePSGlobal::Init() {
 
     //initializing NCCL rank
     NCCLCHECK(ncclCommInitRank(&_nccl_comm, _local_size, *_nccl_id, _local_rank));
+
+    return;
+}
+
+void BytePSGlobal::initGlobalEnv() { // init all global env/param here
+    _nccl_group_size = (getenv("BYTEPS_NCCL_GROUP_SIZE") ? atoi(getenv("BYTEPS_NCCL_GROUP_SIZE")) : 4);
+    BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
 
     return;
 }
