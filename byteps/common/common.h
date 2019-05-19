@@ -61,6 +61,16 @@ enum DeviceType { CPU, GPU };
 enum QueueType { COORDINATE, REDUCE, COPYD2H, PUSH, PULL, COPYH2D, BROADCAST };
 const int QueueNum = 7;
 
+const std::vector<std::string> LogStrings = {
+  "COORDINATE",
+  "REDUCE",
+  "COPYD2H",
+  "PUSH",
+  "PULL",
+  "COPYH2D",
+  "BROADCAST"
+};
+
 class Status {
 public:
   Status();

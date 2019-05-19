@@ -26,14 +26,33 @@
 namespace byteps {
 namespace common {
 
+void FinishOrProceed(std::shared_ptr<TensorTableEntry> task, QueueType this_op) {
+    BPS_CHECK_GE(task->queue_list.size(), 1);
+    task->queue_list.erase(task->queue_list.begin());
+    if (task->queue_list.size() > 0) {
+        BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
+                       << " finishes " << LogStrings[this_op] << ", tensor: " << task->tensor_name
+                       << ", key=" << task->key << "; Passing to the next queue.";
+        BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
+    } else {
+        BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
+        int v = task->counter_ptr.get()->fetch_add(1);
+        if (v == (task->total_partnum-1)) {
+            BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
+                           << "Finish processing tensor: " << task->tensor_name;
+            task->callback(Status::OK());
+        }
+    }
+    return;
+}
+
+
 bool RunCoordinateLoopOnce() {
     QueueType this_op = COORDINATE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task){
         BPS_CHECK(!IsRoot()) << "only non-root device should enter COORDINATE loop";
-        BPS_CHECK_GE(task->queue_list.size(), 1);
-        task->queue_list.erase(task->queue_list.begin());
 
         int root = GetRoot();
         int rank = GetMyLocalRank();
@@ -41,11 +60,7 @@ bool RunCoordinateLoopOnce() {
 
         // first send to next queue and then broadcast signal
         // to guarantee the entry is available when getTask(key) at Reduce thread
-        if (task->queue_list.size() > 0) {
-            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-        } else {
-            task->callback(Status::OK());
-        }
+        FinishOrProceed(task, this_op);
 
         struct BytePSCommMsg msg = { rank, REDUCE_READY, key };
         BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg), NON_ROOT_SEND);
@@ -77,8 +92,6 @@ bool RunReduceLoopOnce() {
         if (task) {
             BPS_CHECK(task->tensor);
             BPS_CHECK_EQ(rank, root);
-            BPS_CHECK_GE(task->queue_list.size(), 1);
-            task->queue_list.erase(task->queue_list.begin());
             int key  = task->key;
             auto len = task->len;
             auto offset = task->offset;
@@ -121,19 +134,7 @@ bool RunReduceLoopOnce() {
 
             }
 
-            if (task->queue_list.size() > 0) {
-                BPS_LOG(TRACE) << "rank=" << rank
-                               << " finishes Reducing tensor: " << task->tensor_name
-                               << ", key=" << task->key;
-                BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-            } else {
-                BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-                int v = task->counter_ptr.get()->fetch_add(1);
-                if (v == (task->total_partnum-1)) {
-                    BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
-                    task->callback(Status::OK());
-                }
-            }
+            FinishOrProceed(task, this_op);
             q->reportFinish(task->len);
         }
         else {
@@ -162,8 +163,6 @@ bool RunReduceLoopOnce() {
 
         if (task) {
             BPS_CHECK(task->tensor);
-            BPS_CHECK_GE(task->queue_list.size(), 1);
-            task->queue_list.erase(task->queue_list.begin());
             auto len = task->len;
             auto offset = task->offset;
 
@@ -200,19 +199,7 @@ bool RunReduceLoopOnce() {
 
             }
 
-            if (task->queue_list.size() > 0) {
-                BPS_LOG(TRACE) << "Non-Root (rank=" << rank
-                               << ") finishes ncclReduce tensor: " << task->tensor_name
-                               << ", key=" << task->key;
-                BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-            } else {
-                BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-                int v = task->counter_ptr.get()->fetch_add(1);
-                if (v == (task->total_partnum-1)) {
-                    BPS_LOG(TRACE) << "Finish reducing tensor: " << task->tensor_name;
-                    task->callback(Status::OK());
-                }
-            }
+            FinishOrProceed(task, this_op);
             q->reportFinish(task->len);
         } else {
             std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -233,8 +220,6 @@ bool RunCopyDevice2HostLoopOnce() {
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYD2H loop";
         BPS_CHECK(task->tensor);
-        BPS_CHECK_GE(task->queue_list.size(), 1);
-        task->queue_list.erase(task->queue_list.begin());
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             auto name = task->tensor_name;
@@ -246,12 +231,7 @@ bool RunCopyDevice2HostLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
         }
 
-        if (task->queue_list.size() > 0) {
-            BPS_LOG(TRACE) << "Finish COPYD2H tensor: " << task->tensor_name;
-            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-        } else {
-            task->callback(Status::OK());
-        }
+        FinishOrProceed(task, this_op);
         q->reportFinish(task->len);
     }
     else {
@@ -266,8 +246,6 @@ bool RunPushLoopOnce() {
     auto task = q->getTask();
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter PUSH loop";
-        BPS_CHECK_GE(task->queue_list.size(), 1);
-        task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -291,19 +269,8 @@ bool RunPushLoopOnce() {
         auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
         BytePSGlobal::GetPS()->ZPush(
             pskv.keys, vals, pskv.lens, cmd,
-            [task, q]() {
-                if (task->queue_list.size() > 0) {
-                    BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name;
-                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-                } else {
-                    BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-                    int v = task->counter_ptr.get()->fetch_add(1);
-                    if (v == (task->total_partnum-1)) {
-                        BPS_LOG(TRACE) << "Finish pushing tensor: " << task->tensor_name
-                                   << ", invoking callback.";
-                        task->callback(Status::OK());
-                    }
-                }
+            [task, q, this_op]() {
+                FinishOrProceed(task, this_op);
                 q->reportFinish(task->len);
             }
         );
@@ -320,8 +287,6 @@ bool RunPullLoopOnce() {
     auto task = q->getTask();
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter PULL loop";
-        BPS_CHECK_GE(task->queue_list.size(), 1);
-        task->queue_list.erase(task->queue_list.begin());
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -346,20 +311,9 @@ bool RunPullLoopOnce() {
         // issue pull
         BytePSGlobal::GetPS()->ZPull(
             pskv.keys, vals, &pskv.lens, cmd,
-            [vals, task, q]() {
+            [vals, task, q, this_op]() {
                 delete vals;
-                if (task->queue_list.size() > 0) {
-                    BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name;
-                    BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-                } else {
-                    BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-                    int v = task->counter_ptr.get()->fetch_add(1);
-                    if (v == (task->total_partnum-1)) {
-                        BPS_LOG(TRACE) << "Finish pulling tensor: " << task->tensor_name
-                                   << ", invoking callback.";
-                        task->callback(Status::OK());
-                    }
-                }
+                FinishOrProceed(task, this_op);
                 q->reportFinish(task->len);
             });
     }
@@ -379,8 +333,6 @@ bool RunCopyHost2DeviceLoopOnce() {
     if (task) {
         BPS_CHECK(IsRoot()) << "only root device should enter COPYH2D loop";
         BPS_CHECK(task->output);
-        BPS_CHECK_GE(task->queue_list.size(), 1);
-        task->queue_list.erase(task->queue_list.begin());
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             auto name = task->tensor_name;
@@ -394,21 +346,7 @@ bool RunCopyHost2DeviceLoopOnce() {
             CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
         }
 
-        if (task->queue_list.size() > 0) {
-            BPS_LOG(TRACE) << "Finish COPY_HOST_TO_DEVICE tensor: "
-                           << task->tensor_name
-                           << ", passing to next queue";
-
-            BytePSGlobal::GetScheduledQueue(static_cast<QueueType>(task->queue_list.at(0)))->addTask(task);
-        } else {
-            BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-            int v = task->counter_ptr.get()->fetch_add(1);
-            if (v == (task->total_partnum-1)) {
-                BPS_LOG(TRACE) << "Finish COPYH2D tensor: " << task->tensor_name;
-                task->callback(Status::OK());
-            }
-        }
-
+        FinishOrProceed(task, this_op);
         q->reportFinish(task->len);
     }
     else {
@@ -431,8 +369,6 @@ bool RunBroadcastLoopOnce() {
             int key  = task->key;
             BPS_CHECK(task->output);
             BPS_CHECK_EQ(root, rank);
-            BPS_CHECK_GE(task->queue_list.size(), 1);
-            task->queue_list.erase(task->queue_list.begin());
 
             if (task->device != CPU_DEVICE_ID) { // GPU
                 auto name = task->tensor_name;
@@ -474,16 +410,10 @@ bool RunBroadcastLoopOnce() {
 
             }
 
-            BPS_CHECK_EQ(task->queue_list.size(), 0)
+            BPS_CHECK_EQ(task->queue_list.size(), 1)
                 << "BROADCAST should be the last op, remain queue_list size: " << task->queue_list.size();
 
-            BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-            int v = task->counter_ptr.get()->fetch_add(1);
-            if (v == (task->total_partnum-1)) {
-                BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name
-                               << ", rank=" << rank;
-                task->callback(Status::OK());
-            }
+            FinishOrProceed(task, this_op);
             q->reportFinish(task->len);
         }
         else {
@@ -511,8 +441,6 @@ bool RunBroadcastLoopOnce() {
         }
 
         if (task) {
-            BPS_CHECK_GE(task->queue_list.size(), 1);
-            task->queue_list.erase(task->queue_list.begin());
 
             if (task->device != CPU_DEVICE_ID) { // GPU
                 auto len = task->len;
@@ -551,19 +479,12 @@ bool RunBroadcastLoopOnce() {
 
             }
 
-            BPS_CHECK_EQ(task->queue_list.size(), 0)
+            BPS_CHECK_EQ(task->queue_list.size(), 1)
                     << "BROADCAST should be the last op, "
                     << "remain queue_list size: " << task->queue_list.size()
                     << ", local_rank=" << rank;
 
-            BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
-            int v = task->counter_ptr.get()->fetch_add(1);
-            if (v == (task->total_partnum-1)) {
-                BPS_LOG(TRACE) << "Finish broadcasting tensor: " << task->tensor_name
-                               << ", rank=" << rank;
-
-                task->callback(Status::OK());
-            }
+            FinishOrProceed(task, this_op);
             q->reportFinish(task->len);
 
         } else {
