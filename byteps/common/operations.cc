@@ -64,7 +64,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
         struct BytePSCommMsg msg = { rank,
                                      (this_op == COORDINATE_REDUCE) ? REDUCE_READY : BCAST_READY,
                                      key };
-        BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg), NON_ROOT_SEND);
+        BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
 
         BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
                        << "root=" << root
@@ -126,8 +126,7 @@ bool RunRootNcclLoopOnce() {
                                                  (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST,
                                                  key };
                     BytePSGlobal::GetComm()->broadcastSignal(rank, &msg,
-                                                             sizeof(BytePSCommMsg),
-                                                             ROOT_SEND_TO_REDUCE);
+                                                             sizeof(BytePSCommMsg));
 
                     if (this_op == REDUCE) {
                         NCCLCHECK(ncclReduce((const void*) (tensor->data()+offset),
@@ -147,7 +146,7 @@ bool RunRootNcclLoopOnce() {
     }
     if (tasks.size()) {
         struct BytePSCommMsg msg = { rank, DO_GROUP, 0 };
-        BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg), ROOT_SEND_TO_REDUCE);
+        BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg));
     }
     ncclGroupEnd();
     CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
@@ -170,13 +169,12 @@ bool RunNonRootNcclLoopOnce() {
     BPS_CHECK_NE(rank, root);
 
     std::vector<std::shared_ptr<TensorTableEntry>> tasks;
-    std::vector<BytePSScheduledQueue*> queues;
     int src;
     struct BytePSCommMsg msg = {};
 
     ncclGroupStart();
     while (1) {
-        BytePSGlobal::GetComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg), NON_ROOT_RECV_REDUCE);
+        BytePSGlobal::GetComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
         BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
         if (msg.signal == DO_GROUP) { break; }
         QueueType this_op = REDUCE;
@@ -199,7 +197,6 @@ bool RunNonRootNcclLoopOnce() {
             << ", local_rank=" << rank;
 
         tasks.push_back(task);
-        queues.push_back(q);
 
         auto tensor = (this_op == REDUCE) ? task->tensor : task->output;
 
@@ -238,7 +235,6 @@ bool RunNonRootNcclLoopOnce() {
     
     for (int i = 0; i < tasks.size(); i++) {
         FinishOrProceed(tasks[i]);
-        queues[i]->reportFinish(tasks[i]->len);
     }
     return true;
 }

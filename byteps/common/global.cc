@@ -106,6 +106,9 @@ void BytePSGlobal::Init() {
         }
     }
 
+    // set to associated GPU
+    CUDA_CALL(cudaSetDevice(_local_rank));
+
     // init and sycn NCCL-reduce-id using out-of-band socket
     _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
 
@@ -119,20 +122,17 @@ void BytePSGlobal::Init() {
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_id);
 
-        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
+        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
 
     } else {
         int src;
-        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
+        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
 
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
 
         BPS_LOG(DEBUG) << "recv nccl_reduce_id is " << (*(long long int*)_nccl_id)
                        << ", local_rank=" << _local_rank;
     }
-
-    // set to associated GPU
-    CUDA_CALL(cudaSetDevice(_local_rank));
 
                 _nccl_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
@@ -167,7 +167,7 @@ void BytePSGlobal::Init() {
 
 void BytePSGlobal::Start(const std::vector<LoopFunction> &func) {
     // Start background threads
-    for (int i = 0; i < func.size(); i++) {
+    for (unsigned int i = 0; i < func.size(); i++) {
         _threads.push_back(new std::thread(func[i]));
     }
     BPS_LOG(DEBUG) << "Started" << func.size() << " background threads. rank=" << _local_rank;
@@ -188,14 +188,14 @@ Status BytePSGlobal::CheckInit() {
 
 void BytePSGlobal::Shutdown() {
     _should_shutdown = true;
-    for (int i = 0; i < _threads.size(); i++) {
+    for (unsigned int i = 0; i < _threads.size(); i++) {
         if (_threads[i]->joinable()) {
             _threads[i]->join();
             delete _threads[i];
         }
     }
 
-    for (int i = 0; i < QueueNum; i++) {
+    for (unsigned int i = 0; i < QueueNum; i++) {
         if (_queues[i]) {
             delete _queues[i];
         }

@@ -60,8 +60,6 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     } else { // non-root
         _send_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
         _recv_fd   = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
-        _reduce_fd = initSocket(_local_rank, BASE_SOCKET_PATH_REDUCE);
-        _bdcast_fd = initSocket(_local_rank, BASE_SOCKET_PATH_BDCAST);
 
         BPS_LOG(DEBUG) << "This is WORKER device, rank=" << _local_rank
                        << ", sockets create successfully";
@@ -122,24 +120,13 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
     }
 }
 
-int BytePSCommSocket::sendSignal(int destination, void* data, int len, BytePSCommFlag flag) {
+int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     std::lock_guard<std::mutex> lock(_socket_mu);
     struct sockaddr_un destaddr;
     memset(&destaddr, 0, sizeof(destaddr));
     destaddr.sun_family = AF_UNIX;
 
-    std::string fd_path;
-    switch (flag) {
-        case ROOT_SEND_TO_RECV:
-        case NON_ROOT_SEND:
-            fd_path.append(BASE_SOCKET_PATH_RECV);
-            break;
-        case ROOT_SEND_TO_REDUCE:
-            fd_path.append(BASE_SOCKET_PATH_REDUCE);
-            break;
-        default:
-            BPS_CHECK(0) << "inappropriate flag: " << flag;
-    }
+    std::string fd_path(BASE_SOCKET_PATH_RECV);
     fd_path += std::to_string(destination);
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 
@@ -151,21 +138,8 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len, BytePSCom
     return 0;
 }
 
-int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) {
-    int rc;
-    switch (flag) {
-        case NON_ROOT_RECV:
-            rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
-            break;
-        case NON_ROOT_RECV_REDUCE:
-            rc = recv(_reduce_fd, data, MAX_LINE, MSG_WAITALL);
-            break;
-        case NON_ROOT_RECV_BDCAST:
-            rc = recv(_bdcast_fd, data, MAX_LINE, MSG_WAITALL);
-            break;
-        default:
-            BPS_CHECK(0) << "invalid flag: " << flag;
-    }
+int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
+    int rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len) << "recv_len=" << rc << ", but given max_len=" << max_len;
 
@@ -180,10 +154,10 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len, BytePSCom
     return rc;
 }
 
-int BytePSCommSocket::broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) {
+int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
     for (int i = 0; i < _local_size; ++i) {
         if (i == _local_rank) continue;
-        sendSignal(i, (void *)data, len, flag);
+        sendSignal(i, (void *)data, len);
     }
     return 0;
 }
