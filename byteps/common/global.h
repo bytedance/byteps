@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <string>
 #include <map>
+#include <queue>
 
 #include "common.h"
 #include "logging.h"
@@ -40,6 +41,13 @@ struct PSKV {
 };
 
 typedef void (*LoopFunction)();
+
+
+struct NcclGroupEntry {
+    cudaEvent_t cuda_event;
+    std::vector<std::shared_ptr<TensorTableEntry>> tasks;
+    std::vector<BytePSScheduledQueue*> queues;
+};
 
 class BytePSGlobal {
 
@@ -91,6 +99,9 @@ public:
     static void initGlobalEnv();
     static int getNcclGroupSize() { return _nccl_group_size; }
 
+    static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e);
+    static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup();
+
 private:
 
     static std::mutex _init_mutex;
@@ -132,6 +143,10 @@ private:
 
     // global user-defined env
     static int _nccl_group_size;
+
+    // for pipelining nccl
+    static std::mutex _nccl_mutex;
+    static std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
 };
 
 

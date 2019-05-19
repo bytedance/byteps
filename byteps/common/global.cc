@@ -57,6 +57,9 @@ ncclUniqueId* BytePSGlobal::_nccl_id;
 ncclUniqueId* BytePSGlobal::_nccl_broadcast_id;
 ncclComm_t BytePSGlobal::_nccl_comm;
 
+std::mutex BytePSGlobal::_nccl_mutex;
+std::queue<std::shared_ptr<NcclGroupEntry>> BytePSGlobal::_nccl_pipeline;
+
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
 }
@@ -158,7 +161,10 @@ void BytePSGlobal::Init() {
     _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_device2host_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
 
-    CUDA_CALL(cudaStreamCreateWithFlags(            _nccl_stream, cudaStreamNonBlocking));
+    int greatest_priority;
+    CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
+
+    CUDA_CALL(cudaStreamCreateWithPriority(         _nccl_stream, cudaStreamNonBlocking, greatest_priority));
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
 
@@ -327,6 +333,23 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
     return BytePSGlobal::_copy_host2device_stream;
 }
+
+void BytePSGlobal::EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e) {
+    std::lock_guard<std::mutex> lock(_nccl_mutex);
+    _nccl_pipeline.push(e);
+    return;
+}
+
+std::shared_ptr<NcclGroupEntry> BytePSGlobal::DequeueNcclGroup() {
+    std::lock_guard<std::mutex> lock(_nccl_mutex);
+    if (!_nccl_pipeline.size()) {
+        return nullptr;
+    }
+    auto r = _nccl_pipeline.front();
+    _nccl_pipeline.pop();
+    return r;
+}
+
 
 } // namespace common
 } // namespace byteps

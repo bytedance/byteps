@@ -87,10 +87,12 @@ bool RunRootNcclLoopOnce() {
     BPS_CHECK_EQ(rank, root);
 
     QueueType nccl_ops[] = { REDUCE, BROADCAST };
-    std::vector<std::shared_ptr<TensorTableEntry>> tasks;
-    std::vector<BytePSScheduledQueue*> queues;
 
-    ncclGroupStart();
+    auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
+    auto &tasks = nccl_entry->tasks;
+    auto &queues = nccl_entry->queues;
+
+    NCCLCHECK(ncclGroupStart());
     for (auto this_op : nccl_ops) {
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
         for (int i = 0; i < BytePSGlobal::getNcclGroupSize(); i++) {
@@ -147,17 +149,17 @@ bool RunRootNcclLoopOnce() {
     if (tasks.size()) {
         struct BytePSCommMsg msg = { rank, DO_GROUP, 0 };
         BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg));
+        BPS_LOG(TRACE) << "NCCL Group size=" << tasks.size() << " rank=" << rank;
+        NCCLCHECK(ncclGroupEnd());
+        CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
+        CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, *nccl_stream));
+        BytePSGlobal::EnqueueNcclGroup(nccl_entry);
     }
-    ncclGroupEnd();
-    CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
-    for (int i = 0; i < tasks.size(); i++) {
-        FinishOrProceed(tasks[i]);
-        queues[i]->reportFinish(tasks[i]->len);
-    }
-
-    if (!tasks.size()) {
+    else {
+        NCCLCHECK(ncclGroupEnd());
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
+
     return true;
 }
 
@@ -168,11 +170,12 @@ bool RunNonRootNcclLoopOnce() {
     int rank = GetMyLocalRank();
     BPS_CHECK_NE(rank, root);
 
-    std::vector<std::shared_ptr<TensorTableEntry>> tasks;
+    auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
+    auto &tasks = nccl_entry->tasks;
     int src;
     struct BytePSCommMsg msg = {};
 
-    ncclGroupStart();
+    NCCLCHECK(ncclGroupStart());
     while (1) {
         BytePSGlobal::GetComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
         BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
@@ -230,11 +233,30 @@ bool RunNonRootNcclLoopOnce() {
             }
         }
     }
-    ncclGroupEnd();
-    CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
-    
-    for (int i = 0; i < tasks.size(); i++) {
-        FinishOrProceed(tasks[i]);
+    NCCLCHECK(ncclGroupEnd());
+
+    CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
+    CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, *nccl_stream));
+    BytePSGlobal::EnqueueNcclGroup(nccl_entry);
+    return true;
+}
+
+bool RunSyncNcclOnce() {
+    auto nccl_entry = BytePSGlobal::DequeueNcclGroup();
+    if (nccl_entry) {
+        CUDA_CALL(cudaEventSynchronize(nccl_entry->cuda_event));
+        for (int i = 0; i < nccl_entry->tasks.size(); i++) {
+            FinishOrProceed(nccl_entry->tasks[i]);
+            if (nccl_entry->queues.size() > i) {
+                nccl_entry->queues[i]->reportFinish(nccl_entry->tasks[i]->len);
+            }
+        }
+        CUDA_CALL(cudaEventDestroy(nccl_entry->cuda_event));
+        BPS_LOG(TRACE) << "Finished NCCL Group size=" << nccl_entry->tasks.size()
+                       << " rank=" << GetMyLocalRank();
+    }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
     return true;
 }
@@ -403,6 +425,11 @@ void NonRootNcclLoop() {
     while (RunNonRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
+void SyncNcclLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+    while (RunSyncNcclOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
 void CopyDevice2HostLoop() {
     CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
@@ -429,6 +456,7 @@ void byteps_init() {
 
     if (IsRoot()) {
         func.push_back(RootNcclLoop);
+        func.push_back(SyncNcclLoop);
         if (IsDistributedJob()) {
             func.push_back(CopyDevice2HostLoop);
             func.push_back(PushLoop);
@@ -439,6 +467,7 @@ void byteps_init() {
     else {
         func.push_back(CoordinateReduceLoop);
         func.push_back(NonRootNcclLoop);
+        func.push_back(SyncNcclLoop);
         func.push_back(CoordinateBroadcastLoop);
     }
     
