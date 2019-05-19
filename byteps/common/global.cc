@@ -22,7 +22,6 @@ namespace common {
 
 // Define and init global variables
 std::mutex BytePSGlobal::_init_mutex;
-std::mutex BytePSGlobal::_nccl_mutex;
 volatile bool BytePSGlobal::_initialized = false;
 volatile bool BytePSGlobal::_should_shutdown = false;
 
@@ -39,7 +38,7 @@ std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
-std::thread* BytePSGlobal::_threads[QueueNum] = {NULL};
+std::vector<std::thread*> BytePSGlobal::_threads;
 
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
@@ -50,10 +49,9 @@ unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_nccl_stream;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
-ncclUniqueId* BytePSGlobal::_nccl_reduce_id;
+ncclUniqueId* BytePSGlobal::_nccl_id;
 ncclUniqueId* BytePSGlobal::_nccl_broadcast_id;
-ncclComm_t BytePSGlobal::_nccl_reduce_comm;
-ncclComm_t BytePSGlobal::_nccl_broadcast_comm;
+ncclComm_t BytePSGlobal::_nccl_comm;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -109,51 +107,27 @@ void BytePSGlobal::Init() {
     }
 
     // init and sycn NCCL-reduce-id using out-of-band socket
-    _nccl_reduce_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
+    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
 
     if (_is_root_device) { // only root create nccl id
 
         _reduce_table = new ReadyTable(_local_size-1);
-
-        NCCLCHECK(ncclGetUniqueId(_nccl_reduce_id));
-
-        // the log is just for debug, the actual length of nccl id is 128
-        BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_reduce_id);
-
-        _comm->broadcastSignal(_local_rank, _nccl_reduce_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
-
-    } else {
-        int src;
-        int rc = _comm->recvSignal(&src, _nccl_reduce_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
-
-        BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
-
-        BPS_LOG(DEBUG) << "recv nccl_reduce_id is " << (*(long long int*)_nccl_reduce_id)
-                       << ", local_rank=" << _local_rank;
-    }
-
-
-    // init and sycn NCCL-broadcast-id using out-of-band socket
-    _nccl_broadcast_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
-
-    if (_is_root_device) { // only root create nccl id
-
         _broadcast_table = new ReadyTable(_local_size-1);
 
-        NCCLCHECK(ncclGetUniqueId(_nccl_broadcast_id));
+        NCCLCHECK(ncclGetUniqueId(_nccl_id));
 
         // the log is just for debug, the actual length of nccl id is 128
-        BPS_LOG(DEBUG) << "root nccl_broadcast_id is " << (*(long long int*)_nccl_broadcast_id);
+        BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_id);
 
-        _comm->broadcastSignal(_local_rank, _nccl_broadcast_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
+        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::ROOT_SEND_TO_RECV);
 
     } else {
         int src;
-        int rc = _comm->recvSignal(&src, _nccl_broadcast_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
+        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId), BytePSCommFlag::NON_ROOT_RECV);
 
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
 
-        BPS_LOG(DEBUG) << "recv nccl_broadcast_id is " << (*(long long int*)_nccl_broadcast_id)
+        BPS_LOG(DEBUG) << "recv nccl_reduce_id is " << (*(long long int*)_nccl_id)
                        << ", local_rank=" << _local_rank;
     }
 
@@ -186,18 +160,17 @@ void BytePSGlobal::Init() {
                    << " worker_id=" << _worker_id;
 
     //initializing NCCL rank
-    NCCLCHECK(ncclCommInitRank(&_nccl_reduce_comm, _local_size, *_nccl_reduce_id, _local_rank));
-    NCCLCHECK(ncclCommInitRank(&_nccl_broadcast_comm, _local_size, *_nccl_broadcast_id, _local_rank));
+    NCCLCHECK(ncclCommInitRank(&_nccl_comm, _local_size, *_nccl_id, _local_rank));
 
     return;
 }
 
-void BytePSGlobal::Start(LoopFunction* func) {
+void BytePSGlobal::Start(const std::vector<LoopFunction> &func) {
     // Start background threads
-    for (int i = 0; i < ThreadNum; i++) {
-        _threads[i] = new std::thread(func[i]);
-        BPS_LOG(DEBUG) << "Background thread " << i << " starts.";
+    for (int i = 0; i < func.size(); i++) {
+        _threads.push_back(new std::thread(func[i]));
     }
+    BPS_LOG(DEBUG) << "Started" << func.size() << " background threads. rank=" << _local_rank;
 }
 
 
@@ -215,11 +188,14 @@ Status BytePSGlobal::CheckInit() {
 
 void BytePSGlobal::Shutdown() {
     _should_shutdown = true;
-    for (int i = 0; i < ThreadNum; i++) {
+    for (int i = 0; i < _threads.size(); i++) {
         if (_threads[i]->joinable()) {
             _threads[i]->join();
             delete _threads[i];
         }
+    }
+
+    for (int i = 0; i < QueueNum; i++) {
         if (_queues[i]) {
             delete _queues[i];
         }

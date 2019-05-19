@@ -48,11 +48,11 @@ namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
-enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_BDCAST, ROOT_SEND_TO_RECV,
+enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_RECV,
                       NON_ROOT_SEND, NON_ROOT_RECV,
                       NON_ROOT_RECV_REDUCE, NON_ROOT_RECV_BDCAST };
 
-enum BytePSCommSignal { REDUCE_READY, BCAST_READY, DO_REDUCE, DO_BROADCAST };
+enum BytePSCommSignal { REDUCE_READY, BCAST_READY, DO_REDUCE, DO_BROADCAST, DO_GROUP };
 
 struct BytePSCommMsg {
     int src;
@@ -70,11 +70,7 @@ public:
     virtual int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) = 0;
     virtual int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) = 0;
 
-    int broadcast(int root, void* data, int len);
-    int reduce(int root, void* data, int len);
-
 protected:
-    int _p2pGPUCopy(void* from, void* to, int len);
 
     int _rank;
     int _size;

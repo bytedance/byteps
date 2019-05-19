@@ -21,20 +21,6 @@
 namespace byteps {
 namespace common {
 
-int BytePSComm::broadcast(int root, void* data, int len) {
-    // use _p2pGPUCopy here
-    return 0;
-}
-
-int BytePSComm::reduce(int root, void* data, int len) {
-    // call nccl here
-    return 0;
-}
-
-int BytePSComm::_p2pGPUCopy(void* from, void* to, int len) {
-    return 0;
-}
-
 void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) {
 
     BPS_LOG(DEBUG) << "Using Communicator=Socket";
@@ -150,9 +136,6 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len, BytePSCom
             break;
         case ROOT_SEND_TO_REDUCE:
             fd_path.append(BASE_SOCKET_PATH_REDUCE);
-            break;
-        case ROOT_SEND_TO_BDCAST:
-            fd_path.append(BASE_SOCKET_PATH_BDCAST);
             break;
         default:
             BPS_CHECK(0) << "inappropriate flag: " << flag;

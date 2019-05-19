@@ -33,8 +33,6 @@
 namespace byteps {
 namespace common {
 
-const int ThreadNum = QueueNum;
-
 struct PSKV {
     ps::SArray<ps::Key> keys;  // n keys
     ps::SArray<int> lens;  // the length of the i-th value
@@ -48,7 +46,7 @@ class BytePSGlobal {
 public:
 
     static void Init();
-    static void Start(LoopFunction* func);
+    static void Start(const std::vector<LoopFunction> &func);
     static Status CheckInit();
     static bool ShouldShutdown() { return _should_shutdown; }
     static void Shutdown();
@@ -85,10 +83,7 @@ public:
     static ReadyTable* GetReduceTable() { return _reduce_table; }
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
 
-    static ncclComm_t* getNcclReduceComm() { return &_nccl_reduce_comm; }
-    static ncclComm_t* getNcclBroadcastComm() { return &_nccl_broadcast_comm; }
-    static std::mutex _nccl_mutex;
-
+    static ncclComm_t* getNcclComm() { return &_nccl_comm; }
 
 private:
 
@@ -107,7 +102,7 @@ private:
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _queues_mutex[QueueNum];
-    static std::thread* _threads[ThreadNum];
+    static std::vector<std::thread*> _threads;
 
     static ps::KVWorker<char>* _ps;
     static std::mutex _encode_mutex;
@@ -123,10 +118,9 @@ private:
     static ReadyTable* _reduce_table;
     static ReadyTable* _broadcast_table;
 
-    static ncclUniqueId* _nccl_reduce_id;
+    static ncclUniqueId* _nccl_id;
     static ncclUniqueId* _nccl_broadcast_id;
-    static ncclComm_t _nccl_reduce_comm;
-    static ncclComm_t _nccl_broadcast_comm;
+    static ncclComm_t _nccl_comm;
 };
 
 
