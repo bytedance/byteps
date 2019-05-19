@@ -67,7 +67,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
         }
     } else {
         if (device != CPU_DEVICE_ID) {
-            queue_list.push_back(common::COORDINATE);
+            queue_list.push_back(common::COORDINATE_REDUCE);
             queue_list.push_back(common::REDUCE);
         }
     }
@@ -98,6 +98,7 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
         }
     } else {
         if (device != CPU_DEVICE_ID) {
+            queue_list.push_back(common::COORDINATE_BROADCAST);
             queue_list.push_back(common::BROADCAST);
         }
     }

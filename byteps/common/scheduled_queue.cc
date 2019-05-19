@@ -22,6 +22,21 @@
 namespace byteps {
 namespace common {
 
+BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, uint64_t credits){
+    _qt = type;
+    _credits = credits;
+    _rt = nullptr;
+    if (BytePSGlobal::IsRootDevice()) {
+        if (_qt == REDUCE) {
+            _rt = BytePSGlobal::GetReduceTable();
+        }
+        else if (_qt == BROADCAST) {
+            _rt = BytePSGlobal::GetBroadcastTable();
+        }
+    }
+}
+
+
 void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
     std::lock_guard<std::mutex> lock(_mutex);
     _sq.push_back(entry);
@@ -51,6 +66,12 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
         }
         if ((*it)->len > _credits) {
             continue;
+        }
+        if (_rt) {
+            if (!_rt->IsKeyReady((*it)->key)) {
+                continue;
+            }
+            _rt->ClearReadyCount((*it)->key);
         }
         task = *it;
         _sq.erase(it);
@@ -82,35 +103,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
         task = *it;
         _sq.erase(it);
         _credits -= task->len;
-        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name
-                       << " key: " << task->key;
-        return task;
-    }
-    return nullptr;
-}
-
-std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTaskFromReadyTable(){
-    std::lock_guard<std::mutex> lock(_mutex);
-    std::shared_ptr<TensorTableEntry> task;
-    // TODO: below can be optimized
-    // If we take task from the tail, erase() can be faster
-    for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
-        if ((*it)->ready_event) {
-            if (!(*it)->ready_event->Ready()) {
-                continue;
-            }
-        }
-        if ((*it)->len > _credits) {
-            continue;
-        }
-        if (!BytePSGlobal::IsKeyReady((*it)->key)) {
-            continue;
-        }
-        BytePSGlobal::ClearReadyCount((*it)->key);
-        task = *it;
-        _sq.erase(it);
-        _credits -= task->len;
-        BPS_LOG(TRACE) << "Queue " << _qt << " getTask: " << task->tensor_name
+        BPS_LOG(TRACE) << "Queue " << _qt << " getTask(key): " << task->tensor_name
                        << " key: " << task->key;
         return task;
     }

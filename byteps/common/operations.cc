@@ -47,8 +47,8 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task, QueueType this_op) 
 }
 
 
-bool RunCoordinateLoopOnce() {
-    QueueType this_op = COORDINATE;
+bool RunCoordinateReduceLoopOnce() {
+    QueueType this_op = COORDINATE_REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task){
@@ -78,6 +78,37 @@ bool RunCoordinateLoopOnce() {
     return true;
 }
 
+bool RunCoordinateBroadcastLoopOnce() {
+    QueueType this_op = COORDINATE_BROADCAST;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto task = q->getTask();
+    if (task){
+        BPS_CHECK(!IsRoot()) << "only non-root device should enter COORDINATE loop";
+
+        int root = GetRoot();
+        int rank = GetMyLocalRank();
+        int key  = task->key;
+
+        // first send to next queue and then broadcast signal
+        // to guarantee the entry is available when getTask(key) at Reduce thread
+        FinishOrProceed(task, this_op);
+
+        struct BytePSCommMsg msg = { rank, BCAST_READY, key };
+        BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg), NON_ROOT_SEND);
+
+        BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
+                       << "root=" << root
+                       << ", rank=" << rank
+                       << ", key=" << key;
+
+        q->reportFinish(task->len);
+
+    } else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
+    return true;
+}
+
 bool RunReduceLoopOnce() {
     QueueType this_op = REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -88,7 +119,7 @@ bool RunReduceLoopOnce() {
     int rank = GetMyLocalRank();
 
     if (IsRoot()) { // root
-        auto task = q->getTaskFromReadyTable();
+        auto task = q->getTask();
         if (task) {
             BPS_CHECK(task->tensor);
             BPS_CHECK_EQ(rank, root);
@@ -154,13 +185,8 @@ bool RunReduceLoopOnce() {
         int key = msg.key;
         BPS_LOG(TRACE) << "rank=" << rank << " receving REDUCE key=" << key;
 
-        std::shared_ptr<TensorTableEntry> task;
-        for (;;) { // should wait until the task is ready
-            task = q->getTask(key);
-            if (task) break;
-            std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-        }
-
+        auto task = q->getTask(key);
+        BPS_CHECK(task);
         if (task) {
             BPS_CHECK(task->tensor);
             auto len = task->len;
@@ -433,12 +459,8 @@ bool RunBroadcastLoopOnce() {
         int key = msg.key;
         BPS_LOG(TRACE) << "rank=" << rank << " receving BROADCAST key=" << key;
 
-        std::shared_ptr<TensorTableEntry> task;
-        for (;;) { // should wait until the task is ready
-            task = q->getTask(key);
-            if (task) break;
-            std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-        }
+        auto task = q->getTask(key);
+        BPS_CHECK(task);
 
         if (task) {
 
@@ -494,8 +516,8 @@ bool RunBroadcastLoopOnce() {
     return true;
 }
 
-void CoordinateLoop() {
-    while (RunCoordinateLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+void CoordinateReduceLoop() {
+    while (RunCoordinateReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void ReduceLoop() {
@@ -521,6 +543,10 @@ void CopyHost2DeviceLoop() {
     while (RunCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
+void CoordinateBroadcastLoop() {
+    while (RunCoordinateBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
 void BroadcastLoop() {
     CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunBroadcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
@@ -534,9 +560,10 @@ void byteps_init() {
     BytePSGlobal::Init();
     // TODO: can optimize below
     // e.g., non-root process does not need to start COPYD2H/PUSH/PULL/COPYH2D threads
-    LoopFunction func[ThreadNum] = {CoordinateLoop, ReduceLoop,
-                                    CopyDevice2HostLoop, PushLoop, PullLoop,
-                                    CopyHost2DeviceLoop, BroadcastLoop};
+    LoopFunction func[ThreadNum] = {CoordinateReduceLoop, ReduceLoop,
+                                    CopyDevice2HostLoop, PushLoop,
+                                    PullLoop, CopyHost2DeviceLoop, 
+                                    CoordinateBroadcastLoop, BroadcastLoop};
     BytePSGlobal::Start(func);
     return;
 }

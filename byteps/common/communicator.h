@@ -48,11 +48,11 @@ namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
-enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_BDCAST,
-                      ROOT_SEND_TO_RECV, NON_ROOT_SEND, NON_ROOT_RECV,
+enum BytePSCommFlag { ROOT_SEND_TO_REDUCE, ROOT_SEND_TO_BDCAST, ROOT_SEND_TO_RECV,
+                      NON_ROOT_SEND, NON_ROOT_RECV,
                       NON_ROOT_RECV_REDUCE, NON_ROOT_RECV_BDCAST };
 
-enum BytePSCommSignal { REDUCE_READY, DO_REDUCE, DO_BROADCAST };
+enum BytePSCommSignal { REDUCE_READY, BCAST_READY, DO_REDUCE, DO_BROADCAST };
 
 struct BytePSCommMsg {
     int src;

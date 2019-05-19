@@ -27,6 +27,7 @@
 #include "logging.h"
 #include "communicator.h"
 #include "scheduled_queue.h"
+#include "ready_table.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -81,9 +82,8 @@ public:
     static cudaStream_t* GetCopyHost2DeviceStream();
 
     // methods to access or modify the _ready_table
-    static bool IsKeyReady(int key);
-    static int AddReadyCount(int key);
-    static void ClearReadyCount(int key);
+    static ReadyTable* GetReduceTable() { return _reduce_table; }
+    static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
 
     static ncclComm_t* getNcclReduceComm() { return &_nccl_reduce_comm; }
     static ncclComm_t* getNcclBroadcastComm() { return &_nccl_broadcast_comm; }
@@ -120,9 +120,8 @@ private:
     static uint32_t _partition_bytes;
 
     // (key, ready_signal_count) pair, only valid for root device
-    static std::unordered_map<int, int> _ready_table;
-    // use this mutex to access/modify the _ready_table
-    static std::mutex _table_mutex;
+    static ReadyTable* _reduce_table;
+    static ReadyTable* _broadcast_table;
 
     static ncclUniqueId* _nccl_reduce_id;
     static ncclUniqueId* _nccl_broadcast_id;

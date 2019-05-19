@@ -120,9 +120,14 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
         BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
 
         auto message = *(BytePSCommMsg*) buffer;
-        BPS_CHECK_EQ(message.signal, REDUCE_READY) << message.signal;
 
-        BytePSGlobal::AddReadyCount(message.key);
+        if (message.signal == REDUCE_READY) {
+            BytePSGlobal::GetReduceTable()->AddReadyCount(message.key);
+        }
+        else {
+            BPS_CHECK_EQ(message.signal, BCAST_READY) << message.signal;
+            BytePSGlobal::GetBroadcastTable()->AddReadyCount(message.key);
+        }
 
         BPS_LOG(TRACE) << "root socket recved: src=" << message.src
                        << ", signal=" << message.signal
