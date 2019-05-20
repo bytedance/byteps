@@ -54,7 +54,6 @@ cudaStream_t* BytePSGlobal::_nccl_stream;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 ncclUniqueId* BytePSGlobal::_nccl_id;
-ncclUniqueId* BytePSGlobal::_nccl_broadcast_id;
 ncclComm_t BytePSGlobal::_nccl_comm;
 
 std::mutex BytePSGlobal::_nccl_mutex;
@@ -106,7 +105,7 @@ void BytePSGlobal::Init() {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
-    _partition_bytes = _partition_bytes / 64 * 64; // align by 64, for ReduceScatter
+    _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size)); // alignment for Reduce-Scatter/All-Gather
     BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";

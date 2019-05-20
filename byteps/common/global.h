@@ -102,6 +102,8 @@ public:
     static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e);
     static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup();
 
+    static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
+
 private:
 
     static std::mutex _init_mutex;
@@ -138,7 +140,6 @@ private:
     static ReadyTable* _broadcast_table;
 
     static ncclUniqueId* _nccl_id;
-    static ncclUniqueId* _nccl_broadcast_id;
     static ncclComm_t _nccl_comm;
 
     // global user-defined env

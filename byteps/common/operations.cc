@@ -84,6 +84,7 @@ bool RunRootNcclLoopOnce() {
     auto nccl_comm = BytePSGlobal::GetNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
     BPS_CHECK_EQ(rank, root);
 
     QueueType nccl_ops[] = { REDUCE, BROADCAST };
@@ -122,7 +123,7 @@ bool RunRootNcclLoopOnce() {
                                << ", elements=" << len/unit_len
                                << ", device=" << task->device;
 
-                if (BytePSGlobal::GetLocalSize() > 1) {
+                if (local_size > 1) {
                     // notify non-root devices
                     struct BytePSCommMsg msg = { rank,
                                                  (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST,
@@ -130,17 +131,23 @@ bool RunRootNcclLoopOnce() {
                     BytePSGlobal::GetComm()->broadcastSignal(rank, &msg,
                                                              sizeof(BytePSCommMsg));
 
+                    auto align_len = BytePSGlobal::AlignTo(len/local_size, 8); // to handle tensor shorter than partition_size
                     if (this_op == REDUCE) {
-                        NCCLCHECK(ncclReduce((const void*) (tensor->data()+offset),
-                                             (void*) (tensor->data()+offset),
-                                             len/unit_len, nccl_dtype, ncclSum, root,
-                                             *nccl_comm, *nccl_stream));
+                        NCCLCHECK(ncclReduceScatter((const void*) (tensor->data() + offset),
+                                                    (void*) (tensor->data() + offset + rank * align_len),
+                                                    (size_t) align_len / unit_len / local_size,
+                                                    (ncclDataType_t) nccl_dtype,
+                                                    (ncclRedOp_t) ncclSum,
+                                                    (ncclComm_t) *nccl_comm,
+                                                    (cudaStream_t) *nccl_stream));
                     }
                     else {
-                        NCCLCHECK(ncclBroadcast((const void*) (tensor->data()+offset),
-                                                (void*) (tensor->data()+offset),
-                                                len/unit_len, nccl_dtype, root,
-                                                *nccl_comm, *nccl_stream)); 
+                        NCCLCHECK(ncclAllGather((const void*) (tensor->data() + offset + rank * align_len),
+                                                (void *) (tensor->data() + offset),
+                                                (size_t) align_len / unit_len / local_size,
+                                                (ncclDataType_t) nccl_dtype,
+                                                (ncclComm_t) *nccl_comm,
+                                                (cudaStream_t) *nccl_stream));
                     }
                 }
             }
@@ -168,6 +175,7 @@ bool RunNonRootNcclLoopOnce() {
     auto nccl_comm = BytePSGlobal::GetNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
     BPS_CHECK_NE(rank, root);
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
@@ -219,17 +227,24 @@ bool RunNonRootNcclLoopOnce() {
                            << ") key=" << key
                            << ", elements=" << len/unit_len
                            << ", device=" << task->device;
+
+            auto align_len = BytePSGlobal::AlignTo(len/local_size, 8); // to handle tensor shorter than partition_size
             if (this_op == REDUCE) {
-                NCCLCHECK(ncclReduce((const void*) (tensor->data()+offset),
-                                     (void*) (tensor->data()+offset),
-                                     len/unit_len, nccl_dtype, ncclSum, root,
-                                     *nccl_comm, *nccl_stream));
+                NCCLCHECK(ncclReduceScatter((const void*) (tensor->data() + offset),
+                                            (void*) (tensor->data() + offset + rank * align_len),
+                                            (size_t) align_len / unit_len / local_size,
+                                            (ncclDataType_t) nccl_dtype,
+                                            (ncclRedOp_t) ncclSum,
+                                            (ncclComm_t) *nccl_comm,
+                                            (cudaStream_t) *nccl_stream));
             }
             else {
-                NCCLCHECK(ncclBroadcast((const void*) (tensor->data()+offset),
-                                        (void*) (tensor->data()+offset),
-                                        len/unit_len, nccl_dtype, root,
-                                        *nccl_comm, *nccl_stream));
+                  NCCLCHECK(ncclAllGather((const void*) (tensor->data() + offset + rank * align_len),
+                                          (void *) (tensor->data() + offset),
+                                          (size_t) align_len / unit_len / local_size,
+                                          (ncclDataType_t) nccl_dtype,
+                                          (ncclComm_t) *nccl_comm,
+                                          (cudaStream_t) *nccl_stream));
             }
         }
     }
