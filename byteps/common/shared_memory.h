@@ -67,7 +67,7 @@ private:
 
     std::mutex _shm_mu;
 
-}
+};
 
 
 } // namespace common
