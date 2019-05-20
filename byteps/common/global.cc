@@ -91,7 +91,7 @@ void BytePSGlobal::Init() {
         return;
     }
 
-    initGlobalEnv();
+    InitGlobalEnv();
 
 #ifdef BYTEPS_USE_MPI
     _comm = std::make_shared<BytePSCommMPI>();
@@ -106,7 +106,7 @@ void BytePSGlobal::Init() {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
-    _partition_bytes = _partition_bytes / 8 * 8; // align by 8 (the size of a double or int64)
+    _partition_bytes = _partition_bytes / 64 * 64; // align by 64, for ReduceScatter
     BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
@@ -191,7 +191,7 @@ void BytePSGlobal::Init() {
     return;
 }
 
-void BytePSGlobal::initGlobalEnv() { // init all global env/param here
+void BytePSGlobal::InitGlobalEnv() { // init all global env/param here
     _nccl_group_size = (getenv("BYTEPS_NCCL_GROUP_SIZE") ? atoi(getenv("BYTEPS_NCCL_GROUP_SIZE")) : 4);
     BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
 

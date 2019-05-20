@@ -81,7 +81,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
 
 bool RunRootNcclLoopOnce() {
     auto nccl_stream = BytePSGlobal::GetNcclStream();
-    auto nccl_comm = BytePSGlobal::getNcclComm();
+    auto nccl_comm = BytePSGlobal::GetNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
     BPS_CHECK_EQ(rank, root);
@@ -95,7 +95,7 @@ bool RunRootNcclLoopOnce() {
     NCCLCHECK(ncclGroupStart());
     for (auto this_op : nccl_ops) {
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
-        for (int i = 0; i < BytePSGlobal::getNcclGroupSize(); i++) {
+        for (int i = 0; i < BytePSGlobal::GetNcclGroupSize(); i++) {
             auto task = q->getTask();
             if (!task) { break; }
             tasks.push_back(task);
@@ -165,7 +165,7 @@ bool RunRootNcclLoopOnce() {
 
 bool RunNonRootNcclLoopOnce() {
     auto nccl_stream = BytePSGlobal::GetNcclStream();
-    auto nccl_comm = BytePSGlobal::getNcclComm();
+    auto nccl_comm = BytePSGlobal::GetNcclComm();
     int root = GetRoot();
     int rank = GetMyLocalRank();
     BPS_CHECK_NE(rank, root);

@@ -93,11 +93,11 @@ public:
     static ReadyTable* GetReduceTable() { return _reduce_table; }
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
 
-    static ncclComm_t* getNcclComm() { return &_nccl_comm; }
+    static ncclComm_t* GetNcclComm() { return &_nccl_comm; }
 
     // global user-defined env related
-    static void initGlobalEnv();
-    static int getNcclGroupSize() { return _nccl_group_size; }
+    static void InitGlobalEnv();
+    static int GetNcclGroupSize() { return _nccl_group_size; }
 
     static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e);
     static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup();
