@@ -314,11 +314,14 @@ bool RunCopyDevice2HostLoopOnce() {
             auto num_elem_per_gpu = len / unit_len / local_size;
             auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
 
-            CUDA_CALL(cudaMemcpyAsync((void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                      (const void *) p + rank * num_elem_per_gpu * unit_len,
-                                      (size_t) num_elem_per_gpu,
-                                      (cudaMemcpyKind) cudaMemcpyDeviceToHost,
-                                      (cudaStream_t) *copy_d2h_Stream));
+            if (num_elem_per_gpu) {
+                CUDA_CALL(cudaMemcpyAsync((void *) cpubuff + rank * num_elem_per_gpu * unit_len,
+                                          (const void *) p + rank * num_elem_per_gpu * unit_len,
+                                          (size_t) num_elem_per_gpu * unit_len,
+                                          (cudaMemcpyKind) cudaMemcpyDeviceToHost,
+                                          (cudaStream_t) *copy_d2h_Stream));
+            }
+            
 
             if (IsRoot() && left_elem) {
                 // TODO
@@ -453,11 +456,13 @@ bool RunRootCopyHost2DeviceLoopOnce() {
             auto num_elem_per_gpu = len / unit_len / local_size;
             auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
 
-            CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
-                                      (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                      (size_t) num_elem_per_gpu,
-                                      (cudaMemcpyKind) cudaMemcpyHostToDevice,
-                                      (cudaStream_t) *copy_h2d_Stream));
+            if (num_elem_per_gpu) {
+                CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
+                                        (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
+                                        (size_t) num_elem_per_gpu * unit_len,
+                                        (cudaMemcpyKind) cudaMemcpyHostToDevice,
+                                        (cudaStream_t) *copy_h2d_Stream));
+            }
 
             if (IsRoot() && left_elem) {
                 // TODO
@@ -757,7 +762,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
         else {
             // use the first key in key_list as the index
             context.cpubuff = BytePSGlobal::GetSharedMemoryObj()->openSharedMemory(key_list[0], size);
-            CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size / getDataTypeLength(dtype), cudaHostRegisterDefault)); //
+            CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size, cudaHostRegisterDefault));
             context.reuse_buff = false;
             BPS_LOG(TRACE) << name << ": open shared memory size " << size;
         }
