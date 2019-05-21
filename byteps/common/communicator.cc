@@ -21,6 +21,34 @@
 namespace byteps {
 namespace common {
 
+
+BytePSCommSocket::BytePSCommSocket(const BytePSCommSocket &comm, const std::string &path_suffix) {
+    _rank = comm._rank;
+    _size = comm._size;
+    _local_rank = comm._local_rank;
+    _local_size = comm._local_size;
+    _worker_id = comm._worker_id;
+    _send_path = comm._send_path + path_suffix;
+    _recv_path = comm._recv_path + path_suffix;
+    _send_fd = initSocket(_local_rank, _send_path);
+    _recv_fd = initSocket(_local_rank, _recv_path);
+
+    auto my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+    bool is_root = (my_role == LOCAL_ROOT) ? true : false;
+    // init socket comm
+    if (is_root) { // root
+        _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
+
+        // Just in case launching root earlier than non-root
+        // TODO: use retry instead of sleep
+        if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+    }
+
+    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
+                   << " device, rank=" << _local_rank
+                   << ", all sockets create successfully";
+}
+
 void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) {
 
     BPS_LOG(DEBUG) << "Using Communicator=Socket";
@@ -48,10 +76,13 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _worker_id = *worker_id;
 
     *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
-    bool is_root = (*my_role==LOCAL_ROOT) ? true : false;
+    bool is_root = (*my_role == LOCAL_ROOT) ? true : false;
 
-    _send_fd = initSocket(_local_rank, BASE_SOCKET_PATH_SEND);
-    _recv_fd = initSocket(_local_rank, BASE_SOCKET_PATH_RECV);
+    _send_path = std::string(BASE_SOCKET_PATH_SEND);
+    _recv_path = std::string(BASE_SOCKET_PATH_RECV);
+
+    _send_fd = initSocket(_local_rank, _send_path);
+    _recv_fd = initSocket(_local_rank, _recv_path);
 
     // init socket comm
     if (is_root) { // root
@@ -67,7 +98,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
                    << ", all sockets create successfully";
 }
 
-int BytePSCommSocket::initSocket(int rank, const char* path) {
+int BytePSCommSocket::initSocket(int rank, const std::string &path) {
     int fd;
     // init the socket
     fd = socket(AF_UNIX, SOCK_DGRAM, 0);
@@ -77,8 +108,7 @@ int BytePSCommSocket::initSocket(int rank, const char* path) {
     memset(&addr, 0, sizeof(addr));
 
     // TODO: use absolute unique socket path name (consider multi-tenancy)
-    std::string fd_path;
-    fd_path.append(path);
+    std::string fd_path(path);
     fd_path += std::to_string(rank); // should use the rank id to guarantee no conflict
 
     // filling addr information

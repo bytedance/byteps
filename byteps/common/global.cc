@@ -199,7 +199,7 @@ void BytePSGlobal::InitGlobalEnv() { // init all global env/param here
 
 void BytePSGlobal::Start(const std::vector<LoopFunction> &func) {
     // Start background threads
-    for (unsigned int i = 0; i < func.size(); i++) {
+    for (size_t i = 0; i < func.size(); i++) {
         _threads.push_back(new std::thread(func[i]));
     }
     BPS_LOG(DEBUG) << "Started" << func.size() << " background threads. rank=" << _local_rank;
@@ -220,14 +220,14 @@ Status BytePSGlobal::CheckInit() {
 
 void BytePSGlobal::Shutdown() {
     _should_shutdown = true;
-    for (unsigned int i = 0; i < _threads.size(); i++) {
+    for (size_t i = 0; i < _threads.size(); i++) {
         if (_threads[i]->joinable()) {
             _threads[i]->join();
             delete _threads[i];
         }
     }
 
-    for (unsigned int i = 0; i < QueueNum; i++) {
+    for (size_t i = 0; i < QueueNum; i++) {
         if (_queues[i]) {
             delete _queues[i];
         }

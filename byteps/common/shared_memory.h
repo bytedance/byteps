@@ -23,13 +23,6 @@
 #include <thread>
 #include <cerrno>
 
-#include <fcntl.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-
-
 #define BYTEPS_SHAREDMEMORY_BASENAME "BYTEPS_SHARED_MEMORY"
 
 
@@ -40,28 +33,20 @@ class BytePSSharedMemory {
 
 public:
 
-    BytePSSharedMemory() {}
-
     ~BytePSSharedMemory() {
         //shm_unlink(name);
-
     }
 
-    void* produceSharedMemory(int key);
+    void* openSharedMemory(int key, size_t size);
 
-    void* getSharedMemoryAddress(int destination, int key);
+    void* getSharedMemoryAddress(int key);
 
-    int getSharedMemoryLen(int destination, int key);
-
-    bool isSharedMemoryExist(int destination, int key);
-
+    int getSharedMemoryLen(int key);
 
 private:
 
     int _shm_fd;
 
-    int _root_rank;
-    int _my_rank;
     std::unordered_map<int, void*> _key_shm_addr;
     std::unordered_map<int, int> _key_shm_len;
 

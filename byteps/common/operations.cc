@@ -98,9 +98,6 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     auto num_elem_per_gpu = len / local_size / unit_len;
     auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
 
-    BPS_CHECK(tensor->data());
-    BPS_CHECK(tensor->data()+offset) << offset;
-
     BPS_LOG(TRACE) << task->tensor_name << " calling NCCL "
                     << LogStrings[this_op]
                     << " (rank=" << rank
@@ -110,13 +107,16 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
 
 
     if (this_op == REDUCE) {
-        NCCLCHECK(ncclReduceScatter((const void*) p,
-                                    (void*) (p + rank * num_elem_per_gpu * unit_len),
-                                    (size_t) num_elem_per_gpu,
-                                    (ncclDataType_t) nccl_dtype,
-                                    (ncclRedOp_t) ncclSum,
-                                    (ncclComm_t) *nccl_comm,
-                                    (cudaStream_t) *nccl_stream));
+        if (num_elem_per_gpu) {
+            NCCLCHECK(ncclReduceScatter((const void*) p,
+                                        (void*) (p + rank * num_elem_per_gpu * unit_len),
+                                        (size_t) num_elem_per_gpu,
+                                        (ncclDataType_t) nccl_dtype,
+                                        (ncclRedOp_t) ncclSum,
+                                        (ncclComm_t) *nccl_comm,
+                                        (cudaStream_t) *nccl_stream));
+            
+        }
         if (left_elem) {
             NCCLCHECK(ncclReduce((const void*) (p + len - left_elem * unit_len),
                                     (void*) (p + len - left_elem * unit_len),
@@ -129,12 +129,14 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
         }
     }
     else {
-        NCCLCHECK(ncclAllGather((const void*) (p + rank * num_elem_per_gpu * unit_len),
-                                (void *) p,
-                                (size_t) num_elem_per_gpu,
-                                (ncclDataType_t) nccl_dtype,
-                                (ncclComm_t) *nccl_comm,
-                                (cudaStream_t) *nccl_stream));
+        if (num_elem_per_gpu) {
+            NCCLCHECK(ncclAllGather((const void*) (p + rank * num_elem_per_gpu * unit_len),
+                                    (void *) p,
+                                    (size_t) num_elem_per_gpu,
+                                    (ncclDataType_t) nccl_dtype,
+                                    (ncclComm_t) *nccl_comm,
+                                    (cudaStream_t) *nccl_stream));
+        }
         if (left_elem) {
             NCCLCHECK(ncclBroadcast((const void*) (p + len - left_elem * unit_len),
                                     (void*) (p + len - left_elem * unit_len),
@@ -252,7 +254,7 @@ bool RunSyncNcclOnce() {
     auto nccl_entry = BytePSGlobal::DequeueNcclGroup();
     if (nccl_entry) {
         CUDA_CALL(cudaEventSynchronize(nccl_entry->cuda_event));
-        for (int i = 0; i < nccl_entry->tasks.size(); i++) {
+        for (size_t i = 0; i < nccl_entry->tasks.size(); i++) {
             FinishOrProceed(nccl_entry->tasks[i]);
             if (nccl_entry->queues.size() > i) {
                 nccl_entry->queues[i]->reportFinish(nccl_entry->tasks[i]->len);
@@ -585,7 +587,7 @@ Status EnqueueTensor(BPSContext &context,
     }
 
     unsigned int accumulated = 0;
-    for (unsigned int i = 0; i < partitions.size(); ++i) {
+    for (size_t i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
         BPS_LOG(TRACE) << "EnqueueTensor: " << task->tensor_name

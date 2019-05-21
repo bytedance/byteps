@@ -79,6 +79,9 @@ class BytePSCommSocket : public BytePSComm {
 
 public:
 
+    BytePSCommSocket() {}
+    BytePSCommSocket(const BytePSCommSocket &comm, const std::string &path_suffix);
+
     ~BytePSCommSocket() {
         _listen_thread->join();
         close(_recv_fd);
@@ -89,12 +92,16 @@ public:
     int sendSignal(int destination, void* data, int len);
     int recvSignal(int* source, void* data, int max_len);
     int broadcastSignal(int root, void* data, int len);
-    void startListenThread();
 
-    int initSocket(int rank, const char* path);
+protected:
+
+    void startListenThread();
+    int initSocket(int rank, const std::string &path);
 
     std::thread* _listen_thread;
 
+    std::string _send_path;
+    std::string _recv_path;
     int _recv_fd;
     int _send_fd;
 
