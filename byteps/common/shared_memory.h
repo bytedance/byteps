@@ -22,7 +22,7 @@
 #include <mutex>
 #include <thread>
 #include <cerrno>
-
+#include <string.h>
 #define BYTEPS_SHAREDMEMORY_BASENAME "BYTEPS_SHARED_MEMORY"
 
 
@@ -32,6 +32,8 @@ namespace common {
 class BytePSSharedMemory {
 
 public:
+
+    BytePSSharedMemory() {}
 
     ~BytePSSharedMemory() {
         //shm_unlink(name);
@@ -44,8 +46,6 @@ public:
     int getSharedMemoryLen(int key);
 
 private:
-
-    int _shm_fd;
 
     std::unordered_map<int, void*> _key_shm_addr;
     std::unordered_map<int, int> _key_shm_len;

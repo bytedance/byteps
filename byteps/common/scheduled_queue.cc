@@ -27,11 +27,13 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, uint64_t credits){
     _credits = credits;
     _rt = nullptr;
     if (BytePSGlobal::IsRootDevice()) {
-        if (_qt == REDUCE) {
-            _rt = BytePSGlobal::GetReduceTable();
-        }
-        else if (_qt == BROADCAST) {
-            _rt = BytePSGlobal::GetBroadcastTable();
+        switch (_qt) {
+            case REDUCE:
+                _rt = BytePSGlobal::GetReduceTable();
+                break;
+            case BROADCAST:
+                _rt = BytePSGlobal::GetBroadcastTable();
+                break;
         }
     }
 }
@@ -86,6 +88,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
+        // JYM: shall we check whether ready_event is OK?
         if ((*it)->key != key) {
             continue;
         }

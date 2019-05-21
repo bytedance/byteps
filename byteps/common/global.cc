@@ -37,7 +37,9 @@ bool BytePSGlobal::_is_distributed_job;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
 int BytePSGlobal::_nccl_group_size = 4;
 
-std::shared_ptr<BytePSComm> BytePSGlobal::_comm;
+std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
+std::shared_ptr<BytePSComm> BytePSGlobal::_shm_comm;
+std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
@@ -48,6 +50,7 @@ ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
+ReadyTable* BytePSGlobal::_push_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_nccl_stream;
@@ -93,20 +96,23 @@ void BytePSGlobal::Init() {
     InitGlobalEnv();
 
 #ifdef BYTEPS_USE_MPI
-    _comm = std::make_shared<BytePSCommMPI>();
+    _basic_comm = std::make_shared<BytePSCommMPI>();
 #else
-    _comm = std::make_shared<BytePSCommSocket>();
+    _basic_comm = std::make_shared<BytePSCommSocket>();
 #endif // BYTEPS_USE_MPI
 
-    _comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
+    _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
+
+    // TODO: How to use the copy constructor with a shared_ptr ??
+    _shm_comm = std::make_shared<BytePSCommSocket>(*_basic_comm, "shm");
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {
         _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
     }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes";
+    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
+                   << ", aligned to " << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
     _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size)); // alignment for Reduce-Scatter/All-Gather
-    BPS_LOG(DEBUG) << "Partition bound is aligned to " << _partition_bytes << " bytes";
 
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
     BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: env DMLC_NUM_SERVER not set";
@@ -117,6 +123,7 @@ void BytePSGlobal::Init() {
     BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
                    << (IsDistributed() ? "" : "non-") << "distributed job";
 
+    _shm_obj = std::make_shared<BytePSSharedMemory>(); // share memory obj
 
     if (IsDistributed() && _my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
         // init low-level ps implementation
@@ -138,17 +145,18 @@ void BytePSGlobal::Init() {
 
         _reduce_table = new ReadyTable(_local_size-1);
         _broadcast_table = new ReadyTable(_local_size-1);
+        _push_table = new ReadyTable(_local_size-1);
 
         NCCLCHECK(ncclGetUniqueId(_nccl_id));
 
         // the log is just for debug, the actual length of nccl id is 128
         BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_id);
 
-        _comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
+        _basic_comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
 
     } else {
         int src;
-        int rc = _comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
+        int rc = _basic_comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
 
         BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
 
@@ -253,6 +261,10 @@ void BytePSGlobal::Shutdown() {
     }
     if (_broadcast_table) {
         delete _broadcast_table;
+    }
+
+    if (_push_table) {
+        delete _push_table;
     }
 
     return;

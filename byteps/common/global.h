@@ -29,6 +29,7 @@
 #include "communicator.h"
 #include "scheduled_queue.h"
 #include "ready_table.h"
+#include "shared_memory.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -69,7 +70,9 @@ public:
     static bool IsDistributed();
     static int GetRoot();
     static BytePSRole GetMyRole() { return _my_role; }
-    static std::shared_ptr<BytePSComm> GetComm() { return _comm; }
+    static std::shared_ptr<BytePSComm> GetComm() { return _basic_comm; }
+    static std::shared_ptr<BytePSComm> GetShmComm() { return _shm_comm; }
+    static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
     static void* CreateScheduledQueue(QueueType queueType);
@@ -92,6 +95,7 @@ public:
     // methods to access or modify the _ready_table
     static ReadyTable* GetReduceTable() { return _reduce_table; }
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
+    static ReadyTable* GetPushTable() { return _push_table; }
 
     static ncclComm_t* GetNcclComm() { return &_nccl_comm; }
 
@@ -119,7 +123,9 @@ private:
     static bool _is_root_device;
     static bool _is_distributed_job;
     static BytePSRole _my_role;
-    static std::shared_ptr<BytePSComm> _comm;
+    static std::shared_ptr<BytePSComm> _basic_comm;
+    static std::shared_ptr<BytePSComm> _shm_comm;
+    static std::shared_ptr<BytePSSharedMemory> _shm_obj;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
     static std::mutex _queues_mutex[QueueNum];
@@ -138,6 +144,7 @@ private:
     // (key, ready_signal_count) pair, only valid for root device
     static ReadyTable* _reduce_table;
     static ReadyTable* _broadcast_table;
+    static ReadyTable* _push_table;
 
     static ncclUniqueId* _nccl_id;
     static ncclComm_t _nccl_comm;

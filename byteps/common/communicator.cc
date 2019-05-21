@@ -136,12 +136,18 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
 
         auto message = *(BytePSCommMsg*) buffer;
 
-        if (message.signal == REDUCE_READY) {
-            BytePSGlobal::GetReduceTable()->AddReadyCount(message.key);
-        }
-        else {
-            BPS_CHECK_EQ(message.signal, BCAST_READY) << message.signal;
-            BytePSGlobal::GetBroadcastTable()->AddReadyCount(message.key);
+        switch (message.signal) {
+            case REDUCE_READY:
+                BytePSGlobal::GetReduceTable()->AddReadyCount(message.key);
+                break;
+            case BCAST_READY:
+                BytePSGlobal::GetBroadcastTable()->AddReadyCount(message.key);
+                break;
+            case PUSH_READY:
+                BytePSGlobal::GetPushTable()->AddReadyCount(message.key);
+                break;
+            default:
+                BPS_CHECK(0) << "unsupported signal: " << message.signal;
         }
 
         BPS_LOG(TRACE) << "root socket recved: src=" << message.src

@@ -22,6 +22,7 @@
 #include "logging.h"
 #include "operations.h"
 #include "global.h"
+#include "shared_memory.h"
 
 namespace byteps {
 namespace common {
@@ -61,15 +62,32 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
         // to guarantee the entry is available when getTask(key) at Reduce/Broadcast thread
         FinishOrProceed(task);
 
+        BytePSCommSignal sig;
+
+        switch (this_op) {
+            case COORDINATE_REDUCE:
+                sig = REDUCE_READY;
+                break;
+            case COORDINATE_BROADCAST:
+                sig = BCAST_READY;
+                break;
+            case COORDINATE_PUSH:
+                sig = PUSH_READY;
+                break;
+            default:
+                BPS_CHECK(0) << "unsupported op: " << this_op;
+        }
+
         struct BytePSCommMsg msg = { rank,
-                                     (this_op == COORDINATE_REDUCE) ? REDUCE_READY : BCAST_READY,
+                                     sig,
                                      key };
         BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
 
         BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
-                       << "root=" << root
+                       << "Signal=" << sig
+                       << ", root=" << root
                        << ", rank=" << rank
-                       << ", key=" << key;
+                       << ", key="  << key;
 
         q->reportFinish(task->len);
 
@@ -277,18 +295,35 @@ bool RunCopyDevice2HostLoopOnce() {
     auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
     auto task = q->getTask();
     int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
 
     if (task) {
-        BPS_CHECK(IsRoot()) << "only root device should enter COPYD2H loop";
-        BPS_CHECK(task->tensor);
+        auto tensor = task->tensor;
+        BPS_CHECK(tensor);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             auto name = task->tensor_name;
             auto len = task->len;
             auto offset = task->offset;
+            auto p = tensor->data() + offset;
             auto cpubuff = task->cpubuff + offset;
+            auto unit_len = tensor->size() / tensor->shape().num_elements();
+
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
-            CUDA_CALL(cudaMemcpyAsync(cpubuff, task->tensor->data() + offset, len, cudaMemcpyDeviceToHost, *copy_d2h_Stream));
+
+            auto num_elem_per_gpu = len / unit_len / local_size;
+            auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+
+            CUDA_CALL(cudaMemcpyAsync((void *) cpubuff + rank * num_elem_per_gpu * unit_len,
+                                      (const void *) p + rank * num_elem_per_gpu * unit_len,
+                                      (size_t) num_elem_per_gpu,
+                                      (cudaMemcpyKind) cudaMemcpyDeviceToHost,
+                                      (cudaStream_t) *copy_d2h_Stream));
+
+            if (IsRoot() && left_elem) {
+                // TODO
+            }
+
             CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
         }
 
@@ -384,26 +419,50 @@ bool RunPullLoopOnce() {
     return true;
 }
 
-bool RunCopyHost2DeviceLoopOnce() {
+bool RunRootCopyHost2DeviceLoopOnce() {
     QueueType this_op = COPYH2D;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
     auto task = q->getTask();
     int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
 
     if (task) {
-        BPS_CHECK(IsRoot()) << "only root device should enter COPYH2D loop";
-        BPS_CHECK(task->output);
+        auto tensor = task->output;
+        BPS_CHECK(tensor);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
+
+            if (local_size > 1) {
+                // notify non-root devices
+                struct BytePSCommMsg msg = { rank,
+                                             DO_COPYH2D,
+                                             task->key };
+                BytePSGlobal::GetShmComm()->broadcastSignal(rank, &msg,
+                                                         sizeof(BytePSCommMsg));
+            }
+
             auto name = task->tensor_name;
             auto len = task->len;
             auto offset = task->offset;
-
             auto cpubuff = task->cpubuff + offset;
+            auto unit_len = tensor->size() / tensor->shape().num_elements();
+
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
-            char* gpu_addr = const_cast<char*> (static_cast<const char*> (task->output->data() + offset));
-            CUDA_CALL(cudaMemcpyAsync(gpu_addr, cpubuff, len, cudaMemcpyHostToDevice, *copy_h2d_Stream));
+            char* gpu_addr = const_cast<char*> (static_cast<const char*> (tensor->data() + offset));
+            auto num_elem_per_gpu = len / unit_len / local_size;
+            auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+
+            CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
+                                      (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
+                                      (size_t) num_elem_per_gpu,
+                                      (cudaMemcpyKind) cudaMemcpyHostToDevice,
+                                      (cudaStream_t) *copy_h2d_Stream));
+
+            if (IsRoot() && left_elem) {
+                // TODO
+            }
+
             CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
         }
 
@@ -416,12 +475,65 @@ bool RunCopyHost2DeviceLoopOnce() {
     return true;
 }
 
+bool RunNonRootCopyHost2DeviceLoopOnce() {
+    QueueType this_op = COPYH2D;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
+    int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
+
+    int src;
+    struct BytePSCommMsg msg = {};
+
+    BytePSGlobal::GetShmComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
+    BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
+    BPS_CHECK_EQ(msg.signal, DO_COPYH2D) << msg.signal;
+    int key = msg.key;
+
+    auto task = q->getTask(key);
+    BPS_CHECK(task);
+    auto tensor = task->output;
+    BPS_CHECK(tensor);
+
+    if (task->device != CPU_DEVICE_ID) { // GPU
+        auto name = task->tensor_name;
+        auto len = task->len;
+        auto offset = task->offset;
+
+        auto cpubuff = task->cpubuff + offset;
+        auto unit_len = tensor->size() / tensor->shape().num_elements();
+        BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+
+        char* gpu_addr = const_cast<char*> (static_cast<const char*> (tensor->data() + offset));
+
+        auto num_elem_per_gpu = len / unit_len / local_size;
+        auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+
+        CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
+                                  (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
+                                  (size_t) num_elem_per_gpu,
+                                  (cudaMemcpyKind) cudaMemcpyHostToDevice,
+                                  (cudaStream_t) *copy_h2d_Stream));
+
+        CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
+    }
+
+    FinishOrProceed(task);
+    q->reportFinish(task->len);
+
+    return true;
+}
+
 void CoordinateReduceLoop() {
     while (RunCoordinateLoopOnce(COORDINATE_REDUCE) && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void CoordinateBroadcastLoop() {
     while (RunCoordinateLoopOnce(COORDINATE_BROADCAST) && !BytePSGlobal::ShouldShutdown()) {}
+}
+
+void CoordinatePushLoop() {
+    while (RunCoordinateLoopOnce(COORDINATE_PUSH) && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void RootNcclLoop() {
@@ -452,9 +564,14 @@ void PullLoop() {
     while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
-void CopyHost2DeviceLoop() {
+void RootCopyHost2DeviceLoop() {
     CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
-    while (RunCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+    while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
+void NonRootCopyHost2DeviceLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+    while (RunNonRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 extern "C" {
@@ -477,6 +594,11 @@ void byteps_init() {
         func.push_back(CoordinateReduceLoop);
         func.push_back(NonRootNcclLoop);
         func.push_back(SyncNcclLoop);
+        if (IsDistributedJob()) {
+            func.push_back(CoordinatePushLoop);
+            func.push_back(CopyDevice2HostLoop);
+            func.push_back(CopyHost2DeviceLoop);
+        }
         func.push_back(CoordinateBroadcastLoop);
     }
     
@@ -609,7 +731,20 @@ Status EnqueueTensor(BPSContext &context,
 
 void InitTensor(BPSContext &context, const std::string &name, int dtype, void *cpubuff) {
 
+    // Get metadata
+    auto key_list = context.key_list;
     size_t size = context.buff_len;
+    auto bound = BytePSGlobal::GetPartitionBound();
+
+    BPS_CHECK_GT(key_list.size(), 0) << name;
+    BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
+                    << key_list.size()
+                    << ", size=" << size
+                    << ", bound=" << bound;
+
+    BPS_LOG(TRACE) << "Begin init " << name
+                   << ", size=" << size
+                   << ", parts=" << key_list.size();
 
     // Only local root needs to init cpubuff
     if (IsRoot()) {
@@ -619,43 +754,35 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
             context.reuse_buff = true;
         }
         else {
-            CUDA_CALL(cudaHostAlloc((void **) &(context.cpubuff), size, cudaHostAllocMapped));
+            // use the first key in key_list as the index
+            context.cpubuff = BytePSGlobal::GetSharedMemoryObj()->openSharedMemory(key_list[0], size);
+            CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size / getDataTypeLength(dtype), cudaHostRegisterDefault)); //
             context.reuse_buff = false;
-            BPS_LOG(TRACE) << name << ": cudaHostAlloc with len=" << size;
+            BPS_LOG(TRACE) << name << ": open shared memory size " << size;
         }
     }
 
-    // Get metadata
-    auto key_list = context.key_list;
     char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
-    auto bound = BytePSGlobal::GetPartitionBound();
 
-    BPS_LOG(TRACE) << "Begin init " << name
-                   << ", size=" << size
-                   << ", parts=" << key_list.size();
-
-    BPS_CHECK_GT(key_list.size(), 0) << name << " key_list_size=0";
-    BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
-                    << key_list.size()
-                    << ", size=" << size
-                    << ", bound=" << bound;
-
-    unsigned int accumulated = 0;
-    unsigned int i = 0;
+    size_t accumulated = 0;
+    size_t i = 0;
     while (accumulated < size) {
         auto key = key_list[i];
         int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
-        if (IsDistributedJob() && IsRoot() && (BytePSGlobal::GetWorkerID() == 0)) { // only worker0 pushes init data
-            auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
-            // false means not to delete data when SArray is deleted
-            ps::SArray<char> vals(data + accumulated, len, false);
-            int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-            BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
-                pskv.keys, vals, pskv.lens, cmd));
-        }
-
-        if (IsDistributedJob() && IsRoot()) { // all worker need to sync
+        if (IsDistributedJob() && IsRoot()) {
+            if (BytePSGlobal::GetWorkerID() == 0) { // only worker0 pushes init data
+                // encode the key for pskv scattering
+                auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
+                // false means not to delete data when SArray is deleted
+                ps::SArray<char> vals(data + accumulated, len, false);
+                // cmd type
+                int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+                // blocking push
+                BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
+                    pskv.keys, vals, pskv.lens, cmd));
+            }
+            // sync all workers
             ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
         }
 

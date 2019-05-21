@@ -58,13 +58,16 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { COORDINATE_REDUCE, REDUCE, COPYD2H, PUSH, PULL, COPYH2D, COORDINATE_BROADCAST, BROADCAST };
-const int QueueNum = 8;
+enum QueueType { COORDINATE_REDUCE, REDUCE, COPYD2H,
+                 COORDINATE_PUSH, PUSH, PULL,
+                 COPYH2D, COORDINATE_BROADCAST, BROADCAST };
+const int QueueNum = 9;
 
 const std::vector<std::string> LogStrings = {
   "COORDINATE_REDUCE",
   "REDUCE",
   "COPYD2H",
+  "COORDINATE_PUSH",
   "PUSH",
   "PULL",
   "COPYH2D",
@@ -188,6 +191,8 @@ enum class RequestType {
 int GetCommandType(RequestType requestType, int d);
 
 ncclDataType_t getNcclDataType(DataType dtype);
+
+int getDataTypeLength(int dtype);
 
 } // namespace common
 } // namespace byteps

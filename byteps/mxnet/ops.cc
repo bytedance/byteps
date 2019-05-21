@@ -59,18 +59,21 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
 
     std::vector<QueueType> queue_list;
 
-    if (common::IsRoot()) {
-        if (device != CPU_DEVICE_ID) {
+    if (device != CPU_DEVICE_ID) {
+        if (common::IsRoot()) {
             queue_list.push_back(common::REDUCE);
             if (common::IsDistributedJob()) {
                 queue_list.push_back(common::COPYD2H);
                 queue_list.push_back(common::PUSH);
             }
         }
-    } else {
-        if (device != CPU_DEVICE_ID) {
+        else {
             queue_list.push_back(common::COORDINATE_REDUCE);
             queue_list.push_back(common::REDUCE);
+            if (common::IsDistributedJob()) {
+                queue_list.push_back(common::COPYD2H);
+                queue_list.push_back(common::COORDINATE_PUSH);
+            }
         }
     }
 
@@ -92,16 +95,18 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
 
     std::vector<QueueType> queue_list;
 
-    if (common::IsRoot()) {
-        if (device != CPU_DEVICE_ID) {
+    if (device != CPU_DEVICE_ID) {
+        if (common::IsRoot()) {
             if (common::IsDistributedJob()) {
                 queue_list.push_back(common::PULL);
                 queue_list.push_back(common::COPYH2D);
             }
             queue_list.push_back(common::BROADCAST);
         }
-    } else {
-        if (device != CPU_DEVICE_ID) {
+        else {
+            if (common::IsDistributedJob()) {
+                queue_list.push_back(common::COPYH2D);
+            }
             queue_list.push_back(common::COORDINATE_BROADCAST);
             queue_list.push_back(common::BROADCAST);
         }

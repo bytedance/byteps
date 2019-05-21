@@ -27,12 +27,19 @@ namespace byteps {
 namespace common {
 
 void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
-
-    std::string shm_name("BytePS_");
+    std::string shm_name("BytePS_ShM_");
     shm_name += std::to_string(key);
     int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
-    ftruncate(shm_fd, size);
-    void* ptr = mmap(0, size, PROT_WRITE, MAP_SHARED, shm_fd, 0); 
+    BPS_CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name;
+
+    BPS_CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
+
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_LOCKED, shm_fd, 0);
+
+    BPS_CHECK_NE(ptr, (void *)-1) << strerror(errno);
+
+    BPS_LOG(TRACE) << "initialized share memory size " << size;
+
     std::lock_guard<std::mutex> lock(_shm_mu);
     _key_shm_addr[key] = ptr;
     _key_shm_len[key] = size;
