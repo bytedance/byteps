@@ -104,7 +104,7 @@ void BytePSGlobal::Init() {
     _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
 
     // TODO: How to use the copy constructor with a shared_ptr ??
-    _shm_comm = std::make_shared<BytePSCommSocket>(*_basic_comm, "shm");
+//    _shm_comm = std::make_shared<BytePSCommSocket>(*_basic_comm, "shm");
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {

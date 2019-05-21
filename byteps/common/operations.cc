@@ -479,6 +479,7 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     QueueType this_op = COPYH2D;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
+    int root = GetRoot();
     int rank = GetMyLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
 
@@ -587,7 +588,7 @@ void byteps_init() {
             func.push_back(CopyDevice2HostLoop);
             func.push_back(PushLoop);
             func.push_back(PullLoop);
-            func.push_back(CopyHost2DeviceLoop);
+            func.push_back(RootCopyHost2DeviceLoop);
         }
     }
     else {
@@ -597,7 +598,7 @@ void byteps_init() {
         if (IsDistributedJob()) {
             func.push_back(CoordinatePushLoop);
             func.push_back(CopyDevice2HostLoop);
-            func.push_back(CopyHost2DeviceLoop);
+            func.push_back(NonRootCopyHost2DeviceLoop);
         }
         func.push_back(CoordinateBroadcastLoop);
     }
