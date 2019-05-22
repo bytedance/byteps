@@ -45,27 +45,34 @@ public:
         }
     }
 
-    cudaStream_t* GetNcclStream() { return _nccl_stream; }
-    ncclComm_t* GetNcclComm() { return &_nccl_comm; }
-    int GetNcclGroupSize() { return _nccl_group_size; }
+    cudaStream_t GetStream() { return *_nccl_stream; }
+    int GetGroupSize() { return _nccl_group_size; }
+    void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
+    std::shared_ptr<NcclGroupEntry> DequeueGroup();
 
-    void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e);
-    std::shared_ptr<NcclGroupEntry> DequeueNcclGroup();
+    ncclComm_t GetComm(int key);
+    int GetRoot(int key, QueueType op);
 
 private:
 
     void InitGlobalEnv();
+    void ConstructRings();
 
     cudaStream_t* _nccl_stream;
     ncclUniqueId* _nccl_id;
-    ncclComm_t _nccl_comm;
+    ncclComm_t* _nccl_comm;
     
     // global user-defined env
-    int _nccl_group_size;
+    size_t _nccl_group_size;
+    size_t _nccl_pcie_size;
+    size_t _nccl_pcie_num;
 
     // for pipelining nccl
     std::mutex _nccl_mutex;
     std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
+
+    // for multi-ring
+    std::vector<std::vector<int>> _rings;
 
 };
 
