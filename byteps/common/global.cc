@@ -50,14 +50,14 @@ std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
+
+ReadyTable* BytePSGlobal::_copy_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 
-std::mutex BytePSGlobal::_copyqueue_mutex;
-std::queue<int> BytePSGlobal::_copyh2d_ready_queue;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -142,6 +142,9 @@ void BytePSGlobal::Init() {
         _broadcast_table = new ReadyTable(_local_size-1);
         _push_table = new ReadyTable(_local_size-1);
 
+    }
+    else { // for non-root to receive signal from root
+        _copy_table = new ReadyTable(1);
     }
 
     _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
@@ -232,6 +235,10 @@ void BytePSGlobal::Shutdown() {
         delete _push_table;
     }
 
+    if (_copy_table) {
+        delete _copy_table;
+    }
+
     return;
 }
 
@@ -304,22 +311,6 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
     return BytePSGlobal::_copy_host2device_stream;
-}
-
-void BytePSGlobal::EnqueueCopyReadyKey(int key) {
-    std::lock_guard<std::mutex> lock(_copyqueue_mutex);
-    _copyh2d_ready_queue.push(key);
-    return;
-}
-
-bool BytePSGlobal::DequeueCopyReadyKey(int *key) { // return whether queue is empty
-    std::lock_guard<std::mutex> lock(_copyqueue_mutex);
-    if (_copyh2d_ready_queue.size() == 0) {
-        return true;
-    }
-    *key = _copyh2d_ready_queue.front();
-    _copyh2d_ready_queue.pop();
-    return false;
 }
 
 

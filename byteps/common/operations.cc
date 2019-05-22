@@ -291,27 +291,29 @@ bool RunCopyDevice2HostLoopOnce() {
             auto offset = task->offset;
             auto p = tensor->data() + offset;
             auto cpubuff = task->cpubuff + offset;
-            auto unit_len = tensor->size() / tensor->shape().num_elements();
 
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
 
-            auto num_elem_per_gpu = len / unit_len / local_size;
-            auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+            auto nccl_root = BytePSGlobal::GetNccl()->GetRoot(task->key, REDUCE);
 
-            if (num_elem_per_gpu) {
-                CUDA_CALL(cudaMemcpyAsync((void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                          (const void *) p + rank * num_elem_per_gpu * unit_len,
-                                          (size_t) num_elem_per_gpu * unit_len,
+            if (nccl_root == rank) {
+                CUDA_CALL(cudaMemcpyAsync((void *) cpubuff,
+                                          (const void *) p,
+                                          (size_t) len,
                                           (cudaMemcpyKind) cudaMemcpyDeviceToHost,
                                           (cudaStream_t) *copy_d2h_Stream));
+                CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " finishes queue "
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
             }
-            
-
-            if (IsRoot() && left_elem) {
-                // TODO
+            else {
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " don't need copy in queue "
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
             }
-
-            CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
         }
 
         FinishOrProceed(task);
@@ -433,26 +435,30 @@ bool RunRootCopyHost2DeviceLoopOnce() {
             auto len = task->len;
             auto offset = task->offset;
             auto cpubuff = task->cpubuff + offset;
-            auto unit_len = tensor->size() / tensor->shape().num_elements();
 
             BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
             char* gpu_addr = const_cast<char*> (static_cast<const char*> (tensor->data() + offset));
-            auto num_elem_per_gpu = len / unit_len / local_size;
-            auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+            auto nccl_root = BytePSGlobal::GetNccl()->GetRoot(task->key, BROADCAST);
 
-            if (num_elem_per_gpu) {
-                CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
-                                        (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                        (size_t) num_elem_per_gpu * unit_len,
+            if (nccl_root == rank) {
+                CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr,
+                                        (const void *) cpubuff,
+                                        (size_t) len,
                                         (cudaMemcpyKind) cudaMemcpyHostToDevice,
                                         (cudaStream_t) *copy_h2d_Stream));
+                CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " finishes queue root-"
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
+            }
+            else {
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " don't need copy in queue root-"
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
             }
 
-            if (IsRoot() && left_elem) {
-                // TODO
-            }
-
-            CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
         }
 
         FinishOrProceed(task);
@@ -466,16 +472,22 @@ bool RunRootCopyHost2DeviceLoopOnce() {
 
 bool RunNonRootCopyListenLoopOnce() {
     int root = GetRoot();
+    int rank = GetMyLocalRank();
+    BPS_CHECK_NE(root, rank);
+
     int src;
     struct BytePSCommMsg msg = {};
 
     BytePSGlobal::GetShmComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
     BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
     BPS_CHECK_EQ(msg.signal, DO_COPYH2D) << msg.signal;
-    int key = msg.key;
 
-    BytePSGlobal::EnqueueCopyReadyKey(key);
+    BytePSGlobal::GetCopyTable()->AddReadyCount(msg.key);
 
+    BPS_LOG(TRACE) << "NonRootCopyListenLoop recved: src=" << src
+                       << ", signal=" << msg.signal
+                       << ", key="    << msg.key
+                       << ", myrank=" << rank;
     return true;
 }
 
@@ -487,51 +499,49 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     int rank = GetMyLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
 
-    int key;
-    bool is_queue_empty = BytePSGlobal::DequeueCopyReadyKey(&key);
-    if (is_queue_empty) {
+    auto task = q->getTask();
+
+    if (task) {
+        BPS_CHECK(task);
+        auto tensor = task->output;
+        BPS_CHECK(tensor);
+
+        if (task->device != CPU_DEVICE_ID) { // GPU
+            auto name = task->tensor_name;
+            auto len = task->len;
+            auto offset = task->offset;
+            auto cpubuff = task->cpubuff + offset;
+            BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+
+            char* gpu_addr = const_cast<char*> (static_cast<const char*> (tensor->data() + offset));
+
+            auto nccl_root = BytePSGlobal::GetNccl()->GetRoot(task->key, BROADCAST);
+
+            if (nccl_root == rank) {
+                CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr,
+                                          (const void *) cpubuff,
+                                          (size_t) len,
+                                          (cudaMemcpyKind) cudaMemcpyHostToDevice,
+                                          (cudaStream_t) *copy_h2d_Stream));
+                CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " finishes queue non-root-"
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
+            }
+            else {
+                BPS_LOG(TRACE) << "key=" << task->key
+                               << " don't need copy in queue non-root-"
+                               << LogStrings[this_op]
+                               << ", rank=" << rank;
+            }
+        }
+
+        FinishOrProceed(task);
+        q->reportFinish(task->len);
+    } else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-        return true;
     }
-
-    // TODO: use non-fifo queue
-    std::shared_ptr<TensorTableEntry> task;
-    while (1) {
-        task = q->getTask(key);
-        if (task) break;
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    }
-
-    BPS_CHECK(task);
-    auto tensor = task->output;
-    BPS_CHECK(tensor);
-
-    if (task->device != CPU_DEVICE_ID) { // GPU
-        auto name = task->tensor_name;
-        auto len = task->len;
-        auto offset = task->offset;
-
-        auto cpubuff = task->cpubuff + offset;
-        auto unit_len = tensor->size() / tensor->shape().num_elements();
-        BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
-
-        char* gpu_addr = const_cast<char*> (static_cast<const char*> (tensor->data() + offset));
-
-        auto num_elem_per_gpu = len / unit_len / local_size;
-        auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
-
-        CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
-                                  (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                  (size_t) num_elem_per_gpu * unit_len,
-                                  (cudaMemcpyKind) cudaMemcpyHostToDevice,
-                                  (cudaStream_t) *copy_h2d_Stream));
-
-        CUDA_CALL(cudaStreamSynchronize(*copy_h2d_Stream));
-    }
-
-    FinishOrProceed(task);
-    q->reportFinish(task->len);
-
     return true;
 }
 

@@ -91,12 +91,13 @@ public:
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
     static ReadyTable* GetPushTable() { return _push_table; }
 
+    // for non-root
+    static ReadyTable* GetCopyTable() { return _copy_table; }
+
     static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
 
     static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 
-    static void EnqueueCopyReadyKey(int key);
-    static bool DequeueCopyReadyKey(int *key);
 private:
 
     static std::mutex _init_mutex;
@@ -134,10 +135,11 @@ private:
     static ReadyTable* _broadcast_table;
     static ReadyTable* _push_table;
 
+    // (key, ready_signal_count) pair, only valid for non-root device
+    static ReadyTable* _copy_table;
+
     static std::shared_ptr<NcclManager> _nccl_manager;
 
-    static std::queue<int> _copyh2d_ready_queue;
-    static std::mutex _copyqueue_mutex;
 
 };
 

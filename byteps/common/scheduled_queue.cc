@@ -39,6 +39,13 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, uint64_t credits){
                 break;
         }
     }
+    else {
+        switch (_qt) {
+            case COPYH2D:
+                _rt = BytePSGlobal::GetCopyTable();
+                break;
+        }
+    }
 }
 
 void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
