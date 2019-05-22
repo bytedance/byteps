@@ -91,11 +91,7 @@ public:
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
     static ReadyTable* GetPushTable() { return _push_table; }
 
-    static cudaStream_t* GetNcclStream() {return _nccl_manager->GetNcclStream(); }
-    static ncclComm_t* GetNcclComm() { return _nccl_manager->GetNcclComm(); }
-    static int GetNcclGroupSize() { return _nccl_manager->GetNcclGroupSize(); }
-    static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e) { _nccl_manager->EnqueueNcclGroup(e); }
-    static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup() { return _nccl_manager->DequeueNcclGroup(); }
+    static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
 
     static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 

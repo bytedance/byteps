@@ -98,7 +98,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
 }
 
 inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task,
-                          int rank, int local_size, int root, QueueType this_op) {
+                          int rank, int local_size, QueueType this_op) {
 
     auto tensor = (this_op == REDUCE) ? task->tensor : task->output;
     BPS_CHECK(tensor);
@@ -111,10 +111,9 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     auto unit_len = tensor->size() / tensor->shape().num_elements();
     auto p = tensor->data() + offset;
     auto nccl_dtype = getNcclDataType(tensor->dtype());
-    auto nccl_stream = BytePSGlobal::GetNcclStream();
-    auto nccl_comm = BytePSGlobal::GetNcclComm();
-    auto num_elem_per_gpu = len / local_size / unit_len;
-    auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+    auto nccl_stream = BytePSGlobal::GetNccl()->GetStream();
+    auto nccl_comm = BytePSGlobal::GetNccl()->GetComm(key);
+    auto nccl_root = BytePSGlobal::GetNccl()->GetRoot(key, this_op);
 
     BPS_LOG(TRACE) << task->tensor_name << " calling NCCL "
                     << LogStrings[this_op]
@@ -125,45 +124,24 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
 
 
     if (this_op == REDUCE) {
-        if (num_elem_per_gpu) {
-            NCCLCHECK(ncclReduceScatter((const void*) p,
-                                        (void*) (p + rank * num_elem_per_gpu * unit_len),
-                                        (size_t) num_elem_per_gpu,
-                                        (ncclDataType_t) nccl_dtype,
-                                        (ncclRedOp_t) ncclSum,
-                                        (ncclComm_t) *nccl_comm,
-                                        (cudaStream_t) *nccl_stream));
-            
-        }
-        if (left_elem) {
-            NCCLCHECK(ncclReduce((const void*) (p + len - left_elem * unit_len),
-                                    (void*) (p + len - left_elem * unit_len),
-                                    (size_t) left_elem,
-                                    (ncclDataType_t) nccl_dtype,
-                                    (ncclRedOp_t) ncclSum,
-                                    (int) root,
-                                    (ncclComm_t) *nccl_comm,
-                                    (cudaStream_t) *nccl_stream));
-        }
+        NCCLCHECK(ncclReduce((const void*) p,
+                                (void*) p,
+                                (size_t) len/unit_len,
+                                (ncclDataType_t) nccl_dtype,
+                                (ncclRedOp_t) ncclSum,
+                                (int) nccl_root,
+                                (ncclComm_t) nccl_comm,
+                                (cudaStream_t) nccl_stream));
+
     }
     else {
-        if (num_elem_per_gpu) {
-            NCCLCHECK(ncclAllGather((const void*) (p + rank * num_elem_per_gpu * unit_len),
-                                    (void *) p,
-                                    (size_t) num_elem_per_gpu,
-                                    (ncclDataType_t) nccl_dtype,
-                                    (ncclComm_t) *nccl_comm,
-                                    (cudaStream_t) *nccl_stream));
-        }
-        if (left_elem) {
-            NCCLCHECK(ncclBroadcast((const void*) (p + len - left_elem * unit_len),
-                                    (void*) (p + len - left_elem * unit_len),
-                                    (size_t) left_elem,
-                                    (ncclDataType_t) nccl_dtype,
-                                    (int) root,
-                                    (ncclComm_t) *nccl_comm,
-                                    (cudaStream_t) *nccl_stream));
-        }
+        NCCLCHECK(ncclBroadcast((const void*) p,
+                                (void*) p,
+                                (size_t) len/unit_len,
+                                (ncclDataType_t) nccl_dtype,
+                                (int) nccl_root,
+                                (ncclComm_t) nccl_comm,
+                                (cudaStream_t) nccl_stream));
     }
 }
 
@@ -183,7 +161,7 @@ bool RunRootNcclLoopOnce() {
     NCCLCHECK(ncclGroupStart());
     for (auto this_op : nccl_ops) {
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
-        for (int i = 0; i < BytePSGlobal::GetNcclGroupSize(); i++) {
+        for (int i = 0; i < BytePSGlobal::GetNccl()->GetGroupSize(); i++) {
             auto task = q->getTask();
             if (!task) { break; }
             tasks.push_back(task);
@@ -197,7 +175,7 @@ bool RunRootNcclLoopOnce() {
                                                  task->key };
                     BytePSGlobal::GetComm()->broadcastSignal(rank, &msg,
                                                              sizeof(BytePSCommMsg));
-                    PostNcclCalls(task, rank, local_size, root, this_op);
+                    PostNcclCalls(task, rank, local_size, this_op);
                 }
             }
         }
@@ -208,8 +186,8 @@ bool RunRootNcclLoopOnce() {
         BPS_LOG(TRACE) << "NCCL Group size=" << tasks.size() << " rank=" << rank;
         NCCLCHECK(ncclGroupEnd());
         CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
-        CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, *BytePSGlobal::GetNcclStream()));
-        BytePSGlobal::EnqueueNcclGroup(nccl_entry);
+        CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, BytePSGlobal::GetNccl()->GetStream()));
+        BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);
     }
     else {
         NCCLCHECK(ncclGroupEnd());
@@ -257,19 +235,19 @@ bool RunNonRootNcclLoopOnce() {
         tasks.push_back(task);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
-            PostNcclCalls(task, rank, local_size, root, this_op);
+            PostNcclCalls(task, rank, local_size, this_op);
         }
     }
     NCCLCHECK(ncclGroupEnd());
 
     CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
-    CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, *BytePSGlobal::GetNcclStream()));
-    BytePSGlobal::EnqueueNcclGroup(nccl_entry);
+    CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, BytePSGlobal::GetNccl()->GetStream()));
+    BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);
     return true;
 }
 
 bool RunSyncNcclOnce() {
-    auto nccl_entry = BytePSGlobal::DequeueNcclGroup();
+    auto nccl_entry = BytePSGlobal::GetNccl()->DequeueGroup();
     if (nccl_entry) {
         CUDA_CALL(cudaEventSynchronize(nccl_entry->cuda_event));
         for (size_t i = 0; i < nccl_entry->tasks.size(); i++) {
