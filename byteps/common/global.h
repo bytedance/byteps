@@ -30,6 +30,7 @@
 #include "scheduled_queue.h"
 #include "ready_table.h"
 #include "shared_memory.h"
+#include "nccl_manager.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -43,12 +44,6 @@ struct PSKV {
 
 typedef void (*LoopFunction)();
 
-
-struct NcclGroupEntry {
-    cudaEvent_t cuda_event;
-    std::vector<std::shared_ptr<TensorTableEntry>> tasks;
-    std::vector<BytePSScheduledQueue*> queues;
-};
 
 class BytePSGlobal {
 
@@ -88,7 +83,6 @@ public:
 
     static uint32_t GetPartitionBound() { return _partition_bytes; }
 
-    static cudaStream_t* GetNcclStream();
     static cudaStream_t* GetCopyDevice2HostStream();
     static cudaStream_t* GetCopyHost2DeviceStream();
 
@@ -97,14 +91,11 @@ public:
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
     static ReadyTable* GetPushTable() { return _push_table; }
 
-    static ncclComm_t* GetNcclComm() { return &_nccl_comm; }
-
-    // global user-defined env related
-    static void InitGlobalEnv();
-    static int GetNcclGroupSize() { return _nccl_group_size; }
-
-    static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e);
-    static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup();
+    static cudaStream_t* GetNcclStream() {return _nccl_manager->GetNcclStream(); }
+    static ncclComm_t* GetNcclComm() { return _nccl_manager->GetNcclComm(); }
+    static int GetNcclGroupSize() { return _nccl_manager->GetNcclGroupSize(); }
+    static void EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e) { _nccl_manager->EnqueueNcclGroup(e); }
+    static std::shared_ptr<NcclGroupEntry> DequeueNcclGroup() { return _nccl_manager->DequeueNcclGroup(); }
 
     static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 
@@ -135,7 +126,6 @@ private:
     static std::mutex _encode_mutex;
     static std::unordered_map<std::string, BPSContext> _name_to_cxt;
 
-    static cudaStream_t* _nccl_stream;
     static cudaStream_t* _copy_device2host_stream;
     static cudaStream_t* _copy_host2device_stream;
 
@@ -146,15 +136,8 @@ private:
     static ReadyTable* _broadcast_table;
     static ReadyTable* _push_table;
 
-    static ncclUniqueId* _nccl_id;
-    static ncclComm_t _nccl_comm;
+    static std::shared_ptr<NcclManager> _nccl_manager;
 
-    // global user-defined env
-    static int _nccl_group_size;
-
-    // for pipelining nccl
-    static std::mutex _nccl_mutex;
-    static std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
 };
 
 

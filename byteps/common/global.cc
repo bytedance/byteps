@@ -35,7 +35,6 @@ BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
-int BytePSGlobal::_nccl_group_size = 4;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSComm> BytePSGlobal::_shm_comm;
@@ -53,14 +52,10 @@ ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
-cudaStream_t* BytePSGlobal::_nccl_stream;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
-ncclUniqueId* BytePSGlobal::_nccl_id;
-ncclComm_t BytePSGlobal::_nccl_comm;
+std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 
-std::mutex BytePSGlobal::_nccl_mutex;
-std::queue<std::shared_ptr<NcclGroupEntry>> BytePSGlobal::_nccl_pipeline;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -92,8 +87,6 @@ void BytePSGlobal::Init() {
     if (_initialized) {
         return;
     }
-
-    InitGlobalEnv();
 
 #ifdef BYTEPS_USE_MPI
     _basic_comm = std::make_shared<BytePSCommMPI>();
@@ -138,44 +131,20 @@ void BytePSGlobal::Init() {
     // set to associated GPU
     CUDA_CALL(cudaSetDevice(_local_rank));
 
-    // init and sycn NCCL-reduce-id using out-of-band socket
-    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId));
-
     if (_is_root_device) { // only root create nccl id
 
         _reduce_table = new ReadyTable(_local_size-1);
         _broadcast_table = new ReadyTable(_local_size-1);
         _push_table = new ReadyTable(_local_size-1);
 
-        NCCLCHECK(ncclGetUniqueId(_nccl_id));
-
-        // the log is just for debug, the actual length of nccl id is 128
-        BPS_LOG(DEBUG) << "root nccl_reduce_id is " << (*(long long int*)_nccl_id);
-
-        _basic_comm->broadcastSignal(_local_rank, _nccl_id, sizeof(ncclUniqueId));
-
-    } else {
-        int src;
-        int rc = _basic_comm->recvSignal(&src, _nccl_id, sizeof(ncclUniqueId));
-
-        BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
-
-        BPS_LOG(DEBUG) << "recv nccl_reduce_id is " << (*(long long int*)_nccl_id)
-                       << ", local_rank=" << _local_rank;
     }
 
-                _nccl_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_device2host_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
 
-    int greatest_priority;
-    CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
-
-    CUDA_CALL(cudaStreamCreateWithPriority(         _nccl_stream, cudaStreamNonBlocking, greatest_priority));
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
 
-    CUDA_CALL(cudaStreamSynchronize(*_nccl_stream));
     CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
     CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
 
@@ -185,22 +154,14 @@ void BytePSGlobal::Init() {
         BytePSGlobal::CreateScheduledQueue(type);
     }
 
+    _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
+
     _initialized = true;
     BPS_LOG(DEBUG) << "Inited rank=" << _rank
                    << " local_rank=" << _local_rank
                    << " size=" << _size
                    << " local_size=" << _local_size
                    << " worker_id=" << _worker_id;
-
-    //initializing NCCL rank
-    NCCLCHECK(ncclCommInitRank(&_nccl_comm, _local_size, *_nccl_id, _local_rank));
-
-    return;
-}
-
-void BytePSGlobal::InitGlobalEnv() { // init all global env/param here
-    _nccl_group_size = (getenv("BYTEPS_NCCL_GROUP_SIZE") ? atoi(getenv("BYTEPS_NCCL_GROUP_SIZE")) : 4);
-    BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
 
     return;
 }
@@ -246,7 +207,6 @@ void BytePSGlobal::Shutdown() {
         delete _ps;
     }
 
-    CUDA_CALL(cudaStreamDestroy(*_nccl_stream));
     CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
 
@@ -333,32 +293,12 @@ uint32_t BytePSGlobal::GetTensorCount() {
     return BytePSGlobal::_name_to_cxt.size();
 }
 
-cudaStream_t* BytePSGlobal::GetNcclStream() {
-    return BytePSGlobal::_nccl_stream;
-}
-
 cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
     return BytePSGlobal::_copy_device2host_stream;
 }
 
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
     return BytePSGlobal::_copy_host2device_stream;
-}
-
-void BytePSGlobal::EnqueueNcclGroup(std::shared_ptr<NcclGroupEntry> e) {
-    std::lock_guard<std::mutex> lock(_nccl_mutex);
-    _nccl_pipeline.push(e);
-    return;
-}
-
-std::shared_ptr<NcclGroupEntry> BytePSGlobal::DequeueNcclGroup() {
-    std::lock_guard<std::mutex> lock(_nccl_mutex);
-    if (!_nccl_pipeline.size()) {
-        return nullptr;
-    }
-    auto r = _nccl_pipeline.front();
-    _nccl_pipeline.pop();
-    return r;
 }
 
 
