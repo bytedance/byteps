@@ -64,6 +64,12 @@ public:
     virtual int recvSignal(int* source, void* data, int max_len) = 0;
     virtual int broadcastSignal(int root, void* data, int len) = 0;
 
+    virtual int getRank() { return _rank; }
+    virtual int getSize() { return _size; }
+    virtual int getLocalRank() { return _local_rank; }
+    virtual int getLocalSize() { return _local_size; }
+    virtual int getWorkerID() { return _worker_id; }
+
 protected:
 
     int _rank;
@@ -80,7 +86,7 @@ class BytePSCommSocket : public BytePSComm {
 public:
 
     BytePSCommSocket() {}
-    BytePSCommSocket(const BytePSCommSocket &comm, const std::string &path_suffix);
+    BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix);
 
     ~BytePSCommSocket() {
         _listen_thread->join();
@@ -92,6 +98,12 @@ public:
     int sendSignal(int destination, void* data, int len);
     int recvSignal(int* source, void* data, int max_len);
     int broadcastSignal(int root, void* data, int len);
+
+    int getSendFd() { return _send_fd; }
+    int getRecvFd() { return _recv_fd; }
+
+    std::string getSendPath() { return _send_path; }
+    std::string getRecvPath() { return _recv_path; }
 
 protected:
 

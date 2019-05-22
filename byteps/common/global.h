@@ -66,7 +66,7 @@ public:
     static int GetRoot();
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetComm() { return _basic_comm; }
-    static std::shared_ptr<BytePSComm> GetShmComm() { return _shm_comm; }
+    static std::shared_ptr<BytePSCommSocket> GetShmComm() { return _shm_comm; }
     static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
@@ -99,6 +99,8 @@ public:
 
     static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 
+    static void EnqueueCopyReadyKey(int key);
+    static bool DequeueCopyReadyKey(int *key);
 private:
 
     static std::mutex _init_mutex;
@@ -115,7 +117,7 @@ private:
     static bool _is_distributed_job;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _basic_comm;
-    static std::shared_ptr<BytePSComm> _shm_comm;
+    static std::shared_ptr<BytePSCommSocket> _shm_comm;
     static std::shared_ptr<BytePSSharedMemory> _shm_obj;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
@@ -137,6 +139,9 @@ private:
     static ReadyTable* _push_table;
 
     static std::shared_ptr<NcclManager> _nccl_manager;
+
+    static std::queue<int> _copyh2d_ready_queue;
+    static std::mutex _copyqueue_mutex;
 
 };
 

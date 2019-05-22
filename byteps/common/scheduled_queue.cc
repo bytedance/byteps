@@ -34,6 +34,9 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, uint64_t credits){
             case BROADCAST:
                 _rt = BytePSGlobal::GetBroadcastTable();
                 break;
+            case PUSH:
+                _rt = BytePSGlobal::GetPushTable();
+                break;
         }
     }
 }

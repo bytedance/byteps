@@ -65,23 +65,34 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
         BytePSCommSignal sig;
 
         switch (this_op) {
-            case COORDINATE_REDUCE:
+            case COORDINATE_REDUCE: {
                 sig = REDUCE_READY;
+                struct BytePSCommMsg msg = { rank,
+                                             sig,
+                                             key };
+                BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
                 break;
-            case COORDINATE_BROADCAST:
+            }
+            case COORDINATE_BROADCAST: {
                 sig = BCAST_READY;
+                struct BytePSCommMsg msg = { rank,
+                                             sig,
+                                             key };
+                BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
                 break;
-            case COORDINATE_PUSH:
+            }
+            case COORDINATE_PUSH: {
                 sig = PUSH_READY;
+                struct BytePSCommMsg msg = { rank,
+                                             sig,
+                                             key };
+                BytePSGlobal::GetShmComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
                 break;
+            }
             default:
                 BPS_CHECK(0) << "unsupported op: " << this_op;
         }
 
-        struct BytePSCommMsg msg = { rank,
-                                     sig,
-                                     key };
-        BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
 
         BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
                        << "Signal=" << sig
@@ -244,15 +255,10 @@ bool RunNonRootNcclLoopOnce() {
         }
 
         int key = msg.key;
-        BPS_LOG(TRACE) << "rank=" << rank << " receving BROADCAST key=" << key;
 
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
         auto task = q->getTask(key);
         BPS_CHECK(task);
-        BPS_CHECK_EQ(task->queue_list.size(), 1)
-            << "BROADCAST should be the last op, "
-            << "remain queue_list size: " << task->queue_list.size()
-            << ", local_rank=" << rank;
 
         tasks.push_back(task);
 
@@ -480,14 +486,8 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     return true;
 }
 
-bool RunNonRootCopyHost2DeviceLoopOnce() {
-    QueueType this_op = COPYH2D;
-    auto q = BytePSGlobal::GetScheduledQueue(this_op);
-    auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
+bool RunNonRootCopyListenLoopOnce() {
     int root = GetRoot();
-    int rank = GetMyLocalRank();
-    int local_size = BytePSGlobal::GetLocalSize();
-
     int src;
     struct BytePSCommMsg msg = {};
 
@@ -496,7 +496,34 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     BPS_CHECK_EQ(msg.signal, DO_COPYH2D) << msg.signal;
     int key = msg.key;
 
-    auto task = q->getTask(key);
+    BytePSGlobal::EnqueueCopyReadyKey(key);
+
+    return true;
+}
+
+bool RunNonRootCopyHost2DeviceLoopOnce() {
+    QueueType this_op = COPYH2D;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
+    int root = GetRoot();
+    int rank = GetMyLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
+
+    int key;
+    bool is_queue_empty = BytePSGlobal::DequeueCopyReadyKey(&key);
+    if (is_queue_empty) {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+        return true;
+    }
+
+    // TODO: use non-fifo queue
+    std::shared_ptr<TensorTableEntry> task;
+    while (1) {
+        task = q->getTask(key);
+        if (task) break;
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
+
     BPS_CHECK(task);
     auto tensor = task->output;
     BPS_CHECK(tensor);
@@ -517,7 +544,7 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
 
         CUDA_CALL(cudaMemcpyAsync((void *) gpu_addr + rank * num_elem_per_gpu * unit_len,
                                   (const void *) cpubuff + rank * num_elem_per_gpu * unit_len,
-                                  (size_t) num_elem_per_gpu,
+                                  (size_t) num_elem_per_gpu * unit_len,
                                   (cudaMemcpyKind) cudaMemcpyHostToDevice,
                                   (cudaStream_t) *copy_h2d_Stream));
 
@@ -575,6 +602,11 @@ void RootCopyHost2DeviceLoop() {
     while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
+void NonRootCopyListenLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+    while (RunNonRootCopyListenLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
+}
+
 void NonRootCopyHost2DeviceLoop() {
     CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
     while (RunNonRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
@@ -603,6 +635,7 @@ void byteps_init() {
         if (IsDistributedJob()) {
             func.push_back(CoordinatePushLoop);
             func.push_back(CopyDevice2HostLoop);
+            func.push_back(NonRootCopyListenLoop);
             func.push_back(NonRootCopyHost2DeviceLoop);
         }
         func.push_back(CoordinateBroadcastLoop);
@@ -752,20 +785,17 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
                    << ", size=" << size
                    << ", parts=" << key_list.size();
 
-    // Only local root needs to init cpubuff
-    if (IsRoot()) {
-        if (cpubuff) {
-            BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
-            context.cpubuff = cpubuff;
-            context.reuse_buff = true;
-        }
-        else {
-            // use the first key in key_list as the index
-            context.cpubuff = BytePSGlobal::GetSharedMemoryObj()->openSharedMemory(key_list[0], size);
-            CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size, cudaHostRegisterDefault));
-            context.reuse_buff = false;
-            BPS_LOG(TRACE) << name << ": open shared memory size " << size;
-        }
+    if (cpubuff) {
+        BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
+        context.cpubuff = cpubuff;
+        context.reuse_buff = true;
+    }
+    else {
+        // use the first key in key_list as the index
+        context.cpubuff = BytePSGlobal::GetSharedMemoryObj()->openSharedMemory(key_list[0], size);
+        CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size, cudaHostRegisterDefault));
+        context.reuse_buff = false;
+        BPS_LOG(TRACE) << name << ": open shared memory size " << size;
     }
 
     char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));

@@ -22,14 +22,15 @@ namespace byteps {
 namespace common {
 
 
-BytePSCommSocket::BytePSCommSocket(const BytePSCommSocket &comm, const std::string &path_suffix) {
-    _rank = comm._rank;
-    _size = comm._size;
-    _local_rank = comm._local_rank;
-    _local_size = comm._local_size;
-    _worker_id = comm._worker_id;
-    _send_path = comm._send_path + path_suffix;
-    _recv_path = comm._recv_path + path_suffix;
+BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix) {
+    std::shared_ptr<BytePSCommSocket> sock_comm = std::static_pointer_cast<BytePSCommSocket>(comm);
+    _rank = sock_comm->getRank();
+    _size = sock_comm->getSize();
+    _local_rank = sock_comm->getLocalRank();
+    _local_size = sock_comm->getLocalSize();
+    _worker_id = sock_comm->getWorkerID();
+    _send_path = sock_comm->getSendPath() + path_suffix;
+    _recv_path = sock_comm->getRecvPath() + path_suffix;
     _send_fd = initSocket(_local_rank, _send_path);
     _recv_fd = initSocket(_local_rank, _recv_path);
 
@@ -122,6 +123,8 @@ int BytePSCommSocket::initSocket(int rank, const std::string &path) {
     int ret = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
     BPS_CHECK_GE(ret, 0) << fd_path << " bind failed: " << strerror(errno);
 
+    BPS_LOG(DEBUG) << "Init socket at " << fd_path;
+
     return fd;
 }
 
@@ -163,7 +166,7 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     memset(&destaddr, 0, sizeof(destaddr));
     destaddr.sun_family = AF_UNIX;
 
-    std::string fd_path(BASE_SOCKET_PATH_RECV);
+    std::string fd_path(_recv_path);
     fd_path += std::to_string(destination);
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 

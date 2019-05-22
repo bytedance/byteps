@@ -37,7 +37,7 @@ bool BytePSGlobal::_is_distributed_job;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
-std::shared_ptr<BytePSComm> BytePSGlobal::_shm_comm;
+std::shared_ptr<BytePSCommSocket> BytePSGlobal::_shm_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -56,6 +56,8 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 
+std::mutex BytePSGlobal::_copyqueue_mutex;
+std::queue<int> BytePSGlobal::_copyh2d_ready_queue;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -96,8 +98,7 @@ void BytePSGlobal::Init() {
 
     _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
 
-    // TODO: How to use the copy constructor with a shared_ptr ??
-//    _shm_comm = std::make_shared<BytePSCommSocket>(*_basic_comm, "shm");
+    _shm_comm = std::make_shared<BytePSCommSocket>(_basic_comm, std::string("shm"));
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {
@@ -113,6 +114,10 @@ void BytePSGlobal::Init() {
     _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
     _is_distributed_job = (_num_worker>1) ? true : false;
+    if (getenv("BYTEPS_FORCE_DISTRIBUTED")) { // only for debugging
+        _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
+    }
+
     BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
                    << (IsDistributed() ? "" : "non-") << "distributed job";
 
@@ -299,6 +304,22 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
     return BytePSGlobal::_copy_host2device_stream;
+}
+
+void BytePSGlobal::EnqueueCopyReadyKey(int key) {
+    std::lock_guard<std::mutex> lock(_copyqueue_mutex);
+    _copyh2d_ready_queue.push(key);
+    return;
+}
+
+bool BytePSGlobal::DequeueCopyReadyKey(int *key) { // return whether queue is empty
+    std::lock_guard<std::mutex> lock(_copyqueue_mutex);
+    if (_copyh2d_ready_queue.size() == 0) {
+        return true;
+    }
+    *key = _copyh2d_ready_queue.front();
+    _copyh2d_ready_queue.pop();
+    return false;
 }
 
 
