@@ -122,8 +122,8 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     auto unit_len = tensor->size() / tensor->shape().num_elements();
     auto p = tensor->data() + offset;
     auto nccl_dtype = getNcclDataType(tensor->dtype());
-    auto nccl_stream = BytePSGlobal::GetNccl()->GetStream();
-    auto nccl_comm = BytePSGlobal::GetNccl()->GetComm(key);
+    auto nccl_stream = BytePSGlobal::GetNccl()->GetStream(key, this_op);
+    auto nccl_comm = BytePSGlobal::GetNccl()->GetComm(key, this_op);
     auto nccl_root = BytePSGlobal::GetNccl()->GetRoot(key, this_op);
 
     BPS_LOG(TRACE) << task->tensor_name << " calling NCCL "
@@ -194,10 +194,9 @@ bool RunRootNcclLoopOnce() {
     if (tasks.size()) {
         struct BytePSCommMsg msg = { rank, DO_GROUP, 0 };
         BytePSGlobal::GetComm()->broadcastSignal(rank, &msg, sizeof(BytePSCommMsg));
-        BPS_LOG(TRACE) << "NCCL Group size=" << tasks.size() << " rank=" << rank;
         NCCLCHECK(ncclGroupEnd());
-        CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
-        CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, BytePSGlobal::GetNccl()->GetStream()));
+        nccl_entry->RecordEvents();
+        BPS_LOG(TRACE) << "NCCL Group size=" << tasks.size() << " rank=" << rank;
         BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);
     }
     else {
@@ -216,6 +215,7 @@ bool RunNonRootNcclLoopOnce() {
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
+    auto &queues = nccl_entry->queues;
     int src;
     struct BytePSCommMsg msg = {};
 
@@ -239,6 +239,7 @@ bool RunNonRootNcclLoopOnce() {
         BPS_CHECK(task);
 
         tasks.push_back(task);
+        queues.push_back(q);
 
         if (task->device != CPU_DEVICE_ID) { // GPU
             PostNcclCalls(task, rank, local_size, this_op);
@@ -246,8 +247,7 @@ bool RunNonRootNcclLoopOnce() {
     }
     NCCLCHECK(ncclGroupEnd());
 
-    CUDA_CALL(cudaEventCreateWithFlags(&(nccl_entry->cuda_event), cudaEventBlockingSync | cudaEventDisableTiming));
-    CUDA_CALL(cudaEventRecord(nccl_entry->cuda_event, BytePSGlobal::GetNccl()->GetStream()));
+    nccl_entry->RecordEvents();
     BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);
     return true;
 }
@@ -255,14 +255,15 @@ bool RunNonRootNcclLoopOnce() {
 bool RunSyncNcclOnce() {
     auto nccl_entry = BytePSGlobal::GetNccl()->DequeueGroup();
     if (nccl_entry) {
-        CUDA_CALL(cudaEventSynchronize(nccl_entry->cuda_event));
+        nccl_entry->SynchronizeEvents();
         for (size_t i = 0; i < nccl_entry->tasks.size(); i++) {
             FinishOrProceed(nccl_entry->tasks[i]);
-            if (nccl_entry->queues.size() > i) {
+            // Only root manages credits
+            if (IsRoot()) {
                 nccl_entry->queues[i]->reportFinish(nccl_entry->tasks[i]->len);
             }
         }
-        CUDA_CALL(cudaEventDestroy(nccl_entry->cuda_event));
+        nccl_entry->DestroyEvents();
         BPS_LOG(TRACE) << "Finished NCCL Group size=" << nccl_entry->tasks.size()
                        << " rank=" << GetMyLocalRank();
     }

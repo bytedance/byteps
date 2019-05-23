@@ -27,10 +27,20 @@ namespace byteps {
 namespace common {
 
 
-struct NcclGroupEntry {
-    cudaEvent_t cuda_event;
+class NcclGroupEntry {
+
+public:
+
+    void RecordEvents();
+    void SynchronizeEvents();
+    void DestroyEvents();
+
     std::vector<std::shared_ptr<TensorTableEntry>> tasks;
     std::vector<BytePSScheduledQueue*> queues;
+
+private:
+
+    std::vector<cudaEvent_t> _events;
 };
 
 
@@ -45,12 +55,12 @@ public:
         }
     }
 
-    cudaStream_t GetStream() { return *_nccl_stream; }
     int GetGroupSize() { return _nccl_group_size; }
     void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
     std::shared_ptr<NcclGroupEntry> DequeueGroup();
 
-    ncclComm_t GetComm(int key);
+    cudaStream_t GetStream(int key, QueueType op);
+    ncclComm_t GetComm(int key, QueueType op);
     int GetRoot(int key, QueueType op);
 
 private:
