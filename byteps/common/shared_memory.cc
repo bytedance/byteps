@@ -34,29 +34,16 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
 
     BPS_CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
 
-    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_LOCKED, shm_fd, 0);
+    void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
     BPS_CHECK_NE(ptr, (void *)-1) << strerror(errno);
 
     BPS_LOG(TRACE) << "initialized share memory size " << size;
 
     std::lock_guard<std::mutex> lock(_shm_mu);
-    _key_shm_addr[key] = ptr;
-    _key_shm_len[key] = size;
+    _key_shm_name[key] = shm_name;
     return ptr;
 }
-
-void* BytePSSharedMemory::getSharedMemoryAddress(int key) {
-    std::lock_guard<std::mutex> lock(_shm_mu);
-    return _key_shm_addr[key];
-}
-
-int BytePSSharedMemory::getSharedMemoryLen(int key) {
-    std::lock_guard<std::mutex> lock(_shm_mu);
-    return _key_shm_len[key];
-}
-
-
 
 } // namespace common
 
