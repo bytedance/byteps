@@ -36,19 +36,16 @@ public:
     BytePSSharedMemory() {}
 
     ~BytePSSharedMemory() {
-        //shm_unlink(name);
+        for (auto &it : _key_shm_name) {
+            shm_unlink(it.second.c_str());
+        }
     }
 
     void* openSharedMemory(int key, size_t size);
 
-    void* getSharedMemoryAddress(int key);
-
-    int getSharedMemoryLen(int key);
-
 private:
 
-    std::unordered_map<int, void*> _key_shm_addr;
-    std::unordered_map<int, int> _key_shm_len;
+    std::unordered_map<int, std::string> _key_shm_name;
 
     std::mutex _shm_mu;
 
