@@ -22,7 +22,8 @@ namespace byteps {
 namespace common {
 
 
-BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix) {
+// Copy constructor that provides the option to reconfigure members
+BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix, const std::vector<int> &members) {
     std::shared_ptr<BytePSCommSocket> sock_comm = std::static_pointer_cast<BytePSCommSocket>(comm);
     _rank = sock_comm->getRank();
     _size = sock_comm->getSize();
@@ -34,7 +35,10 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::
     _send_fd = initSocket(_local_rank, _send_path);
     _recv_fd = initSocket(_local_rank, _recv_path);
 
-    auto my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+    _members = (members.size() > 0) ? members : sock_comm->getMembers();
+    _root = _members.back();
+
+    auto my_role = (_local_rank == _root) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (my_role == LOCAL_ROOT) ? true : false;
     // init socket comm
     if (is_root) { // root
@@ -42,7 +46,7 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::
 
         // Just in case launching root earlier than non-root
         // TODO: use retry instead of sleep
-        if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+        // if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
 
     BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
@@ -76,7 +80,12 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_size = *local_size;
     _worker_id = *worker_id;
 
-    *my_role = (_local_rank == (_local_size - 1)) ? LOCAL_ROOT : LOCAL_WORKER;
+    for (size_t i = 0; i < _local_size; i++) {
+        _members.push_back(i);
+    }
+    _root = _members.back();
+
+    *my_role = (_local_rank == _root) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role == LOCAL_ROOT) ? true : false;
 
     _send_path = std::string(BASE_SOCKET_PATH_SEND);
@@ -91,7 +100,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
 
         // Just in case launching root earlier than non-root
         // TODO: use retry instead of sleep
-        if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+        // if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
 
     BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
@@ -170,11 +179,20 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
     fd_path += std::to_string(destination);
     strncpy(destaddr.sun_path, fd_path.c_str(), sizeof(destaddr.sun_path)-1);
 
-    auto ret = sendto(_send_fd, data, len, 0,
+    int ret = -1;
+    while (ret < 0) {
+        ret = sendto(_send_fd, data, len, 0,
             (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
+        if (ret < 0) {
+            BPS_LOG(DEBUG) << "Socket send error " <<  std::strerror(errno) << ", rank=" << _local_rank;
+        }
+    }
+    
+    return ret;
+}
 
-    BPS_CHECK_GE(ret, 0) << std::strerror(errno) << ", rank=" << _local_rank;
-    return 0;
+int BytePSCommSocket::sendSignalToRoot(void* data, int len) {
+    return sendSignal(_root, data, len);
 }
 
 int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
@@ -193,8 +211,15 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
     return rc;
 }
 
+int BytePSCommSocket::recvSignalFromRoot(void* data, int max_len) {
+    int src;
+    int rc = recvSignal(&src, data, max_len);
+    BPS_CHECK_EQ(src, _root) << "Non-root received signal from another non-root";
+    return rc;
+}
+
 int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
-    for (int i = 0; i < _local_size; ++i) {
+    for (int i : _members) {
         if (i == _local_rank) continue;
         sendSignal(i, (void *)data, len);
     }

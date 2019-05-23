@@ -71,10 +71,6 @@ bool BytePSGlobal::IsDistributed() {
     return _is_distributed_job;
 }
 
-int BytePSGlobal::GetRoot() {
-    return _local_size-1;
-}
-
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
@@ -98,7 +94,7 @@ void BytePSGlobal::Init() {
 
     _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
 
-    _shm_comm = std::make_shared<BytePSCommSocket>(_basic_comm, std::string("shm"));
+    _shm_comm = std::make_shared<BytePSCommSocket>(_basic_comm, std::string("shm"), std::vector<int>());
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {

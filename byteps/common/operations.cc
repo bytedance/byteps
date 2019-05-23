@@ -54,7 +54,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
     if (task){
         BPS_CHECK(!IsRoot()) << "only non-root device should enter COORDINATE loop";
 
-        int root = GetRoot();
+        int root = BytePSGlobal::GetComm()->getRoot();
         int rank = GetMyLocalRank();
         int key  = task->key;
 
@@ -70,7 +70,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
                 struct BytePSCommMsg msg = { rank,
                                              sig,
                                              key };
-                BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
+                BytePSGlobal::GetComm()->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
                 break;
             }
             case COORDINATE_BROADCAST: {
@@ -78,7 +78,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
                 struct BytePSCommMsg msg = { rank,
                                              sig,
                                              key };
-                BytePSGlobal::GetComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
+                BytePSGlobal::GetComm()->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
                 break;
             }
             case COORDINATE_PUSH: {
@@ -86,7 +86,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
                 struct BytePSCommMsg msg = { rank,
                                              sig,
                                              key };
-                BytePSGlobal::GetShmComm()->sendSignal(root, &msg, sizeof(BytePSCommMsg));
+                BytePSGlobal::GetShmComm()->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
                 break;
             }
             default:
@@ -158,7 +158,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
 
 
 bool RunRootNcclLoopOnce() {
-    int root = GetRoot();
+    int root = BytePSGlobal::GetComm()->getRoot();
     int rank = GetMyLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
     BPS_CHECK_EQ(rank, root);
@@ -208,7 +208,7 @@ bool RunRootNcclLoopOnce() {
 }
 
 bool RunNonRootNcclLoopOnce() {
-    int root = GetRoot();
+    int root = BytePSGlobal::GetComm()->getRoot();
     int rank = GetMyLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
     BPS_CHECK_NE(rank, root);
@@ -216,13 +216,11 @@ bool RunNonRootNcclLoopOnce() {
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
     auto &queues = nccl_entry->queues;
-    int src;
     struct BytePSCommMsg msg = {};
 
     NCCLCHECK(ncclGroupStart());
     while (1) {
-        BytePSGlobal::GetComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
-        BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
+        BytePSGlobal::GetComm()->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
         if (msg.signal == DO_GROUP) { break; }
         QueueType this_op = REDUCE;
         if (msg.signal == DO_BROADCAST) {
@@ -472,20 +470,18 @@ bool RunRootCopyHost2DeviceLoopOnce() {
 }
 
 bool RunNonRootCopyListenLoopOnce() {
-    int root = GetRoot();
+    int root = BytePSGlobal::GetComm()->getRoot();
     int rank = GetMyLocalRank();
     BPS_CHECK_NE(root, rank);
 
-    int src;
     struct BytePSCommMsg msg = {};
 
-    BytePSGlobal::GetShmComm()->recvSignal(&src, &msg, sizeof(BytePSCommMsg));
-    BPS_CHECK_EQ(src, root) << msg.src << ", " << root; // should only receive from root
+    BytePSGlobal::GetShmComm()->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
     BPS_CHECK_EQ(msg.signal, DO_COPYH2D) << msg.signal;
 
     BytePSGlobal::GetCopyTable()->AddReadyCount(msg.key);
 
-    BPS_LOG(TRACE) << "NonRootCopyListenLoop recved: src=" << src
+    BPS_LOG(TRACE) << "NonRootCopyListenLoop recved from root"
                        << ", signal=" << msg.signal
                        << ", key="    << msg.key
                        << ", myrank=" << rank;
@@ -496,7 +492,7 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     QueueType this_op = COPYH2D;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto copy_h2d_Stream = BytePSGlobal::GetCopyHost2DeviceStream();
-    int root = GetRoot();
+    int root = BytePSGlobal::GetComm()->getRoot();
     int rank = GetMyLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
 
@@ -842,10 +838,6 @@ bool IsTensorInitialized(const std::string &name, size_t size) {
 
 bool IsRoot() {
     return BytePSGlobal::IsRootDevice();
-}
-
-int GetRoot() {
-    return BytePSGlobal::GetRoot();
 }
 
 int GetMyLocalRank() {

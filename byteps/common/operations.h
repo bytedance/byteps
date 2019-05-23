@@ -73,8 +73,6 @@ BPSContext& GetContextFromName(const std::string &name);
 
 bool IsRoot();
 
-int GetRoot();
-
 int GetMyLocalRank();
 
 bool IsDistributedJob();
