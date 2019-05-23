@@ -61,7 +61,9 @@ public:
 
     virtual void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) = 0;
     virtual int sendSignal(int destination, void* data, int len) = 0;
+    virtual int sendSignalToRoot(void* data, int len) = 0;
     virtual int recvSignal(int* source, void* data, int max_len) = 0;
+    virtual int recvSignalFromRoot(void* data, int max_len) = 0;
     virtual int broadcastSignal(int root, void* data, int len) = 0;
 
     virtual int getRank() { return _rank; }
@@ -69,6 +71,9 @@ public:
     virtual int getLocalRank() { return _local_rank; }
     virtual int getLocalSize() { return _local_size; }
     virtual int getWorkerID() { return _worker_id; }
+
+    virtual std::vector<int> getMembers() { return _members; }
+    virtual int getRoot() { return _root; }
 
 protected:
 
@@ -78,6 +83,9 @@ protected:
     int _local_size;
     int _worker_id;
 
+    std::vector<int> _members;
+    int _root;
+
     void* _comm;
 };
 
@@ -86,17 +94,21 @@ class BytePSCommSocket : public BytePSComm {
 public:
 
     BytePSCommSocket() {}
-    BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix);
+    BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix, const std::vector<int> &members);
 
     ~BytePSCommSocket() {
-        _listen_thread->join();
+        if (_listen_thread->joinable()) {
+            _listen_thread->join();
+        }
         close(_recv_fd);
         close(_send_fd);
     }
 
     void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
+    int sendSignalToRoot(void* data, int len);
     int recvSignal(int* source, void* data, int max_len);
+    int recvSignalFromRoot(void* data, int max_len);
     int broadcastSignal(int root, void* data, int len);
 
     int getSendFd() { return _send_fd; }
