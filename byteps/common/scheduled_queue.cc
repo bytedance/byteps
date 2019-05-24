@@ -52,13 +52,13 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
     std::lock_guard<std::mutex> lock(_mutex);
     _sq.push_back(entry);
     // TODO: below can be optimized to O(n)
-    std::sort(_sq.begin(), _sq.end(),
-        [](std::shared_ptr<TensorTableEntry> a, std::shared_ptr<TensorTableEntry> b) {
-            if (a->priority == b->priority) {
-                return (a->key < b->key); // from the first partition to the last
-            }
-            return (a->priority > b->priority); // from higher priority to lower
-    });
+    // std::sort(_sq.begin(), _sq.end(),
+    //     [](std::shared_ptr<TensorTableEntry> a, std::shared_ptr<TensorTableEntry> b) {
+    //         if (a->priority == b->priority) {
+    //             return (a->key < b->key); // from the first partition to the last
+    //         }
+    //         return (a->priority > b->priority); // from higher priority to lower
+    // });
     BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " addTask: " << entry->tensor_name
                    << " key: " << entry->key << " rank: " << BytePSGlobal::GetLocalRank();
     return;
