@@ -84,6 +84,8 @@ private:
     // for multi-ring
     std::vector<std::vector<int>> _rings;
 
+    std::shared_ptr<BytePSComm> _signal_comm;
+
 };
 
 

@@ -43,6 +43,8 @@ void NcclGroupEntry::DestroyEvents() {
 }
 
 NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
+    _signal_comm = comm;
+
     InitGlobalEnv();
     ConstructRings();
 
@@ -92,30 +94,35 @@ NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
 }
 
 ncclComm_t NcclManager::GetComm(int key, QueueType op) {
-    auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
-    return _nccl_comm[key % _nccl_pcie_size + offset];
+    // return (op == REDUCE) ? _nccl_comm[0] : _nccl_comm[_nccl_pcie_size];
+    return _nccl_comm[key % _nccl_pcie_size];
+    // auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
+    // return _nccl_comm[key % _nccl_pcie_size + offset];
 }
 
 cudaStream_t NcclManager::GetStream(int key, QueueType op) {
-    auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
-    return _nccl_stream[key % _nccl_pcie_size + offset];
+    // return (op == REDUCE) ? _nccl_stream[0] : _nccl_stream[_nccl_pcie_size];
+    return _nccl_stream[key % _nccl_pcie_size];
+    // auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
+    // return _nccl_stream[key % _nccl_pcie_size + offset];
 }
 
 int NcclManager::GetRoot(int key, QueueType op) {
-    int comm_index = key % _nccl_pcie_size;
-    int pcie_index = key % (_nccl_pcie_size * _nccl_pcie_num) / _nccl_pcie_size;
-    int root = -1;
-    if (op == REDUCE) {
-        int root_index = (_nccl_pcie_num - pcie_index) * _nccl_pcie_size - 1;
-        root = _rings[comm_index][root_index];
-    }
-    else {
-        BPS_CHECK_EQ(op, BROADCAST) << "Unknown OP for NcclManager.";
-        int root_index = pcie_index * _nccl_pcie_size;
-        root = _rings[comm_index + _nccl_pcie_size][root_index];
-    }
-    BPS_CHECK_GT(root, -1);
-    return root;
+    return _signal_comm->getRoot();
+    // int comm_index = key % _nccl_pcie_size;
+    // int pcie_index = key % (_nccl_pcie_size * _nccl_pcie_num) / _nccl_pcie_size;
+    // int root = -1;
+    // if (op == REDUCE) {
+    //     int root_index = (_nccl_pcie_num - pcie_index) * _nccl_pcie_size - 1;
+    //     root = _rings[comm_index][root_index];
+    // }
+    // else {
+    //     BPS_CHECK_EQ(op, BROADCAST) << "Unknown OP for NcclManager.";
+    //     int root_index = pcie_index * _nccl_pcie_size;
+    //     root = _rings[comm_index + _nccl_pcie_size][root_index];
+    // }
+    // BPS_CHECK_GT(root, -1);
+    // return root;
 }
 
 // 4 reduce rings:
@@ -149,7 +156,8 @@ void NcclManager::ConstructRings() {
         std::string log("");
         for (size_t j = 0; j < _nccl_pcie_num; j++) {
             for (size_t k = 0; k < _nccl_pcie_size; k++) {
-                int rank = (k + i) % _nccl_pcie_size + j * _nccl_pcie_size;
+                //int rank = (k + i) % _nccl_pcie_size + j * _nccl_pcie_size;
+                int rank = k + j * _nccl_pcie_size;
                 _rings[i].push_back(rank);
                 log = log + std::to_string(rank) + ' ';
             }
