@@ -295,6 +295,20 @@ bool RunSyncNcclOnce() {
     return true;
 }
 
+bool RunPcieReduceLoopOnce() {
+    QueueType this_op = PCIE_REDUCE;
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto task = q->getTask();
+    if (task) {
+        FinishOrProceed(task);
+        q->reportFinish(task->len);
+    }
+    else {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
+    return true;
+}
+
 bool RunCopyDevice2HostLoopOnce() {
     QueueType this_op = COPYD2H;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -561,6 +575,11 @@ void CoordinateBroadcastLoop() {
 
 void CoordinatePushLoop() {
     while (RunCoordinateLoopOnce(COORDINATE_PUSH) && !BytePSGlobal::ShouldShutdown()) {}
+}
+
+void PcieReduceLoop() {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+    while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {}
 }
 
 void RootNcclLoop() {
