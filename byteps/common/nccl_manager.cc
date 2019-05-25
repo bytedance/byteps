@@ -43,45 +43,79 @@ void NcclGroupEntry::DestroyEvents() {
 }
 
 NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
-    _signal_comm = comm;
-
+    _global_comm = comm;
     InitGlobalEnv();
     ConstructRings();
+    return;
+}
 
+ncclComm_t NcclManager::GetComm(int key, QueueType op) {
+    return _nccl_comm[key % _nccl_num_rings];
+}
+
+cudaStream_t NcclManager::GetStream(int key, QueueType op) {
+    return _nccl_stream[key % _nccl_num_rings];
+}
+
+int NcclManager::GetRoot(int key, QueueType op) {
+    return _nccl_pcie_size - 1;
+}
+
+int NcclManager::GetRank(int key, QueueType op) {
+    return BytePSGlobal::GetLocalRank() % _nccl_pcie_size;
+}
+
+bool NcclManager::IsSignalRoot() {
+    return _signal_comm->getRoot() == BytePSGlobal::GetLocalRank();
+}
+
+void NcclManager::ConstructRings() {
+    std::string log_string("Constructing NCCL communicators.");
     auto local_size = BytePSGlobal::GetLocalSize();
     auto local_rank = BytePSGlobal::GetLocalRank();
+    std::vector<int> peers;
+    int first_peer = local_rank / _nccl_pcie_size * _nccl_pcie_size;
+    for (int i = first_peer; i < first_peer + _nccl_pcie_size; i++) {
+        peers.push_back(i);
+        log_string = log_string + " " + std::to_string(i);
+    }
+    _signal_comm = std::make_shared<BytePSCommSocket>(_global_comm, std::string("nccl"), peers);
+    BPS_LOG(DEBUG) << log_string;
+
     // init and sycn NCCL-reduce-id using out-of-band socket
-    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId) * _nccl_pcie_size * 2);
-    _nccl_comm = (ncclComm_t*) malloc(sizeof(ncclComm_t) * _nccl_pcie_size * 2);
-    _nccl_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * _nccl_pcie_size * 2);
+    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId) * _nccl_num_rings);
+    _nccl_comm = (ncclComm_t*) malloc(sizeof(ncclComm_t) * _nccl_num_rings);
+    _nccl_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) *_nccl_num_rings);
+    _nccl_size = _nccl_pcie_size;
     int greatest_priority;
     CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
 
-    for (size_t i = 0; i < _nccl_pcie_size * 2; i++) {
+    for (size_t i = 0; i < _nccl_num_rings; i++) {
         auto nccl_id = _nccl_id + i;
         auto nccl_comm = _nccl_comm + i;
         auto nccl_stream = _nccl_stream + i;
 
         // synchronize NCCL IDs
-        if (BytePSGlobal::IsRootDevice()) { // only root create nccl id
+        if (local_rank == _signal_comm->getRoot()) { // only root create nccl id
             NCCLCHECK(ncclGetUniqueId(nccl_id));
             // the log is just for debug, the actual length of nccl id is 128
             BPS_LOG(DEBUG) << "root nccl_id is " << (*(long long int*)nccl_id);
-            comm->broadcastSignal(local_rank, nccl_id, sizeof(ncclUniqueId));
+            // TODO: change to BytePSCommSignal format
+            _signal_comm->broadcastSignal(nccl_id, sizeof(ncclUniqueId));
 
         }
         else {
             int src;
-            int rc = comm->recvSignal(&src, nccl_id, sizeof(ncclUniqueId));
+            // TODO: change to recvSignalFromRoot after using BytePSCommSignal format
+            int rc = _signal_comm->recvSignal(&src, nccl_id, sizeof(ncclUniqueId));
             BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
             BPS_LOG(DEBUG) << "recv nccl_id is " << (*(long long int*)nccl_id)
                         << ", local_rank=" << local_rank;
         }
 
         // initialize NCCL rank
-        auto it = std::find(_rings[i].begin(), _rings[i].end(), local_rank);
-        auto rank = std::distance(_rings[i].begin(), it);
-        NCCLCHECK(ncclCommInitRank(nccl_comm, local_size, *nccl_id, rank));
+        auto rank = local_rank % _nccl_pcie_size;
+        NCCLCHECK(ncclCommInitRank(nccl_comm, _nccl_pcie_size, *nccl_id, rank));
 
         // initialize CUDA streams for NCCL
         CUDA_CALL(cudaStreamCreateWithPriority(nccl_stream, 
@@ -90,41 +124,54 @@ NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
         CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
     }
 
+}
+
+void NcclManager::InitGlobalEnv() { // init all global env/param here
+    _nccl_group_size = (getenv("BYTEPS_NCCL_GROUP_SIZE") ?
+                        atoi(getenv("BYTEPS_NCCL_GROUP_SIZE")) : 4);
+    BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
+    
+    _nccl_pcie_size = (getenv("BYTEPS_PCIE_SWITCH_SIZE") ?
+                       atoi(getenv("BYTEPS_PCIE_SWITCH_SIZE")) : 4);
+    auto local_size = BytePSGlobal::GetLocalSize();
+    _nccl_pcie_num = local_size / _nccl_pcie_size;
+    if (!_nccl_pcie_num) {
+        _nccl_pcie_size = local_size;
+        _nccl_pcie_num = 1;
+    }
+    else {
+        BPS_CHECK_EQ(local_size % _nccl_pcie_size, 0)
+                     << "BytePS does not support unbalanced PCIe switches.";
+    }
+
+    BPS_LOG(DEBUG) << "nccl_pcie_size" << " set to " << _nccl_pcie_size;
+    BPS_LOG(DEBUG) << "nccl_pcie_num" << " set to " << _nccl_pcie_num;
+
+    _nccl_num_rings = (getenv("BYTEPS_NCCL_NUM_RINGS") ?
+                        atoi(getenv("BYTEPS_NCCL_NUM_RINGS")) : 4);
+    BPS_LOG(DEBUG) << "nccl_num_rings" << " set to " << _nccl_num_rings;
+
     return;
 }
 
-ncclComm_t NcclManager::GetComm(int key, QueueType op) {
-    // return (op == REDUCE) ? _nccl_comm[0] : _nccl_comm[_nccl_pcie_size];
-    return _nccl_comm[key % _nccl_pcie_size];
-    // auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
-    // return _nccl_comm[key % _nccl_pcie_size + offset];
+void NcclManager::EnqueueGroup(std::shared_ptr<NcclGroupEntry> e) {
+    std::lock_guard<std::mutex> lock(_nccl_mutex);
+    _nccl_pipeline.push(e);
+    return;
 }
 
-cudaStream_t NcclManager::GetStream(int key, QueueType op) {
-    // return (op == REDUCE) ? _nccl_stream[0] : _nccl_stream[_nccl_pcie_size];
-    return _nccl_stream[key % _nccl_pcie_size];
-    // auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
-    // return _nccl_stream[key % _nccl_pcie_size + offset];
+std::shared_ptr<NcclGroupEntry> NcclManager::DequeueGroup() {
+    std::lock_guard<std::mutex> lock(_nccl_mutex);
+    if (!_nccl_pipeline.size()) {
+        return nullptr;
+    }
+    auto r = _nccl_pipeline.front();
+    _nccl_pipeline.pop();
+    return r;
 }
 
-int NcclManager::GetRoot(int key, QueueType op) {
-    return _signal_comm->getRoot();
-    // int comm_index = key % _nccl_pcie_size;
-    // int pcie_index = key % (_nccl_pcie_size * _nccl_pcie_num) / _nccl_pcie_size;
-    // int root = -1;
-    // if (op == REDUCE) {
-    //     int root_index = (_nccl_pcie_num - pcie_index) * _nccl_pcie_size - 1;
-    //     root = _rings[comm_index][root_index];
-    // }
-    // else {
-    //     BPS_CHECK_EQ(op, BROADCAST) << "Unknown OP for NcclManager.";
-    //     int root_index = pcie_index * _nccl_pcie_size;
-    //     root = _rings[comm_index + _nccl_pcie_size][root_index];
-    // }
-    // BPS_CHECK_GT(root, -1);
-    // return root;
-}
 
+// Example:
 // 4 reduce rings:
 // 0 1 2 3 | 4 5 6 7
 // 1 2 3 0 | 5 6 7 4
@@ -149,15 +196,15 @@ int NcclManager::GetRoot(int key, QueueType op) {
 // 3rd ring, cpubuff->5->4->7->6->cpubuff->1->0->3->2, cpubuff->1->0->3->2->cpubuff->5->4->7->6
 // 4th ring, cpubuff->6->5->4->7->cpubuff->2->1->0->3, cpubuff->2->1->0->3->cpubuff->6->5->4->7
 //
-void NcclManager::ConstructRings() {
+void NcclManagerExpr::ConstructRings() {
+    _signal_comm = _global_comm;
     BPS_LOG(DEBUG) << "Constructing NCCL Reduce communicators.";
     for (size_t i = 0; i < _nccl_pcie_size; i++) {
         _rings.push_back(std::vector<int>());
         std::string log("");
         for (size_t j = 0; j < _nccl_pcie_num; j++) {
             for (size_t k = 0; k < _nccl_pcie_size; k++) {
-                //int rank = (k + i) % _nccl_pcie_size + j * _nccl_pcie_size;
-                int rank = k + j * _nccl_pcie_size;
+                int rank = (k + i) % _nccl_pcie_size + j * _nccl_pcie_size;
                 _rings[i].push_back(rank);
                 log = log + std::to_string(rank) + ' ';
             }
@@ -175,47 +222,83 @@ void NcclManager::ConstructRings() {
         }
         BPS_LOG(DEBUG) << log;
     }
+    auto local_size = BytePSGlobal::GetLocalSize();
+    auto local_rank = BytePSGlobal::GetLocalRank();
+    // init and sycn NCCL-reduce-id using out-of-band socket
+    _nccl_id = (ncclUniqueId*) malloc(sizeof(ncclUniqueId) * _nccl_pcie_size * 2);
+    _nccl_comm = (ncclComm_t*) malloc(sizeof(ncclComm_t) * _nccl_pcie_size * 2);
+    _nccl_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * _nccl_pcie_size * 2);
+    int greatest_priority;
+    CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
+
+    for (size_t i = 0; i < _nccl_pcie_size * 2; i++) {
+        auto nccl_id = _nccl_id + i;
+        auto nccl_comm = _nccl_comm + i;
+        auto nccl_stream = _nccl_stream + i;
+
+        // synchronize NCCL IDs
+        if (BytePSGlobal::IsRootDevice()) { // only root create nccl id
+            NCCLCHECK(ncclGetUniqueId(nccl_id));
+            // the log is just for debug, the actual length of nccl id is 128
+            BPS_LOG(DEBUG) << "root nccl_id is " << (*(long long int*)nccl_id);
+            _signal_comm->broadcastSignal(nccl_id, sizeof(ncclUniqueId));
+
+        }
+        else {
+            int src;
+            int rc = _signal_comm->recvSignal(&src, nccl_id, sizeof(ncclUniqueId));
+            BPS_CHECK_EQ(rc, sizeof(ncclUniqueId)) << rc << ", " << sizeof(ncclUniqueId);
+            BPS_LOG(DEBUG) << "recv nccl_id is " << (*(long long int*)nccl_id)
+                        << ", local_rank=" << local_rank;
+        }
+
+        // initialize NCCL rank
+        auto it = std::find(_rings[i].begin(), _rings[i].end(), local_rank);
+        auto rank = std::distance(_rings[i].begin(), it);
+        NCCLCHECK(ncclCommInitRank(nccl_comm, local_size, *nccl_id, rank));
+
+        // initialize CUDA streams for NCCL
+        CUDA_CALL(cudaStreamCreateWithPriority(nccl_stream, 
+                                               cudaStreamNonBlocking,
+                                               greatest_priority));
+        CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
+    }
     return;
 }
 
-void NcclManager::InitGlobalEnv() { // init all global env/param here
-    _nccl_group_size = (getenv("BYTEPS_NCCL_GROUP_SIZE") ?
-                        atoi(getenv("BYTEPS_NCCL_GROUP_SIZE")) : 4);
-    BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
-    
-    _nccl_pcie_size = (getenv("BYTEPS_PCIE_SWITCH_SIZE") ?
-                       atoi(getenv("BYTEPS_PCIE_SWITCH_SIZE")) : 4);
-    auto local_size = BytePSGlobal::GetLocalSize();
-    _nccl_pcie_num = local_size / _nccl_pcie_size;
-    if (!_nccl_pcie_num) {
-        _nccl_pcie_size = local_size;
-        _nccl_pcie_num = 1;
+ncclComm_t NcclManagerExpr::GetComm(int key, QueueType op) {
+    auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
+    return _nccl_comm[key % _nccl_pcie_size + offset];
+}
+
+cudaStream_t NcclManagerExpr::GetStream(int key, QueueType op) {
+    auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
+    return _nccl_stream[key % _nccl_pcie_size + offset];
+}
+
+int NcclManagerExpr::GetRoot(int key, QueueType op) {
+    int comm_index = key % _nccl_pcie_size;
+    int pcie_index = key % (_nccl_pcie_size * _nccl_pcie_num) / _nccl_pcie_size;
+    int root = -1;
+    if (op == REDUCE) {
+        int root_index = (_nccl_pcie_num - pcie_index) * _nccl_pcie_size - 1;
+        root = _rings[comm_index][root_index];
     }
     else {
-        BPS_CHECK_EQ(local_size % _nccl_pcie_size, 0)
-                     << "BytePS does not support unbalanced PCIe switches.";
+        BPS_CHECK_EQ(op, BROADCAST) << "Unknown OP for NcclManager.";
+        int root_index = pcie_index * _nccl_pcie_size;
+        root = _rings[comm_index + _nccl_pcie_size][root_index];
     }
-
-    BPS_LOG(DEBUG) << "nccl_pcie_size" << " set to " << _nccl_pcie_size;
-    BPS_LOG(DEBUG) << "nccl_pcie_num" << " set to " << _nccl_pcie_num;
-    
-    return;
+    BPS_CHECK_GT(root, -1);
+    return root;
 }
 
-void NcclManager::EnqueueGroup(std::shared_ptr<NcclGroupEntry> e) {
-    std::lock_guard<std::mutex> lock(_nccl_mutex);
-    _nccl_pipeline.push(e);
-    return;
-}
-
-std::shared_ptr<NcclGroupEntry> NcclManager::DequeueGroup() {
-    std::lock_guard<std::mutex> lock(_nccl_mutex);
-    if (!_nccl_pipeline.size()) {
-        return nullptr;
-    }
-    auto r = _nccl_pipeline.front();
-    _nccl_pipeline.pop();
-    return r;
+int NcclManagerExpr::GetRank(int key, QueueType op) {
+    auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
+    auto i = key % _nccl_pcie_size + offset;
+    auto it = std::find(_rings[i].begin(), _rings[i].end(), BytePSGlobal::GetLocalRank());
+    auto rank = std::distance(_rings[i].begin(), it);
+    return BytePSGlobal::GetLocalRank() % _nccl_pcie_size;
 }
 
 } // namespace common

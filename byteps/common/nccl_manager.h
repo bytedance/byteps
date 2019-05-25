@@ -30,7 +30,6 @@ namespace common {
 class NcclGroupEntry {
 
 public:
-
     void RecordEvents();
     void SynchronizeEvents();
     void DestroyEvents();
@@ -39,7 +38,6 @@ public:
     std::vector<BytePSScheduledQueue*> queues;
 
 private:
-
     std::vector<cudaEvent_t> _events;
 };
 
@@ -47,7 +45,6 @@ private:
 class NcclManager {
 
 public:
-
     NcclManager(std::shared_ptr<BytePSComm> comm);
     ~NcclManager() {
         if (_nccl_stream) {
@@ -59,14 +56,19 @@ public:
     void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
     std::shared_ptr<NcclGroupEntry> DequeueGroup();
 
-    cudaStream_t GetStream(int key, QueueType op);
-    ncclComm_t GetComm(int key, QueueType op);
-    int GetRoot(int key, QueueType op);
+    virtual cudaStream_t GetStream(int key, QueueType op);
+    virtual ncclComm_t GetComm(int key, QueueType op);
+    virtual int GetRoot(int key, QueueType op);
+    virtual int GetRank(int key, QueueType op);
 
-private:
+    int GetSize() { return _nccl_size; }
+    std::shared_ptr<BytePSComm> GetSignalComm() { return _signal_comm; }
+    bool IsSignalRoot();
+    
 
+protected:
     void InitGlobalEnv();
-    void ConstructRings();
+    virtual void ConstructRings();
 
     cudaStream_t* _nccl_stream;
     ncclUniqueId* _nccl_id;
@@ -76,15 +78,32 @@ private:
     size_t _nccl_group_size;
     size_t _nccl_pcie_size;
     size_t _nccl_pcie_num;
+    size_t _nccl_num_rings;
+
+    int _nccl_size;
 
     // for pipelining nccl
     std::mutex _nccl_mutex;
     std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
 
+    std::shared_ptr<BytePSComm> _signal_comm;
+    std::shared_ptr<BytePSComm> _global_comm;
+
+};
+
+class NcclManagerExpr : public NcclManager {
+
+public:
+    cudaStream_t GetStream(int key, QueueType op);
+    ncclComm_t GetComm(int key, QueueType op);
+    int GetRoot(int key, QueueType op);
+    int GetRank(int key, QueueType op);
+
+protected:
+    void ConstructRings();
+
     // for multi-ring
     std::vector<std::vector<int>> _rings;
-
-    std::shared_ptr<BytePSComm> _signal_comm;
 
 };
 

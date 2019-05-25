@@ -175,7 +175,7 @@ void BytePSGlobal::Start(const std::vector<LoopFunction> &func) {
     for (size_t i = 0; i < func.size(); i++) {
         _threads.push_back(new std::thread(func[i]));
     }
-    BPS_LOG(DEBUG) << "Started" << func.size() << " background threads. rank=" << _local_rank;
+    BPS_LOG(DEBUG) << "Started " << func.size() << " background threads. rank=" << _local_rank;
 }
 
 
