@@ -94,7 +94,8 @@ void BytePSGlobal::Init() {
     }
     BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
                    << ", aligned to " << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
-    _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size)); // alignment for Reduce-Scatter/All-Gather
+    // alignment for Reduce-Scatter/All-Gather
+    _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
 
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
     BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: env DMLC_NUM_SERVER not set";
@@ -121,36 +122,48 @@ void BytePSGlobal::Init() {
         }
     }
 
-    // set to associated GPU
+    // Set to associated GPU
     CUDA_CALL(cudaSetDevice(_local_rank));
+
+    // Init NCCL
     _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
     _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
 
+    // Init CPU Reducer
     if (_is_cross_pcie_switch) {
         _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
     }
 
+    // ReadyTable for Push & Pull
     if (_is_root_device) {
-        if (_is_cross_pcie_switch) {
-            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1);
-        }
-        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1);
-        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1);
         _push_table = new ReadyTable(_local_size-1);
     }
-    else { // for non-root to receive signal from root
+    else {
         _copy_table = new ReadyTable(1);
     }
 
+    // ReadyTable for cross-PCIe-switch reduce
+    if (_is_cross_pcie_switch) {
+        if (_cpu_reducer->isRoot()) {
+            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1);
+        }
+    }
+
+    // ReadyTable for per-PCIe-switch NCCL calls
+    if (_nccl_manager->IsSignalRoot()) {
+        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1);
+        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1);
+    }
+
+    // Create CUDA streams for GPU-CPU copies
     _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     _copy_device2host_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
-
     CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
     CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
 
+    // Create queues
     for (int i = 0; i < QueueNum; i++) {
         BPS_LOG(DEBUG) << "Create schedule queue " << i;
         auto type = static_cast<QueueType>(i);
