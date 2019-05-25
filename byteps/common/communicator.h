@@ -59,12 +59,13 @@ class BytePSComm {
 public:
     BytePSComm() { _comm = nullptr; }
 
-    virtual void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) = 0;
+    virtual void init(int* rank, int* size, int* local_rank, int* local_size,
+                      int* worker_id, BytePSRole* my_role) = 0;
     virtual int sendSignal(int destination, void* data, int len) = 0;
     virtual int sendSignalToRoot(void* data, int len) = 0;
     virtual int recvSignal(int* source, void* data, int max_len) = 0;
     virtual int recvSignalFromRoot(void* data, int max_len) = 0;
-    virtual int broadcastSignal(int root, void* data, int len) = 0;
+    virtual int broadcastSignal(void* data, int len) = 0;
 
     virtual int getRank() { return _rank; }
     virtual int getSize() { return _size; }
@@ -94,7 +95,9 @@ class BytePSCommSocket : public BytePSComm {
 public:
 
     BytePSCommSocket() {}
-    BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix, const std::vector<int> &members);
+    BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
+                     const std::string &path_suffix,
+                     const std::vector<int> &members);
 
     ~BytePSCommSocket() {
         if (_listen_thread->joinable()) {
@@ -104,12 +107,13 @@ public:
         close(_send_fd);
     }
 
-    void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role);
+    void init(int* rank, int* size, int* local_rank, int* local_size,
+              int* worker_id, BytePSRole* my_role);
     int sendSignal(int destination, void* data, int len);
     int sendSignalToRoot(void* data, int len);
     int recvSignal(int* source, void* data, int max_len);
     int recvSignalFromRoot(void* data, int max_len);
-    int broadcastSignal(int root, void* data, int len);
+    int broadcastSignal(void* data, int len);
 
     int getSendFd() { return _send_fd; }
     int getRecvFd() { return _recv_fd; }
@@ -145,10 +149,11 @@ public:
         }
     }
 
-    void init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role);
-    int sendSignal(int destination, void* data, int len, BytePSCommFlag flag);
-    int recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag);
-    int broadcastSignal(int root, void* data, int len, BytePSCommFlag flag);
+    void init(int* rank, int* size, int* local_rank, int* local_size,
+              int* worker_id, BytePSRole* my_role);
+    int sendSignal(int destination, void* data, int len);
+    int recvSignal(int* source, void* data, int max_len);
+    int broadcastSignal(void* data, int len);
 
 };
 

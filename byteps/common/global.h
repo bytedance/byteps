@@ -64,7 +64,7 @@ public:
     static bool IsRootDevice();
     static bool IsDistributed();
     static BytePSRole GetMyRole() { return _my_role; }
-    static std::shared_ptr<BytePSComm> GetComm() { return _basic_comm; }
+    static std::shared_ptr<BytePSComm> GetGlobalComm() { return _basic_comm; }
     static std::shared_ptr<BytePSCommSocket> GetShmComm() { return _shm_comm; }
     static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 

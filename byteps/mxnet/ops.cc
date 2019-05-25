@@ -64,6 +64,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
             queue_list.push_back(common::REDUCE);
             if (common::IsDistributedJob()) {
                 queue_list.push_back(common::COPYD2H);
+                queue_list.push_back(common::PCIE_REDUCE);
                 queue_list.push_back(common::PUSH);
             }
         }
@@ -72,6 +73,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
             queue_list.push_back(common::REDUCE);
             if (common::IsDistributedJob()) {
                 queue_list.push_back(common::COPYD2H);
+                queue_list.push_back(common::PCIE_REDUCE);
                 queue_list.push_back(common::COORDINATE_PUSH);
             }
         }

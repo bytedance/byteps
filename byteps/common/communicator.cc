@@ -22,9 +22,14 @@ namespace byteps {
 namespace common {
 
 
-// Copy constructor that provides the option to reconfigure members
-BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::string &path_suffix, const std::vector<int> &members) {
+// Copy constructor that provides the option to reconfigure members.
+// The ranks in members always use local_rank, regardless that the members 
+// may be a subset of all local ranks.
+BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
+                                   const std::string &path_suffix,
+                                   const std::vector<int> &members) {
     std::shared_ptr<BytePSCommSocket> sock_comm = std::static_pointer_cast<BytePSCommSocket>(comm);
+    // TODO: use private members directly
     _rank = sock_comm->getRank();
     _size = sock_comm->getSize();
     _local_rank = sock_comm->getLocalRank();
@@ -49,12 +54,13 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm, const std::
         // if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
 
-    BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
+    BPS_LOG(DEBUG) << "This is " << path_suffix << (is_root ? " ROOT" : " WORKER")
                    << " device, rank=" << _local_rank
                    << ", all sockets create successfully";
 }
 
-void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size, int* worker_id, BytePSRole* my_role) {
+void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_size,
+                            int* worker_id, BytePSRole* my_role) {
 
     BPS_LOG(DEBUG) << "Using Communicator=Socket";
 
@@ -185,6 +191,7 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
             (struct sockaddr *)&destaddr, sizeof(struct sockaddr_un));
         if (ret < 0) {
             BPS_LOG(DEBUG) << "Socket send error " <<  std::strerror(errno) << ", rank=" << _local_rank;
+            std::this_thread::sleep_for(std::chrono::microseconds(1000000));
         }
     }
     
@@ -218,7 +225,7 @@ int BytePSCommSocket::recvSignalFromRoot(void* data, int max_len) {
     return rc;
 }
 
-int BytePSCommSocket::broadcastSignal(int root, void* data, int len) {
+int BytePSCommSocket::broadcastSignal(void* data, int len) {
     for (int i : _members) {
         if (i == _local_rank) continue;
         sendSignal(i, (void *)data, len);
@@ -260,15 +267,15 @@ void BytePSCommMPI::init(int* rank, int* size, int* local_rank, int* local_size,
     return;
 }
 
-int BytePSCommMPI::sendSignal(int destination, void* data, int len, BytePSCommFlag flag) {
+int BytePSCommMPI::sendSignal(int destination, void* data, int len) {
     return 0;
 }
 
-int BytePSCommMPI::recvSignal(int* source, void* data, int max_len, BytePSCommFlag flag) {
+int BytePSCommMPI::recvSignal(int* source, void* data, int max_len) {
     return 0;
 }
 
-int BytePSCommMPI::broadcastSignal(int root, void* data, int len, BytePSCommFlag flag) {
+int BytePSCommMPI::broadcastSignal(void* data, int len) {
     return 0;
 }
 
