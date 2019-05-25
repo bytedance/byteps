@@ -31,6 +31,7 @@
 #include "ready_table.h"
 #include "shared_memory.h"
 #include "nccl_manager.h"
+#include "cpu_reducer.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -61,11 +62,12 @@ public:
     static int GetLocalSize() { return _local_size; }
     static int GetWorkerID() { return _worker_id; }
     static int GetNumWorker() { return _num_worker; }
-    static bool IsRootDevice();
-    static bool IsDistributed();
+    static bool IsRootDevice() { return _is_root_device; }
+    static bool IsDistributed() { return _is_distributed_job; }
+    static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
     static BytePSRole GetMyRole() { return _my_role; }
-    static std::shared_ptr<BytePSComm> GetGlobalComm() { return _basic_comm; }
-    static std::shared_ptr<BytePSCommSocket> GetShmComm() { return _shm_comm; }
+    static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
+    static std::shared_ptr<BytePSComm> GetPcieReduceComm() { return _basic_comm; }
     static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
@@ -94,6 +96,7 @@ public:
     static ReadyTable* GetCopyTable() { return _copy_table; }
 
     static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
+    static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
 
     static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 
@@ -111,9 +114,10 @@ private:
     static int _num_worker;
     static bool _is_root_device;
     static bool _is_distributed_job;
+    static bool _is_cross_pcie_switch;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _basic_comm;
-    static std::shared_ptr<BytePSCommSocket> _shm_comm;
+    static std::shared_ptr<BytePSComm> _pcie_reduce_comm;
     static std::shared_ptr<BytePSSharedMemory> _shm_obj;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
@@ -138,7 +142,7 @@ private:
     static ReadyTable* _copy_table;
 
     static std::shared_ptr<NcclManager> _nccl_manager;
-
+    static std::shared_ptr<CpuReducer> _cpu_reducer;
 
 };
 

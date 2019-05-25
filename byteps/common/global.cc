@@ -34,10 +34,11 @@ int BytePSGlobal::_num_worker = 1;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
+bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
-std::shared_ptr<BytePSCommSocket> BytePSGlobal::_shm_comm;
+std::shared_ptr<BytePSComm> BytePSGlobal::_pcie_reduce_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -57,18 +58,11 @@ unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
+std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
-}
-
-bool BytePSGlobal::IsRootDevice() {
-    return _is_root_device;
-}
-
-bool BytePSGlobal::IsDistributed() {
-    return _is_distributed_job;
 }
 
 void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
@@ -93,8 +87,6 @@ void BytePSGlobal::Init() {
 #endif // BYTEPS_USE_MPI
 
     _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
-
-    _shm_comm = std::make_shared<BytePSCommSocket>(_basic_comm, std::string("shm"), std::vector<int>());
 
     _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
     if (getenv("BYTEPS_PARTITION_BYTES")) {
@@ -159,6 +151,11 @@ void BytePSGlobal::Init() {
     }
 
     _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
+    _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
+
+    if (_is_cross_pcie_switch) {
+        _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
+    }
 
     _initialized = true;
     BPS_LOG(DEBUG) << "Inited rank=" << _rank
