@@ -58,18 +58,18 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { COORDINATE_REDUCE, REDUCE, PCIE_REDUCE,
-                 COPYD2H, COORDINATE_PUSH, PUSH, PULL,
+enum QueueType { COORDINATE_REDUCE, REDUCE, COPYD2H,
+                 PCIE_REDUCE, COORDINATE_PUSH, PUSH, PULL,
                  COPYH2D, COORDINATE_BROADCAST, BROADCAST,
-                 INVALID_QUEUE };
+                 QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST };
 
-const int QueueNum = (int)INVALID_QUEUE;
+const int QueueNum = (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
 
 const std::vector<std::string> LogStrings = {
   "COORDINATE_REDUCE",
   "REDUCE",
-  "PCIE_REDUCE",
   "COPYD2H",
+  "PCIE_REDUCE",
   "COORDINATE_PUSH",
   "PUSH",
   "PULL",

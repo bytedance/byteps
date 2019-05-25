@@ -158,6 +158,9 @@ void BytePSCommSocket::startListenThread() { // only root starts this in backgro
             case REDUCE_READY:
                 BytePSGlobal::GetReduceTable()->AddReadyCount(message.key);
                 break;
+            case PCIE_REDUCE_READY:
+                BytePSGlobal::GetPcieReduceTable()->AddReadyCount(message.key);
+                break;
             case BCAST_READY:
                 BytePSGlobal::GetBroadcastTable()->AddReadyCount(message.key);
                 break;

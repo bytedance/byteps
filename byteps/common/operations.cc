@@ -315,6 +315,7 @@ bool RunCopyDevice2HostLoopOnce() {
             auto unit_len = tensor->size() / tensor->shape().num_elements();
             void* cpubuff;
             if (BytePSGlobal::IsCrossPcieSwitch()) {
+                BPS_CHECK(task->pcie_cpubuff.size());
                 cpubuff = task->pcie_cpubuff[BytePSGlobal::GetPcieSwitchIndex()] + offset;
             }
             else {
@@ -653,39 +654,47 @@ extern "C" {
 
 void byteps_init() {
     BytePSGlobal::Init();
+
+    // The order of func does not matter
     std::vector<LoopFunction> func;
 
-    if (BytePSGlobal::IsRootDevice()) {
-        func.push_back(RootNcclLoop);
-        func.push_back(SyncNcclLoop);
-        if (BytePSGlobal::IsCrossPcieSwitch()) {
-            func.push_back(PcieReduceLoop);
-        }
-        if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
-            func.push_back(CopyDevice2HostLoop);
-            func.push_back(RootCopyHost2DeviceLoop);
-        }
-        if (BytePSGlobal::IsDistributed()) {
+    // Push & Pull in distirbuted mode
+    if (BytePSGlobal::IsDistributed()) {
+        if (BytePSGlobal::IsRootDevice()) {
             func.push_back(PushLoop);
             func.push_back(PullLoop);
         }
-    }
-    else {
-        func.push_back(CoordinateReduceLoop);
-        func.push_back(NonRootNcclLoop);
-        func.push_back(SyncNcclLoop);
-        if (BytePSGlobal::IsCrossPcieSwitch()) {
-            func.push_back(PcieReduceLoop);
+        else {
+            func.push_back(CoordinatePushLoop);
         }
-        if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
-            func.push_back(CopyDevice2HostLoop);
+    }
+
+    // Cross-PCIe-switch reduce
+    if (BytePSGlobal::IsCrossPcieSwitch()) {
+        func.push_back(PcieReduceLoop);
+    }
+
+    // Copy between GPU and CPU
+    if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
+        func.push_back(CopyDevice2HostLoop);
+        if (BytePSGlobal::IsRootDevice()) {
+            func.push_back(RootCopyHost2DeviceLoop);
+        }
+        else {
             func.push_back(NonRootCopyHost2DeviceLoop);
             func.push_back(NonRootCopyListenLoop);
         }
-        if (BytePSGlobal::IsDistributed()) {
-            func.push_back(CoordinatePushLoop);
-        }
+    }
+
+    // Per-PCIe-switch NCCL calls
+    func.push_back(SyncNcclLoop);
+    if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        func.push_back(RootNcclLoop);
+    }
+    else {
+        func.push_back(CoordinateReduceLoop);
         func.push_back(CoordinateBroadcastLoop);
+        func.push_back(NonRootNcclLoop);
     }
     
     BytePSGlobal::Start(func);
@@ -740,6 +749,7 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
         e->version = entry->version;
         e->callback = entry->callback;
         e->cpubuff = entry->cpubuff;
+        e->pcie_cpubuff = entry->pcie_cpubuff;
         e->queue_list = entry->queue_list;
         e->tensor = entry->tensor;
         e->output = entry->output;
@@ -907,28 +917,32 @@ bool IsTensorInitialized(const std::string &name, size_t size) {
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
     auto queue_list = std::make_shared<std::vector<QueueType>>();
     if (device != CPU_DEVICE_ID) {
-        if (BytePSGlobal::IsRootDevice()) {
+
+        // Per-PCIe-switch NCCL reduce
+        if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
             queue_list->push_back(REDUCE);
-            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(COPYD2H);
-            }
-            if (BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(PCIE_REDUCE);
-            }
-            if (BytePSGlobal::IsDistributed()) {
-                queue_list->push_back(PUSH);
-            }
         }
         else {
             queue_list->push_back(COORDINATE_REDUCE);
             queue_list->push_back(REDUCE);
-            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(COPYD2H);
+        }
+
+        // Copy from GPU to CPU
+        if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+            queue_list->push_back(COPYD2H);
+        }
+
+        // Cross-PCIe-switch reduce
+        if (BytePSGlobal::IsCrossPcieSwitch()) {
+            queue_list->push_back(PCIE_REDUCE);
+        }
+
+        // Push in distirbuted mode
+        if (BytePSGlobal::IsDistributed()) {
+            if (BytePSGlobal::IsRootDevice()) {
+                queue_list->push_back(PUSH);
             }
-            if (BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(PCIE_REDUCE);
-            }
-            if (BytePSGlobal::IsDistributed()) {               
+            else {
                 queue_list->push_back(COORDINATE_PUSH);
             }
         }
@@ -939,19 +953,24 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
     auto queue_list = std::make_shared<std::vector<QueueType>>();
     if (device != CPU_DEVICE_ID) {
-        if (BytePSGlobal::IsRootDevice()) {
-            if (BytePSGlobal::IsDistributed()) {
+
+        // Pull in distirbuted mode
+        if (BytePSGlobal::IsDistributed()) {
+            if (BytePSGlobal::IsRootDevice()) {
                 queue_list->push_back(PULL);
             }
-            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(COPYH2D);
-            }
+        }
+
+        // Copy from CPU to GPU
+        if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+            queue_list->push_back(COPYH2D);
+        }
+
+        // Per-PCIe-switch NCCL broadcast
+        if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
             queue_list->push_back(BROADCAST);
         }
         else {
-            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-                queue_list->push_back(COPYH2D);
-            }
             queue_list->push_back(COORDINATE_BROADCAST);
             queue_list->push_back(BROADCAST);
         }

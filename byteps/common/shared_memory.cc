@@ -47,10 +47,8 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
 }
 
 std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size) {
-    int local_size = BytePSGlobal::GetLocalSize();
-    int pcie_size = BytePSGlobal::GetPcieSwitchSize();
     std::vector<void*> r;
-    for (int i = 0; i < local_size / pcie_size; i++) {
+    for (int i = 0; i < BytePSGlobal::GetPcieSwitchNum(); i++) {
         auto offset = BYTEPS_SHM_PER_PCIE_OFFSET * (i + 1);
         r.push_back(openSharedMemory(key + offset, size));
     }
