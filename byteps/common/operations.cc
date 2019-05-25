@@ -313,7 +313,14 @@ bool RunCopyDevice2HostLoopOnce() {
             auto offset = task->offset;
             auto p = tensor->data() + offset;
             auto unit_len = tensor->size() / tensor->shape().num_elements();
-            auto cpubuff = task->cpubuff + offset;
+            void* cpubuff;
+            if (BytePSGlobal::IsCrossPcieSwitch()) {
+                cpubuff = task->pcie_cpubuff[BytePSGlobal::GetPcieSwitchIndex()] + offset;
+            }
+            else {
+                cpubuff = task->cpubuff + offset;
+            }
+
             BPS_CHECK(cpubuff) << task->tensor_name
                                << ": CPU buffer not initialized, size=" << len;
 
@@ -343,40 +350,49 @@ bool RunCopyDevice2HostLoopOnce() {
 }
 
 bool RunPcieReduceLoopOnce() {
+    BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
     QueueType this_op = PCIE_REDUCE;
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
-        if (task->device != CPU_DEVICE_ID) { // GPU
-            auto tensor = task->tensor;
-            
+        auto reducer = BytePSGlobal::GetCpuReducer();
+        if (!reducer->isRoot()) {
+            // send signal to root
+            int rank = BytePSGlobal::GetLocalRank();
             int key  = task->key;
-            auto len = task->len;
-            auto offset = task->offset;
-            auto unit_len = tensor->size() / tensor->shape().num_elements();
-            auto p = task->cpubuff + offset;
+            BytePSCommSignal sig = PCIE_REDUCE_READY;
+            struct BytePSCommMsg msg = { rank, sig, key };
+            reducer->getComm()->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+        }
+        else {
+            if (task->device != CPU_DEVICE_ID) { // GPU
+                auto tensor = task->tensor;
+                
+                int key  = task->key;
+                auto len = task->len;
+                auto offset = task->offset;
+                auto unit_len = tensor->size() / tensor->shape().num_elements();
 
-            auto nccl = BytePSGlobal::GetNccl();
-            auto nccl_root = nccl->GetRoot(key, REDUCE);
-            auto nccl_size = nccl->GetSize();
-            auto nccl_rank = nccl->GetRank(key, REDUCE);
+                auto nccl = BytePSGlobal::GetNccl();
+                auto nccl_root = nccl->GetRoot(key, REDUCE);
+                auto nccl_size = nccl->GetSize();
+                auto nccl_rank = nccl->GetRank(key, REDUCE);
 
-            auto num_elem_per_gpu = len / nccl_size / unit_len;
-            auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
+                auto num_elem_per_gpu = len / nccl_size / unit_len;
+                auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
-            auto copy_len = num_elem_per_gpu * unit_len;
-            if (left_elem && nccl_root == nccl_rank) {
-                copy_len += left_elem * unit_len;
+                auto copy_len = num_elem_per_gpu * unit_len;
+                if (left_elem && nccl_root == nccl_rank) {
+                    copy_len += left_elem * unit_len;
+                }
+
+                auto total_offset = offset + nccl_rank * num_elem_per_gpu * unit_len;
+
+                reducer->sum(task->cpubuff + total_offset,
+                             task->pcie_cpubuff[0] + total_offset,
+                             task->pcie_cpubuff[1] + total_offset,
+                             copy_len, task->tensor->dtype());
             }
-
-            float* data = (float*)(p + nccl_rank * num_elem_per_gpu * unit_len);
-
-            auto reducer = BytePSGlobal::GetCpuReducer();  
-
-            if (!reducer->isRoot()) {
-                // send signal to root
-            }
-
         }
 
         FinishOrProceed(task);
@@ -642,24 +658,32 @@ void byteps_init() {
     if (BytePSGlobal::IsRootDevice()) {
         func.push_back(RootNcclLoop);
         func.push_back(SyncNcclLoop);
-        if (BytePSGlobal::IsDistributed()) {
+        if (BytePSGlobal::IsCrossPcieSwitch()) {
             func.push_back(PcieReduceLoop);
+        }
+        if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
             func.push_back(CopyDevice2HostLoop);
+            func.push_back(RootCopyHost2DeviceLoop);
+        }
+        if (BytePSGlobal::IsDistributed()) {
             func.push_back(PushLoop);
             func.push_back(PullLoop);
-            func.push_back(RootCopyHost2DeviceLoop);
         }
     }
     else {
         func.push_back(CoordinateReduceLoop);
         func.push_back(NonRootNcclLoop);
         func.push_back(SyncNcclLoop);
+        if (BytePSGlobal::IsCrossPcieSwitch()) {
+            func.push_back(PcieReduceLoop);
+        }
+        if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
+            func.push_back(CopyDevice2HostLoop);
+            func.push_back(NonRootCopyHost2DeviceLoop);
+            func.push_back(NonRootCopyListenLoop);
+        }
         if (BytePSGlobal::IsDistributed()) {
             func.push_back(CoordinatePushLoop);
-            func.push_back(PcieReduceLoop);
-            func.push_back(CopyDevice2HostLoop);
-            func.push_back(NonRootCopyListenLoop);
-            func.push_back(NonRootCopyHost2DeviceLoop);
         }
         func.push_back(CoordinateBroadcastLoop);
     }
@@ -754,6 +778,7 @@ Status EnqueueTensor(BPSContext &context,
     e->version = version;
     e->callback = callback;
     e->cpubuff = context.cpubuff;
+    e->pcie_cpubuff = context.pcie_cpubuff;
     e->queue_list = *queue_list;
     e->counter_ptr = std::make_shared<std::atomic_int>(0);
     e->total_partnum = context.key_list.size();
@@ -816,9 +841,13 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
     }
     else {
         // use the first key in key_list as the index
-        context.cpubuff = BytePSGlobal::GetSharedMemoryObj()->openSharedMemory(key_list[0], size);
+        auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+        context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
         CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size, cudaHostRegisterDefault));
         context.reuse_buff = false;
+        if (BytePSGlobal::IsCrossPcieSwitch()) {
+            context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
+        }
         BPS_LOG(TRACE) << name << ": open shared memory size " << size;
     }
 

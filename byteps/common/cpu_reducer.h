@@ -20,6 +20,8 @@
 #include "common.h"
 #include "communicator.h"
 
+#define BYTEPS_CPU_REDUCER_THREADS 8
+
 namespace byteps {
 namespace common {
 
@@ -28,7 +30,8 @@ class CpuReducer {
 public:
     CpuReducer(std::shared_ptr<BytePSComm> comm);
     int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
-    bool isRoot() { return _comm->getRoot() == BytePSGlobal::GetLocalRank(); }
+    bool isRoot();
+    std::shared_ptr<BytePSComm> getComm() { return _comm; }
 
 private:
     int _sum_float32(void* dst, void* src1, void* src2, size_t len);

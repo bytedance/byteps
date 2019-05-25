@@ -38,7 +38,6 @@ bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 1024000;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
-std::shared_ptr<BytePSComm> BytePSGlobal::_pcie_reduce_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
 
@@ -49,6 +48,7 @@ std::vector<std::thread*> BytePSGlobal::_threads;
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
+ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
 
@@ -123,13 +123,20 @@ void BytePSGlobal::Init() {
 
     // set to associated GPU
     CUDA_CALL(cudaSetDevice(_local_rank));
+    _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
+    _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
 
-    if (_is_root_device) { // only root create nccl id
+    if (_is_cross_pcie_switch) {
+        _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
+    }
 
-        _reduce_table = new ReadyTable(_local_size-1);
-        _broadcast_table = new ReadyTable(_local_size-1);
+    if (_is_root_device) {
+        if (_is_cross_pcie_switch) {
+            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1);
+        }
+        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1);
+        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1);
         _push_table = new ReadyTable(_local_size-1);
-
     }
     else { // for non-root to receive signal from root
         _copy_table = new ReadyTable(1);
@@ -148,13 +155,6 @@ void BytePSGlobal::Init() {
         BPS_LOG(DEBUG) << "Create schedule queue " << i;
         auto type = static_cast<QueueType>(i);
         BytePSGlobal::CreateScheduledQueue(type);
-    }
-
-    _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
-    _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
-
-    if (_is_cross_pcie_switch) {
-        _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
     }
 
     _initialized = true;
@@ -220,10 +220,12 @@ void BytePSGlobal::Shutdown() {
     if (_reduce_table) {
         delete _reduce_table;
     }
+    if (_pcie_reduce_table) {
+        delete _pcie_reduce_table;
+    }
     if (_broadcast_table) {
         delete _broadcast_table;
     }
-
     if (_push_table) {
         delete _push_table;
     }

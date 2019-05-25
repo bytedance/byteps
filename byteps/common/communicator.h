@@ -46,7 +46,7 @@ namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
-enum BytePSCommSignal { REDUCE_READY, BCAST_READY, PUSH_READY, DO_REDUCE, DO_BROADCAST, DO_GROUP, DO_COPYH2D };
+enum BytePSCommSignal { REDUCE_READY, PCIE_REDUCE_READY, BCAST_READY, PUSH_READY, DO_REDUCE, DO_BROADCAST, DO_GROUP, DO_COPYH2D };
 
 struct BytePSCommMsg {
     int src;

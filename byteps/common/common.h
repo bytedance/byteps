@@ -58,10 +58,12 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { COORDINATE_REDUCE, REDUCE, PCIE_REDUCE, COPYD2H,
-                 COORDINATE_PUSH, PUSH, PULL,
-                 COPYH2D, COORDINATE_BROADCAST, BROADCAST };
-const int QueueNum = 10;
+enum QueueType { COORDINATE_REDUCE, REDUCE, PCIE_REDUCE,
+                 COPYD2H, COORDINATE_PUSH, PUSH, PULL,
+                 COPYH2D, COORDINATE_BROADCAST, BROADCAST,
+                 INVALID_QUEUE };
+
+const int QueueNum = (int)INVALID_QUEUE;
 
 const std::vector<std::string> LogStrings = {
   "COORDINATE_REDUCE",
@@ -127,6 +129,8 @@ public:
 typedef struct BytePSContext {
     std::vector<ps::Key> key_list;
     void* cpubuff;
+    // CPU buffer for cross-PCIe-switch merging
+    std::vector<void*> pcie_cpubuff;
     size_t buff_len;
     bool reuse_buff;
     int priority;
@@ -172,6 +176,8 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
+  // CPU buffer for cross-PCIe-switch merging
+  std::vector<void*> pcie_cpubuff;
   // The (deep copy of) queue list of this task
   std::vector<QueueType> queue_list;
   // The offset of this partition
