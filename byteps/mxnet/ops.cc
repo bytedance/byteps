@@ -56,28 +56,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-
-    std::vector<QueueType> queue_list;
-
-    if (device != CPU_DEVICE_ID) {
-        if (common::IsRoot()) {
-            queue_list.push_back(common::REDUCE);
-            if (common::IsDistributedJob()) {
-                queue_list.push_back(common::COPYD2H);
-                queue_list.push_back(common::PCIE_REDUCE);
-                queue_list.push_back(common::PUSH);
-            }
-        }
-        else {
-            queue_list.push_back(common::COORDINATE_REDUCE);
-            queue_list.push_back(common::REDUCE);
-            if (common::IsDistributedJob()) {
-                queue_list.push_back(common::COPYD2H);
-                queue_list.push_back(common::PCIE_REDUCE);
-                queue_list.push_back(common::COORDINATE_PUSH);
-            }
-        }
-    }
+    auto queue_list = common::GetPushQueueList(device);
 
     auto enqueue_result =
         common::EnqueueTensor(context, byteps_input, nullptr, nullptr,
@@ -94,25 +73,7 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
 
     auto device = TensorUtil::GetDevice(output);
     auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
-
-    std::vector<QueueType> queue_list;
-
-    if (device != CPU_DEVICE_ID) {
-        if (common::IsRoot()) {
-            if (common::IsDistributedJob()) {
-                queue_list.push_back(common::PULL);
-                queue_list.push_back(common::COPYH2D);
-            }
-            queue_list.push_back(common::BROADCAST);
-        }
-        else {
-            if (common::IsDistributedJob()) {
-                queue_list.push_back(common::COPYH2D);
-            }
-            queue_list.push_back(common::COORDINATE_BROADCAST);
-            queue_list.push_back(common::BROADCAST);
-        }
-    }
+    auto queue_list = common::GetPullQueueList(device);
 
     auto enqueue_result =
         common::EnqueueTensor(context, nullptr, byteps_output, nullptr,

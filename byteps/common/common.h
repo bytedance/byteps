@@ -172,7 +172,7 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
-  // The queue list of this task
+  // The (deep copy of) queue list of this task
   std::vector<QueueType> queue_list;
   // The offset of this partition
   unsigned int offset = 0;

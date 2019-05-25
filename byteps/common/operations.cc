@@ -28,14 +28,15 @@ namespace byteps {
 namespace common {
 
 void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
-    BPS_CHECK_GE(task->queue_list.size(), 1);
-    auto this_op = task->queue_list[0];
-    task->queue_list.erase(task->queue_list.begin());
-    if (task->queue_list.size() > 0) {
+    auto &queue_list = task->queue_list;
+    BPS_CHECK_GE(queue_list.size(), 1);
+    auto this_op = queue_list[0];
+    queue_list.erase(queue_list.begin());
+    if (queue_list.size() > 0) {
         BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                        << " finishes " << LogStrings[this_op] << ", tensor: " << task->tensor_name
                        << ", key=" << task->key << "; Passing to the next queue.";
-        BytePSGlobal::GetScheduledQueue(task->queue_list[0])->addTask(task);
+        BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
     } else {
         BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
         int v = task->counter_ptr.get()->fetch_add(1);
@@ -52,7 +53,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task){
-        int rank = GetMyLocalRank();
+        int rank = BytePSGlobal::GetLocalRank();
         int key  = task->key;
 
         // first send to next queue and then broadcast signal
@@ -179,7 +180,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
 bool RunRootNcclLoopOnce() {
     auto signal_comm = BytePSGlobal::GetNccl()->GetSignalComm();
     int root = signal_comm->getRoot();
-    int rank = GetMyLocalRank();
+    int rank = BytePSGlobal::GetLocalRank();
     BPS_CHECK_EQ(rank, root);
 
     int nccl_size = BytePSGlobal::GetNccl()->GetSize();
@@ -230,7 +231,7 @@ bool RunRootNcclLoopOnce() {
 bool RunNonRootNcclLoopOnce() {
     auto signal_comm = BytePSGlobal::GetNccl()->GetSignalComm();
     int root = signal_comm->getRoot();
-    int rank = GetMyLocalRank();
+    int rank = BytePSGlobal::GetLocalRank();
     BPS_CHECK_NE(rank, root);
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
@@ -283,7 +284,7 @@ bool RunSyncNcclOnce() {
         }
         nccl_entry->DestroyEvents();
         BPS_LOG(TRACE) << "Finished NCCL Group size=" << nccl_entry->tasks.size()
-                       << " rank=" << GetMyLocalRank();
+                       << " rank=" << BytePSGlobal::GetLocalRank();
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -372,7 +373,7 @@ bool RunPcieReduceLoopOnce() {
 
             #pragma omp parallel for simd num_threads(8)
             for (int i = 0; i < copy_len / 4; ++i) {
-                data[i] += 1;
+                data[i] += 1.0;
             }
         }
 
@@ -390,7 +391,7 @@ bool RunPushLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
-        BPS_CHECK(IsRoot()) << "only root device should enter PUSH loop";
+        BPS_CHECK(BytePSGlobal::IsRootDevice()) << "only root device should enter PUSH loop";
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -431,7 +432,7 @@ bool RunPullLoopOnce() {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
     if (task) {
-        BPS_CHECK(IsRoot()) << "only root device should enter PULL loop";
+        BPS_CHECK(BytePSGlobal::IsRootDevice()) << "only root device should enter PULL loop";
         // TODO: allow merging
         auto offset = task->offset;
         auto len = task->len;
@@ -536,7 +537,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
 bool RunNonRootCopyListenLoopOnce() {
     auto signal_comm = BytePSGlobal::GetShmComm();
     int root = signal_comm->getRoot();
-    int rank = GetMyLocalRank();
+    int rank = BytePSGlobal::GetLocalRank();
     BPS_CHECK_NE(root, rank);
 
     struct BytePSCommMsg msg = {};
@@ -636,10 +637,10 @@ void byteps_init() {
     BytePSGlobal::Init();
     std::vector<LoopFunction> func;
 
-    if (IsRoot()) {
+    if (BytePSGlobal::IsRootDevice()) {
         func.push_back(RootNcclLoop);
         func.push_back(SyncNcclLoop);
-        if (IsDistributedJob()) {
+        if (BytePSGlobal::IsDistributed()) {
             func.push_back(PcieReduceLoop);
             func.push_back(CopyDevice2HostLoop);
             func.push_back(PushLoop);
@@ -651,7 +652,7 @@ void byteps_init() {
         func.push_back(CoordinateReduceLoop);
         func.push_back(NonRootNcclLoop);
         func.push_back(SyncNcclLoop);
-        if (IsDistributedJob()) {
+        if (BytePSGlobal::IsDistributed()) {
             func.push_back(CoordinatePushLoop);
             func.push_back(PcieReduceLoop);
             func.push_back(CopyDevice2HostLoop);
@@ -734,7 +735,8 @@ Status EnqueueTensor(BPSContext &context,
                      std::shared_ptr<ReadyEvent> ready_event,
                      const std::string &name,
                      const int device, const int priority, const int version,
-                     StatusCallback callback, std::vector<QueueType> queue_list) {
+                     StatusCallback callback,
+                     std::shared_ptr<std::vector<QueueType>> queue_list) {
     if (input && output) {
         BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
     }
@@ -750,7 +752,7 @@ Status EnqueueTensor(BPSContext &context,
     e->version = version;
     e->callback = callback;
     e->cpubuff = context.cpubuff;
-    e->queue_list = queue_list;
+    e->queue_list = *queue_list;
     e->counter_ptr = std::make_shared<std::atomic_int>(0);
     e->total_partnum = context.key_list.size();
 
@@ -761,7 +763,7 @@ Status EnqueueTensor(BPSContext &context,
             << ", " << partitions.size();
 
     if (e->queue_list.size() == 0) {
-        BPS_LOG(TRACE) << e->tensor_name << ", device=" << e->device
+        BPS_LOG(DEBUG) << e->tensor_name << ", device=" << e->device
                        << " has no queue_list assigned, skipped";
         e->callback(Status::OK());
         return Status::OK();
@@ -776,15 +778,15 @@ Status EnqueueTensor(BPSContext &context,
                        << ", offset=" << task->offset
                        << ", len=" << task->len
                        << ", device=" << task->device
-                       << " rank=" << GetMyLocalRank();
+                       << " rank=" << BytePSGlobal::GetLocalRank();
 
-        BytePSGlobal::GetScheduledQueue(e->queue_list.at(0))->addTask(task);
+        BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
         accumulated += task->len;
     }
     BPS_CHECK_EQ(accumulated, (e->tensor ? e->tensor->size(): e->output->size()))
         << "accumulated partition size not equal to original tensor size";
 
-    BPS_LOG(TRACE) << "EnqueueTensor finished: " << name << ", rank=" << GetMyLocalRank();
+    BPS_LOG(TRACE) << "EnqueueTensor finished: " << name << ", rank=" << BytePSGlobal::GetLocalRank();
     return Status::OK();
 }
 
@@ -826,7 +828,7 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
         auto key = key_list[i];
         int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
-        if (IsDistributedJob() && IsRoot()) {
+        if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
             if (BytePSGlobal::GetWorkerID() == 0) { // only worker0 pushes init data
                 // encode the key for pskv scattering
                 auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
@@ -871,16 +873,49 @@ bool IsTensorInitialized(const std::string &name, size_t size) {
     return BytePSGlobal::IsTensorInitialized(name, size);
 }
 
-bool IsRoot() {
-    return BytePSGlobal::IsRootDevice();
+std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
+    auto queue_list = std::make_shared<std::vector<QueueType>>();
+    if (device != CPU_DEVICE_ID) {
+        if (BytePSGlobal::IsRootDevice()) {
+            queue_list->push_back(REDUCE);
+            if (BytePSGlobal::IsDistributed()) {
+                queue_list->push_back(COPYD2H);
+                queue_list->push_back(PCIE_REDUCE);
+                queue_list->push_back(PUSH);
+            }
+        }
+        else {
+            queue_list->push_back(COORDINATE_REDUCE);
+            queue_list->push_back(REDUCE);
+            if (BytePSGlobal::IsDistributed()) {
+                queue_list->push_back(COPYD2H);
+                queue_list->push_back(PCIE_REDUCE);
+                queue_list->push_back(COORDINATE_PUSH);
+            }
+        }
+    }
+    return queue_list;
 }
 
-int GetMyLocalRank() {
-    return BytePSGlobal::GetLocalRank();
-}
-
-bool IsDistributedJob() {
-    return BytePSGlobal::IsDistributed();
+std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
+    auto queue_list = std::make_shared<std::vector<QueueType>>();
+    if (device != CPU_DEVICE_ID) {
+        if (BytePSGlobal::IsRootDevice()) {
+            if (BytePSGlobal::IsDistributed()) {
+                queue_list->push_back(PULL);
+                queue_list->push_back(COPYH2D);
+            }
+            queue_list->push_back(BROADCAST);
+        }
+        else {
+            if (BytePSGlobal::IsDistributed()) {
+                queue_list->push_back(COPYH2D);
+            }
+            queue_list->push_back(COORDINATE_BROADCAST);
+            queue_list->push_back(BROADCAST);
+        }
+    }
+    return queue_list;
 }
 
 } // namespace common
