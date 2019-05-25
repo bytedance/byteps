@@ -76,7 +76,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
             }
             case COORDINATE_PUSH: {
                 sig = PUSH_READY;
-                comm = BytePSGlobal::GetShmComm();
+                comm = BytePSGlobal::GetBasicComm();
                 break;
             }
             default:
@@ -371,10 +371,12 @@ bool RunPcieReduceLoopOnce() {
 
             float* data = (float*)(p + nccl_rank * num_elem_per_gpu * unit_len);
 
-            #pragma omp parallel for simd num_threads(8)
-            for (int i = 0; i < copy_len / 4; ++i) {
-                data[i] += 1.0;
+            auto reducer = BytePSGlobal::GetCpuReducer();  
+
+            if (!reducer->isRoot()) {
+                // send signal to root
             }
+
         }
 
         FinishOrProceed(task);
@@ -519,7 +521,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
                 struct BytePSCommMsg msg = { local_rank,
                                              DO_COPYH2D,
                                              key };
-                BytePSGlobal::GetShmComm()->broadcastSignal(&msg,
+                BytePSGlobal::GetBasicComm()->broadcastSignal(&msg,
                                                             sizeof(BytePSCommMsg));
             }
             CopyHost2Device(task);
@@ -535,7 +537,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
 }
 
 bool RunNonRootCopyListenLoopOnce() {
-    auto signal_comm = BytePSGlobal::GetShmComm();
+    auto signal_comm = BytePSGlobal::GetBasicComm();
     int root = signal_comm->getRoot();
     int rank = BytePSGlobal::GetLocalRank();
     BPS_CHECK_NE(root, rank);
@@ -878,18 +880,26 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
     if (device != CPU_DEVICE_ID) {
         if (BytePSGlobal::IsRootDevice()) {
             queue_list->push_back(REDUCE);
-            if (BytePSGlobal::IsDistributed()) {
+            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(COPYD2H);
+            }
+            if (BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(PCIE_REDUCE);
+            }
+            if (BytePSGlobal::IsDistributed()) {
                 queue_list->push_back(PUSH);
             }
         }
         else {
             queue_list->push_back(COORDINATE_REDUCE);
             queue_list->push_back(REDUCE);
-            if (BytePSGlobal::IsDistributed()) {
+            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(COPYD2H);
+            }
+            if (BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(PCIE_REDUCE);
+            }
+            if (BytePSGlobal::IsDistributed()) {               
                 queue_list->push_back(COORDINATE_PUSH);
             }
         }
@@ -903,12 +913,14 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
         if (BytePSGlobal::IsRootDevice()) {
             if (BytePSGlobal::IsDistributed()) {
                 queue_list->push_back(PULL);
+            }
+            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(COPYH2D);
             }
             queue_list->push_back(BROADCAST);
         }
         else {
-            if (BytePSGlobal::IsDistributed()) {
+            if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
                 queue_list->push_back(COPYH2D);
             }
             queue_list->push_back(COORDINATE_BROADCAST);

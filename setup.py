@@ -232,7 +232,8 @@ def get_common_options(build_ext):
                'byteps/common/scheduled_queue.cc',
                'byteps/common/ready_table.cc',
                'byteps/common/shared_memory.cc',
-               'byteps/common/nccl_manager.cc']
+               'byteps/common/nccl_manager.cc',
+               'byteps/common/cpu_reducer.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags) + ["-DBYTEPS_USE_MPI"]
