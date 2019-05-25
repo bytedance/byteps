@@ -26,25 +26,37 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, uint64_t credits){
     _qt = type;
     _credits = credits;
     _rt = nullptr;
-    if (BytePSGlobal::IsRootDevice()) {
-        switch (_qt) {
-            case REDUCE:
+
+    switch (_qt) {
+        case REDUCE:
+            if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
                 _rt = BytePSGlobal::GetReduceTable();
-                break;
-            case BROADCAST:
-                _rt = BytePSGlobal::GetBroadcastTable();
-                break;
-            case PUSH:
+            }
+            break;
+        case PCIE_REDUCE:
+            if (BytePSGlobal::IsCrossPcieSwitch()) {
+                if (BytePSGlobal::GetCpuReducer()->isRoot()) {
+                    _rt = BytePSGlobal::GetPcieReduceTable();
+                }
+            }
+            break;
+        case PUSH:
+            if (BytePSGlobal::IsRootDevice()) {
                 _rt = BytePSGlobal::GetPushTable();
-                break;
-        }
-    }
-    else {
-        switch (_qt) {
-            case COPYH2D:
+            }
+            break;
+        case COPYH2D:
+            if (!BytePSGlobal::IsRootDevice()) {
                 _rt = BytePSGlobal::GetCopyTable();
-                break;
-        }
+            }
+            break;
+        case BROADCAST:
+            if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+                _rt = BytePSGlobal::GetBroadcastTable();
+            }
+            break;
+        default:
+            break;
     }
 }
 

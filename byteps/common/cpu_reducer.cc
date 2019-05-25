@@ -22,15 +22,19 @@ namespace common {
 
 CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
     std::vector<int> peers;
-    auto pcie_size = BytePSGlobal::GetNccl()->GetSize();
+    auto pcie_size = BytePSGlobal::GetPcieSwitchSize();
     for (int i = BytePSGlobal::GetLocalRank() % pcie_size;
          i < BytePSGlobal::GetLocalSize();
          i += pcie_size) {
         peers.push_back(i);
     }
     _comm = std::make_shared<BytePSCommSocket>(comm, std::string("cpu"), peers);
-    _num_threads = 8;
+    _num_threads = BYTEPS_CPU_REDUCER_THREADS;
     return;
+}
+
+bool CpuReducer::isRoot() {
+    return (_comm->getRoot() == BytePSGlobal::GetLocalRank());
 }
 
 int CpuReducer::sum(void* dst, void* src1, void* src2, size_t len, DataType dtype) {
@@ -83,7 +87,7 @@ int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (float*)src1;
     auto s2 = (float*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / 2; ++i) {
+    for (int i = 0; i < len / 4; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;

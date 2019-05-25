@@ -140,8 +140,11 @@ void NcclManager::InitGlobalEnv() { // init all global env/param here
         _nccl_pcie_num = 1;
     }
     else {
-        BPS_CHECK_EQ(local_size % _nccl_pcie_size, 0)
-                     << "BytePS does not support unbalanced PCIe switches.";
+        if (local_size % _nccl_pcie_size) {
+            BPS_LOG(WARNING) << "BytePS does not support unbalanced PCIe switches.";
+            _nccl_pcie_size = local_size;
+            _nccl_pcie_num = 1;
+        }
     }
 
     BPS_LOG(DEBUG) << "nccl_pcie_size" << " set to " << _nccl_pcie_size;

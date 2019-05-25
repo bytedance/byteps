@@ -62,12 +62,14 @@ public:
     static int GetLocalSize() { return _local_size; }
     static int GetWorkerID() { return _worker_id; }
     static int GetNumWorker() { return _num_worker; }
+    static int GetPcieSwitchSize() { return _nccl_manager->GetSize(); }
+    static int GetPcieSwitchIndex() { return _local_rank / _nccl_manager->GetSize(); }
+    static int GetPcieSwitchNum() { return _local_size / _nccl_manager->GetSize(); }
     static bool IsRootDevice() { return _is_root_device; }
     static bool IsDistributed() { return _is_distributed_job; }
     static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
     static BytePSRole GetMyRole() { return _my_role; }
     static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
-    static std::shared_ptr<BytePSComm> GetPcieReduceComm() { return _basic_comm; }
     static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
@@ -89,6 +91,7 @@ public:
 
     // methods to access or modify the _ready_table
     static ReadyTable* GetReduceTable() { return _reduce_table; }
+    static ReadyTable* GetPcieReduceTable() { return _pcie_reduce_table; }
     static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
     static ReadyTable* GetPushTable() { return _push_table; }
 
@@ -117,7 +120,6 @@ private:
     static bool _is_cross_pcie_switch;
     static BytePSRole _my_role;
     static std::shared_ptr<BytePSComm> _basic_comm;
-    static std::shared_ptr<BytePSComm> _pcie_reduce_comm;
     static std::shared_ptr<BytePSSharedMemory> _shm_obj;
 
     static volatile BytePSScheduledQueue* _queues[QueueNum];
@@ -135,6 +137,7 @@ private:
 
     // (key, ready_signal_count) pair, only valid for root device
     static ReadyTable* _reduce_table;
+    static ReadyTable* _pcie_reduce_table;
     static ReadyTable* _broadcast_table;
     static ReadyTable* _push_table;
 

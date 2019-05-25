@@ -22,6 +22,7 @@
 
 #include "shared_memory.h"
 #include "logging.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -43,6 +44,17 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
     std::lock_guard<std::mutex> lock(_shm_mu);
     _key_shm_name[key] = shm_name;
     return ptr;
+}
+
+std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size) {
+    int local_size = BytePSGlobal::GetLocalSize();
+    int pcie_size = BytePSGlobal::GetPcieSwitchSize();
+    std::vector<void*> r;
+    for (int i = 0; i < local_size / pcie_size; i++) {
+        auto offset = BYTEPS_SHM_PER_PCIE_OFFSET * (i + 1);
+        r.push_back(openSharedMemory(key + offset, size));
+    }
+    return r;
 }
 
 } // namespace common

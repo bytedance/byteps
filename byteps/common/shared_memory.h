@@ -19,12 +19,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
+#include <vector>
 #include <mutex>
 #include <thread>
 #include <cerrno>
 #include <string.h>
-#define BYTEPS_SHAREDMEMORY_BASENAME "BYTEPS_SHARED_MEMORY"
 
+#define BYTEPS_SHM_PER_PCIE_OFFSET (1 << 28)
 
 namespace byteps {
 namespace common {
@@ -42,6 +43,7 @@ public:
     }
 
     void* openSharedMemory(int key, size_t size);
+    std::vector<void*> openPcieSharedMemory(int key, size_t size);
 
 private:
 
