@@ -13,41 +13,36 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_SCHEDULED_QUEUE_H
-#define BYTEPS_SCHEDULED_QUEUE_H
+#ifndef BYTEPS_READY_TABLE_H
+#define BYTEPS_READY_TABLE_H
 
-#include <atomic>
-#include <vector>
-#include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
-#include "common.h"
-#include "ready_table.h"
 
 namespace byteps {
 namespace common {
 
-class BytePSScheduledQueue {
+class ReadyTable {
 
 public:
-    BytePSScheduledQueue(QueueType type, uint64_t credits);
-    QueueType getQueueType() { return _qt; }
-    void addTask(std::shared_ptr<TensorTableEntry>);
-    std::shared_ptr<TensorTableEntry> getTask();
-    std::shared_ptr<TensorTableEntry> getTask(int key);
-    uint32_t pendingSize();
-    void reportFinish(int size);
+    ReadyTable(int ready_count) { _ready_count = ready_count; }
+    // methods to access or modify the _ready_table
+    bool IsKeyReady(int key);
+    int AddReadyCount(int key);
+    void ClearReadyCount(int key);
 
 private:
-    // TODO: use priority queue or heap
-    std::vector<std::shared_ptr<TensorTableEntry>> _sq;
-    std::mutex _mutex;
-    std::atomic<uint64_t> _credits;
-    QueueType _qt;
-    ReadyTable *_rt;
+    // (key, ready_signal_count) pair, only valid for root device
+    std::unordered_map<int, int> _ready_table;
+    // use this mutex to access/modify the _ready_table
+    std::mutex _table_mutex;
+    int _ready_count;
+
 };
 
 
 } // namespace common
 } // namespace byteps
 
-#endif // BYTEPS_SCHEDULED_QUEUE_H
+#endif // BYTEPS_READY_TABLE_H

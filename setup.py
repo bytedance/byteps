@@ -161,7 +161,7 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall']
+    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
     avx_flags = ['-mf16c', '-mavx']
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
@@ -229,7 +229,11 @@ def get_common_options(build_ext):
                'byteps/common/global.cc',
                'byteps/common/logging.cc',
                'byteps/common/communicator.cc',
-               'byteps/common/scheduled_queue.cc']
+               'byteps/common/scheduled_queue.cc',
+               'byteps/common/ready_table.cc',
+               'byteps/common/shared_memory.cc',
+               'byteps/common/nccl_manager.cc',
+               'byteps/common/cpu_reducer.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags) + ["-DBYTEPS_USE_MPI"]
@@ -367,7 +371,7 @@ def build_tf_extension(build_ext, options):
     tf_compile_flags, tf_link_flags = get_tf_flags(
         build_ext, options['COMPILE_FLAGS'])
 
-    extra_link_args = ['-lrdmacm', '-libverbs']
+    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
 
     # We assume we have CUDA
     cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
@@ -437,6 +441,7 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
                     '''))
             mx_libs.append('rdmacm')
             mx_libs.append('ibverbs')
+            mx_libs.append('numa')
             return mx_libs
         except (CompileError, LinkError):
             last_err = 'Unable to determine -l link flags to use with MXNet (see error above).'
@@ -689,7 +694,7 @@ def build_torch_extension(build_ext, options, torch_version):
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
 
-    extra_link_args = ['-lrdmacm', '-libverbs']
+    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
 
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,

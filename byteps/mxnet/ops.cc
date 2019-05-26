@@ -56,17 +56,7 @@ void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, 
 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-
-    std::vector<QueueType> queue_list;
-
-    // TODO: now only create 1 gpu testcase
-    if (common::IsRootDevice()) {
-        queue_list.push_back(common::REDUCE);
-        queue_list.push_back(common::PUSH);
-    } else {
-        queue_list.push_back(common::REDUCE);
-        queue_list.push_back(common::PUSH);
-    }
+    auto queue_list = common::GetPushQueueList(device);
 
     auto enqueue_result =
         common::EnqueueTensor(context, byteps_input, nullptr, nullptr,
@@ -83,17 +73,7 @@ void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name
 
     auto device = TensorUtil::GetDevice(output);
     auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
-
-    std::vector<QueueType> queue_list;
-
-    // TODO: now only create 1 gpu testcase
-    if (common::IsRootDevice()) {
-        queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
-    } else {
-        queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
-    }
+    auto queue_list = common::GetPullQueueList(device);
 
     auto enqueue_result =
         common::EnqueueTensor(context, nullptr, byteps_output, nullptr,
@@ -112,7 +92,6 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     std::string tensor_name = GetOpName("byteps", name);
 
     size_t size = TensorUtil::GetSize(tensor);
-    auto device = TensorUtil::GetDevice(tensor);
     auto dtype = TensorUtil::GetDType(tensor);
 
     auto& context = common::GetContextFromName(tensor_name);

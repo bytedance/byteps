@@ -17,7 +17,6 @@
 #define BYTEPS_OPERATIONS_H
 
 #include <functional>
-
 #include "common.h"
 
 namespace byteps {
@@ -60,7 +59,8 @@ Status EnqueueTensor(BPSContext &context,
                      std::shared_ptr<ReadyEvent> ready_event,
                      const std::string &name,
                      const int device, const int priority, const int version,
-                     StatusCallback callback, std::vector<QueueType> queue_list);
+                     StatusCallback callback,
+                     std::shared_ptr<std::vector<QueueType>> queue_list);
 
 Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void* cpubuff,
                          StatusCallback callback);
@@ -69,8 +69,12 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void* c
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorInitialized(const std::string &name, size_t size);
+
 BPSContext& GetContextFromName(const std::string &name);
-bool IsRootDevice();
+
+std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
+
+std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
 
 } // namespace common
 } // namespace byteps

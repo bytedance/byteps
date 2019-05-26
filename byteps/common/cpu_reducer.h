@@ -13,41 +13,41 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_SCHEDULED_QUEUE_H
-#define BYTEPS_SCHEDULED_QUEUE_H
+#ifndef BYTEPS_CPU_REDUCER_H
+#define BYTEPS_CPU_REDUCER_H
 
-#include <atomic>
-#include <vector>
 #include <memory>
-#include <unordered_map>
 #include "common.h"
-#include "ready_table.h"
+#include "communicator.h"
+
+#define BYTEPS_CPU_REDUCER_THREADS 16
 
 namespace byteps {
 namespace common {
 
-class BytePSScheduledQueue {
+class CpuReducer {
 
 public:
-    BytePSScheduledQueue(QueueType type, uint64_t credits);
-    QueueType getQueueType() { return _qt; }
-    void addTask(std::shared_ptr<TensorTableEntry>);
-    std::shared_ptr<TensorTableEntry> getTask();
-    std::shared_ptr<TensorTableEntry> getTask(int key);
-    uint32_t pendingSize();
-    void reportFinish(int size);
+    CpuReducer(std::shared_ptr<BytePSComm> comm);
+    int sum(void* dst, void* src, size_t len, DataType dtype);
+    bool isRoot();
+    std::shared_ptr<BytePSComm> getComm() { return _comm; }
 
 private:
-    // TODO: use priority queue or heap
-    std::vector<std::shared_ptr<TensorTableEntry>> _sq;
-    std::mutex _mutex;
-    std::atomic<uint64_t> _credits;
-    QueueType _qt;
-    ReadyTable *_rt;
+    int _sum_float32(void* dst, void* src, size_t len);
+    int _sum_float64(void* dst, void* src, size_t len);
+    int _sum_float16(void* dst, void* src, size_t len);
+    int _sum_unit8(void* dst, void* src, size_t len);
+    int _sum_int32(void* dst, void* src, size_t len);
+    int _sum_int8(void* dst, void* src, size_t len);
+    int _sum_int64(void* dst, void* src, size_t len);
+
+    std::shared_ptr<BytePSComm> _comm;
+    int _num_threads;
 };
 
 
 } // namespace common
 } // namespace byteps
 
-#endif // BYTEPS_SCHEDULED_QUEUE_H
+#endif // BYTEPS_CPU_REDUCER_H

@@ -13,41 +13,48 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_SCHEDULED_QUEUE_H
-#define BYTEPS_SCHEDULED_QUEUE_H
+#ifndef BYTEPS_SHARED_MEMORY_H
+#define BYTEPS_SHARED_MEMORY_H
 
-#include <atomic>
-#include <vector>
-#include <memory>
+#include <cstdio>
+#include <cstdlib>
 #include <unordered_map>
-#include "common.h"
-#include "ready_table.h"
+#include <vector>
+#include <mutex>
+#include <thread>
+#include <cerrno>
+#include <string.h>
+
+#define BYTEPS_SHM_PER_PCIE_OFFSET (1 << 28)
 
 namespace byteps {
 namespace common {
 
-class BytePSScheduledQueue {
+class BytePSSharedMemory {
 
 public:
-    BytePSScheduledQueue(QueueType type, uint64_t credits);
-    QueueType getQueueType() { return _qt; }
-    void addTask(std::shared_ptr<TensorTableEntry>);
-    std::shared_ptr<TensorTableEntry> getTask();
-    std::shared_ptr<TensorTableEntry> getTask(int key);
-    uint32_t pendingSize();
-    void reportFinish(int size);
+
+    BytePSSharedMemory() {}
+
+    ~BytePSSharedMemory() {
+        for (auto &it : _key_shm_name) {
+            shm_unlink(it.second.c_str());
+        }
+    }
+
+    void* openSharedMemory(int key, size_t size);
+    std::vector<void*> openPcieSharedMemory(int key, size_t size);
 
 private:
-    // TODO: use priority queue or heap
-    std::vector<std::shared_ptr<TensorTableEntry>> _sq;
-    std::mutex _mutex;
-    std::atomic<uint64_t> _credits;
-    QueueType _qt;
-    ReadyTable *_rt;
+
+    std::unordered_map<int, std::string> _key_shm_name;
+
+    std::mutex _shm_mu;
+
 };
 
 
 } // namespace common
 } // namespace byteps
 
-#endif // BYTEPS_SCHEDULED_QUEUE_H
+#endif // BYTEPS_SHARED_MEMORY_H

@@ -24,6 +24,8 @@
 #include <atomic>
 #include <vector>
 #include "ps/ps.h"
+#include <nccl.h>
+#include <cuda_runtime.h>
 
 namespace byteps {
 namespace common {
@@ -56,8 +58,25 @@ enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUME
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { COORDINATE, REDUCE, COPYD2H, PUSH, PULL, COPYH2D, BROADCAST };
-const int QueueNum = 7;
+enum QueueType { COORDINATE_REDUCE, REDUCE, COPYD2H,
+                 PCIE_REDUCE, COORDINATE_PUSH, PUSH, PULL,
+                 COPYH2D, COORDINATE_BROADCAST, BROADCAST,
+                 QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST };
+
+const int QueueNum = (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
+
+const std::vector<std::string> LogStrings = {
+  "COORDINATE_REDUCE",
+  "REDUCE",
+  "COPYD2H",
+  "PCIE_REDUCE",
+  "COORDINATE_PUSH",
+  "PUSH",
+  "PULL",
+  "COPYH2D",
+  "COORDINATE_BROADCAST",
+  "BROADCAST"
+};
 
 class Status {
 public:
@@ -110,6 +129,8 @@ public:
 typedef struct BytePSContext {
     std::vector<ps::Key> key_list;
     void* cpubuff;
+    // CPU buffer for cross-PCIe-switch merging
+    std::vector<void*> pcie_cpubuff;
     size_t buff_len;
     bool reuse_buff;
     int priority;
@@ -155,7 +176,9 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
-  // The queue list of this task
+  // CPU buffer for cross-PCIe-switch merging
+  std::vector<void*> pcie_cpubuff;
+  // The (deep copy of) queue list of this task
   std::vector<QueueType> queue_list;
   // The offset of this partition
   unsigned int offset = 0;
@@ -173,6 +196,10 @@ enum class RequestType {
 };
 
 int GetCommandType(RequestType requestType, int d);
+
+ncclDataType_t getNcclDataType(DataType dtype);
+
+int getDataTypeLength(int dtype);
 
 } // namespace common
 } // namespace byteps

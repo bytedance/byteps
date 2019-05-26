@@ -32,6 +32,9 @@ if __name__ == "__main__":
             t[i].join() 
 
     else:
+        if "BYTEPS_SERVER_MXNET_PATH" not in os.environ:
+            print "BYTEPS_SERVER_MXNET_PATH env not set"
+            os._exit(0)
         sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
         import mxnet
         print "BytePS Server MXNet version: " + mxnet.__version__

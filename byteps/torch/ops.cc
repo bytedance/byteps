@@ -75,20 +75,10 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
 
     auto& context = common::GetContextFromName(tensor_name);
 
-    std::vector<common::QueueType> queue_list;
-    // TODO: now only create 1 gpu testcase
-    if (common::IsRootDevice()) {
-        queue_list.push_back(common::REDUCE);
-        queue_list.push_back(common::PUSH);
-        queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
-    }
-    else {
-        queue_list.push_back(common::REDUCE);
-        queue_list.push_back(common::PUSH);
-        queue_list.push_back(common::PULL);
-        queue_list.push_back(common::BROADCAST);
-    }
+    auto queue_list = common::GetPushQueueList(device);
+    auto queue_list_pull = common::GetPullQueueList(device);
+    queue_list->insert(queue_list->end(),
+                       queue_list_pull->begin(), queue_list_pull->end());
 
     auto enqueue_result = common::EnqueueTensor(
         context, byteps_input, byteps_output, ready_event,
