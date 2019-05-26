@@ -371,7 +371,7 @@ def build_tf_extension(build_ext, options):
     tf_compile_flags, tf_link_flags = get_tf_flags(
         build_ext, options['COMPILE_FLAGS'])
 
-    extra_link_args = ['-lrdmacm', '-libverbs']
+    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
 
     # We assume we have CUDA
     cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
@@ -441,6 +441,7 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
                     '''))
             mx_libs.append('rdmacm')
             mx_libs.append('ibverbs')
+            mx_libs.append('numa')
             return mx_libs
         except (CompileError, LinkError):
             last_err = 'Unable to determine -l link flags to use with MXNet (see error above).'
@@ -693,7 +694,7 @@ def build_torch_extension(build_ext, options, torch_version):
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
 
-    extra_link_args = ['-lrdmacm', '-libverbs']
+    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
 
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
