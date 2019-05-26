@@ -391,7 +391,6 @@ bool RunPcieReduceLoopOnce() {
 
                 reducer->sum(task->cpubuff + total_offset,
                              task->pcie_cpubuff[0] + total_offset,
-                             task->pcie_cpubuff[1] + total_offset,
                              copy_len, task->tensor->dtype());
             }
         }
@@ -851,13 +850,19 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
     }
     else {
         // use the first key in key_list as the index
-        auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
-        context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
-        CUDA_CALL(cudaHostRegister((void *) context.cpubuff, size, cudaHostRegisterDefault));
-        context.reuse_buff = false;
+        auto shm_obj = BytePSGlobal::GetSharedMemoryObj(); 
         if (BytePSGlobal::IsCrossPcieSwitch()) {
             context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
+            for (auto buff : context.pcie_cpubuff) {
+                CUDA_CALL(cudaHostRegister(buff, size, cudaHostRegisterDefault));
+            }
+            context.cpubuff = context.pcie_cpubuff.back();
         }
+        else {
+            context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
+            CUDA_CALL(cudaHostRegister(context.cpubuff, size, cudaHostRegisterDefault));
+        }
+        context.reuse_buff = false;
         BPS_LOG(TRACE) << name << ": open shared memory size " << size;
     }
 
