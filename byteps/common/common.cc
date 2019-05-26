@@ -135,6 +135,7 @@ ncclDataType_t getNcclDataType(DataType dtype) {
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
+  return ncclFloat32;
 }
 
 int getDataTypeLength(int dtype) {
@@ -153,6 +154,7 @@ int getDataTypeLength(int dtype) {
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
+  return 4;
 }
 
 } // namespace common

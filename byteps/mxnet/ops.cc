@@ -91,9 +91,6 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     // TODO: replace "byteps" with job ID
     std::string tensor_name = GetOpName("byteps", name);
 
-    size_t size = TensorUtil::GetSize(tensor);
-    auto dtype = TensorUtil::GetDType(tensor);
-
     auto& context = common::GetContextFromName(tensor_name);
     auto first_stage_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
@@ -114,7 +111,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                             FnProperty::kNormal, 0, "BytePSSecondStage");
 
     // average the aggregated gradient
-    auto num_worker = ps::NumWorkers();
+    auto num_worker = byteps_size();
     *tensor /= num_worker;
 
     MX_API_END();

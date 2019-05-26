@@ -71,11 +71,10 @@ bool NcclManager::IsSignalRoot() {
 
 void NcclManager::ConstructRings() {
     std::string log_string("Constructing NCCL communicators.");
-    auto local_size = BytePSGlobal::GetLocalSize();
     auto local_rank = BytePSGlobal::GetLocalRank();
     std::vector<int> peers;
     int first_peer = local_rank / _nccl_pcie_size * _nccl_pcie_size;
-    for (int i = first_peer; i < first_peer + _nccl_pcie_size; i++) {
+    for (int i = first_peer; i < first_peer + (int)_nccl_pcie_size; i++) {
         peers.push_back(i);
         log_string = log_string + " " + std::to_string(i);
     }
@@ -218,7 +217,7 @@ void NcclManagerExpr::ConstructRings() {
     for (size_t i = 0; i < _nccl_pcie_size; i++) {
         _rings.push_back(std::vector<int>());
         std::string log("");
-        for (size_t j = 0; j < BytePSGlobal::GetLocalSize(); j++) {
+        for (int j = 0; j < BytePSGlobal::GetLocalSize(); j++) {
             int rank = _rings[i][BytePSGlobal::GetLocalSize()-j-1];
             _rings[i + _nccl_pcie_size].push_back(rank);
             log = log + std::to_string(rank) + ' ';
@@ -301,7 +300,7 @@ int NcclManagerExpr::GetRank(int key, QueueType op) {
     auto i = key % _nccl_pcie_size + offset;
     auto it = std::find(_rings[i].begin(), _rings[i].end(), BytePSGlobal::GetLocalRank());
     auto rank = std::distance(_rings[i].begin(), it);
-    return BytePSGlobal::GetLocalRank() % _nccl_pcie_size;
+    return rank;
 }
 
 } // namespace common

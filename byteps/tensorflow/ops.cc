@@ -21,7 +21,6 @@
 
 #include "ops.h"
 
-using namespace tensorflow;
 using namespace byteps;
 
 namespace byteps {
@@ -31,41 +30,24 @@ namespace {
 
 std::atomic_int tensor_count;
 
-Status ConvertStatus(const common::Status& status) {
+::tensorflow::Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
   case common::OK:
-    return Status::OK();
+    return ::tensorflow::Status::OK();
   case common::UNKNOWN_ERROR:
-    return errors::Unknown(status.reason());
+    return ::tensorflow::errors::Unknown(status.reason());
   case common::PRECONDITION_ERROR:
-    return errors::FailedPrecondition(status.reason());
+    return ::tensorflow::errors::FailedPrecondition(status.reason());
   case common::ABORTED:
-    return errors::Aborted(status.reason());
+    return ::tensorflow::errors::Aborted(status.reason());
   case common::INVALID_ARGUMENT:
-    return errors::InvalidArgument(status.reason());
+    return ::tensorflow::errors::InvalidArgument(status.reason());
   default:
-    return errors::Unknown("Unknown error.");
+    return ::tensorflow::errors::Unknown("Unknown error.");
   }
 }
 
-common::Status ConvertStatus(const Status& status) {
-  switch (status.code()) {
-  case error::Code::OK:
-    return common::Status::OK();
-  case error::Code::UNKNOWN:
-    return common::Status::UnknownError(status.error_message());
-  case error::Code::FAILED_PRECONDITION:
-    return common::Status::PreconditionError(status.error_message());
-  case error::Code::ABORTED:
-    return common::Status::Aborted(status.error_message());
-  case error::Code::INVALID_ARGUMENT:
-    return common::Status::InvalidArgument(status.error_message());
-  default:
-    return common::Status::UnknownError("Unknown error.");
-  }
-}
-
-int GetDeviceID(OpKernelContext* context) {
+int GetDeviceID(::tensorflow::OpKernelContext* context) {
   int device = CPU_DEVICE_ID;
   if (context->device() != nullptr &&
       context->device()->tensorflow_gpu_device_info() != nullptr) {
@@ -77,25 +59,25 @@ int GetDeviceID(OpKernelContext* context) {
 // Define all types for TensorUtil.
 const common::DataType ConvertDType(int dtype) {
   switch (dtype) {
-  case DT_UINT8:
+  case ::tensorflow::DT_UINT8:
     return common::BYTEPS_UINT8;
-  case DT_INT8:
+  case ::tensorflow::DT_INT8:
     return common::BYTEPS_INT8;
-  // case DT_UINT16:
+  // case ::tensorflow::DT_UINT16:
   //   return common::BYTEPS_UINT16;
-  // case DT_INT16:
+  // case ::tensorflow::DT_INT16:
   //   return common::BYTEPS_INT16;
-  case DT_INT32:
+  case ::tensorflow::DT_INT32:
     return common::BYTEPS_INT32;
-  case DT_INT64:
+  case ::tensorflow::DT_INT64:
     return common::BYTEPS_INT64;
-  case DT_HALF:
+  case ::tensorflow::DT_HALF:
     return common::BYTEPS_FLOAT16;
-  case DT_FLOAT:
+  case ::tensorflow::DT_FLOAT:
     return common::BYTEPS_FLOAT32;
-  case DT_DOUBLE:
+  case ::tensorflow::DT_DOUBLE:
     return common::BYTEPS_FLOAT64;
-  // case DT_BOOL:
+  // case ::tensorflow::DT_BOOL:
   //   return common::BYTEPS_BOOL;
   default:
     throw std::logic_error("Invalid tensor type.");
@@ -105,7 +87,7 @@ const common::DataType ConvertDType(int dtype) {
 } // namespace
 
 #if HAVE_CUDA
-TFReadyEvent::TFReadyEvent(DeviceContext* device_context) {
+TFReadyEvent::TFReadyEvent(::tensorflow::DeviceContext* device_context) {
   auto executor = device_context->stream()->parent();
   auto ready_event = new perftools::gputools::Event(executor);
   ready_event->Init();
@@ -139,7 +121,7 @@ int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
 // On GPU this event will signal that data is ready, and tensors are
 // allocated.
-common::ReadyEvent* RecordReadyEvent(OpKernelContext* context) {
+common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
 #if HAVE_CUDA
   auto device_context = context->op_device_context();
   if (device_context != nullptr) {
@@ -162,19 +144,19 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype
     return;
 }
 
-class BytePSPushPullOp : public AsyncOpKernel {
+class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
 public:
-  explicit BytePSPushPullOp(OpKernelConstruction* context)
+  explicit BytePSPushPullOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {}
 
-  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+  void ComputeAsync(::tensorflow::OpKernelContext* context, DoneCallback done) override {
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
                          done);
 
     auto node_name = name();
     auto device = GetDeviceID(context);
     auto tensor = context->input(0);
-    Tensor* output;
+    ::tensorflow::Tensor* output;
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, tensor.shape(), &output), done);
     // ReadyEvent makes sure input tensor is ready, and output is allocated.
@@ -200,18 +182,18 @@ public:
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_CPU),
                         BytePSPushPullOp);
-REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
                         BytePSPushPullOp);
 
 REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Input("tensor: T")
     .Output("sum: T")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return ::tensorflow::Status::OK();
     })
     .Doc(R"doc(
 Perform an PushPull on a tensor. All other processes that do a reduction

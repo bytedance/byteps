@@ -73,7 +73,7 @@ public:
     static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; }
 
     static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
-    static void* CreateScheduledQueue(QueueType queueType);
+    static void CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
     static bool IsTensorInitialized(const std::string &name, size_t size);
