@@ -23,7 +23,6 @@
 #include <unordered_map>
 #include <atomic>
 #include <vector>
-#include "ps/ps.h"
 #include <nccl.h>
 #include <cuda_runtime.h>
 
@@ -127,7 +126,8 @@ public:
 };
 
 typedef struct BytePSContext {
-    std::vector<ps::Key> key_list;
+    // using ps::Key = uint64_t 
+    std::vector<uint64_t> key_list;
     void* cpubuff;
     // CPU buffer for cross-PCIe-switch merging
     std::vector<void*> pcie_cpubuff;
@@ -154,8 +154,8 @@ using StatusCallback = std::function<void(const Status&)>;
 struct TensorTableEntry {
   // Name of the tensor.
   std::string tensor_name;
-  // Key of the tensor
-  ps::Key key;
+  // Key of the tensor, using ps::Key = uint64_t
+  uint64_t key;
   // Operation context.
   BPSContext* context;
   // Input tensor.

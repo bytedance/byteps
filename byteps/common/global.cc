@@ -66,11 +66,12 @@ BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
 }
 
-void* BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
+void BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
     std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
     if (!_queues[queueType]) {
         _queues[queueType] = new BytePSScheduledQueue(queueType, 34359738368);
     }
+    return;
 }
 
 void BytePSGlobal::Init() {
@@ -273,7 +274,7 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size) {
 
         // _name_to_cxt[name].cpubuff will be inited later
         _name_to_cxt[name].buff_len = size;
-        auto accumulated = 0;
+        size_t accumulated = 0;
         while (accumulated < size) {
             _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);
             accumulated += ((size - accumulated) > _partition_bytes) ? _partition_bytes : (size - accumulated);

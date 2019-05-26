@@ -112,7 +112,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
         // JYM: shall we check whether ready_event is OK?
         // Yibo: Not for now. We assume that this task has passed COORDINATE phases
-        if ((*it)->key != key) {
+        if ((*it)->key != (uint64_t)key) {
             continue;
         }
         task = *it;

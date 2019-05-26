@@ -23,7 +23,7 @@
 #include <mutex>
 #include <thread>
 #include <cerrno>
-#include <string.h>
+#include <cstring>
 
 #define BYTEPS_SHM_PER_PCIE_OFFSET (1 << 28)
 

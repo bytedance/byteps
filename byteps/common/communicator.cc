@@ -86,7 +86,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     _local_size = *local_size;
     _worker_id = *worker_id;
 
-    for (size_t i = 0; i < _local_size; i++) {
+    for (int i = 0; i < _local_size; i++) {
         _members.push_back(i);
     }
     _root = _members.back();
