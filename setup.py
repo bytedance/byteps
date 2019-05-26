@@ -66,6 +66,7 @@ if not VERSION:
 else:
     about['__version__'] = VERSION
 
+
 def is_build_action():
     if len(sys.argv) <= 1:
         return False
@@ -78,6 +79,7 @@ def is_build_action():
 
     if sys.argv[1].startswith('install'):
         return True
+
 
 class UploadCommand(Command):
     """Support setup.py upload."""
@@ -112,8 +114,9 @@ class UploadCommand(Command):
         self.status('Pushing git tags…')
         os.system('git tag v{0}'.format(about['__version__']))
         os.system('git push --tags')
-        
+
         sys.exit()
+
 
 # Start to build c libs
 # ------------------------------------------------
@@ -140,6 +143,7 @@ def test_compile(build_ext, name, code, libraries=None, include_dirs=None, libra
 
     return shared_object_file
 
+
 def get_mpi_flags():
     show_command = os.environ.get('BYTEPS_MPICXX_SHOW', 'mpicxx -show')
     try:
@@ -159,10 +163,12 @@ def get_mpi_flags():
             'please specify it with the BYTEPS_MPICXX_SHOW environment variable.\n\n'
             '%s' % (show_command, traceback.format_exc()))
 
+
 def get_cpp_flags(build_ext):
     last_err = None
     default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
     avx_flags = ['-mf16c', '-mavx']
+    flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
         flags_to_try = [default_flags + ['-stdlib=libc++'] + avx_flags,
@@ -192,10 +198,12 @@ def get_cpp_flags(build_ext):
 
     raise DistutilsPlatformError(last_err)
 
+
 def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
     ld_flags = ['-Wl,--version-script=byteps.lds']
+    flags_to_try = []
     if sys.platform == 'darwin':
         flags_to_try = [libtool_flags, ld_flags]
     else:
@@ -221,11 +229,12 @@ def get_link_flags(build_ext):
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
     link_flags = get_link_flags(build_ext)
-    
+
     MACROS = [('EIGEN_MPL2_ONLY', 1)]
     INCLUDES = ['3rdparty/ps-lite/include']
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
+               'byteps/common/core_loops.cc',
                'byteps/common/global.cc',
                'byteps/common/logging.cc',
                'byteps/common/communicator.cc',
@@ -249,13 +258,23 @@ def get_common_options(build_ext):
     LIBRARY_DIRS += nccl_lib_dirs
     LIBRARIES += nccl_libs
 
+    # RDMA and NUMA libs
+    LIBRARIES += ['rdmacm', 'ibverbs', 'numa']
+
+    # ps-lite
+    EXTRA_OBJECTS = ['3rdparty/ps-lite/build/libps.a',
+                     '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
+                     '3rdparty/ps-lite/deps/lib/libzmq.a']
+
     return dict(MACROS=MACROS,
                 INCLUDES=INCLUDES,
                 SOURCES=SOURCES,
                 COMPILE_FLAGS=COMPILE_FLAGS,
                 LINK_FLAGS=LINK_FLAGS,
                 LIBRARY_DIRS=LIBRARY_DIRS,
-                LIBRARIES=LIBRARIES)
+                LIBRARIES=LIBRARIES,
+                EXTRA_OBJECTS=EXTRA_OBJECTS)
+
 
 def check_tf_version():
     try:
@@ -271,6 +290,7 @@ def check_tf_version():
         # This means that tf.__version__ was not exposed, which makes it *REALLY* old.
         raise DistutilsPlatformError(
             'Your TensorFlow version is outdated. BytePS requires tensorflow>=1.1.0')
+
 
 def get_tf_include_dirs():
     import tensorflow as tf
@@ -340,6 +360,7 @@ def get_tf_abi(build_ext, include_dirs, lib_dirs, libs, cpp_flags):
 
     raise DistutilsPlatformError(last_err)
 
+
 def get_tf_flags(build_ext, cpp_flags):
     import tensorflow as tf
     try:
@@ -366,12 +387,11 @@ def get_tf_flags(build_ext, cpp_flags):
 
         return compile_flags, link_flags
 
+
 def build_tf_extension(build_ext, options):
     check_tf_version()
     tf_compile_flags, tf_link_flags = get_tf_flags(
         build_ext, options['COMPILE_FLAGS'])
-
-    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
 
     # We assume we have CUDA
     cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
@@ -386,14 +406,13 @@ def build_tf_extension(build_ext, options):
         ['byteps/tensorflow/ops.cc']
     tensorflow_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         tf_compile_flags
-    tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags + extra_link_args
+    tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags
     tensorflow_lib.library_dirs = options['LIBRARY_DIRS']
     tensorflow_lib.libraries = options['LIBRARIES']
-    tensorflow_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a',
-                                    '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
-                                    '3rdparty/ps-lite/deps/lib/libzmq.a']
+    tensorflow_lib.extra_objects = options['EXTRA_OBJECTS']
 
     build_ext.build_extension(tensorflow_lib)
+
 
 def check_mx_version():
     try:
@@ -409,6 +428,7 @@ def check_mx_version():
         raise DistutilsPlatformError(
             'Your MXNet version is outdated. BytePS requires mxnet>=1.4.0')
 
+
 def get_mx_include_dirs():
     try:
         import mxnet as mx
@@ -419,6 +439,7 @@ def get_mx_include_dirs():
         tmp_mxnet_dir = os.getenv("BYTEPS_SERVER_MXNET_PATH", "/root/mxnet15-rdma")
         MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
         return os.path.join(MXNET_ROOT, 'include/')
+
 
 def get_mx_lib_dirs():
     import mxnet as mx
@@ -439,9 +460,6 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
                     void test() {
                     }
                     '''))
-            mx_libs.append('rdmacm')
-            mx_libs.append('ibverbs')
-            mx_libs.append('numa')
             return mx_libs
         except (CompileError, LinkError):
             last_err = 'Unable to determine -l link flags to use with MXNet (see error above).'
@@ -450,6 +468,7 @@ def get_mx_libs(build_ext, lib_dirs, cpp_flags):
                        'Last error:\n\n%s' % traceback.format_exc()
 
     raise DistutilsPlatformError(last_err)
+
 
 def get_mx_flags(build_ext, cpp_flags):
     mx_include_dirs = [get_mx_include_dirs()]
@@ -470,14 +489,17 @@ def get_mx_flags(build_ext, cpp_flags):
 
     return compile_flags, link_flags
 
+
 def check_macro(macros, key):
     return any(k == key and v for k, v in macros)
+
 
 def set_macro(macros, key, new_value):
     if any(k == key for k, _ in macros):
         return [(k, new_value if k == key else v) for k, v in macros]
     else:
         return macros + [(key, new_value)]
+
 
 def is_mx_cuda():
     try:
@@ -497,6 +519,7 @@ def is_mx_cuda():
             except Exception:
                 return False
     return False
+
 
 def get_cuda_dirs(build_ext, cpp_flags):
     cuda_include_dirs = []
@@ -541,6 +564,7 @@ def get_cuda_dirs(build_ext, cpp_flags):
 
     return cuda_include_dirs, cuda_lib_dirs
 
+
 def get_nccl_vals():
     nccl_include_dirs = []
     nccl_lib_dirs = []
@@ -558,6 +582,7 @@ def get_nccl_vals():
         nccl_libs += ['nccl_static']
 
     return nccl_include_dirs, nccl_lib_dirs, nccl_libs
+
 
 def build_mx_extension(build_ext, options):
     # clear ROLE -- installation does not need this
@@ -600,19 +625,19 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         mx_compile_flags
     mxnet_lib.extra_link_args = options['LINK_FLAGS'] + mx_link_flags
-    mxnet_lib.extra_objects = ['3rdparty/ps-lite/build/libps.a',
-                               '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
-                               '3rdparty/ps-lite/deps/lib/libzmq.a']
+    mxnet_lib.extra_objects = options['EXTRA_OBJECTS']
     mxnet_lib.library_dirs = options['LIBRARY_DIRS']
     mxnet_lib.libraries = options['LIBRARIES']
 
     build_ext.build_extension(mxnet_lib)
+
 
 def dummy_import_torch():
     try:
         import torch
     except:
         pass
+
 
 def parse_version(version_str):
     if "dev" in version_str:
@@ -631,6 +656,7 @@ def parse_version(version_str):
         version += int(m.group(4))
     return version
 
+
 def check_torch_version():
     try:
         import torch
@@ -648,6 +674,7 @@ def check_torch_version():
             'Unable to determine PyTorch version from the version string \'%s\'' % torch.__version__)
     return version
 
+
 def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
     try:
         from torch.utils.cpp_extension import include_paths
@@ -662,9 +689,10 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
         print('INFO: Above error indicates that this PyTorch installation does not support CUDA.')
         return False
 
+
 def build_torch_extension(build_ext, options, torch_version):
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
-                                 extra_compile_args=options['COMPILE_FLAGS'])
+                              extra_compile_args=options['COMPILE_FLAGS'])
     if not have_cuda and check_macro(options['MACROS'], 'HAVE_CUDA'):
         raise DistutilsPlatformError(
             'byteps build with GPU support was requested, but this PyTorch '
@@ -694,8 +722,6 @@ def build_torch_extension(build_ext, options, torch_version):
         # CUDAExtension fails with `ld: library not found for -lcudart` if CUDA is not present
         from torch.utils.cpp_extension import CppExtension as TorchExtension
 
-    extra_link_args = ['-lrdmacm', '-libverbs', '-lnuma']
-
     ext = TorchExtension(pytorch_lib.name,
                          define_macros=updated_macros,
                          include_dirs=options['INCLUDES'],
@@ -705,10 +731,8 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/torch/adapter.cc',
                                                        'byteps/torch/handle_manager.cc'],
                          extra_compile_args=options['COMPILE_FLAGS'],
-                         extra_link_args=options['LINK_FLAGS'] + extra_link_args,
-                         extra_objects=['3rdparty/ps-lite/build/libps.a',
-                                        '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
-                                        '3rdparty/ps-lite/deps/lib/libzmq.a'],
+                         extra_link_args=options['LINK_FLAGS'],
+                         extra_objects=options['EXTRA_OBJECTS'],
                          library_dirs=options['LIBRARY_DIRS'],
                          libraries=options['LIBRARIES'])
 
@@ -716,6 +740,7 @@ def build_torch_extension(build_ext, options, torch_version):
     for k, v in ext.__dict__.items():
         pytorch_lib.__dict__[k] = v
     build_ext.build_extension(pytorch_lib)
+
 
 # run the customize_compiler
 class custom_build_ext(build_ext):
@@ -728,10 +753,10 @@ class custom_build_ext(build_ext):
                                             stderr=sys.stderr,
                                             shell=True)
             make_process.communicate()
-            if make_process.returncode :
+            if make_process.returncode:
                 raise DistutilsSetupError('An ERROR occured while running the '
-                                        'Makefile for the ps-lite library. '
-                                        'Exit code: {0}'.format(make_process.returncode))
+                                          'Makefile for the ps-lite library. '
+                                          'Exit code: {0}'.format(make_process.returncode))
 
         options = get_common_options(self)
         built_plugins = []
@@ -773,7 +798,7 @@ class custom_build_ext(build_ext):
             except:
                 if not int(os.environ.get('BYTEPS_WITH_PYTORCH', 0)):
                     print('INFO: Unable to build PyTorch plugin, will skip it.\n\n'
-                        '%s' % traceback.format_exc())
+                          '%s' % traceback.format_exc())
                     built_plugins.append(False)
                 else:
                     raise
