@@ -19,6 +19,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <numa.h>
+#include <cuda_runtime.h>
 
 #include "shared_memory.h"
 #include "logging.h"
@@ -36,6 +38,8 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
     BPS_CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
 
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    CUDA_CALL(cudaHostRegister(ptr, size, cudaHostRegisterDefault));
+    // mlock(ptr, size);
 
     BPS_CHECK_NE(ptr, (void *)-1) << strerror(errno);
 
@@ -50,7 +54,14 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size
     std::vector<void*> r;
     for (int i = 0; i < BytePSGlobal::GetPcieSwitchNum(); i++) {
         auto offset = BYTEPS_SHM_PER_PCIE_OFFSET * (i + 1);
+        if (i <= numa_max_node()) {
+            numa_set_preferred(i);
+        }
+        else {
+            numa_set_preferred(numa_max_node());
+        }
         r.push_back(openSharedMemory(key + offset, size));
+        numa_set_preferred(-1);
     }
     return r;
 }

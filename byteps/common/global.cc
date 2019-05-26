@@ -16,6 +16,7 @@
 #include "global.h"
 #include <malloc.h>
 #include <unistd.h>
+#include <numa.h>
 
 namespace byteps {
 namespace common {
@@ -128,6 +129,13 @@ void BytePSGlobal::Init() {
     // Init NCCL
     _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
     _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
+
+    // Bind to NUMA node
+    if (_is_cross_pcie_switch) {
+        auto numa_index = (GetPcieSwitchIndex() >  numa_max_node()) ?
+                          numa_max_node() : GetPcieSwitchIndex();
+        numa_bind(numa_parse_nodestring(std::to_string(numa_index).c_str()));
+    }
 
     // Init CPU Reducer
     if (_is_cross_pcie_switch) {
