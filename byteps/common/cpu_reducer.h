@@ -30,6 +30,7 @@ class CpuReducer {
 public:
     CpuReducer(std::shared_ptr<BytePSComm> comm);
     int sum(void* dst, void* src, size_t len, DataType dtype);
+    int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
     bool isRoot();
     std::shared_ptr<BytePSComm> getComm() { return _comm; }
 
@@ -41,6 +42,14 @@ private:
     int _sum_int32(void* dst, void* src, size_t len);
     int _sum_int8(void* dst, void* src, size_t len);
     int _sum_int64(void* dst, void* src, size_t len);
+
+    int _sum_float32(void* dst, void* src1, void* src2, size_t len);
+    int _sum_float64(void* dst, void* src1, void* src2, size_t len);
+    int _sum_float16(void* dst, void* src1, void* src2, size_t len);
+    int _sum_unit8(void* dst, void* src1, void* src2, size_t len);
+    int _sum_int32(void* dst, void* src1, void* src2, size_t len);
+    int _sum_int8(void* dst, void* src1, void* src2, size_t len);
+    int _sum_int64(void* dst, void* src1, void* src2, size_t len);
 
     std::shared_ptr<BytePSComm> _comm;
     int _num_threads;
