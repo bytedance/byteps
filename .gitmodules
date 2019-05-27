@@ -1,0 +1,4 @@
+[submodule "3rdparty/ps-lite"]
+	path = 3rdparty/ps-lite
+	url = git@code.byted.org:jiangyimin/ps-lite.git
+	branch = byteps
