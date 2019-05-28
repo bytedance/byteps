@@ -50,33 +50,19 @@ inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
     }
 }
 
-void DoFirstStage(BPSContext &context, NDArray* input, const std::string& name, int version, int priority,
+void DoPushPull(BPSContext &context, NDArray* input, const std::string& name, int version, int priority,
                  Callback on_complete) {
     ThrowIfError(common::CheckInitialized());
 
     auto device = TensorUtil::GetDevice(input);
     auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
     auto queue_list = common::GetPushQueueList(device);
+    auto queue_list_pull = common::GetPullQueueList(device);
+    queue_list->insert(queue_list->end(),
+                       queue_list_pull->begin(), queue_list_pull->end());
 
     auto enqueue_result =
-        common::EnqueueTensor(context, byteps_input, nullptr, nullptr,
-                              name, device, priority, version,
-                              [on_complete](const Status& status) {
-                                InvokeCompleteCallback(on_complete, status);
-                              }, queue_list);
-    ThrowIfError(enqueue_result);
-}
-
-void DoSecondStage(BPSContext &context, NDArray* output, const std::string& name, int version, int priority,
-                 Callback on_complete) {
-    ThrowIfError(common::CheckInitialized());
-
-    auto device = TensorUtil::GetDevice(output);
-    auto byteps_output = std::make_shared<MXTensor<NDArray>>(output);
-    auto queue_list = common::GetPullQueueList(device);
-
-    auto enqueue_result =
-        common::EnqueueTensor(context, nullptr, byteps_output, nullptr,
+        common::EnqueueTensor(context, byteps_input, byteps_input, nullptr,
                               name, device, priority, version,
                               [on_complete](const Status& status) {
                                 InvokeCompleteCallback(on_complete, status);
@@ -92,23 +78,14 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     std::string tensor_name = GetOpName("byteps", name);
 
     auto& context = common::GetContextFromName(tensor_name);
-    auto first_stage_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
+    auto push_pull_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-        DoFirstStage(context, tensor, tensor_name, version, priority, on_complete);
+        DoPushPull(context, tensor, tensor_name, version, priority, on_complete);
     };
 
-    Engine::Get()->PushAsync(first_stage_async_fn, tensor->ctx(),
-                            {tensor->var()}, {},
-                            FnProperty::kNormal, 0, "BytePSFirstStage");
-
-    auto second_stage_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
-                                      Callback on_complete) mutable {
-        DoSecondStage(context, tensor, tensor_name, version, priority, on_complete);
-    };
-
-    Engine::Get()->PushAsync(second_stage_async_fn, tensor->ctx(),
+    Engine::Get()->PushAsync(push_pull_async_fn, tensor->ctx(),
                             {}, {tensor->var()},
-                            FnProperty::kNormal, 0, "BytePSSecondStage");
+                            FnProperty::kCPUPrioritized, 0, "BytePSPushPull");
 
     // average the aggregated gradient
     auto num_worker = byteps_size();
