@@ -56,18 +56,25 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size
         auto offset = BYTEPS_SHM_PER_PCIE_OFFSET * (i + 1);
         if (BytePSGlobal::IsDistributed()) {
             if (i <= numa_max_node()) {
-            numa_set_preferred(i);
+                numa_set_preferred(i);
             }
             else {
                 numa_set_preferred(numa_max_node());
             }
             r.push_back(openSharedMemory(key + offset, size));
-            numa_set_preferred(-1);        
+            numa_set_preferred(-1);
         }
         else {
-            numa_set_interleave_mask(numa_all_nodes_ptr);
-            r.push_back(openSharedMemory(key + offset, size));
-            numa_set_interleave_mask(numa_no_nodes_ptr);
+            if (BytePSGlobal::IsCrossPcieSwitch()) {
+                numa_set_interleave_mask(numa_all_nodes_ptr);
+                r.push_back(openSharedMemory(key + offset, size));
+                numa_set_interleave_mask(numa_no_nodes_ptr);
+            }
+            else {
+                numa_set_preferred(0);
+                r.push_back(openSharedMemory(key + offset, size));
+                numa_set_preferred(-1);
+            }
         }
     }
     return r;
