@@ -128,11 +128,13 @@ public:
 typedef struct BytePSContext {
     // using ps::Key = uint64_t 
     std::vector<uint64_t> key_list;
+    // a copy on CPU
     void* cpubuff;
+    // GPU ptr if the tensor is on CPU
+    void* gpu_ptr;
     // CPU buffer for cross-PCIe-switch merging
     std::vector<void*> pcie_cpubuff;
     size_t buff_len;
-    bool reuse_buff;
     int priority;
     bool initialized;
 } BPSContext;
@@ -176,6 +178,8 @@ struct TensorTableEntry {
   StatusCallback callback;
   // CPU buffer address
   void* cpubuff;
+  // GPU ptr if the tensor is on CPU
+  void* gpu_ptr;
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   // The (deep copy of) queue list of this task

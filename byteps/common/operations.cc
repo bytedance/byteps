@@ -16,6 +16,7 @@
 #include <cstring>
 #include <memory>
 #include <thread>
+#include <cuda_runtime.h>
 
 #include "logging.h"
 #include "operations.h"
@@ -124,6 +125,7 @@ void PartitionTensor(std::shared_ptr<TensorTableEntry> entry,
         e->version = entry->version;
         e->callback = entry->callback;
         e->cpubuff = entry->cpubuff;
+        e->gpu_ptr = entry->gpu_ptr;
         e->pcie_cpubuff = entry->pcie_cpubuff;
         e->queue_list = entry->queue_list;
         e->tensor = entry->tensor;
@@ -163,6 +165,7 @@ Status EnqueueTensor(BPSContext &context,
     e->version = version;
     e->callback = callback;
     e->cpubuff = context.cpubuff;
+    e->gpu_ptr = context.gpu_ptr;
     e->pcie_cpubuff = context.pcie_cpubuff;
     e->queue_list = *queue_list;
     e->counter_ptr = std::make_shared<std::atomic_int>(0);
@@ -219,27 +222,28 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
                    << ", size=" << size
                    << ", parts=" << key_list.size();
 
+    // If cpubuff is not nullprt, the tensor itself is on CPU
+    // We need to register with CUDA so that NCCL can work on it
     if (cpubuff) {
         BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
-        context.cpubuff = cpubuff;
-        context.reuse_buff = true;
+        CUDA_CALL(cudaHostRegister(cpubuff, size, cudaHostRegisterMapped));
+        CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
+    }
+
+    // We always allocate our own cpu buffer
+    // use the first key in key_list as the index
+    auto shm_obj = BytePSGlobal::GetSharedMemoryObj(); 
+    if (BytePSGlobal::IsCrossPcieSwitch()) {
+        context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
+        context.cpubuff = context.pcie_cpubuff.back();
     }
     else {
-        // use the first key in key_list as the index
-        auto shm_obj = BytePSGlobal::GetSharedMemoryObj(); 
-        if (BytePSGlobal::IsCrossPcieSwitch()) {
-            context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
-            context.cpubuff = context.pcie_cpubuff.back();
-        }
-        else {
-            context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
-        }
-        context.reuse_buff = false;
-        BPS_LOG(TRACE) << name << ": open shared memory size " << size;
+        context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
     }
+    BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
+    // Init tensors with BytePS server
     char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
-
     size_t accumulated = 0;
     size_t i = 0;
     while (accumulated < size) {
@@ -276,13 +280,6 @@ void InitTensor(BPSContext &context, const std::string &name, int dtype, void *c
                    << ", parts=" << key_list.size();
 }
 
-Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void *cpubuff,
-                         StatusCallback callback) {
-    InitTensor(context, name, dtype, cpubuff);
-    callback(Status::OK());
-    return Status::OK();
-}
-
 BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
@@ -293,35 +290,33 @@ bool IsTensorInitialized(const std::string &name, size_t size) {
 
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
     auto queue_list = std::make_shared<std::vector<QueueType>>();
-    if (device != CPU_DEVICE_ID) {
 
-        // Per-PCIe-switch NCCL reduce
-        if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-            queue_list->push_back(REDUCE);
+    // Per-PCIe-switch NCCL reduce
+    if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        queue_list->push_back(REDUCE);
+    }
+    else {
+        queue_list->push_back(COORDINATE_REDUCE);
+        queue_list->push_back(REDUCE);
+    }
+
+    // Copy from GPU to CPU
+    if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+        queue_list->push_back(COPYD2H);
+    }
+
+    // Cross-PCIe-switch reduce
+    if (BytePSGlobal::IsCrossPcieSwitch()) {
+        queue_list->push_back(PCIE_REDUCE);
+    }
+
+    // Push in distirbuted mode
+    if (BytePSGlobal::IsDistributed()) {
+        if (BytePSGlobal::IsRootDevice()) {
+            queue_list->push_back(PUSH);
         }
         else {
-            queue_list->push_back(COORDINATE_REDUCE);
-            queue_list->push_back(REDUCE);
-        }
-
-        // Copy from GPU to CPU
-        if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-            queue_list->push_back(COPYD2H);
-        }
-
-        // Cross-PCIe-switch reduce
-        if (BytePSGlobal::IsCrossPcieSwitch()) {
-            queue_list->push_back(PCIE_REDUCE);
-        }
-
-        // Push in distirbuted mode
-        if (BytePSGlobal::IsDistributed()) {
-            if (BytePSGlobal::IsRootDevice()) {
-                queue_list->push_back(PUSH);
-            }
-            else {
-                queue_list->push_back(COORDINATE_PUSH);
-            }
+            queue_list->push_back(COORDINATE_PUSH);
         }
     }
     return queue_list;
@@ -329,28 +324,26 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
     auto queue_list = std::make_shared<std::vector<QueueType>>();
-    if (device != CPU_DEVICE_ID) {
 
-        // Pull in distirbuted mode
-        if (BytePSGlobal::IsDistributed()) {
-            if (BytePSGlobal::IsRootDevice()) {
-                queue_list->push_back(PULL);
-            }
+    // Pull in distirbuted mode
+    if (BytePSGlobal::IsDistributed()) {
+        if (BytePSGlobal::IsRootDevice()) {
+            queue_list->push_back(PULL);
         }
+    }
 
-        // Copy from CPU to GPU
-        if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-            queue_list->push_back(COPYH2D);
-        }
+    // Copy from CPU to GPU
+    if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+        queue_list->push_back(COPYH2D);
+    }
 
-        // Per-PCIe-switch NCCL broadcast
-        if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-            queue_list->push_back(BROADCAST);
-        }
-        else {
-            queue_list->push_back(COORDINATE_BROADCAST);
-            queue_list->push_back(BROADCAST);
-        }
+    // Per-PCIe-switch NCCL broadcast
+    if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        queue_list->push_back(BROADCAST);
+    }
+    else {
+        queue_list->push_back(COORDINATE_BROADCAST);
+        queue_list->push_back(BROADCAST);
     }
     return queue_list;
 }

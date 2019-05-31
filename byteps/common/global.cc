@@ -234,7 +234,7 @@ void BytePSGlobal::Shutdown() {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
 
     for (auto &it:_name_to_cxt) {
-        if (it.second.cpubuff && !it.second.reuse_buff) {
+        if (it.second.cpubuff) {
             CUDA_CALL(cudaFreeHost(it.second.cpubuff));
         }
     }
