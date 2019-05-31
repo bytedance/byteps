@@ -62,9 +62,6 @@ Status EnqueueTensor(BPSContext &context,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list);
 
-Status EnqueueTensorInit(BPSContext &context, const std::string &name, int dtype, void* cpubuff,
-                         StatusCallback callback);
-
 void InitTensor(BPSContext &context, const std::string &name, int dtype, void* cpubuff);
 
 // Only call these in Framework plugins for the best performance
