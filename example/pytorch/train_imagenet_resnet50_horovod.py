@@ -138,19 +138,11 @@ optimizer = optim.SGD(model.parameters(),
 # Horovod: (optional) compression algorithm.
 compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
 
-# bytescheduler wrapper
-use_bytescheduler = int(os.environ.get('USE_BYTESCHEDULER', '0'))
-if use_bytescheduler > 0:
-    import bytescheduler.pytorch.horovod as bsc
-    bsc.init()
-
 # Horovod: wrap optimizer with DistributedOptimizer.
 optimizer = hvd.DistributedOptimizer(
     optimizer, named_parameters=model.named_parameters(),
     compression=compression,
     backward_passes_per_step=args.batches_per_allreduce)
-if use_bytescheduler > 0:
-    optimizer = bsc.ScheduledOptimizer(model, optimizer)
 
 # Restore from a previous checkpoint, if initial_epoch is specified.
 # Horovod: restore on the first worker which will broadcast weights to other workers.

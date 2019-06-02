@@ -297,11 +297,7 @@ def fit(args, network, data_loader, **kwargs):
     opt = mx.optimizer.create(args.optimizer, sym=network, **optimizer_params)
     # opt = hvd.DistributedOptimizer(opt)
     print(str(os.environ) + "=============" + str(hvd.rank()))
-    if os.environ.get('USE_BYTESCHEDULER') is not None and os.environ.get('USE_BYTESCHEDULER') == "1":
-        print("###")
-        import bytescheduler.mxnet.horovod as bs
-        bs.init()
-        # opt = bs.ScheduledOptimizer(opt)
+
     # else:
     opt = hvd.DistributedOptimizer(opt)
 

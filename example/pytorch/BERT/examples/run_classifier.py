@@ -422,16 +422,13 @@ def main():
     parser.add_argument('--server_port', type=str, default='', help="Can be used for distant debugging.")
     args = parser.parse_args()
     use_horovod = int(os.getenv("USE_HOROVOD"))
-    use_bytescheduler = int(os.environ.get('USE_BYTESCHEDULER', '0'))
     print("env variable USE_HOROVOD:", use_horovod)
     if use_horovod == 1:
         hvd.init()
         args.local_rank = hvd.local_rank()
         print("use horovod, local rank:", args.local_rank)
     args.output_dir = args.output_dir + "_" + str(args.local_rank)
-    if use_bytescheduler > 0:
-        import bytescheduler.pytorch.horovod as bsc
-        bsc.init()
+
     if args.server_ip and args.server_port:
         # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
         import ptvsd
@@ -573,8 +570,7 @@ def main():
                 if 'schedule' in group:
                     pop_dict[index] = group.pop('schedule')
             optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-            if use_bytescheduler > 0:
-                optimizer = bsc.ScheduledOptimizer(model, optimizer)
+
             hvd.broadcast_parameters(model.state_dict(), root_rank=0)
             optimizer.load_state_dict(state_dict)
             hvd.broadcast_optimizer_state(optimizer, root_rank=0)

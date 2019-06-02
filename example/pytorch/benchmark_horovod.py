@@ -62,20 +62,10 @@ optimizer = optim.SGD(model.parameters(), lr=0.01)
 # Horovod: (optional) compression algorithm.
 compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
 
-# bytescheduler wrapper
-use_bytescheduler = int(os.environ.get('USE_BYTESCHEDULER', '0'))
-if use_bytescheduler > 0:
-    if args.partition:
-        os.environ["BYTESCHEDULER_PARTITION_UNIT"] = str(1000 * args.partition)
-    import bytescheduler.pytorch.horovod as bsc
-    bsc.init()
-
 # Horovod: wrap optimizer with DistributedOptimizer.
 optimizer = hvd.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression=compression)
-if use_bytescheduler > 0:
-    optimizer = bsc.ScheduledOptimizer(model, optimizer, args.num_warmup_batches + args.num_iters * args.num_batches_per_iter)
 
 # Horovod: broadcast parameters & optimizer state.
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -129,9 +119,8 @@ with torch.autograd.profiler.profile(enable_profiling, True) as prof:
         img_sec = args.batch_size * args.num_batches_per_iter / time
         log('Iter #%d: %.1f img/sec per %s' % (x, img_sec, device))
         img_secs.append(img_sec)
-if enable_profiling:
-    prof.export_chrome_trace(os.path.join('/mnt/cephfs/lab/pengyanghua/pytorch-trace', args.model+'-'+str(hvd.rank()) +'.json'))
-    # print(prof)
+
+
 # Results
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)

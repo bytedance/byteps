@@ -244,13 +244,9 @@ def main():
     print(opt)
 
     use_horovod = int(os.environ.get("USE_HOROVOD","0"))
-    use_bytescheduler = int(os.environ.get("USE_BYTESCHEDULER","0"))
     if use_horovod > 0:
         import byteps.torch as hvd
         hvd.init()
-        if use_bytescheduler > 0:
-            import bytescheduler.pytorch.horovod as bsc
-            bsc.init()
         #device = torch.cuda.set_device(hvd.local_rank())
         device = torch.device('cuda',hvd.local_rank())
     else:
@@ -285,8 +281,6 @@ def main():
     torch_optimizer = optim.Adam(filter(lambda x: x.requires_grad, transformer.parameters()), betas=(0.9, 0.98), eps=1e-09)
     if use_horovod > 0:
         torch_optimizer = hvd.DistributedOptimizer(torch_optimizer, named_parameters=transformer.named_parameters())
-        if use_bytescheduler > 0:
-            torch_optimizer = bsc.ScheduledOptimizer(transformer, torch_optimizer)
         hvd.broadcast_parameters(transformer.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(torch_optimizer, root_rank=0)
     #print("finish hvd preparation")
