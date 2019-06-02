@@ -19,6 +19,7 @@
 #include <memory>
 #include "common.h"
 #include "communicator.h"
+#include "logging.h"
 
 #define BYTEPS_CPU_REDUCER_THREADS 16
 
@@ -29,6 +30,11 @@ class CpuReducer {
 
 public:
     CpuReducer(std::shared_ptr<BytePSComm> comm);
+    ~CpuReducer() {
+        if (_comm) _comm.reset();
+        BPS_LOG(DEBUG) << "Clear CpuReducer";
+    }
+    
     int sum(void* dst, void* src, size_t len, DataType dtype);
     int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
     bool isRoot();

@@ -233,12 +233,6 @@ void BytePSGlobal::Shutdown() {
     CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
 
-    for (auto &it:_name_to_cxt) {
-        if (it.second.cpubuff) {
-            CUDA_CALL(cudaFreeHost(it.second.cpubuff));
-        }
-    }
-
     if (_reduce_table) {
         delete _reduce_table;
     }
@@ -256,6 +250,12 @@ void BytePSGlobal::Shutdown() {
         delete _copy_table;
     }
 
+    _basic_comm.reset();
+    _shm_obj.reset();
+    _cpu_reducer.reset();
+    _nccl_manager.reset();
+
+    BPS_LOG(DEBUG) << "Clear all BytePS resources";
     return;
 }
 

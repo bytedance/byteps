@@ -20,10 +20,8 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <numa.h>
-#include <cuda_runtime.h>
 
 #include "shared_memory.h"
-#include "logging.h"
 #include "global.h"
 
 namespace byteps {
@@ -47,6 +45,8 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
 
     std::lock_guard<std::mutex> lock(_shm_mu);
     _key_shm_name[key] = shm_name;
+    _key_shm_addr[key] = ptr;
+    _key_shm_size[key] = size;
     return ptr;
 }
 
