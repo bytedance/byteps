@@ -244,7 +244,6 @@ void NcclManagerExpr::ConstructRings() {
             // the log is just for debug, the actual length of nccl id is 128
             BPS_LOG(DEBUG) << "root nccl_id is " << (*(long long int*)nccl_id);
             _signal_comm->broadcastSignal(nccl_id, sizeof(ncclUniqueId));
-
         }
         else {
             int src;

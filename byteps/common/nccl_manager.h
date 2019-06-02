@@ -50,6 +50,21 @@ public:
         if (_nccl_stream) {
             CUDA_CALL(cudaStreamDestroy(*_nccl_stream));
         }
+        if (_nccl_id) {
+            free(_nccl_id);
+        }
+        if (_nccl_comm) {
+            free(_nccl_comm);
+        }
+        if (_signal_comm) {
+            _signal_comm.reset();
+        }
+        if (_global_comm) {
+            _global_comm.reset();
+        }
+        while(!_nccl_pipeline.empty()) _nccl_pipeline.pop();
+
+        BPS_LOG(DEBUG) << "Clear NcclManager";
     }
 
     int GetGroupSize() { return _nccl_group_size; }

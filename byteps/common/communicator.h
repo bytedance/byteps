@@ -105,6 +105,8 @@ public:
         }
         close(_recv_fd);
         close(_send_fd);
+
+        BPS_LOG(DEBUG) << "Clear BytePSCommSocket";
     }
 
     void init(int* rank, int* size, int* local_rank, int* local_size,
