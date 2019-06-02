@@ -154,11 +154,6 @@ def fit(args, network, data_loader, **kwargs):
     """
     # kvstore
     kv = mx.kvstore.create(args.kv_store)
-    # kvstore wrapper
-    use_bytescheduler = int(os.environ.get('USE_BYTESCHEDULER', '0'))
-    if use_bytescheduler > 0:
-        from bytescheduler.mxnet.kvstore import ScheduledKVStore
-        kv = ScheduledKVStore(kv)
 
     if args.gc_type != 'none':
         kv.set_gradient_compression({'type': args.gc_type,
