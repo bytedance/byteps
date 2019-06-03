@@ -264,7 +264,7 @@ class Metric(object):
     def update(self, val):
         if not isinstance(val, torch.Tensor):
             val = torch.tensor(val)
-        self.sum += hvd.push_pull_async(val, name=self.name)
+        self.sum += hvd.byteps_push_pull(val.detach.cpu(), name=self.name)
         self.n += 1
 
     @property
