@@ -409,29 +409,37 @@ bool RunPushLoopOnce() {
     auto task = q->getTask();
     if (task) {
         BPS_CHECK(BytePSGlobal::IsRootDevice()) << "only root device should enter PUSH loop";
-        // TODO: allow merging
-        auto offset = task->offset;
-        auto len = task->len;
+        
+        if (BytePSGlobal::IsDistributed()) {
+            auto offset = task->offset;
+            auto len = task->len;
 
-        char* data;
-        BPS_CHECK(task->cpubuff);
-        data = const_cast<char*>(static_cast<const char*>(task->cpubuff) + offset);
+            char* data;
+            BPS_CHECK(task->cpubuff);
+            data = const_cast<char*>(static_cast<const char*>(task->cpubuff) + offset);
 
-        // get metadata
-        const int dtype = task->tensor->dtype();
+            // get metadata
+            const int dtype = task->tensor->dtype();
 
-        // false means not to delete data when SArray is deleted
-        ps::SArray<char> vals(data, len, false);
+            // false means not to delete data when SArray is deleted
+            ps::SArray<char> vals(data, len, false);
 
-        int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-        auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
-        BytePSGlobal::GetPS()->ZPush(
-            pskv.keys, vals, pskv.lens, cmd,
-            [task, q]() {
-                FinishOrProceed(task);
-                q->reportFinish(task->len);
-            }
-        );
+            int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+            auto& pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
+            BytePSGlobal::GetPS()->ZPush(
+                pskv.keys, vals, pskv.lens, cmd,
+                [task, q]() {
+                    FinishOrProceed(task);
+                    q->reportFinish(task->len);
+                }
+            );
+        }
+        else {
+            // This is a dummy barrier for IsCrossPcieSwitch()
+            BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
+            FinishOrProceed(task);
+            q->reportFinish(task->len);
+        }
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -531,7 +539,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
                                             DO_COPYH2D,
                                             key };
             BytePSGlobal::GetBasicComm()->broadcastSignal(&msg,
-                                                        sizeof(BytePSCommMsg));
+                                                          sizeof(BytePSCommMsg));
         }
         CopyHost2Device(task);
 
