@@ -145,23 +145,23 @@ void BytePSGlobal::Init() {
 
     // ReadyTable for Push & Pull
     if (_is_root_device) {
-        _push_table = new ReadyTable(_local_size-1);
+        _push_table = new ReadyTable(_local_size-1, "PUSH");
     }
     else {
-        _copy_table = new ReadyTable(1);
+        _copy_table = new ReadyTable(1, "COPY");
     }
 
     // ReadyTable for cross-PCIe-switch reduce
     if (_is_cross_pcie_switch) {
         if (_cpu_reducer->isRoot()) {
-            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1);
+            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1, "PCIE_REDUCE");
         }
     }
 
     // ReadyTable for per-PCIe-switch NCCL calls
     if (_nccl_manager->IsSignalRoot()) {
-        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1);
-        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1);
+        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1, "NCCL_REDUCE");
+        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1, "NCCL_BROADCAST");
     }
 
     // Create CUDA streams for GPU-CPU copies

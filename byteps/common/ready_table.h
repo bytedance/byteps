@@ -26,7 +26,10 @@ namespace common {
 class ReadyTable {
 
 public:
-    ReadyTable(int ready_count) { _ready_count = ready_count; }
+    ReadyTable(int ready_count, const char* name) {
+        _ready_count = ready_count;
+        _table_name = std::string(name);
+    }
     // methods to access or modify the _ready_table
     bool IsKeyReady(int key);
     int AddReadyCount(int key);
@@ -38,7 +41,7 @@ private:
     // use this mutex to access/modify the _ready_table
     std::mutex _table_mutex;
     int _ready_count;
-
+    std::string _table_name;
 };
 
 
