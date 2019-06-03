@@ -202,7 +202,7 @@ def get_cpp_flags(build_ext):
 def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
-    ld_flags = ['-Wl,--version-script=byteps.lds']
+    ld_flags = ['-Wl,--version-script=byteps.lds', '-fopenmp']
     flags_to_try = []
     if sys.platform == 'darwin':
         flags_to_try = [libtool_flags, ld_flags]
