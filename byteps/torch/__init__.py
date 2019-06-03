@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
-from byteps.torch.ops import allreduce, broadcast
 from byteps.torch.ops import poll, synchronize
 from byteps.torch.ops import init, shutdown
 from byteps.torch.ops import size, local_size, rank, local_rank
