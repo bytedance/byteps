@@ -37,11 +37,7 @@ void byteps_init() {
     // Push & Pull in distirbuted mode
     if (BytePSGlobal::IsDistributed()) {
         if (BytePSGlobal::IsRootDevice()) {
-            func.push_back(PushLoop);
             func.push_back(PullLoop);
-        }
-        else {
-            func.push_back(CoordinatePushLoop);
         }
     }
 
@@ -54,9 +50,13 @@ void byteps_init() {
     if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
         func.push_back(CopyDevice2HostLoop);
         if (BytePSGlobal::IsRootDevice()) {
+            // PUSH can be a real push in distirbuted mode
+            // Or a dummy barrier in cross-pcie-switch mode
+            func.push_back(PushLoop);
             func.push_back(RootCopyHost2DeviceLoop);
         }
         else {
+            func.push_back(CoordinatePushLoop);
             func.push_back(NonRootCopyHost2DeviceLoop);
             func.push_back(NonRootCopyListenLoop);
         }
@@ -72,7 +72,7 @@ void byteps_init() {
         func.push_back(CoordinateBroadcastLoop);
         func.push_back(NonRootNcclLoop);
     }
-    
+
     BytePSGlobal::Start(func);
     return;
 }
@@ -311,7 +311,8 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
     }
 
     // Push in distirbuted mode
-    if (BytePSGlobal::IsDistributed()) {
+    // In case IsCrossPcieSwitch(), PUSH runs as a dummy barrier
+    if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
         if (BytePSGlobal::IsRootDevice()) {
             queue_list->push_back(PUSH);
         }
