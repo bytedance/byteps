@@ -78,8 +78,8 @@ for try_epoch in range(args.epochs, 0, -1):
 
 # Horovod: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
-resume_from_epoch = hvd.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
-                                  name='resume_from_epoch').item()
+#resume_from_epoch = hvd.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
+#                                  name='resume_from_epoch').item()
 
 # Horovod: print logs on the first worker.
 verbose = 1 if hvd.rank() == 0 else 0
@@ -264,7 +264,7 @@ class Metric(object):
     def update(self, val):
         if not isinstance(val, torch.Tensor):
             val = torch.tensor(val)
-        self.sum += hvd.allreduce(val.detach().cpu(), name=self.name)
+        self.sum += hvd.push_pull_async(val, name=self.name)
         self.n += 1
 
     @property
