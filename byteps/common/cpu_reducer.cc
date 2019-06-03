@@ -156,7 +156,7 @@ int CpuReducer::_sum_float32(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (float*)src1;
     auto s2 = (float*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / (size_t) 4; ++i) {
+    for (size_t i = 0; i < len / (size_t) 4; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -167,7 +167,7 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (double*)src1;
     auto s2 = (double*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / (size_t) 8; ++i) {
+    for (size_t i = 0; i < len / (size_t) 8; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -179,7 +179,7 @@ int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (float*)src1;
     auto s2 = (float*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / (size_t) 4; ++i) {
+    for (size_t i = 0; i < len / (size_t) 4; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -190,7 +190,7 @@ int CpuReducer::_sum_unit8(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (unsigned char*)src1;
     auto s2 = (unsigned char*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -201,7 +201,7 @@ int CpuReducer::_sum_int32(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (int*)src1;
     auto s2 = (int*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / (size_t) 4; ++i) {
+    for (size_t i = 0; i < len / (size_t) 4; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -212,7 +212,7 @@ int CpuReducer::_sum_int8(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (signed char*)src1;
     auto s2 = (signed char*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
@@ -223,7 +223,7 @@ int CpuReducer::_sum_int64(void* dst, void* src1, void* src2, size_t len) {
     auto s1 = (long long*)src1;
     auto s2 = (long long*)src2;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (int i = 0; i < len / (size_t) 8; ++i) {
+    for (size_t i = 0; i < len / (size_t) 8; ++i) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
