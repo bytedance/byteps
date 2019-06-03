@@ -30,6 +30,7 @@ bool ReadyTable::IsKeyReady(int key) {
 int ReadyTable::AddReadyCount(int key) {
     std::lock_guard<std::mutex> lock(_table_mutex);
     BPS_CHECK_LT(_ready_table[key], _ready_count)
+        << _table_name << ": "
         << _ready_table[key] << ", " << (_ready_count);
     return ++_ready_table[key];
 }
