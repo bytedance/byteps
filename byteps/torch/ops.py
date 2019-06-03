@@ -138,55 +138,6 @@ def push_pull_compress(tensor, average=True, name=None, version=0, priority=0, c
     summed_tensor_compressed = BytePSPushPull.apply(tensor_compressed, average, name, version, priority)
     return compression.decompress(summed_tensor_compressed, ctx)
 
-def allreduce(tensor, average=True, name=None, version=0, priority=0, compression=Compression.none):
-    """
-    A function that performs averaging or summation of the input tensor over all the
-    BytePS processes. The input tensor is not modified.
-    The reduction operation is keyed by the name. If name is not provided, an incremented
-    auto-generated name is used. The tensor type and shape must be the same on all
-    Horovod processes for a given name. The reduction will not start until all processes
-    are ready to send and receive the tensor.
-    This acts as a thin wrapper around an autograd function.  If your input
-    tensor requires gradients, then callings this function will allow gradients
-    to be computed and backpropagated.
-    Arguments:
-        tensor: A tensor to average and sum.
-        average: A flag indicating whether to compute average or summation,
-                 defaults to average.
-        name: A name of the reduction operation.
-        compression: Compression algorithm used during allreduce to reduce the amount
-                     of data sent during the each parameter update step.  Defaults to
-                     not using compression.
-    Returns:
-        A tensor of the same shape and type as `tensor`, averaged or summed across all
-        processes.
-    """
-    tensor_compressed, ctx = compression.compress(tensor)
-    summed_tensor_compressed = BytePSPushPull.apply(tensor_compressed, average, name, version, priority)
-    return compression.decompress(summed_tensor_compressed, ctx)
-
-def broadcast(tensor, root_rank, name=None, version=0, priority=0):
-    """
-    A function that broadcasts the input tensor on root rank to the same input tensor
-    on all other BytePS processes. The input tensor is not modified.
-    The broadcast operation is keyed by the name. If name is not provided, an incremented
-    auto-generated name is used. The tensor type and shape must be the same on all
-    Horovod processes for a given name. The broadcast will not start until all processes
-    are ready to send and receive the tensor.
-    This acts as a thin wrapper around an autograd function.  If your input
-    tensor requires gradients, then callings this function will allow gradients
-    to be computed and backpropagated.
-    Arguments:
-        tensor: A tensor to broadcast.
-        root_rank: The rank to broadcast the value from.
-        name: A name of the broadcast operation.
-    Returns:
-        A tensor of the same shape and type as `tensor`, with the value broadcasted
-        from root rank.
-    """
-    return BytePSPushPull.apply(tensor, root_rank, name, version, priority)
-
-
 def push_pull_async_inplace(tensor, average=True, name=None, version=0, priority=0):
     """
     A function that performs asynchronous in-place averaging or summation of the input
