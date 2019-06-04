@@ -35,7 +35,6 @@ public:
     void DestroyEvents();
 
     std::vector<std::shared_ptr<TensorTableEntry>> tasks;
-    std::vector<BytePSScheduledQueue*> queues;
 
 private:
     std::vector<cudaEvent_t> _events;
