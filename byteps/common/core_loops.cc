@@ -29,6 +29,8 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
     auto &queue_list = task->queue_list;
     BPS_CHECK_GE(queue_list.size(), 1);
     auto this_op = queue_list[0];
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->reportFinish(task->len);
     queue_list.erase(queue_list.begin());
     if (queue_list.size() > 0) {
         BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
@@ -90,8 +92,6 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
                        << "Signal=" << sig
                        << ", rank=" << rank
                        << ", key="  << key;
-
-        q->reportFinish(task->len);
 
     } else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -188,7 +188,6 @@ bool RunRootNcclLoopOnce() {
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
-    auto &queues = nccl_entry->queues;
 
     NCCLCHECK(ncclGroupStart());
     for (auto this_op : nccl_ops) {
@@ -197,7 +196,6 @@ bool RunRootNcclLoopOnce() {
             auto task = q->getTask();
             if (!task) { break; }
             tasks.push_back(task);
-            queues.push_back(q);
 
             if (nccl_size > 1) {
                 // notify non-root devices
@@ -234,7 +232,6 @@ bool RunNonRootNcclLoopOnce() {
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
-    auto &queues = nccl_entry->queues;
     struct BytePSCommMsg msg = {};
 
     NCCLCHECK(ncclGroupStart());
@@ -256,7 +253,6 @@ bool RunNonRootNcclLoopOnce() {
         BPS_CHECK(task);
 
         tasks.push_back(task);
-        queues.push_back(q);
 
         PostNcclCalls(task, this_op);
 
@@ -274,10 +270,6 @@ bool RunSyncNcclOnce() {
         nccl_entry->SynchronizeEvents();
         for (size_t i = 0; i < nccl_entry->tasks.size(); i++) {
             FinishOrProceed(nccl_entry->tasks[i]);
-            // Only root manages credits
-            if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-                nccl_entry->queues[i]->reportFinish(nccl_entry->tasks[i]->len);
-            }
         }
         nccl_entry->DestroyEvents();
         BPS_LOG(TRACE) << "Finished NCCL Group size=" << nccl_entry->tasks.size()
@@ -341,7 +333,6 @@ bool RunCopyDevice2HostLoopOnce() {
 
 
         FinishOrProceed(task);
-        q->reportFinish(task->len);
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -395,7 +386,6 @@ bool RunPcieReduceLoopOnce() {
         }
 
         FinishOrProceed(task);
-        q->reportFinish(task->len);
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -430,7 +420,6 @@ bool RunPushLoopOnce() {
                 pskv.keys, vals, pskv.lens, cmd,
                 [task, q]() {
                     FinishOrProceed(task);
-                    q->reportFinish(task->len);
                 }
             );
         }
@@ -438,7 +427,6 @@ bool RunPushLoopOnce() {
             // This is a dummy barrier for IsCrossPcieSwitch()
             BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
             FinishOrProceed(task);
-            q->reportFinish(task->len);
         }
     }
     else {
@@ -476,7 +464,6 @@ bool RunPullLoopOnce() {
             [vals, task, q]() {
                 delete vals;
                 FinishOrProceed(task);
-                q->reportFinish(task->len);
             });
     }
     else {
@@ -544,7 +531,6 @@ bool RunRootCopyHost2DeviceLoopOnce() {
         CopyHost2Device(task);
 
         FinishOrProceed(task);
-        q->reportFinish(task->len);
     }
     else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -580,7 +566,6 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     if (task) {
         CopyHost2Device(task);
         FinishOrProceed(task);
-        q->reportFinish(task->len);
     } else {
         std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }

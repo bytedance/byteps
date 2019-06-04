@@ -29,7 +29,7 @@ namespace common {
 class BytePSScheduledQueue {
 
 public:
-    BytePSScheduledQueue(QueueType type, uint64_t credits);
+    BytePSScheduledQueue(QueueType type);
     QueueType getQueueType() { return _qt; }
     void addTask(std::shared_ptr<TensorTableEntry>);
     std::shared_ptr<TensorTableEntry> getTask();
