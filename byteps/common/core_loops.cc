@@ -188,6 +188,7 @@ bool RunRootNcclLoopOnce() {
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
+    auto &queues = nccl_entry->queues;
 
     NCCLCHECK(ncclGroupStart());
     for (auto this_op : nccl_ops) {
@@ -196,6 +197,7 @@ bool RunRootNcclLoopOnce() {
             auto task = q->getTask();
             if (!task) { break; }
             tasks.push_back(task);
+            queues.push_back(q);
 
             if (nccl_size > 1) {
                 // notify non-root devices
@@ -232,6 +234,7 @@ bool RunNonRootNcclLoopOnce() {
 
     auto nccl_entry = std::make_shared<NcclGroupEntry>(); 
     auto &tasks = nccl_entry->tasks;
+    auto &queues = nccl_entry->queues;
     struct BytePSCommMsg msg = {};
 
     NCCLCHECK(ncclGroupStart());
@@ -253,6 +256,7 @@ bool RunNonRootNcclLoopOnce() {
         BPS_CHECK(task);
 
         tasks.push_back(task);
+        queues.push_back(q);
 
         PostNcclCalls(task, this_op);
 
