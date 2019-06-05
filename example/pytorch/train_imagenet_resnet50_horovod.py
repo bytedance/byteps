@@ -51,8 +51,6 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=42,
                     help='random seed')
-parser.add_argument('--profiler', action='store_true', default=False,
-                    help='disables profiler')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -264,7 +262,7 @@ class Metric(object):
     def update(self, val):
         if not isinstance(val, torch.Tensor):
             val = torch.tensor(val)
-        self.sum += hvd.byteps_push_pull(val.detach.cpu(), name=self.name)
+        self.sum += val
         self.n += 1
 
     @property
