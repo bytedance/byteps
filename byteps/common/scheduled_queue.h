@@ -41,7 +41,8 @@ private:
     // TODO: use priority queue or heap
     std::vector<std::shared_ptr<TensorTableEntry>> _sq;
     std::mutex _mutex;
-    std::atomic<uint64_t> _credits;
+    uint64_t _credits;
+    bool _is_scheduled;
     QueueType _qt;
     ReadyTable *_rt;
 };
