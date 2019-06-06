@@ -178,8 +178,9 @@ Status EnqueueTensor(BPSContext &context,
             << ", " << partitions.size();
 
     if (e->queue_list.size() == 0) {
-        BPS_LOG(TRACE) << BPS_CHECK_NOTNULL(e->tensor_name)
-                       << ", device=" << BPS_CHECK_NOTNULL(e->device)
+        BPS_CHECK(e->tensor_name != "");
+        BPS_LOG(TRACE) << e->tensor_name
+                       << ", device=" << e->device
                        << " has no queue_list assigned, skipped";
         e->callback(Status::OK());
         return Status::OK();
@@ -189,11 +190,12 @@ Status EnqueueTensor(BPSContext &context,
     for (size_t i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
-        BPS_LOG(TRACE) << "EnqueueTensor: " << BPS_CHECK_NOTNULL(task->tensor_name)
-                       << ", key=" << BPS_CHECK_NOTNULL(task->key)
-                       << ", offset=" << BPS_CHECK_NOTNULL(task->offset)
-                       << ", len=" << BPS_CHECK_NOTNULL(task->len)
-                       << ", device=" << BPS_CHECK_NOTNULL(task->device)
+        BPS_CHECK(task->tensor_name != "");
+        BPS_LOG(TRACE) << "EnqueueTensor: " << (task->tensor_name)
+                       << ", key=" << (task->key)
+                       << ", offset=" << (task->offset)
+                       << ", len=" << (task->len)
+                       << ", device=" << (task->device)
                        << " rank=" << BytePSGlobal::GetLocalRank();
 
         BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
@@ -202,7 +204,7 @@ Status EnqueueTensor(BPSContext &context,
     BPS_CHECK_EQ(accumulated, (e->tensor ? e->tensor->size(): e->output->size()))
         << "accumulated partition size not equal to original tensor size";
 
-    BPS_LOG(TRACE) << "EnqueueTensor finished: " << BPS_CHECK_NOTNULL(name)
+    BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
                    << ", rank=" << BytePSGlobal::GetLocalRank();
     return Status::OK();
 }
