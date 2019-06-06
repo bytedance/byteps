@@ -83,7 +83,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
         DoPushPull(context, tensor, tensor_name, version, priority, on_complete);
     };
 
-    Engine::Get()->PushAsync(push_pull_async_fn, tensor->ctx(),
+    Engine::Get()->PushAsync(push_pull_async_fn, Context::CPU(),
                             {}, {tensor->var()},
                             FnProperty::kCPUPrioritized, 0, "BytePSPushPull");
 

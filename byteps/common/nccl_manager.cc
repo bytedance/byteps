@@ -150,7 +150,7 @@ void NcclManager::InitGlobalEnv() { // init all global env/param here
     BPS_LOG(DEBUG) << "nccl_pcie_num" << " set to " << _nccl_pcie_num;
 
     _nccl_num_rings = (getenv("BYTEPS_NCCL_NUM_RINGS") ?
-                        atoi(getenv("BYTEPS_NCCL_NUM_RINGS")) : 4);
+                        atoi(getenv("BYTEPS_NCCL_NUM_RINGS")) : 1);
     BPS_LOG(DEBUG) << "nccl_num_rings" << " set to " << _nccl_num_rings;
 
     return;

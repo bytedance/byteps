@@ -23,13 +23,17 @@ namespace byteps {
 namespace common {
 
 BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
-    _qt = type;
-    if (type == REDUCE) {
-        _credits = 4 * BytePSGlobal::GetPartitionBound(); // 4 * partition size
+    if (type == REDUCE && BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        _is_scheduled = true;
     }
     else {
-        _credits = 34359738368; // 32GB, basically disabling credit control
+        _is_scheduled = false;
     }
+
+    _qt = type;
+    _credits = _is_scheduled ?
+               BytePSGlobal::GetPartitionBound() * (BytePSGlobal::GetNccl()->GetGroupSize() + 1)
+               : 34359738368;  // 32GB, basically disabling credit control
     _rt = nullptr;
 
     switch (_qt) {
@@ -68,8 +72,8 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
 void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
     std::lock_guard<std::mutex> lock(_mutex);
     _sq.push_back(entry);
-    // TODO: below can be optimized to O(n)
-    if (_qt == REDUCE) {
+    if (_is_scheduled) {
+        // TODO: below can be optimized to O(n) using insertion sort
         std::sort(_sq.begin(), _sq.end(),
             [](std::shared_ptr<TensorTableEntry> a, std::shared_ptr<TensorTableEntry> b) {
                 if (a->priority == b->priority) {
@@ -86,16 +90,17 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;
-    // TODO: below can be optimized
-    // If we take task from the tail, erase() can be faster
+    // TODO: below can be optimized -- if we take task from the tail, erase() can be faster
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
         if ((*it)->ready_event) {
             if (!(*it)->ready_event->Ready()) {
                 continue;
             }
         }
-        if ((*it)->len > _credits) {
-            continue;
+        if (_is_scheduled) {
+            if ((*it)->len > _credits) {
+                continue;
+            }
         }
         if (_rt) {
             if (!_rt->IsKeyReady((*it)->key)) {
@@ -105,7 +110,9 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
         }
         task = *it;
         _sq.erase(it);
-        _credits -= task->len;
+        if (_is_scheduled) {
+            _credits -= task->len;
+        }
         BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask: " << task->tensor_name
                        << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
@@ -114,17 +121,18 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
 }
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
+    BPS_CHECK(!_is_scheduled);
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;
     for (auto it = _sq.begin(); it!=_sq.end(); ++it) {
-        // JYM: shall we check whether ready_event is OK?
-        // Yibo: Not for now. We assume that this task has passed COORDINATE phases
+        if ((*it)->ready_event) {
+            BPS_CHECK((*it)->ready_event->Ready());
+        }
         if ((*it)->key != (uint64_t)key) {
             continue;
         }
         task = *it;
         _sq.erase(it);
-        _credits -= task->len;
         BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask(key): " << task->tensor_name
                        << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
@@ -138,7 +146,10 @@ uint32_t BytePSScheduledQueue::pendingSize() {
 }
 
 void BytePSScheduledQueue::reportFinish(int size) {
-    _credits += size;
+    if (_is_scheduled) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _credits += size;
+    }
     return;
 }
 
