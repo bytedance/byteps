@@ -79,7 +79,7 @@ void byteps_init() {
 
 void byteps_shutdown() {
     BytePSGlobal::Shutdown();
-    BPS_LOG(TRACE) << "BytePS is shutdown.";
+    BPS_LOG(DEBUG) << "BytePS is shutdown.";
     return;
 }
 
@@ -178,7 +178,9 @@ Status EnqueueTensor(BPSContext &context,
             << ", " << partitions.size();
 
     if (e->queue_list.size() == 0) {
-        BPS_LOG(DEBUG) << e->tensor_name << ", device=" << e->device
+        BPS_CHECK(e->tensor_name);
+        BPS_CHECK(e->device);
+        BPS_LOG(TRACE) << e->tensor_name << ", device=" << e->device
                        << " has no queue_list assigned, skipped";
         e->callback(Status::OK());
         return Status::OK();
@@ -188,6 +190,11 @@ Status EnqueueTensor(BPSContext &context,
     for (size_t i = 0; i < partitions.size(); ++i) {
         auto task = partitions[i];
         task->key = context.key_list[i]; // assign the key now
+        BPS_CHECK(task->tensor_name);
+        BPS_CHECK(task->key);
+        BPS_CHECK(task->offset);
+        BPS_CHECK(task->len);
+        BPS_CHECK(task->device);
         BPS_LOG(TRACE) << "EnqueueTensor: " << task->tensor_name
                        << ", key=" << task->key
                        << ", offset=" << task->offset
