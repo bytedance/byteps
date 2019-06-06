@@ -6,6 +6,7 @@ import threading
 import sys
 import time
 
+
 def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
@@ -13,7 +14,7 @@ def worker(local_rank, local_size, command):
     if os.getenv("BYTEPS_ENABLE_GDB", 0):
         if command.find("python") != 0:
             command = "python " + command
-        command = "gdb -ex=r --args " + command
+        command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
