@@ -17,7 +17,6 @@
 import byteps.tensorflow as hvd
 import tensorflow as tf
 
-
 def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sparse,
                                  compression, sparse_as_dense):
     class _DistributedOptimizer(keras.optimizers.Optimizer):

@@ -16,9 +16,9 @@
 from __future__ import print_function
 
 import argparse
-import keras
-from keras import backend as K
-from keras.preprocessing import image
+import tensorflow.keras as keras
+from tensorflow.keras import backend as K
+from tensorflow.keras.preprocessing import image
 import tensorflow as tf
 import byteps.keras as bps
 import os
