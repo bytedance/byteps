@@ -82,6 +82,8 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
                 return (a->priority > b->priority); // from higher priority to lower
         });
     }
+    BPS_CHECK(entry->tensor_name);
+    BPS_CHECK(entry->key);
     BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " addTask: " << entry->tensor_name
                    << " key: " << entry->key << " rank: " << BytePSGlobal::GetLocalRank();
     return;
@@ -113,6 +115,9 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
         if (_is_scheduled) {
             _credits -= task->len;
         }
+
+        BPS_CHECK(task->tensor_name);
+        BPS_CHECK(task->key);
         BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask: " << task->tensor_name
                        << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
@@ -133,6 +138,9 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
         }
         task = *it;
         _sq.erase(it);
+
+        BPS_CHECK(task->tensor_name);
+        BPS_CHECK(task->key);
         BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask(key): " << task->tensor_name
                        << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
