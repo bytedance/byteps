@@ -201,7 +201,10 @@ Status EnqueueTensor(BPSContext &context,
         BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
         accumulated += task->len;
     }
-    BPS_CHECK_EQ(accumulated, (e->tensor ? e->tensor->size(): e->output->size()))
+
+    auto tensor = (e->tensor ? e->tensor : e->output);
+    BPS_CHECK(tensor);
+    BPS_CHECK_EQ(accumulated, tensor->size())
         << "accumulated partition size not equal to original tensor size";
 
     BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
