@@ -33,19 +33,19 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
     q->reportFinish(task->len);
     queue_list.erase(queue_list.begin());
     if (queue_list.size() > 0) {
-        BPS_CHECK(task->tensor_name);
-        BPS_CHECK(task->key);
         BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
-                       << " finishes " << LogStrings[this_op] << ", tensor: " << task->tensor_name
-                       << ", key=" << task->key << "; Passing to the next queue.";
+                       << " finishes " << LogStrings[this_op]
+                       << ", tensor: " << BPS_CHECK_NOTNULL(task->tensor_name)
+                       << ", key=" << BPS_CHECK_NOTNULL(task->key)
+                       << "; Passing to the next queue.";
         BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
     } else {
         BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
         int v = task->counter_ptr.get()->fetch_add(1);
         if (v == (int)(task->total_partnum-1)) {
-            BPS_CHECK(task->tensor_name);
             BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
-                           << "Finish processing tensor: " << task->tensor_name;
+                           << "Finish processing tensor: "
+                           << BPS_CHECK_NOTNULL(task->tensor_name);
             task->callback(Status::OK());
         }
     }
@@ -92,7 +92,8 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
         comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
 
         BPS_CHECK(task->tensor_name);
-        BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
+        BPS_LOG(TRACE) << BPS_CHECK_NOTNULL(task->tensor_name)
+                       << " send coordinate info: "
                        << "Signal=" << sig
                        << ", rank=" << rank
                        << ", key="  << key;
@@ -130,14 +131,13 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     auto num_elem_per_gpu = len / nccl_size / unit_len;
     auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
-    BPS_CHECK(task->tensor_name);
-    BPS_CHECK(task->device);
-    BPS_LOG(TRACE) << task->tensor_name << " calling NCCL "
+    BPS_LOG(TRACE) << BPS_CHECK_NOTNULL(task->tensor_name)
+                    << " calling NCCL "
                     << LogStrings[this_op]
                     << " (rank=" << nccl_rank
                     << ") key=" << key
                     << ", elements=" << len/unit_len
-                    << ", device=" << task->device;
+                    << ", device=" << BPS_CHECK_NOTNULL(task->device);
 
     if (this_op == REDUCE) {
         if (num_elem_per_gpu) {

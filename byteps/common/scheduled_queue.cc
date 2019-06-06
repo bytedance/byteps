@@ -82,10 +82,10 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
                 return (a->priority > b->priority); // from higher priority to lower
         });
     }
-    BPS_CHECK(entry->tensor_name);
-    BPS_CHECK(entry->key);
-    BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " addTask: " << entry->tensor_name
-                   << " key: " << entry->key << " rank: " << BytePSGlobal::GetLocalRank();
+    BPS_LOG(TRACE) << "Queue " << LogStrings[_qt]
+                   << " addTask: " << BPS_CHECK_NOTNULL(entry->tensor_name)
+                   << " key: " << BPS_CHECK_NOTNULL(entry->key)
+                   << " rank: " << BytePSGlobal::GetLocalRank();
     return;
 }
 
@@ -116,10 +116,10 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
             _credits -= task->len;
         }
 
-        BPS_CHECK(task->tensor_name);
-        BPS_CHECK(task->key);
-        BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask: " << task->tensor_name
-                       << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
+        BPS_LOG(TRACE) << "Queue " << LogStrings[_qt]
+                       << " getTask: " << BPS_CHECK_NOTNULL(task->tensor_name)
+                       << " key: " << BPS_CHECK_NOTNULL(task->key)
+                       << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
     }
     return nullptr;
@@ -139,10 +139,10 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
         task = *it;
         _sq.erase(it);
 
-        BPS_CHECK(task->tensor_name);
-        BPS_CHECK(task->key);
-        BPS_LOG(TRACE) << "Queue " << LogStrings[_qt] << " getTask(key): " << task->tensor_name
-                       << " key: " << task->key << " rank: " << BytePSGlobal::GetLocalRank();
+        BPS_LOG(TRACE) << "Queue " << LogStrings[_qt]
+                       << " getTask(key): " << BPS_CHECK_NOTNULL(task->tensor_name)
+                       << " key: " << BPS_CHECK_NOTNULL(task->key)
+                       << " rank: " << BytePSGlobal::GetLocalRank();
         return task;
     }
     return nullptr;
