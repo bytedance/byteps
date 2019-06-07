@@ -213,14 +213,37 @@ Status EnqueueTensor(BPSContext &context,
     return Status::OK();
 }
 
-void InitTensor(BPSContext &context, int dtype, void *cpubuff) {
+void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
+    std::lock_guard<std::mutex> lock(context.init_mutex);
+    if (context.initialized) { return; }
 
-    auto& name = context.tensor_name;
-
+    BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
     // Get metadata
-    auto key_list = context.key_list;
-    size_t size = context.buff_len;
     auto bound = BytePSGlobal::GetPartitionBound();
+    auto& name = context.tensor_name;
+    context.buff_len = size;
+    size_t accumulated = 0;
+
+    // Total key space is 0 to 2^64 - 1
+    // It will be divided to N PS servers, for now we assume N <= 2^16
+    // Then we have 2^48 key space left (top 16 bits for different servers)
+    // Below we support 2^24 tensors per job
+    // and support 2^24 partitions per tensor
+    ps::Key start_key = context.declared_key << 24;
+    while (accumulated < size) {
+        context.key_list.push_back(start_key++);
+        accumulated += ((size - accumulated) > bound) ? bound : (size - accumulated);
+    }
+    BPS_LOG(DEBUG) << name << " partitioned to "
+                    << context.key_list.size() << " part(s)"
+                    << ", total_len=" << size
+                    << ", key_range=["
+                    << context.key_list.front()
+                    << ", "
+                    << context.key_list.back()
+                    << "]";
+
+    auto key_list = context.key_list;
 
     BPS_CHECK_GT(key_list.size(), 0) << name;
     BPS_CHECK_EQ(key_list.size(), (unsigned int) (size+bound-1)/bound) // round up
@@ -248,13 +271,13 @@ void InitTensor(BPSContext &context, int dtype, void *cpubuff) {
         context.cpubuff = context.pcie_cpubuff.back();
     }
     else {
-        context.cpubuff = shm_obj->openSharedMemory(key_list[0], size);
+        context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"), key_list[0], size);
     }
     BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
     // Init tensors with BytePS server
     char* data = const_cast<char*> (static_cast<const char*> (context.cpubuff));
-    size_t accumulated = 0;
+    accumulated = 0;
     size_t i = 0;
     while (accumulated < size) {
         auto key = key_list[i];
@@ -292,8 +315,8 @@ BPSContext& GetContextFromName(const std::string &name) {
     return BytePSGlobal::GetContextFromName(name);
 }
 
-bool IsTensorInitialized(const std::string &name, size_t size) {
-    return BytePSGlobal::IsTensorInitialized(name, size);
+bool IsTensorDeclared(const std::string &name) {
+    return BytePSGlobal::IsTensorDeclared(name);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {

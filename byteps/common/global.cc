@@ -40,7 +40,7 @@ uint32_t BytePSGlobal::_partition_bytes = 1024000;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
-std::unordered_map<int, PSKV> BytePSGlobal::ps_kv_;
+std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
@@ -265,36 +265,19 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
     return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size) {
+bool BytePSGlobal::IsTensorDeclared(const std::string &name) {
     std::lock_guard<std::mutex> lock(_encode_mutex);
-    BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0, should check this";
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
         _name_to_cxt[name].tensor_name = name.c_str(); // disable copy-on-write
-
-        // _name_to_cxt[name].cpubuff will be inited later
-        _name_to_cxt[name].buff_len = size;
-        size_t accumulated = 0;
-        while (accumulated < size) {
-            _name_to_cxt[name].key_list.push_back((ps::Key) next_key_++);
-            accumulated += ((size - accumulated) > _partition_bytes) ? _partition_bytes : (size - accumulated);
-        }
-
-        BPS_LOG(DEBUG) << name << " partitioned to "
-                       << _name_to_cxt[name].key_list.size() << " part(s)"
-                       << ", total_len=" << size
-                       << ", key_range=["
-                       << _name_to_cxt[name].key_list.front()
-                       << ", "
-                       << _name_to_cxt[name].key_list.back()
-                       << "]";
+        _name_to_cxt[name].declared_key = (ps::Key) next_key_++;
         return false;
     }
     return true;
 }
 
-PSKV& BytePSGlobal::EncodeDefaultKey(int key, size_t len) {
+PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     _encode_mutex.lock();
     PSKV& pskv = ps_kv_[key];
     _encode_mutex.unlock();

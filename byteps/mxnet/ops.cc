@@ -77,6 +77,13 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
     std::string tensor_name = GetOpName("byteps", name);
 
     auto& context = common::GetContextFromName(tensor_name);
+    auto dtype = TensorUtil::GetDType(tensor);
+    auto size = TensorUtil::GetSize(tensor);
+    auto device = TensorUtil::GetDevice(tensor);
+    void* cpubuff = (device == CPU_DEVICE_ID) ? 
+        const_cast<void*>(std::make_shared<MXTensor<NDArray>>(tensor)->data()) : nullptr;
+    common::InitTensor(context, size, dtype, cpubuff);
+
     auto push_pull_async_fn = [&context, tensor, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
         DoPushPull(context, tensor, version, priority, on_complete);
@@ -95,17 +102,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
     std::string tensor_name = GetOpName("byteps", name);
-    size_t size = TensorUtil::GetSize(tensor);
-
-    if (!common::IsTensorInitialized(tensor_name, size)) {
-        auto& byteps_context = common::GetContextFromName(tensor_name);    
-        auto dtype = TensorUtil::GetDType(tensor);
-        auto device = TensorUtil::GetDevice(tensor);
-
-        void* cpubuff = (device == CPU_DEVICE_ID) ? 
-            const_cast<void*>(std::make_shared<MXTensor<NDArray>>(tensor)->data()) : nullptr;
-        common::InitTensor(byteps_context, dtype, cpubuff);
-    }
+    common::IsTensorDeclared(tensor_name);
     return;
 }
 

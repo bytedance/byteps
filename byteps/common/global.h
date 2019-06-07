@@ -76,13 +76,13 @@ public:
     static void CreateScheduledQueue(QueueType queueType);
     static ps::KVWorker<char>* GetPS() { return _ps; }
 
-    static bool IsTensorInitialized(const std::string &name, size_t size);
+    static bool IsTensorDeclared(const std::string &name);
     static ps::Key GetKeyFromName(const std::string &name);
     static BPSContext& GetContextFromName(const std::string &name);
     static uint32_t GetTensorCount();
 
-    static std::unordered_map<int, PSKV> ps_kv_;
-    static PSKV& EncodeDefaultKey(int key, size_t len);
+    static std::unordered_map<uint64_t, PSKV> ps_kv_;
+    static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 
     static uint32_t GetPartitionBound() { return _partition_bytes; }
 

@@ -78,12 +78,7 @@ def _push_pull(tensor, scope='', name=None):
     """
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
-    tensor_shape = tensor.get_shape()
-    tensor_size = tensor.dtype.size
-    for dimension in tensor_shape:
-        tensor_size = tensor_size * dimension.value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name),
-        tensor_size, tensor.dtype.as_datatype_enum)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name))
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
@@ -113,12 +108,7 @@ def broadcast(tensor, root_rank, name=None):
     # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
-    tensor_shape = tensor.get_shape()
-    tensor_size = tensor.dtype.size
-    for dimension in tensor_shape:
-        tensor_size = tensor_size * dimension.value
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name),
-        tensor_size, tensor.dtype.as_datatype_enum)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name))
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 

@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <atomic>
 #include <vector>
+#include <mutex>
 #include <nccl.h>
 #include <cuda_runtime.h>
 
@@ -126,9 +127,13 @@ public:
 };
 
 typedef struct BytePSContext {
+    bool initialized;
+    std::mutex init_mutex;
     // tensor name
     std::string tensor_name;
-    // using ps::Key = uint64_t 
+    // using ps::Key = uint64_t
+    uint64_t declared_key;
+    // the actual keys being used
     std::vector<uint64_t> key_list;
     // a copy on CPU
     void* cpubuff;
@@ -137,8 +142,6 @@ typedef struct BytePSContext {
     // CPU buffer for cross-PCIe-switch merging
     std::vector<void*> pcie_cpubuff;
     size_t buff_len;
-    int priority;
-    bool initialized;
 } BPSContext;
 
 class Tensor {

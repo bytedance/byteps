@@ -51,7 +51,7 @@ enum BytePSCommSignal { REDUCE_READY, PCIE_REDUCE_READY, BCAST_READY, PUSH_READY
 struct BytePSCommMsg {
     int src;
     BytePSCommSignal signal;
-    int key;
+    uint64_t key;
 };
 
 class BytePSComm {

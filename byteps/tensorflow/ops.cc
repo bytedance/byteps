@@ -28,8 +28,6 @@ namespace tensorflow {
 
 namespace {
 
-std::atomic_int tensor_count;
-
 ::tensorflow::Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
   case common::OK:
@@ -131,15 +129,10 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
   return nullptr;
 }
 
-extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype) {
-    // For now, we always allocate cpu buffer
-    // TODO: get the device and decide whether to allocate cpu buffer
+extern "C" void byteps_tensorflow_declare_tensor(char* name) {
     std::string tensor_name(name);
-
-    if (!common::IsTensorInitialized(tensor_name, size)) {
+    if (!common::IsTensorDeclared(tensor_name)) {
         auto& byteps_context = common::GetContextFromName(tensor_name);
-        byteps_context.priority = - tensor_count.fetch_add(1);
-        common::InitTensor(byteps_context, ConvertDType(dtype), nullptr);
     }
     return;
 }
@@ -164,16 +157,21 @@ public:
 
     auto byteps_input = std::make_shared<TFTensor>(tensor);
     auto byteps_output = std::make_shared<TFTensor>(*output);
+
     auto& byteps_context = common::GetContextFromName(node_name);
+    auto size = byteps_input->size();
+    auto dtype = byteps_input->dtype();
+    common::InitTensor(byteps_context, size, dtype, nullptr);
 
     auto queue_list = common::GetPushQueueList(device);
     auto queue_list_pull = common::GetPullQueueList(device);
     queue_list->insert(queue_list->end(),
                        queue_list_pull->begin(), queue_list_pull->end());
 
+    // TODO: assign priority based on topological sort
     auto enqueue_result = EnqueueTensor(
         byteps_context, byteps_input, byteps_output, ready_event,
-        device, byteps_context.priority, 0,
+        device, -byteps_context.declared_key, 0,
         [context, done](const common::Status& status) {
           context->SetStatus(ConvertStatus(status));
           done();

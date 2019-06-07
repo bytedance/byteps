@@ -27,8 +27,6 @@
 #include <cuda_runtime.h>
 #include "logging.h"
 
-#define BYTEPS_SHM_PER_PCIE_OFFSET (1 << 28)
-
 namespace byteps {
 namespace common {
 
@@ -42,23 +40,19 @@ public:
         for (auto &it : _key_shm_addr) {
             CUDA_CALL(cudaHostUnregister(it.second));
             munmap(it.second, _key_shm_size[it.first]);
-        }
-
-        for (auto &it : _key_shm_name) {
-            shm_unlink(it.second.c_str());
+            shm_unlink(it.first.c_str());
         }
 
         BPS_LOG(DEBUG) << "Clear BytePSSharedMemory: All BytePS shared memory released/unregistered.";
     }
 
-    void* openSharedMemory(int key, size_t size);
-    std::vector<void*> openPcieSharedMemory(int key, size_t size);
+    void* openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
+    std::vector<void*> openPcieSharedMemory(uint64_t key, size_t size);
 
 private:
 
-    std::unordered_map<int, std::string> _key_shm_name;
-    std::unordered_map<int, void *> _key_shm_addr;
-    std::unordered_map<int, size_t> _key_shm_size;
+    std::unordered_map<std::string, void *> _key_shm_addr;
+    std::unordered_map<std::string, size_t> _key_shm_size;
 
     std::mutex _shm_mu;
 
