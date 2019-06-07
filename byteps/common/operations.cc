@@ -227,9 +227,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     // Total key space is 0 to 2^64 - 1
     // It will be divided to N PS servers, for now we assume N <= 2^16
     // Then we have 2^48 key space left (top 16 bits for different servers)
-    // Below we support 2^24 tensors per job
-    // and support 2^24 partitions per tensor
-    ps::Key start_key = context.declared_key << 24;
+    // MXNet server has a bug dealing with keys larger than 2^32
+    // Below we support up to 2^16 tensors, and up to 2^16 partitions per tensor
+    ps::Key start_key = context.declared_key << 16;
     while (accumulated < size) {
         context.key_list.push_back(start_key++);
         accumulated += ((size - accumulated) > bound) ? bound : (size - accumulated);

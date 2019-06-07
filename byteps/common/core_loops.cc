@@ -46,7 +46,7 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
         if (v == (int)(task->total_partnum-1)) {
             BPS_CHECK(task->tensor_name != "");
             BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
-                           << "Finish processing tensor: "
+                           << " finish processing tensor: "
                            << task->tensor_name;
             task->callback(Status::OK());
         }

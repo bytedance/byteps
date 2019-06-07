@@ -126,6 +126,8 @@ private:
     static std::mutex _queues_mutex[QueueNum];
     static std::vector<std::thread*> _threads;
 
+    static std::mutex _context_mutex;
+
     static ps::KVWorker<char>* _ps;
     static std::mutex _encode_mutex;
     static std::unordered_map<std::string, BPSContext> _name_to_cxt;
