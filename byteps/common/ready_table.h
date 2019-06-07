@@ -37,7 +37,7 @@ public:
 
 private:
     // (key, ready_signal_count) pair, only valid for root device
-    std::unordered_map<int, int> _ready_table;
+    std::unordered_map<uint64_t, int> _ready_table;
     // use this mutex to access/modify the _ready_table
     std::mutex _table_mutex;
     int _ready_count;
