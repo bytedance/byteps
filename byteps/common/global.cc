@@ -46,6 +46,7 @@ volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
 std::vector<std::thread*> BytePSGlobal::_threads;
 
+std::mutex BytePSGlobal::_context_mutex;
 ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
 std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
@@ -260,14 +261,13 @@ void BytePSGlobal::Shutdown() {
 }
 
 BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
-    std::lock_guard<std::mutex> lock(_encode_mutex);
+    std::lock_guard<std::mutex> lock(_context_mutex);
     BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end()) << name << " is not initialized";
     return _name_to_cxt[name];
 }
 
 bool BytePSGlobal::IsTensorDeclared(const std::string &name) {
-    std::lock_guard<std::mutex> lock(_encode_mutex);
-
+    std::lock_guard<std::mutex> lock(_context_mutex);
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
         _name_to_cxt[name].tensor_name = name.c_str(); // disable copy-on-write
@@ -278,9 +278,8 @@ bool BytePSGlobal::IsTensorDeclared(const std::string &name) {
 }
 
 PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
-    _encode_mutex.lock();
+    std::lock_guard<std::mutex> lock(_encode_mutex);
     PSKV& pskv = ps_kv_[key];
-    _encode_mutex.unlock();
     if (!pskv.keys.empty()) {
         BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
             << "The value size cannot be changed " << len
@@ -298,11 +297,12 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
         pskv.lens.push_back(len);
         pskv.size = len;
     }
+    BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0];
     return pskv;
 }
 
 uint32_t BytePSGlobal::GetTensorCount() {
-    std::lock_guard<std::mutex> lock(_encode_mutex);
+    std::lock_guard<std::mutex> lock(_context_mutex);
     return BytePSGlobal::_name_to_cxt.size();
 }
 
