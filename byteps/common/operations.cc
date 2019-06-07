@@ -261,17 +261,15 @@ void InitTensor(BPSContext &context, int dtype, void *cpubuff) {
         int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
         if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
-            if (BytePSGlobal::GetWorkerID() == 0) { // only worker0 pushes init data
-                // encode the key for pskv scattering
-                auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
-                // false means not to delete data when SArray is deleted
-                ps::SArray<char> vals(data + accumulated, len, false);
-                // cmd type
-                int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-                // blocking push
-                BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
-                    pskv.keys, vals, pskv.lens, cmd));
-            }
+            // encode the key for pskv scattering
+            auto& pskv = BytePSGlobal::EncodeDefaultKey(key, len);
+            // false means not to delete data when SArray is deleted
+            ps::SArray<char> vals(data + accumulated, len, false);
+            // cmd type
+            int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+            // blocking push
+            BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
+                pskv.keys, vals, pskv.lens, cmd));
             // sync all workers
             ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
         }
