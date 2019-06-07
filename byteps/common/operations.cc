@@ -146,10 +146,11 @@ Status EnqueueTensor(BPSContext &context,
                      std::shared_ptr<Tensor> input,
                      std::shared_ptr<Tensor> output,
                      std::shared_ptr<ReadyEvent> ready_event,
-                     const std::string &name,
                      const int device, const int priority, const int version,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list) {
+    
+    auto& name = context.tensor_name;
     if (input && output) {
         BPS_CHECK_EQ(input->size(), output->size()) << name << " output tensor size does not match";
     }
@@ -212,7 +213,9 @@ Status EnqueueTensor(BPSContext &context,
     return Status::OK();
 }
 
-void InitTensor(BPSContext &context, const std::string &name, int dtype, void *cpubuff) {
+void InitTensor(BPSContext &context, int dtype, void *cpubuff) {
+
+    auto& name = context.tensor_name;
 
     // Get metadata
     auto key_list = context.key_list;

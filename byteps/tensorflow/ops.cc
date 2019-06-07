@@ -139,7 +139,7 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype
     if (!common::IsTensorInitialized(tensor_name, size)) {
         auto& byteps_context = common::GetContextFromName(tensor_name);
         byteps_context.priority = - tensor_count.fetch_add(1);
-        common::InitTensor(byteps_context, tensor_name, ConvertDType(dtype), nullptr);
+        common::InitTensor(byteps_context, ConvertDType(dtype), nullptr);
     }
     return;
 }
@@ -173,7 +173,7 @@ public:
 
     auto enqueue_result = EnqueueTensor(
         byteps_context, byteps_input, byteps_output, ready_event,
-        node_name, device, byteps_context.priority, 0,
+        device, byteps_context.priority, 0,
         [context, done](const common::Status& status) {
           context->SetStatus(ConvertStatus(status));
           done();

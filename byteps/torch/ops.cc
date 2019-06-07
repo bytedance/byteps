@@ -69,7 +69,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, tensor_name, dtype,
+        common::InitTensor(context, dtype,
           (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
     }
 
@@ -82,7 +82,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
 
     auto enqueue_result = common::EnqueueTensor(
         context, byteps_input, byteps_output, ready_event,
-        tensor_name, device, priority, version,
+        device, priority, version,
         [handle, average, tensor](const Status& status) mutable {
             // Will execute in the `device` context.
             if (average) {

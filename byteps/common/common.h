@@ -126,6 +126,8 @@ public:
 };
 
 typedef struct BytePSContext {
+    // tensor name
+    std::string tensor_name;
     // using ps::Key = uint64_t 
     std::vector<uint64_t> key_list;
     // a copy on CPU
