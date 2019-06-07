@@ -271,6 +271,7 @@ bool BytePSGlobal::IsTensorInitialized(const std::string &name, size_t size) {
 
     if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
         _name_to_cxt[name].initialized = false;
+        _name_to_cxt[name].tensor_name = name.c_str(); // disable copy-on-write
 
         // _name_to_cxt[name].cpubuff will be inited later
         _name_to_cxt[name].buff_len = size;

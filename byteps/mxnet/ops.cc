@@ -50,7 +50,7 @@ inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
     }
 }
 
-void DoPushPull(BPSContext &context, NDArray* input, const std::string& name, int version, int priority,
+void DoPushPull(BPSContext &context, NDArray* input, int version, int priority,
                  Callback on_complete) {
     ThrowIfError(common::CheckInitialized());
 
@@ -63,7 +63,7 @@ void DoPushPull(BPSContext &context, NDArray* input, const std::string& name, in
 
     auto enqueue_result =
         common::EnqueueTensor(context, byteps_input, byteps_input, nullptr,
-                              name, device, priority, version,
+                              device, priority, version,
                               [on_complete](const Status& status) {
                                 InvokeCompleteCallback(on_complete, status);
                               }, queue_list);
@@ -74,13 +74,12 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                                             char* name, int version, int priority) {
     MX_API_BEGIN();
 
-    // TODO: replace "byteps" with job ID
     std::string tensor_name = GetOpName("byteps", name);
 
     auto& context = common::GetContextFromName(tensor_name);
-    auto push_pull_async_fn = [&context, tensor, tensor_name, version, priority](RunContext rctx,
+    auto push_pull_async_fn = [&context, tensor, version, priority](RunContext rctx,
                                       Callback on_complete) mutable {
-        DoPushPull(context, tensor, tensor_name, version, priority, on_complete);
+        DoPushPull(context, tensor, version, priority, on_complete);
     };
 
     Engine::Get()->PushAsync(push_pull_async_fn, Context::CPU(),
@@ -105,7 +104,7 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
 
         void* cpubuff = (device == CPU_DEVICE_ID) ? 
             const_cast<void*>(std::make_shared<MXTensor<NDArray>>(tensor)->data()) : nullptr;
-        common::InitTensor(byteps_context, tensor_name, dtype, cpubuff);
+        common::InitTensor(byteps_context, dtype, cpubuff);
     }
     return;
 }
