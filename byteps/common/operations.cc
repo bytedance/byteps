@@ -290,11 +290,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
             ps::SArray<char> vals(data + accumulated, len, false);
             // cmd type
             int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-            // blocking push
+            // blocking push, also as a global barrirer
             BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(
                 pskv.keys, vals, pskv.lens, cmd));
-            // sync all workers
-            ps::Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
         }
 
         accumulated += len;
