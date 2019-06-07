@@ -56,7 +56,7 @@ protected:
   ::tensorflow::Tensor tensor_;
 };
 
-extern "C" void byteps_tensorflow_declare_tensor(char* name, int size, int dtype);
+extern "C" void byteps_tensorflow_declare_tensor(char* name);
 
 
 } // namespace tensorflow

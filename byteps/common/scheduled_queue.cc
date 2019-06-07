@@ -127,7 +127,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     return nullptr;
 }
 
-std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(int key){
+std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key){
     BPS_CHECK(!_is_scheduled);
     std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<TensorTableEntry> task;

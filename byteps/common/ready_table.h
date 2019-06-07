@@ -31,9 +31,9 @@ public:
         _table_name = std::string(name);
     }
     // methods to access or modify the _ready_table
-    bool IsKeyReady(int key);
-    int AddReadyCount(int key);
-    void ClearReadyCount(int key);
+    bool IsKeyReady(uint64_t key);
+    int AddReadyCount(uint64_t key);
+    void ClearReadyCount(uint64_t key);
 
 private:
     // (key, ready_signal_count) pair, only valid for root device

@@ -49,19 +49,19 @@ NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
     return;
 }
 
-ncclComm_t NcclManager::GetComm(int key, QueueType op) {
+ncclComm_t NcclManager::GetComm(uint64_t key, QueueType op) {
     return _nccl_comm[key % _nccl_num_rings];
 }
 
-cudaStream_t NcclManager::GetStream(int key, QueueType op) {
+cudaStream_t NcclManager::GetStream(uint64_t key, QueueType op) {
     return _nccl_stream[key % _nccl_num_rings];
 }
 
-int NcclManager::GetRoot(int key, QueueType op) {
+int NcclManager::GetRoot(uint64_t key, QueueType op) {
     return _nccl_pcie_size - 1;
 }
 
-int NcclManager::GetRank(int key, QueueType op) {
+int NcclManager::GetRank(uint64_t key, QueueType op) {
     return BytePSGlobal::GetLocalRank() % _nccl_pcie_size;
 }
 
@@ -267,17 +267,17 @@ void NcclManagerExpr::ConstructRings() {
     return;
 }
 
-ncclComm_t NcclManagerExpr::GetComm(int key, QueueType op) {
+ncclComm_t NcclManagerExpr::GetComm(uint64_t key, QueueType op) {
     auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
     return _nccl_comm[key % _nccl_pcie_size + offset];
 }
 
-cudaStream_t NcclManagerExpr::GetStream(int key, QueueType op) {
+cudaStream_t NcclManagerExpr::GetStream(uint64_t key, QueueType op) {
     auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
     return _nccl_stream[key % _nccl_pcie_size + offset];
 }
 
-int NcclManagerExpr::GetRoot(int key, QueueType op) {
+int NcclManagerExpr::GetRoot(uint64_t key, QueueType op) {
     int comm_index = key % _nccl_pcie_size;
     int pcie_index = key % (_nccl_pcie_size * _nccl_pcie_num) / _nccl_pcie_size;
     int root = -1;
@@ -294,7 +294,7 @@ int NcclManagerExpr::GetRoot(int key, QueueType op) {
     return root;
 }
 
-int NcclManagerExpr::GetRank(int key, QueueType op) {
+int NcclManagerExpr::GetRank(uint64_t key, QueueType op) {
     auto offset = (op == REDUCE) ? 0 : _nccl_pcie_size;
     auto i = key % _nccl_pcie_size + offset;
     auto it = std::find(_rings[i].begin(), _rings[i].end(), BytePSGlobal::GetLocalRank());

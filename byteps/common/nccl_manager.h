@@ -71,10 +71,10 @@ public:
     void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
     std::shared_ptr<NcclGroupEntry> DequeueGroup();
 
-    virtual cudaStream_t GetStream(int key, QueueType op);
-    virtual ncclComm_t GetComm(int key, QueueType op);
-    virtual int GetRoot(int key, QueueType op);
-    virtual int GetRank(int key, QueueType op);
+    virtual cudaStream_t GetStream(uint64_t key, QueueType op);
+    virtual ncclComm_t GetComm(uint64_t key, QueueType op);
+    virtual int GetRoot(uint64_t key, QueueType op);
+    virtual int GetRank(uint64_t key, QueueType op);
 
     int GetSize() { return _nccl_size; }
     std::shared_ptr<BytePSComm> GetSignalComm() { return _signal_comm; }
@@ -109,10 +109,10 @@ protected:
 class NcclManagerExpr : public NcclManager {
 
 public:
-    cudaStream_t GetStream(int key, QueueType op);
-    ncclComm_t GetComm(int key, QueueType op);
-    int GetRoot(int key, QueueType op);
-    int GetRank(int key, QueueType op);
+    cudaStream_t GetStream(uint64_t key, QueueType op);
+    ncclComm_t GetComm(uint64_t key, QueueType op);
+    int GetRoot(uint64_t key, QueueType op);
+    int GetRank(uint64_t key, QueueType op);
 
 protected:
     void ConstructRings();

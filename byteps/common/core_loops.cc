@@ -59,7 +59,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
     auto task = q->getTask();
     if (task){
         int rank = BytePSGlobal::GetLocalRank();
-        int key  = task->key;
+        auto key  = task->key;
 
         // first send to next queue and then broadcast signal
         // to guarantee the entry is available when getTask(key) at Reduce/Broadcast thread
@@ -113,7 +113,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     BPS_CHECK(tensor);
     BPS_CHECK_EQ(0, tensor->size() % tensor->shape().num_elements());
 
-    int key  = task->key;
+    auto key  = task->key;
     auto len = task->len;
     auto offset = task->offset;
     auto unit_len = tensor->size() / tensor->shape().num_elements();
@@ -211,8 +211,8 @@ bool RunRootNcclLoopOnce() {
             if (nccl_size > 1) {
                 // notify non-root devices
                 struct BytePSCommMsg msg = { rank,
-                                                (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST,
-                                                (int)(task->key) };
+                                             (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST,
+                                             task->key };
                 signal_comm->broadcastSignal(&msg,
                                                 sizeof(BytePSCommMsg));
                 PostNcclCalls(task, this_op);
@@ -258,7 +258,7 @@ bool RunNonRootNcclLoopOnce() {
             BPS_CHECK_EQ(msg.signal, DO_REDUCE) << msg.signal << ", " << DO_REDUCE;
         }
 
-        int key = msg.key;
+        auto key = msg.key;
 
         auto q = BytePSGlobal::GetScheduledQueue(this_op);
         auto task = q->getTask(key);
@@ -303,7 +303,7 @@ bool RunCopyDevice2HostLoopOnce() {
         auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
         auto tensor = task->tensor;
         BPS_CHECK(tensor);
-        int key  = task->key;
+        auto key  = task->key;
 
         auto nccl = BytePSGlobal::GetNccl();
         auto nccl_root = nccl->GetRoot(key, REDUCE);
@@ -363,7 +363,7 @@ bool RunPcieReduceLoopOnce() {
         if (!reducer->isRoot()) {
             // send signal to root
             int rank = BytePSGlobal::GetLocalRank();
-            int key  = task->key;
+            auto key  = task->key;
             BytePSCommSignal sig = PCIE_REDUCE_READY;
             struct BytePSCommMsg msg = { rank, sig, key };
             reducer->getComm()->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
@@ -371,7 +371,7 @@ bool RunPcieReduceLoopOnce() {
         else {
             auto tensor = task->tensor;
             
-            int key  = task->key;
+            auto key  = task->key;
             auto len = task->len;
             auto offset = task->offset;
             auto unit_len = tensor->size() / tensor->shape().num_elements();
@@ -489,7 +489,7 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
     auto copy_h2d_stream = BytePSGlobal::GetCopyHost2DeviceStream();    
     auto tensor = task->output;
     BPS_CHECK(tensor);
-    int key  = task->key;
+    auto key  = task->key;
     auto nccl = BytePSGlobal::GetNccl();
     auto nccl_root = nccl->GetRoot(key, BROADCAST);
     auto nccl_size = nccl->GetSize();
@@ -529,15 +529,15 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     auto task = q->getTask();
 
     if (task) {
-        int key  = task->key;
+        auto key  = task->key;
         int local_rank = BytePSGlobal::GetLocalRank();
         int local_size = BytePSGlobal::GetLocalSize();
 
         if (local_size > 1) {
             // notify non-root devices
             struct BytePSCommMsg msg = { local_rank,
-                                            DO_COPYH2D,
-                                            key };
+                                         DO_COPYH2D,
+                                         key };
             BytePSGlobal::GetBasicComm()->broadcastSignal(&msg,
                                                           sizeof(BytePSCommMsg));
         }

@@ -65,11 +65,11 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
     auto dtype = byteps_input->dtype();
 
     // check if we need to init the tensor
-    if (!common::IsTensorInitialized(tensor_name, size)) {
+    if (!common::IsTensorDeclared(tensor_name)) {
         // we need to init this tensor with PS
         auto& context = common::GetContextFromName(tensor_name);
         // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, dtype,
+        common::InitTensor(context, size, dtype,
           (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
     }
 

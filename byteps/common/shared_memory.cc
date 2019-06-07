@@ -27,8 +27,8 @@
 namespace byteps {
 namespace common {
 
-void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
-    std::string shm_name("BytePS_ShM_");
+void* BytePSSharedMemory::openSharedMemory(const std::string &prefix, uint64_t key, size_t size) {
+    std::string shm_name(prefix);
     shm_name += std::to_string(key);
     int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
     BPS_CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name;
@@ -44,16 +44,15 @@ void* BytePSSharedMemory::openSharedMemory(int key, size_t size) {
     BPS_LOG(TRACE) << "initialized share memory size " << size;
 
     std::lock_guard<std::mutex> lock(_shm_mu);
-    _key_shm_name[key] = shm_name;
-    _key_shm_addr[key] = ptr;
-    _key_shm_size[key] = size;
+    _key_shm_addr[shm_name] = ptr;
+    _key_shm_size[shm_name] = size;
     return ptr;
 }
 
-std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size) {
+std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(uint64_t key, size_t size) {
     std::vector<void*> r;
     for (int i = 0; i < BytePSGlobal::GetPcieSwitchNum(); i++) {
-        auto offset = BYTEPS_SHM_PER_PCIE_OFFSET * (i + 1);
+        auto prefix = std::string("BytePS_Pcie") + std::to_string(i) + "_Shm_";
         if (BytePSGlobal::IsDistributed()) {
             if (i <= numa_max_node()) {
                 numa_set_preferred(i);
@@ -61,18 +60,18 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(int key, size_t size
             else {
                 numa_set_preferred(numa_max_node());
             }
-            r.push_back(openSharedMemory(key + offset, size));
+            r.push_back(openSharedMemory(prefix, key, size));
             numa_set_preferred(-1);
         }
         else {
             if (BytePSGlobal::IsCrossPcieSwitch()) {
                 numa_set_interleave_mask(numa_all_nodes_ptr);
-                r.push_back(openSharedMemory(key + offset, size));
+                r.push_back(openSharedMemory(prefix, key, size));
                 numa_set_interleave_mask(numa_no_nodes_ptr);
             }
             else {
                 numa_set_preferred(0);
-                r.push_back(openSharedMemory(key + offset, size));
+                r.push_back(openSharedMemory(prefix, key, size));
                 numa_set_preferred(-1);
             }
         }
