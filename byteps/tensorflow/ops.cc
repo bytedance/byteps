@@ -131,9 +131,7 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name) {
     std::string tensor_name(name);
-    if (!common::IsTensorDeclared(tensor_name)) {
-        auto& byteps_context = common::GetContextFromName(tensor_name);
-    }
+    common::IsTensorDeclared(tensor_name);
     return;
 }
 

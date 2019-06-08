@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-import byteps.tensorflow as hvd
+import byteps.tensorflow as bps
 import tensorflow as tf
 
 def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sparse,
@@ -39,15 +39,15 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             push_pull the gradients before returning them.
             """
             gradients = super(self.__class__, self).get_gradients(loss, params)
-            if hvd.size() > 1:
+            if bps.size() > 1:
                 averaged_gradients = []
-                with tf.name_scope(self._name + "_Allreduce"):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
                     for grad in gradients:
                         if grad is not None:
                             if self._sparse_as_dense and \
                                     isinstance(grad, tf.IndexedSlices):
                                 grad = tf.convert_to_tensor(grad)
-                            avg_grad = hvd.push_pull(grad,
+                            avg_grad = bps.push_pull(grad, scope,
                                                      device_dense=self._device_dense,
                                                      device_sparse=self._device_sparse,
                                                      compression=self._compression)
@@ -69,17 +69,17 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
 
 
 def broadcast_global_variables(backend, root_rank):
-    bcast_op = hvd.broadcast_global_variables(root_rank)
+    bcast_op = bps.broadcast_global_variables(root_rank)
     return backend.get_session().run(bcast_op)
 
 
 def push_pull(backend, value, name, average):
-    push_pull_op = hvd.push_pull(tf.constant(value, name=name), average=average)
+    push_pull_op = bps.push_pull(tf.constant(value, name=name), average=average)
     return backend.get_session().run(push_pull_op)
 
 
 def broadcast(backend, value, root_rank, name):
-    bcast_op = hvd.broadcast(tf.constant(value, name=name), root_rank)
+    bcast_op = bps.broadcast(tf.constant(value, name=name), root_rank)
     return backend.get_session().run(bcast_op)
 
 

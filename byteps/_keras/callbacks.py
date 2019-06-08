@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-import byteps.tensorflow as hvd
+import byteps.tensorflow as bps
 import tensorflow as tf
 
 
@@ -27,7 +27,7 @@ class BroadcastGlobalVariablesCallbackImpl(object):
 
     def on_train_begin(self, logs=None):
         with tf.device(self.device):
-            bcast_op = hvd.broadcast_global_variables(self.root_rank)
+            bcast_op = bps.broadcast_global_variables(self.root_rank)
             self.backend.get_session().run(bcast_op)
 
 
@@ -43,7 +43,7 @@ class MetricAverageCallbackImpl(object):
         with tf.name_scope('MetricAverageCallback'):
             var = tf.Variable(value, name=metric)
             self.backend.get_session().run(var.initializer)
-            push_pull_op = hvd.push_pull(var, device_dense=self.device)
+            push_pull_op = bps.push_pull(var, device_dense=self.device)
             return var, push_pull_op
 
     def _average_metrics_in_place(self, logs):
@@ -154,7 +154,7 @@ class LearningRateWarmupCallbackImpl(LearningRateScheduleCallbackImpl):
             # Adjust epoch to produce round numbers at the end of each epoch, so that TensorBoard
             # learning rate graphs look better.
             epoch += 1. / self.steps_per_epoch
-            return 1. / hvd.size() * (epoch * (hvd.size() - 1) / warmup_epochs + 1)
+            return 1. / bps.size() * (epoch * (bps.size() - 1) / warmup_epochs + 1)
         super(LearningRateWarmupCallbackImpl, self).__init__(
             backend, multiplier, start_epoch=0, end_epoch=warmup_epochs, staircase=False,
             momentum_correction=momentum_correction, steps_per_epoch=steps_per_epoch, *args)
