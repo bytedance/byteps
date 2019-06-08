@@ -62,6 +62,7 @@ dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
+
 def _normalize_name(name):
     """Normalizes operation name to TensorFlow rules."""
     return re.sub('[^a-zA-Z0-9_]', '_', name)
