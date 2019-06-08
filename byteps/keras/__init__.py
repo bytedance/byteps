@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import keras
-import keras.backend as K
+import tensorflow.keras as keras
+import tensorflow.keras.backend as K
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import init
