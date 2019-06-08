@@ -291,7 +291,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
         const int num_servers = krs.size();
         BPS_CHECK_GT(num_servers, 0);
         // send it to a single random picked server
-        int server = (key * 9973) % num_servers;
+        int server = (((key >> 16) + key) * 9973) % num_servers;
         BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server;
         ps::Key ps_key = krs[server].begin() + key;
         BPS_CHECK_LT(ps_key, krs[server].end());
