@@ -16,11 +16,6 @@
 import tensorflow.keras as keras
 import tensorflow.keras.backend as K
 
-from byteps.tensorflow.compression import Compression
-from byteps.tensorflow.ops import init
-from byteps.tensorflow.ops import size, local_size, rank, local_rank
-from byteps.tensorflow.ops import broadcast, _push_pull
-from byteps.tensorflow import DistributedOptimizer
 from byteps.tensorflow import init
 from byteps.tensorflow import shutdown
 from byteps.tensorflow import size
