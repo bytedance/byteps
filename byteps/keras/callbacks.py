@@ -14,15 +14,9 @@
 # ==============================================================================
 
 import tensorflow as tf
+import tensorflow.keras.backend as K
 
-from distutils.version import LooseVersion
-if LooseVersion(tf.__version__) >= LooseVersion("1.4.0"):
-    from tensorflow import keras
-    from tensorflow.python.keras import backend as K
-else:
-    from tensorflow.contrib import keras
-    from tensorflow.contrib.keras import backend as K
-
+from tensorflow import keras
 from byteps._keras import callbacks as _impl
 
 

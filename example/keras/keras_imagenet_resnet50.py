@@ -72,7 +72,7 @@ for try_epoch in range(args.epochs, 0, -1):
 
 # BytePS: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
-# resume_from_epoch = bps.broadcast(resume_from_epoch, 0, name='resume_from_epoch')
+resume_from_epoch = bps.broadcast(resume_from_epoch, 0, name='resume_from_epoch')
 
 # BytePS: print logs on the first worker.
 verbose = 1 if bps.rank() == 0 else 0
