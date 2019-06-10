@@ -121,6 +121,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
     if (task->device == CPU_DEVICE_ID) {
         p = (char*)(task->gpu_ptr) + offset;
     }
+
     auto nccl_dtype = getNcclDataType(tensor->dtype());
 
     auto nccl = BytePSGlobal::GetNccl();
@@ -143,9 +144,19 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
                     << ", device=" << task->device;
 
     if (this_op == REDUCE) {
+
+        // In case we do not have the COPY phases, we should reduce to output
+        auto out_p = p;
+        if (!BytePSGlobal::IsDistributed() && !BytePSGlobal::IsCrossPcieSwitch()) {
+            out_p = (char*)(task->output->data()) + offset;
+            if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
+                out_p = p;
+            }
+        }
+
         if (num_elem_per_gpu) {
             NCCLCHECK(ncclReduceScatter((const void*) p,
-                                    (void*) (p + nccl_rank * num_elem_per_gpu * unit_len),
+                                    (void*) (out_p + nccl_rank * num_elem_per_gpu * unit_len),
                                     (size_t) num_elem_per_gpu,
                                     (ncclDataType_t) nccl_dtype,
                                     (ncclRedOp_t) ncclSum,
@@ -154,7 +165,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
         }
         if (left_elem) {
             NCCLCHECK(ncclReduce((const void*) (p + len - left_elem * unit_len),
-                                    (void*) (p + len - left_elem * unit_len),
+                                    (void*) (out_p + len - left_elem * unit_len),
                                     (size_t) left_elem,
                                     (ncclDataType_t) nccl_dtype,
                                     (ncclRedOp_t) ncclSum,
