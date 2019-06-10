@@ -258,7 +258,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     // If cpubuff is not nullprt, the tensor itself is on CPU
     // We need to register with CUDA so that NCCL can work on it
     if (cpubuff) {
-        BPS_LOG(TRACE) << name << " is already on cpu, len=" << size;
+        BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
         CUDA_CALL(cudaHostRegister(cpubuff, size, cudaHostRegisterMapped));
         CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
     }
