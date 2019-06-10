@@ -42,10 +42,10 @@ class MetricAverageCallbackImpl(object):
         self.device = device
 
     def _make_variable(self, metric, value):
-        with tf.name_scope('MetricAverageCallback'):
+        with tf.name_scope('MetricAverageCallback') as scope:
             var = tf.Variable(value, name=metric)
             self.backend.get_session().run(var.initializer)
-            push_pull_op = bps.push_pull(var, device_dense=self.device)
+            push_pull_op = bps.push_pull(var, scope, device_dense=self.device)
             return var, push_pull_op
 
     def _average_metrics_in_place(self, logs):
