@@ -241,7 +241,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
                     << context.key_list.front()
                     << ", "
                     << context.key_list.back()
-                    << "]";
+                    << "]"
+                    << " rank=" << BytePSGlobal::GetLocalRank();
 
     auto key_list = context.key_list;
 

@@ -273,7 +273,8 @@ bool BytePSGlobal::IsTensorDeclared(const std::string &name) {
         _name_to_cxt[name].tensor_name = name.c_str(); // disable copy-on-write
         _name_to_cxt[name].declared_key = (ps::Key) next_key_++;
         BPS_LOG(DEBUG) << "Declared tensor " << name
-                       << ", declared key (not PS key): " << _name_to_cxt[name].declared_key;
+                       << ", declared key (not PS key): " << _name_to_cxt[name].declared_key
+                       << " rank=" << BytePSGlobal::GetLocalRank();
         return false;
     }
     return true;
