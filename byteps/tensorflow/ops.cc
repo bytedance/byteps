@@ -159,7 +159,9 @@ public:
     auto& byteps_context = common::GetContextFromName(node_name);
     auto size = byteps_input->size();
     auto dtype = byteps_input->dtype();
-    common::InitTensor(byteps_context, size, dtype, nullptr);
+    void* cpubuff = (device == CPU_DEVICE_ID) ?
+        const_cast<void*>(byteps_input->data()) : nullptr;
+    common::InitTensor(byteps_context, size, dtype, cpubuff);
 
     auto queue_list = common::GetPushQueueList(device);
     auto queue_list_pull = common::GetPullQueueList(device);
@@ -199,7 +201,7 @@ push_pull.
 Arguments
     tensor:     A tensor to reduce.
 Output
-    sum:    A tensor with the same shape as `tensor`, summed across all MPI processes.
+    sum:    A tensor with the same shape as `tensor`, summed across all processes.
 )doc");
 
 } // namespace tensorflow

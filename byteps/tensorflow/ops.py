@@ -105,13 +105,19 @@ def broadcast(tensor, root_rank, name=None):
       A tensor of the same shape and type as `tensor`, with the value broadcasted
       from root rank.
     """
-    # Broadcast is implemented as push + pull in BytePS
-    # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
+    # Broadcast is implemented as push + pull after zero-ing non-root tensors
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name))
-    return C_LIB.byteps_push_pull(tensor, name=name)
-
+    if rank() != root_rank:
+        try:
+            # Try to zero out tensor if it is a Variable
+            tensor = tf.assign(tensor, tf.zeros_like(tensor))
+        except:
+            # Not a Variable, this is an inmutable tensor
+            tensor = tf.zeros_like(tensor)
+    with tf.control_dependencies([tf.identity(tensor)]):
+        return C_LIB.byteps_push_pull(tensor, name=name)
 
 @ops.RegisterGradient('BytePSBroadcast')
 def _broadcast_grad(op, grad):
