@@ -26,6 +26,8 @@ class BroadcastGlobalVariablesCallbackImpl(object):
         self.device = device
 
     def on_train_begin(self, logs=None):
+        if bps.size() <= 1:
+            return
         with tf.device(self.device):
             bcast_op = bps.broadcast_global_variables(self.root_rank)
             self.backend.get_session().run(bcast_op)

@@ -175,7 +175,7 @@ model.fit_generator(train_iter,
                     validation_steps=3 * len(test_iter) // bps.size())
 
 # Evaluate the model on the full data set.
-score = bps.allreduce(model.evaluate_generator(test_iter, len(test_iter), workers=4))
+score = bps.push_pull(model.evaluate_generator(test_iter, len(test_iter), workers=4))
 if verbose:
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
