@@ -79,7 +79,7 @@ def push_pull(backend, value, name, average):
 
 
 def broadcast(backend, value, root_rank, name):
-    bcast_op = bps.broadcast(tf.constant(value, name=name), root_rank)
+    bcast_op = bps.broadcast(tf.constant(value, name=name), root_rank, is_variable=False)
     return backend.get_session().run(bcast_op)
 
 

@@ -95,7 +95,7 @@ def _push_pull_grad(op, grad):
     return _push_pull(grad)
 
 
-def broadcast(tensor, root_rank, name=None):
+def broadcast(tensor, root_rank, name=None, is_variable=True):
     """An op which broadcasts the input tensor on root rank to the same input tensor
     on all other BytePS processes.
     The broadcast operation is keyed by the name of the op. The tensor type and
@@ -109,14 +109,12 @@ def broadcast(tensor, root_rank, name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name))
-    if rank() != root_rank:
-        try:
-            # Try to zero out tensor if it is a Variable
-            tensor = tf.assign(tensor, tf.zeros_like(tensor))
-        except:
-            # Not a Variable, this is an inmutable tensor
-            tensor = tf.zeros_like(tensor)
-    with tf.control_dependencies([tf.identity(tensor)]):
+    if is_variable and (root_rank != rank()):
+        tensor = tf.assign(tensor, tf.zeros_like(tensor))
+        with tf.control_dependencies([tf.identity(tensor)]):
+            return C_LIB.byteps_push_pull(tensor, name=name)
+    else:
+        # TODO: needs to zero-out non-variable tensors, too
         return C_LIB.byteps_push_pull(tensor, name=name)
 
 @ops.RegisterGradient('BytePSBroadcast')
