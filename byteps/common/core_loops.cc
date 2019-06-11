@@ -145,7 +145,7 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
 
     if (this_op == REDUCE) {
 
-        // In case we do not have the COPY phases, we should reduce to output
+        // In case we do not have the COPY phases, we should reduce to output directly
         auto out_p = p;
         if (!BytePSGlobal::IsDistributed() && !BytePSGlobal::IsCrossPcieSwitch()) {
             out_p = (char*)(task->output->data()) + offset;
@@ -344,17 +344,18 @@ bool RunCopyDevice2HostLoopOnce() {
         auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
         auto copy_len = num_elem_per_gpu * unit_len;
-        if (left_elem && nccl_root == nccl_rank) {
+        if (left_elem && (nccl_root == nccl_rank)) {
             copy_len += left_elem * unit_len;
         }
 
-        CUDA_CALL(cudaMemcpyAsync((void *) (cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
-                                    (const void *) (p + nccl_rank * num_elem_per_gpu * unit_len),
-                                    (size_t) copy_len,
-                                    (cudaMemcpyKind) cudaMemcpyDeviceToHost,
-                                    (cudaStream_t) *copy_d2h_Stream));
-        CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
-
+        if (copy_len) {
+            CUDA_CALL(cudaMemcpyAsync((void *) (cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
+                                      (const void *) (p + nccl_rank * num_elem_per_gpu * unit_len),
+                                      (size_t) copy_len,
+                                      (cudaMemcpyKind) cudaMemcpyDeviceToHost,
+                                      (cudaStream_t) *copy_d2h_Stream));
+            CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
+        }
 
         FinishOrProceed(task);
     }
@@ -396,17 +397,19 @@ bool RunPcieReduceLoopOnce() {
             auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
             auto copy_len = num_elem_per_gpu * unit_len;
-            if (left_elem && nccl_root == nccl_rank) {
+            if (left_elem && (nccl_root == nccl_rank)) {
                 copy_len += left_elem * unit_len;
             }
 
-            auto total_offset = offset + nccl_rank * num_elem_per_gpu * unit_len;
+            if (copy_len) {
+                auto total_offset = offset + nccl_rank * num_elem_per_gpu * unit_len;
 
-            // Below we assume there are only two PCIe switch
-            // and we run reducer in the context of the second switch
-            reducer->sum((void*)((char*)(task->cpubuff) + total_offset),
-                            (void*)((char*)(task->pcie_cpubuff[0]) + total_offset),
-                            copy_len, task->tensor->dtype());
+                // Below we assume there are only two PCIe switch
+                // and we run reducer in the context of the second switch
+                reducer->sum((void*)((char*)(task->cpubuff) + total_offset),
+                             (void*)((char*)(task->pcie_cpubuff[0]) + total_offset),
+                             copy_len, task->tensor->dtype());
+            }
         }
 
         FinishOrProceed(task);
@@ -505,11 +508,10 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
     auto nccl_root = nccl->GetRoot(key, BROADCAST);
     auto nccl_size = nccl->GetSize();
     auto nccl_rank = nccl->GetRank(key, BROADCAST);
-    auto name = task->tensor_name;
     auto len = task->len;
     auto offset = task->offset;
     auto cpubuff = (char*)(task->cpubuff) + offset;
-    BPS_CHECK(cpubuff) << name << ": CPU buffer not initialized, size=" << len;
+    BPS_CHECK(cpubuff) << task->tensor_name << ": CPU buffer not initialized, size=" << len;
 
     auto gpu_addr = (char*)(tensor->data()) + offset;
     if (task->device == CPU_DEVICE_ID) {
@@ -521,16 +523,19 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
     auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
     
     auto copy_len = num_elem_per_gpu * unit_len;
-    if (left_elem && nccl_root == nccl_rank) {
+    if (left_elem && (nccl_root == nccl_rank)) {
         copy_len += left_elem * unit_len;
     }
 
-    CUDA_CALL(cudaMemcpyAsync((void *) (gpu_addr + nccl_rank * num_elem_per_gpu * unit_len),
-                                (const void *) (cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
-                                (size_t) copy_len,
-                                (cudaMemcpyKind) cudaMemcpyHostToDevice,
-                                (cudaStream_t) *copy_h2d_stream));
-    CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream));
+    if (copy_len) {
+         CUDA_CALL(cudaMemcpyAsync((void *) (gpu_addr + nccl_rank * num_elem_per_gpu * unit_len),
+                              (const void *) (cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
+                              (size_t) copy_len,
+                              (cudaMemcpyKind) cudaMemcpyHostToDevice,
+                              (cudaStream_t) *copy_h2d_stream));
+        CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream));
+    }
+
     return;
 }
 

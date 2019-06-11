@@ -80,6 +80,7 @@ int CpuReducer::_sum_float64(void* dst, void* src, size_t len) {
 
 // TODO
 int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
+    BPS_CHECK(false) << "CPU reduce for float16 is not supported yet.";
     auto d = (float*)dst;
     auto s = (float*)src;
 #pragma omp parallel for simd num_threads(_num_threads)
@@ -175,6 +176,7 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
 
 // TODO
 int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
+    BPS_CHECK(false) << "CPU reduce for float16 is not supported yet.";
     auto d = (float*)dst;
     auto s1 = (float*)src1;
     auto s2 = (float*)src2;
