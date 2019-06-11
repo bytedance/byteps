@@ -23,17 +23,13 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 #define EIGEN_USE_THREADS
-
-#if HAVE_CUDA
 #include "tensorflow/stream_executor/stream.h"
-#endif
 
 #include "../common/operations.h"
 
 namespace byteps {
 namespace tensorflow {
 
-#if HAVE_CUDA
 class TFReadyEvent : public common::ReadyEvent {
 public:
   TFReadyEvent(::tensorflow::DeviceContext* device_context);
@@ -42,7 +38,6 @@ public:
 private:
   std::shared_ptr<perftools::gputools::Event> event_;
 };
-#endif
 
 class TFTensor : public common::Tensor {
 public:
