@@ -110,9 +110,7 @@ def broadcast(tensor, root_rank, name=None, is_variable=True):
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name))
     if is_variable and (root_rank != rank()):
-        tensor = tf.assign(tensor, tf.zeros_like(tensor))
-        with tf.control_dependencies([tf.identity(tensor)]):
-            return C_LIB.byteps_push_pull(tensor, name=name)
+        return C_LIB.byteps_push_pull(tensor.assign(tf.zeros_like(tensor)), name=name)
     else:
         # TODO: needs to zero-out non-variable tensors, too
         return C_LIB.byteps_push_pull(tensor, name=name)

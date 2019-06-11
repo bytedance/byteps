@@ -84,7 +84,6 @@ const common::DataType ConvertDType(int dtype) {
 
 } // namespace
 
-#if HAVE_CUDA
 TFReadyEvent::TFReadyEvent(::tensorflow::DeviceContext* device_context) {
   auto executor = device_context->stream()->parent();
   auto ready_event = new perftools::gputools::Event(executor);
@@ -97,7 +96,6 @@ bool TFReadyEvent::Ready() const {
   return event_->PollForStatus() !=
          perftools::gputools::Event::Status::kPending;
 }
-#endif
 
 TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
 
@@ -120,12 +118,10 @@ int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 // On GPU this event will signal that data is ready, and tensors are
 // allocated.
 common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
-#if HAVE_CUDA
   auto device_context = context->op_device_context();
   if (device_context != nullptr) {
     return new TFReadyEvent(device_context);
   }
-#endif
   return nullptr;
 }
 
@@ -133,6 +129,37 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name) {
     std::string tensor_name(name);
     common::IsTensorDeclared(tensor_name);
     return;
+}
+
+void StartTask(::tensorflow::OpKernelContext* context,
+               ::tensorflow::AsyncOpKernel::DoneCallback done,
+               std::string node_name,
+               std::shared_ptr<TFTensor> byteps_input,
+               std::shared_ptr<TFTensor> byteps_output,
+               std::shared_ptr<common::ReadyEvent> ready_event) {
+  auto& byteps_context = common::GetContextFromName(node_name);
+  auto device = GetDeviceID(context);
+  auto size = byteps_input->size();
+  auto dtype = byteps_input->dtype();
+  void* cpubuff = (device == CPU_DEVICE_ID) ?
+      const_cast<void*>(byteps_input->data()) : nullptr;
+  common::InitTensor(byteps_context, size, dtype, cpubuff);
+
+  auto queue_list = common::GetPushQueueList(device);
+  auto queue_list_pull = common::GetPullQueueList(device);
+  queue_list->insert(queue_list->end(),
+                      queue_list_pull->begin(), queue_list_pull->end());
+
+  // TODO: assign priority based on topological sort
+  auto enqueue_result = EnqueueTensor(
+      byteps_context, byteps_input, byteps_output, ready_event,
+      device, -byteps_context.declared_key, 0,
+      [context, done](const common::Status& status) {
+        context->SetStatus(ConvertStatus(status));
+        done();
+      }, queue_list);
+  OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
+
 }
 
 class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
@@ -144,39 +171,23 @@ public:
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
                          done);
 
-    auto node_name = name();
-    auto device = GetDeviceID(context);
     auto tensor = context->input(0);
     ::tensorflow::Tensor* output;
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, tensor.shape(), &output), done);
     // ReadyEvent makes sure input tensor is ready, and output is allocated.
     auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-
-    auto byteps_input = std::make_shared<TFTensor>(tensor);
-    auto byteps_output = std::make_shared<TFTensor>(*output);
-
-    auto& byteps_context = common::GetContextFromName(node_name);
-    auto size = byteps_input->size();
-    auto dtype = byteps_input->dtype();
-    void* cpubuff = (device == CPU_DEVICE_ID) ?
-        const_cast<void*>(byteps_input->data()) : nullptr;
-    common::InitTensor(byteps_context, size, dtype, cpubuff);
-
-    auto queue_list = common::GetPushQueueList(device);
-    auto queue_list_pull = common::GetPullQueueList(device);
-    queue_list->insert(queue_list->end(),
-                       queue_list_pull->begin(), queue_list_pull->end());
-
-    // TODO: assign priority based on topological sort
-    auto enqueue_result = EnqueueTensor(
-        byteps_context, byteps_input, byteps_output, ready_event,
-        device, -byteps_context.declared_key, 0,
-        [context, done](const common::Status& status) {
-          context->SetStatus(ConvertStatus(status));
-          done();
-        }, queue_list);
-    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
+    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto bps_output = std::make_shared<TFTensor>(*output);
+    auto node_name = name();
+    auto& bps_context = common::GetContextFromName(node_name);
+    if (bps_context.initialized) {
+      StartTask(context, done, node_name, bps_input, bps_output, ready_event);
+    }
+    else {
+      std::thread t(StartTask, context, done, node_name, bps_input, bps_output, ready_event);
+      t.detach();
+    }
   }
 };
 
