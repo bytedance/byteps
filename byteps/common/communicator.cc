@@ -48,10 +48,6 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
     // init socket comm
     if (is_root) { // root
         _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
-
-        // Just in case launching root earlier than non-root
-        // TODO: use retry instead of sleep
-        // if (_local_size > 1) std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
 
     BPS_LOG(DEBUG) << "This is " << path_suffix << (is_root ? " ROOT" : " WORKER")
