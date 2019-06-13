@@ -101,7 +101,7 @@ public:
     static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
     static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
 
-    static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
+    static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
 private:
 
@@ -148,6 +148,11 @@ private:
 
     static std::shared_ptr<NcclManager> _nccl_manager;
     static std::shared_ptr<CpuReducer> _cpu_reducer;
+
+    // for debug sampling
+    static uint64_t _sample_key;
+
+    static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
 
 };
 
