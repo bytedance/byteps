@@ -62,6 +62,7 @@ cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
+uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
     return (BytePSScheduledQueue*)_queues[queueType];
@@ -187,6 +188,9 @@ void BytePSGlobal::Init() {
                    << " local_size=" << _local_size
                    << " worker_id=" << _worker_id;
 
+    if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
+        _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
+    }
     return;
 }
 

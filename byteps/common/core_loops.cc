@@ -31,6 +31,35 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
     auto this_op = queue_list[0];
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     q->reportFinish(task->len);
+    if (BytePSGlobal::IsTensorSampled(task->key)) {
+        // We only support sampling 
+        BPS_CHECK(task->tensor->dtype() == common::BYTEPS_FLOAT32);
+        size_t i = task->offset / 4;
+        size_t j = (task->offset + task->len) / 4 - 1;
+        if (task->device == CPU_DEVICE_ID) {
+            BPS_LOG(DEBUG) << "Sampled key=" << task->key
+                        << " rank=" << BytePSGlobal::GetLocalRank()
+                        << " input[0]=" << *((float*)(task->tensor->data()) + i)
+                        << "\tinput[-1]=" << *((float*)(task->tensor->data()) + j)
+                        << "\toutput[0]=" << *((float*)(task->output->data()) + i)
+                        << "\toutput[-1]=" << *((float*)(task->output->data()) + j)
+                        << "\t after stage: " << LogStrings[this_op];
+        }
+        else {
+            float i0, i1, o0, o1;
+            cudaMemcpy(&i0, (float*)(task->tensor->data()) + i, 4, cudaMemcpyDeviceToHost);
+            cudaMemcpy(&i1, (float*)(task->tensor->data()) + j, 4, cudaMemcpyDeviceToHost);
+            cudaMemcpy(&o0, (float*)(task->output->data()) + i, 4, cudaMemcpyDeviceToHost);
+            cudaMemcpy(&o1, (float*)(task->output->data()) + j, 4, cudaMemcpyDeviceToHost);
+            BPS_LOG(DEBUG) << "Sampled key=" << task->key
+                        << " rank=" << BytePSGlobal::GetLocalRank()
+                        << " input[0]=" << i0
+                        << "\tinput[-1]=" << i1
+                        << "\toutput[0]=" << o0
+                        << "\toutput[-1]=" << o1
+                        << "\t after stage: " << LogStrings[this_op];
+        }
+    }
     queue_list.erase(queue_list.begin());
     if (queue_list.size() > 0) {
         BPS_CHECK(task->tensor_name != "");
