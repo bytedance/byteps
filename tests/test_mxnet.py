@@ -59,7 +59,7 @@ class MXTest:
         for dtype, dim in itertools.product(dtypes, dims):
             # MXNet uses gpu_id as part of the seed, so to get identical seeds
             # we must set a context.
-            mx.random.seed(100 + 100 * bps.local_rank(), ctx=ctx)
+            mx.random.seed(10 + 10 * bps.rank(), ctx=ctx)
             tensor = mx.nd.random.uniform(-100, 100, shape=shapes[dim],
                                           ctx=ctx)
             tensor = tensor.astype(dtype)
