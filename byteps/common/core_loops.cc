@@ -173,14 +173,10 @@ inline void PostNcclCalls(std::shared_ptr<byteps::common::TensorTableEntry> task
                     << ", device=" << task->device;
 
     if (this_op == REDUCE) {
-
-        // In case we do not have the COPY phases, we should reduce to output directly
-        auto out_p = p;
-        if (!BytePSGlobal::IsDistributed() && !BytePSGlobal::IsCrossPcieSwitch()) {
-            out_p = (char*)(task->output->data()) + offset;
-            if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
-                out_p = p;
-            }
+        // We reduce to task->output except that it is a CPU tensor
+        auto out_p = (char*)(task->output->data()) + offset;
+        if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
+            out_p = p;
         }
 
         if (num_elem_per_gpu) {
@@ -341,7 +337,9 @@ bool RunCopyDevice2HostLoopOnce() {
 
     if (task) {
         auto copy_d2h_Stream =  BytePSGlobal::GetCopyDevice2HostStream();
-        auto tensor = task->tensor;
+        // If we ran NCCL reduce, we should copy from task->output
+        auto tensor = (BytePSGlobal::GetNccl()->GetSize() > 1) ?
+                      task->output : task->tensor;
         BPS_CHECK(tensor);
         auto key  = task->key;
 
@@ -437,7 +435,7 @@ bool RunPcieReduceLoopOnce() {
                 // and we run reducer in the context of the second switch
                 reducer->sum((void*)((char*)(task->cpubuff) + total_offset),
                              (void*)((char*)(task->pcie_cpubuff[0]) + total_offset),
-                             copy_len, task->tensor->dtype());
+                             copy_len, tensor->dtype());
             }
         }
 
