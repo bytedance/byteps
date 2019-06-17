@@ -71,7 +71,6 @@ def _append_broadcast_init(param, root_rank, index):
     def wrapped_init_impl(self, *args, **kwargs):
         init_impl(*args, **kwargs)
         # Broadcast is implemented as push + pull in BytePS
-        # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
         byteps_push_pull(self.data(), version=0, priority=0, name="parameter_"+str(index), is_average=False)
         self.data().wait_to_read()
     return wrapped_init_impl
@@ -112,9 +111,9 @@ def broadcast_parameters(params, root_rank=0):
     for i in range(len(tensors)):
         byteps_declare_tensor(tensors[i], "parameter_"+str(parameter_index))
         # Broadcast is implemented as push + pull in BytePS
-        # We should zero-out all non-root tensors to make it a real broadcast
+        # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
         if rank() != root_rank:
-           tensors[i].__imul__(0)
+            tensors[i].__imul__(0)
         byteps_push_pull(tensors[i], version=0, priority=0, name="parameter_"+str(parameter_index), is_average=False)
         parameter_index += 1
 
