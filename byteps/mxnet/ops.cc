@@ -71,7 +71,7 @@ void DoPushPull(BPSContext &context, NDArray* input, int version, int priority,
 }
 
 extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
-                                            char* name, int version, int priority) {
+                                            char* name, int version, int priority, bool is_average) {
     MX_API_BEGIN();
 
     std::string tensor_name = GetOpName("byteps", name);
@@ -93,9 +93,11 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
                             {}, {tensor->var()},
                             FnProperty::kCPUPrioritized, 0, "BytePSPushPull");
 
-    // average the aggregated gradient
-    auto num_worker = byteps_size();
-    *tensor /= num_worker;
+    if (is_average) {
+        // average the aggregated gradient
+        auto num_worker = byteps_size();
+        *tensor /= num_worker;
+    }
 
     MX_API_END();
 }

@@ -42,7 +42,7 @@ dll_path = os.path.join(os.path.dirname(__file__),
 MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 
-def byteps_push_pull(tensor, version=0, priority=0, name=None):
+def byteps_push_pull(tensor, version=0, priority=0, name=None, is_average=True):
     """
     A function that performs pushing and pulling tensors
 
@@ -68,10 +68,10 @@ def byteps_push_pull(tensor, version=0, priority=0, name=None):
     c_in = tensor.handle
     if isinstance(name, string_types):
         check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
-                   c_str(name), ctypes.c_int(version), ctypes.c_int(priority)))
+                   c_str(name), ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
     else:
         check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
-                   name, ctypes.c_int(version), ctypes.c_int(priority)))
+                   name, ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
 
     return
 
