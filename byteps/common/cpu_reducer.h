@@ -57,6 +57,9 @@ private:
     int _sum_int8(void* dst, void* src1, void* src2, size_t len);
     int _sum_int64(void* dst, void* src1, void* src2, size_t len);
 
+    float _convert_half_to_full_precision(uint16_t h);
+    uint16_t _convert_full_to_half_precision(float f);
+
     std::shared_ptr<BytePSComm> _comm;
     int _num_threads;
 };

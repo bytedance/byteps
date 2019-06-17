@@ -78,14 +78,16 @@ int CpuReducer::_sum_float64(void* dst, void* src, size_t len) {
     return 0;
 }
 
-// TODO
 int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
-    BPS_CHECK(false) << "CPU reduce for float16 is not supported yet.";
-    auto d = (float*)dst;
-    auto s = (float*)src;
+    // convert half precision to fp32 --> do sum --> convert fp32 to half precision
+    auto d = (uint16_t*) dst;
+    auto s = (uint16_t*) src;
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (size_t i = 0; i < len / (size_t) 4; ++i) {
-        d[i] = d[i] + s[i];
+    for (size_t i = 0; i < len / (size_t) 2; ++i) {
+        float d_fp32 = _convert_half_to_full_precision((uint16_t) d[i]);
+        float s_fp32 = _convert_half_to_full_precision((uint16_t) s[i]);
+        d_fp32 = d_fp32 + s_fp32;
+        d[i] = _convert_full_to_half_precision((float) d_fp32);
     }
     return 0;
 }
@@ -174,15 +176,19 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
     return 0;
 }
 
-// TODO
 int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
-    BPS_CHECK(false) << "CPU reduce for float16 is not supported yet.";
-    auto d = (float*)dst;
-    auto s1 = (float*)src1;
-    auto s2 = (float*)src2;
+    // convert half precision to fp32 --> do sum --> convert fp32 to half precision
+    auto d = (uint16_t*) dst;
+    auto s1 = (uint16_t*) src1;
+    auto s2 = (uint16_t*) src2;
+
 #pragma omp parallel for simd num_threads(_num_threads)
-    for (size_t i = 0; i < len / (size_t) 4; ++i) {
-        d[i] = s1[i] + s2[i];
+    for (size_t i = 0; i < len / (size_t) 2; ++i) {
+        float d_fp32 = _convert_half_to_full_precision((uint16_t) d[i]);
+        float s1_fp32 = _convert_half_to_full_precision((uint16_t) s1[i]);
+        float s2_fp32 = _convert_half_to_full_precision((uint16_t) s2[i]);
+        d_fp32 = s1_fp32 + s2_fp32;
+        d[i] = _convert_full_to_half_precision((float) d_fp32);
     }
     return 0;
 }
@@ -229,6 +235,17 @@ int CpuReducer::_sum_int64(void* dst, void* src1, void* src2, size_t len) {
         d[i] = s1[i] + s2[i];
     }
     return 0;
+}
+
+float CpuReducer::_convert_half_to_full_precision(uint16_t h) {
+    float f = ((h&0x8000)<<16) | (((h&0x7c00)+0x1C000)<<13) | ((h&0x03FF)<<13);
+    return f;
+}
+
+uint16_t CpuReducer::_convert_full_to_half_precision(float f) {
+    uint32_t x = *((uint32_t*)&f);
+    uint16_t h = ((x>>16)&0x8000) | ((((x&0x7f800000)-0x38000000)>>13)&0x7c00) | ((x>>13)&0x03ff);
+    return h;
 }
 
 
