@@ -205,8 +205,11 @@ def broadcast_parameters(params, root_rank):
     # Run synchronous broadcasts.
     for name, p in params:
         # Broadcast is implemented as push + pull in BytePS
-        # TODO: to make it a real broadcast, we should set the non-root tensors all 0.
-        handle = byteps_push_pull(p, True, "Parameter."+name)
+        # To make it a real broadcast, we set the non-root tensors all 0.
+        if rank() != root_rank:
+            p.fill_(0)
+        # Remember to diable averaging because we are doing broadcast
+        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
         synchronize(handle)
 
 
