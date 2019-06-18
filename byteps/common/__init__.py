@@ -73,7 +73,7 @@ class BytePSBasics(object):
         size = self.C_LIB_CTYPES.byteps_size()
         if size == -1:
             raise ValueError(
-                'BytePS has not been initialized; use hvd.init().')
+                'BytePS has not been initialized; use bps.init().')
         return size
 
     def local_size(self):
@@ -85,7 +85,7 @@ class BytePSBasics(object):
         local_size = self.C_LIB_CTYPES.byteps_local_size()
         if local_size == -1:
             raise ValueError(
-                'BytePS has not been initialized; use hvd.init().')
+                'BytePS has not been initialized; use bps.init().')
         return local_size
 
     def rank(self):
@@ -96,7 +96,7 @@ class BytePSBasics(object):
         rank = self.C_LIB_CTYPES.byteps_rank()
         if rank == -1:
             raise ValueError(
-                'BytePS has not been initialized; use hvd.init().')
+                'BytePS has not been initialized; use bps.init().')
         return rank
 
     def local_rank(self):
@@ -109,5 +109,5 @@ class BytePSBasics(object):
         local_rank = self.C_LIB_CTYPES.byteps_local_rank()
         if local_rank == -1:
             raise ValueError(
-                'BytePS has not been initialized; use hvd.init().')
+                'BytePS has not been initialized; use bps.init().')
         return local_rank
