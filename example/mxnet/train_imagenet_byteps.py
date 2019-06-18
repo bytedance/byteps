@@ -22,15 +22,15 @@ import argparse
 import logging
 logging.basicConfig(level=logging.DEBUG)
 from common import find_mxnet
-from common import data_horovod as data
-from common import fit_horovod as fit
+from common import data_byteps as data
+from common import fit_byteps as fit
 from common.util import download_file
-import byteps.mxnet as hvd
+import byteps.mxnet as bps
 import mxnet as mx
 
 if __name__ == '__main__':
-    # init horovod
-    hvd.init()
+    # init byteps
+    bps.init()
 
     # parse args
     parser = argparse.ArgumentParser(description="train imagenet-1k",

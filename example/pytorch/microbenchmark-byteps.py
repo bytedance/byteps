@@ -4,12 +4,12 @@ import torch
 import argparse
 import torch.backends.cudnn as cudnn
 from byteps.torch.ops import push_pull_async_inplace, poll, synchronize
-import byteps.torch as hvd
+import byteps.torch as bps
 import time
 import numpy as np
 
 
-parser = argparse.ArgumentParser(description='PyTorch Horovod Synthetic Benchmark',
+parser = argparse.ArgumentParser(description='PyTorch BytePS Synthetic Benchmark',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-warmup', type=int, default=10,
                     help='number of warm-up steps that don\'t count towards benchmark')
@@ -25,25 +25,25 @@ parser.add_argument('--gpu', type=int, default=-1,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-hvd.init()
+bps.init()
 
-# Horovod: pin GPU to local rank.
+# BytePS: pin GPU to local rank.
 if args.gpu >= 0:
     torch.cuda.set_device(args.gpu)
 else:
-    torch.cuda.set_device(hvd.local_rank())
+    torch.cuda.set_device(bps.local_rank())
 
 cudnn.benchmark = True
 
 
 def log(s, nl=True):
-    if hvd.rank() != 0:
+    if bps.rank() != 0:
         return
     print(s, end='\n' if nl else '')
 
 
 def benchmark(tensor, average, name):
-    if not args.no_wait and hvd.rank() == 0:
+    if not args.no_wait and bps.rank() == 0:
         # let other workers submit allreduce request first
         time.sleep(0.01)
     start = time.time()
@@ -57,7 +57,7 @@ def benchmark(tensor, average, name):
     return (end - start) * 1000
 
 
-log('Number of GPUs: %d' % (hvd.size()))
+log('Number of GPUs: %d' % (bps.size()))
 
 # Benchmark
 log('Running benchmark...')

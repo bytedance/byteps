@@ -21,7 +21,7 @@ import os
 import time
 import re
 import math
-import byteps.mxnet as hvd
+import byteps.mxnet as bps
 import mxnet as mx
 
 
@@ -29,8 +29,8 @@ def _get_lr_scheduler(args):
     if 'lr_factor' not in args or args.lr_factor >= 1:
         return (args.lr, None)
     epoch_size = args.num_examples / args.batch_size
-    if hvd.size() > 1:
-        epoch_size /= hvd.size()
+    if bps.size() > 1:
+        epoch_size /= bps.size()
     begin_epoch = args.load_epoch if args.load_epoch else 0
     if 'pow' in args.lr_step_epochs:
         lr = args.lr
@@ -153,12 +153,12 @@ def fit(args, network, data_loader, **kwargs):
     #                                  'threshold': args.gc_threshold})
 
     # logging
-    head = '%(asctime)-15s Node[' + str(hvd.rank()) + '] %(message)s'
+    head = '%(asctime)-15s Node[' + str(bps.rank()) + '] %(message)s'
     logging.basicConfig(level=logging.DEBUG, format=head)
     logging.info('start with arguments %s', args)
 
     # data iterators
-    (train, val) = data_loader(args, (hvd.rank(), hvd.size()))
+    (train, val) = data_loader(args, (bps.rank(), bps.size()))
     if args.test_io:
         tic = time.time()
         for i, batch in enumerate(train):
@@ -176,19 +176,19 @@ def fit(args, network, data_loader, **kwargs):
         arg_params = kwargs['arg_params']
         aux_params = kwargs['aux_params']
     else:
-        sym, arg_params, aux_params = _load_model(args, hvd.rank())
+        sym, arg_params, aux_params = _load_model(args, bps.rank())
         if sym is not None:
             assert sym.tojson() == network.tojson()
 
     # save model
-    checkpoint = _save_model(args, hvd.rank())
+    checkpoint = _save_model(args, bps.rank())
 
     # devices for training
     if args.cpu_train:
-        devs = [mx.cpu(hvd.local_rank())]
+        devs = [mx.cpu(bps.local_rank())]
     else:
-        logging.info('Launch BytePS process on GPU-%d', hvd.local_rank())
-        devs = [mx.gpu(hvd.local_rank())]
+        logging.info('Launch BytePS process on GPU-%d', bps.local_rank())
+        devs = [mx.gpu(bps.local_rank())]
 
     # learning rate
     lr, lr_scheduler = _get_lr_scheduler(args)
@@ -217,8 +217,8 @@ def fit(args, network, data_loader, **kwargs):
     # A limited number of optimizers have a warmup period
     has_warmup = {'lbsgd', 'lbnag'}
     if args.optimizer in has_warmup:
-        if hvd.size() > 1:
-            nworkers = hvd.size()
+        if bps.size() > 1:
+            nworkers = bps.size()
         else:
             nworkers = 1
         epoch_size = args.num_examples / args.batch_size / nworkers
@@ -293,15 +293,15 @@ def fit(args, network, data_loader, **kwargs):
         cbs = kwargs['batch_end_callback']
         batch_end_callbacks += cbs if isinstance(cbs, list) else [cbs]
 
-    # horovod wrapper
+    # BytePS wrapper
     opt = mx.optimizer.create(args.optimizer, sym=network, **optimizer_params)
-    # opt = hvd.DistributedOptimizer(opt)
-    print(str(os.environ) + "=============" + str(hvd.rank()))
+    # opt = bps.DistributedOptimizer(opt)
+    print(str(os.environ) + "=============" + str(bps.rank()))
 
     # else:
-    opt = hvd.DistributedOptimizer(opt)
+    opt = bps.DistributedOptimizer(opt)
 
-    # horovod: better to explicitly init
+    # BytePS: better to explicitly init
 
     model.bind(data_shapes=train.provide_data,
            label_shapes=train.provide_label)
@@ -309,9 +309,9 @@ def fit(args, network, data_loader, **kwargs):
         model.init_params(initializer)
         (arg_params, aux_params) = model.get_params()
     if arg_params is not None:
-        hvd.broadcast_parameters(arg_params, root_rank=0)
+        bps.broadcast_parameters(arg_params, root_rank=0)
     if aux_params is not None:
-        hvd.broadcast_parameters(aux_params, root_rank=0)
+        bps.broadcast_parameters(aux_params, root_rank=0)
     model.set_params(arg_params=arg_params, aux_params=aux_params)
 
     # run
