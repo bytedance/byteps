@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python /opt/tiger/byteps/example/mxnet/train_imagenet_horovod.py $@ 
+python /opt/tiger/byteps/example/mxnet/train_imagenet_byteps.py $@ 

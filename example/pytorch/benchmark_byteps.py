@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from torchvision import models
-import byteps.torch as hvd
+import byteps.torch as bps
 import timeit
 import numpy as np
 import os
@@ -42,11 +42,11 @@ parser.add_argument('--partition', type=int, default=None,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-hvd.init()
+bps.init()
 
 if args.cuda:
-    # Horovod: pin GPU to local rank.
-    torch.cuda.set_device(hvd.local_rank())
+    # BytePS: pin GPU to local rank.
+    torch.cuda.set_device(bps.local_rank())
 
 cudnn.benchmark = True
 
@@ -59,17 +59,17 @@ if args.cuda:
 
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
-# Horovod: (optional) compression algorithm.
-compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
+# BytePS: (optional) compression algorithm.
+compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
 
-# Horovod: wrap optimizer with DistributedOptimizer.
-optimizer = hvd.DistributedOptimizer(optimizer,
+# BytePS: wrap optimizer with DistributedOptimizer.
+optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression=compression)
 
-# Horovod: broadcast parameters & optimizer state.
-hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+# BytePS: broadcast parameters & optimizer state.
+bps.broadcast_parameters(model.state_dict(), root_rank=0)
+bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
 # Set up fake data
 datasets = []
@@ -94,7 +94,7 @@ def benchmark_step():
 
 
 def log(s, nl=True):
-    if hvd.rank() != 0:
+    if bps.rank() != 0:
         return
     print(s, end='\n' if nl else '')
 
@@ -102,7 +102,7 @@ def log(s, nl=True):
 log('Model: %s' % args.model)
 log('Batch size: %d' % args.batch_size)
 device = 'GPU' if args.cuda else 'CPU'
-log('Number of %ss: %d' % (device, hvd.size()))
+log('Number of %ss: %d' % (device, bps.size()))
 
 # Warm-up
 log('Running warmup...')
@@ -111,7 +111,7 @@ timeit.timeit(benchmark_step, number=args.num_warmup_batches)
 # Benchmark
 log('Running benchmark...')
 img_secs = []
-enable_profiling = args.profiler & (hvd.rank() == 0)
+enable_profiling = args.profiler & (bps.rank() == 0)
 
 with torch.autograd.profiler.profile(enable_profiling, True) as prof:
     for x in range(args.num_iters):
@@ -126,7 +126,7 @@ img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
-    (hvd.size(), device, hvd.size() * img_sec_mean, hvd.size() * img_sec_conf))
+    (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
 
 # to let arnold shutdown all tasks
 raise Exception

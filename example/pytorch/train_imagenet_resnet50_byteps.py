@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from torchvision import datasets, transforms, models
-import byteps.torch as hvd
+import byteps.torch as bps
 import tensorboardX
 import os
 import math
@@ -57,12 +57,12 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 allreduce_batch_size = args.batch_size * args.batches_per_allreduce
 
-hvd.init()
+bps.init()
 torch.manual_seed(args.seed)
 
 if args.cuda:
-    # Horovod: pin GPU to local rank.
-    torch.cuda.set_device(hvd.local_rank())
+    # BytePS: pin GPU to local rank.
+    torch.cuda.set_device(bps.local_rank())
     torch.cuda.manual_seed(args.seed)
 
 cudnn.benchmark = True
@@ -74,16 +74,16 @@ for try_epoch in range(args.epochs, 0, -1):
         resume_from_epoch = try_epoch
         break
 
-# Horovod: broadcast resume_from_epoch from rank 0 (which will have
+# BytePS: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
-#resume_from_epoch = hvd.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
+#resume_from_epoch = bps.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
 #                                  name='resume_from_epoch').item()
 
-# Horovod: print logs on the first worker.
-verbose = 1 if hvd.rank() == 0 else 0
+# BytePS: print logs on the first worker.
+verbose = 1 if bps.rank() == 0 else 0
 
-# Horovod: write TensorBoard logs on first worker.
-log_writer = tensorboardX.SummaryWriter(args.log_dir) if hvd.rank() == 0 else None
+# BytePS: write TensorBoard logs on first worker.
+log_writer = tensorboardX.SummaryWriter(args.log_dir) if bps.rank() == 0 else None
 
 
 kwargs = {'num_workers': 4, 'pin_memory': True} if args.cuda else {}
@@ -96,10 +96,10 @@ train_dataset = \
                              transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                   std=[0.229, 0.224, 0.225])
                          ]))
-# Horovod: use DistributedSampler to partition data among workers. Manually specify
-# `num_replicas=hvd.size()` and `rank=hvd.rank()`.
+# BytePS: use DistributedSampler to partition data among workers. Manually specify
+# `num_replicas=bps.size()` and `rank=bps.rank()`.
 train_sampler = torch.utils.data.distributed.DistributedSampler(
-    train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+    train_dataset, num_replicas=bps.size(), rank=bps.rank())
 train_loader = torch.utils.data.DataLoader(
     train_dataset, batch_size=allreduce_batch_size,
     sampler=train_sampler, **kwargs)
@@ -114,7 +114,7 @@ val_dataset = \
                                                   std=[0.229, 0.224, 0.225])
                          ]))
 val_sampler = torch.utils.data.distributed.DistributedSampler(
-    val_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+    val_dataset, num_replicas=bps.size(), rank=bps.rank())
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.val_batch_size,
                                          sampler=val_sampler, **kwargs)
 
@@ -126,33 +126,33 @@ if args.cuda:
     # Move model to GPU.
     model.cuda()
 
-# Horovod: scale learning rate by the number of GPUs.
+# BytePS: scale learning rate by the number of GPUs.
 # Gradient Accumulation: scale learning rate by batches_per_allreduce
 optimizer = optim.SGD(model.parameters(),
                       lr=(args.base_lr *
-                          args.batches_per_allreduce * hvd.size()),
+                          args.batches_per_allreduce * bps.size()),
                       momentum=args.momentum, weight_decay=args.wd)
 
-# Horovod: (optional) compression algorithm.
-compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
+# BytePS: (optional) compression algorithm.
+compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
 
-# Horovod: wrap optimizer with DistributedOptimizer.
-optimizer = hvd.DistributedOptimizer(
+# BytePS: wrap optimizer with DistributedOptimizer.
+optimizer = bps.DistributedOptimizer(
     optimizer, named_parameters=model.named_parameters(),
     compression=compression,
     backward_passes_per_step=args.batches_per_allreduce)
 
 # Restore from a previous checkpoint, if initial_epoch is specified.
-# Horovod: restore on the first worker which will broadcast weights to other workers.
-if resume_from_epoch > 0 and hvd.rank() == 0:
+# BytePS: restore on the first worker which will broadcast weights to other workers.
+if resume_from_epoch > 0 and bps.rank() == 0:
     filepath = args.checkpoint_format.format(epoch=resume_from_epoch)
     checkpoint = torch.load(filepath)
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])
 
-# Horovod: broadcast parameters & optimizer state.
-hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+# BytePS: broadcast parameters & optimizer state.
+bps.broadcast_parameters(model.state_dict(), root_rank=0)
+bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
 def train(epoch):
     model.train()
@@ -216,14 +216,14 @@ def validate(epoch):
         log_writer.add_scalar('val/accuracy', val_accuracy.avg, epoch)
 
 
-# Horovod: using `lr = base_lr * hvd.size()` from the very beginning leads to worse final
-# accuracy. Scale the learning rate `lr = base_lr` ---> `lr = base_lr * hvd.size()` during
+# BytePS: using `lr = base_lr * bps.size()` from the very beginning leads to worse final
+# accuracy. Scale the learning rate `lr = base_lr` ---> `lr = base_lr * bps.size()` during
 # the first five epochs. See https://arxiv.org/abs/1706.02677 for details.
 # After the warmup reduce learning rate by 10 on the 30th, 60th and 80th epochs.
 def adjust_learning_rate(epoch, batch_idx):
     if epoch < args.warmup_epochs:
         epoch += float(batch_idx + 1) / len(train_loader)
-        lr_adj = 1. / hvd.size() * (epoch * (hvd.size() - 1) / args.warmup_epochs + 1)
+        lr_adj = 1. / bps.size() * (epoch * (bps.size() - 1) / args.warmup_epochs + 1)
     elif epoch < 30:
         lr_adj = 1.
     elif epoch < 60:
@@ -233,7 +233,7 @@ def adjust_learning_rate(epoch, batch_idx):
     else:
         lr_adj = 1e-3
     for param_group in optimizer.param_groups:
-        param_group['lr'] = args.base_lr * hvd.size() * args.batches_per_allreduce * lr_adj
+        param_group['lr'] = args.base_lr * bps.size() * args.batches_per_allreduce * lr_adj
 
 
 def accuracy(output, target):
@@ -243,7 +243,7 @@ def accuracy(output, target):
 
 
 def save_checkpoint(epoch):
-    if hvd.rank() == 0:
+    if bps.rank() == 0:
         filepath = args.checkpoint_format.format(epoch=epoch + 1)
         state = {
             'model': model.state_dict(),
@@ -252,7 +252,7 @@ def save_checkpoint(epoch):
         torch.save(state, filepath)
 
 
-# Horovod: average metrics from distributed training.
+# BytePS: average metrics from distributed training.
 class Metric(object):
     def __init__(self, name):
         self.name = name

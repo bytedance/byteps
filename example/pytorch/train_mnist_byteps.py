@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 import torch.utils.data.distributed
-import byteps.torch as hvd
+import byteps.torch as bps
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -31,37 +31,37 @@ parser.add_argument('--fp16-allreduce', action='store_true', default=False,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-# Horovod: initialize library.
-hvd.init()
+# BytePS: initialize library.
+bps.init()
 torch.manual_seed(args.seed)
 
 if args.cuda:
-    # Horovod: pin GPU to local rank.
-    torch.cuda.set_device(hvd.local_rank())
+    # BytePS: pin GPU to local rank.
+    torch.cuda.set_device(bps.local_rank())
     torch.cuda.manual_seed(args.seed)
 
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 train_dataset = \
-    datasets.MNIST('data-%d' % hvd.rank(), train=True, download=True,
+    datasets.MNIST('data-%d' % bps.rank(), train=True, download=True,
                    transform=transforms.Compose([
                        transforms.ToTensor(),
                        transforms.Normalize((0.1307,), (0.3081,))
                    ]))
-# Horovod: use DistributedSampler to partition the training data.
+# BytePS: use DistributedSampler to partition the training data.
 train_sampler = torch.utils.data.distributed.DistributedSampler(
-    train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+    train_dataset, num_replicas=bps.size(), rank=bps.rank())
 train_loader = torch.utils.data.DataLoader(
     train_dataset, batch_size=args.batch_size, sampler=train_sampler, **kwargs)
 
 test_dataset = \
-    datasets.MNIST('data-%d' % hvd.rank(), train=False, transform=transforms.Compose([
+    datasets.MNIST('data-%d' % bps.rank(), train=False, transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
     ]))
-# Horovod: use DistributedSampler to partition the test data.
+# BytePS: use DistributedSampler to partition the test data.
 test_sampler = torch.utils.data.distributed.DistributedSampler(
-    test_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+    test_dataset, num_replicas=bps.size(), rank=bps.rank())
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.test_batch_size,
                                           sampler=test_sampler, **kwargs)
 
@@ -91,26 +91,26 @@ if args.cuda:
     # Move model to GPU.
     model.cuda()
 
-# Horovod: scale learning rate by the number of GPUs.
-optimizer = optim.SGD(model.parameters(), lr=args.lr * hvd.size(),
+# BytePS: scale learning rate by the number of GPUs.
+optimizer = optim.SGD(model.parameters(), lr=args.lr * bps.size(),
                       momentum=args.momentum)
 
-# Horovod: (optional) compression algorithm.
-compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
+# BytePS: (optional) compression algorithm.
+compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
 
-# Horovod: wrap optimizer with DistributedOptimizer.
-optimizer = hvd.DistributedOptimizer(optimizer,
+# BytePS: wrap optimizer with DistributedOptimizer.
+optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression=compression)
 
 
-# Horovod: broadcast parameters.
-hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+# BytePS: broadcast parameters.
+bps.broadcast_parameters(model.state_dict(), root_rank=0)
+bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
 def train(epoch):
     model.train()
-    # Horovod: set epoch to sampler for shuffling.
+    # BytePS: set epoch to sampler for shuffling.
     train_sampler.set_epoch(epoch)
     for batch_idx, (data, target) in enumerate(train_loader):
         if args.cuda:
@@ -121,7 +121,7 @@ def train(epoch):
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            # Horovod: use train_sampler to determine the number of examples in
+            # BytePS: use train_sampler to determine the number of examples in
             # this worker's partition.
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_sampler),
@@ -130,7 +130,7 @@ def train(epoch):
 
 def metric_average(val, name):
     tensor = torch.tensor(val)
-    avg_tensor = hvd.allreduce(tensor, name=name)
+    avg_tensor = bps.allreduce(tensor, name=name)
     return avg_tensor.item()
 
 
@@ -148,17 +148,17 @@ def test():
         pred = output.data.max(1, keepdim=True)[1]
         test_accuracy += pred.eq(target.data.view_as(pred)).cpu().float().sum()
 
-    # Horovod: use test_sampler to determine the number of examples in
+    # BytePS: use test_sampler to determine the number of examples in
     # this worker's partition.
     test_loss /= len(test_sampler)
     test_accuracy /= len(test_sampler)
 
-    # Horovod: average metric values across workers.
+    # BytePS: average metric values across workers.
     test_loss = metric_average(test_loss, 'avg_loss')
     test_accuracy = metric_average(test_accuracy, 'avg_accuracy')
 
-    # Horovod: print output only on first rank.
-    if hvd.rank() == 0:
+    # BytePS: print output only on first rank.
+    if bps.rank() == 0:
         print('\nTest set: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
             test_loss, 100. * test_accuracy))
 
