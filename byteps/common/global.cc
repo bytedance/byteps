@@ -84,11 +84,7 @@ void BytePSGlobal::Init() {
         return;
     }
 
-#ifdef BYTEPS_USE_MPI
-    _basic_comm = std::make_shared<BytePSCommMPI>();
-#else
     _basic_comm = std::make_shared<BytePSCommSocket>();
-#endif // BYTEPS_USE_MPI
 
     _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
 

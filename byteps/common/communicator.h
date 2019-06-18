@@ -31,13 +31,6 @@
 #include <mutex>
 #include "logging.h"
 
-#ifdef BYTEPS_USE_MPI
-
-#define OMPI_SKIP_MPICXX
-#include <mpi.h>
-
-#endif // BYTEPS_USE_MPI
-
 #define BASE_SOCKET_PATH_RECV   "/usr/local/socket_recv_"
 #define BASE_SOCKET_PATH_SEND   "/usr/local/socket_send_"
 #define MAX_LINE 8000
@@ -138,28 +131,6 @@ protected:
     std::mutex _socket_mu;
 
 };
-
-#ifdef BYTEPS_USE_MPI
-
-class BytePSCommMPI : public BytePSComm {
-
-public:
-
-    ~BytePSCommMPI() {
-        if (_comm) {
-            free(_comm);
-        }
-    }
-
-    void init(int* rank, int* size, int* local_rank, int* local_size,
-              int* worker_id, BytePSRole* my_role);
-    int sendSignal(int destination, void* data, int len);
-    int recvSignal(int* source, void* data, int max_len);
-    int broadcastSignal(void* data, int len);
-
-};
-
-#endif // BYTEPS_USE_MPI
 
 } // namespace common
 } // namespace byteps
