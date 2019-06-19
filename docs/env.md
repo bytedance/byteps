@@ -80,22 +80,35 @@ The most important one is the number of GPUs per PCIe switches. You should confi
 export BYTEPS_PCIE_SWITCH_SIZE=x
 ```
 
-The rest do not impact the performance much. However, you can still experiment them if you have time. 
-
-First, you can configure the tensor partition size. A smaller size improves BytePS pipelining, but may have higher other overhead like NCCL coordination, ZMQ message headers, etc. The default and recommended value is 1024000 (in bytes).
+You can also configure the tensor partition size. A smaller size improves BytePS pipelining, but may have higher other overhead like NCCL coordination, ZMQ message headers, etc. The default and recommended value is 4096000 (in bytes).
 
 ```
 export BYTEPS_PARTITION_BYTES=y
 ```
 
-Then, you can increase the number of concurrent NCCL streams used in local merging. However, this may lead to occasional hanging problem due to NCCL implementation.
+The rest do not impact the performance much. However, you can still experiment them if you have time. 
+
+You can increase the number of concurrent NCCL streams used in local merging. However, this may lead to occasional hanging problem due to NCCL implementation.
 
 ```
 export BYTEPS_NCCL_NUM_RINGS=z
 ```
 
-Finally, BytePS uses group NCCL calls to reduce NCCL invoking overhead. You can try to increase the group sizes:
+BytePS uses group NCCL calls to reduce NCCL invoking overhead. You can try to increase the group sizes:
 
 ```
-export BYTEPS_NCCL_NUM_RINGS=w
+export BYTEPS_NCCL_GROUP_SIZE=w
+```
+
+Servers can also be the performance bottleneck, e.g., when there are only one server but multiple workers. 
+You can try to increase the number of push threads on the servers (default is 1):
+ 
+```
+export SERVER_PUSH_NTHREADS=v
+```
+
+Increasing the number of engine CPU threads may also improves server performance:
+
+```
+export MXNET_CPU_WORKER_NTHREADS=p
 ```
