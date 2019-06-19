@@ -36,7 +36,7 @@ BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
-uint32_t BytePSGlobal::_partition_bytes = 1024000;
+uint32_t BytePSGlobal::_partition_bytes = 4096000;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
@@ -102,10 +102,10 @@ void BytePSGlobal::Init() {
 
     _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
-    _is_distributed_job = (_num_worker>1) ? true : false;
-    if (getenv("BYTEPS_FORCE_DISTRIBUTED")) { // only for debugging
+    if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
         _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
     }
+    _is_distributed_job = (_num_worker>1) ? true : _is_distributed_job;
 
     BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
                    << (IsDistributed() ? "" : "non-") << "distributed job";
