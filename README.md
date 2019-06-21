@@ -43,10 +43,11 @@ Below shows BytePS's performance on a PCIe machine (8 GPUs). BytePS beats Horovo
 
 For distributed training with RDMA (two workers, each with 8 GPUs), BytePS outperforms Horovod by 10-50%.
 
-<img src="/images/perf_16gpu_rdma.png" width="360" height="240">
-
 For distributed training with TCP (two workers, each with 8 GPUs), since the networking bandwidth is the bottleneck, the performance gain of BytePS is even higher. For example, BytePS outperforms Horovod by 100% on Alexnet training.
 
-<img src="/images/perf_16gpu_tcp.png" width="360" height="240">
+<img src="/images/perf_16gpu_rdma.png" width="360" height="240"><img src="/images/perf_16gpu_tcp.png" width="360" height="240">
+
+
+
 
 
