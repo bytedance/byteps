@@ -36,7 +36,7 @@ export NVIDIA_VISIBLE_DEVICES=0,1 \
        DMLC_PS_ROOT_PORT=1234 \
        DMLC_INTERFACE=eth0 
        
-python byteps/launcher/launch.py byteps/example/mxnet/train_imagenet_horovod.py --benchmark 1 --batch-size=32 
+python byteps/launcher/launch.py byteps/example/mxnet/train_imagenet_byteps.py --benchmark 1 --batch-size=32 
 ```
 
 For distributed training, you also need to build a server image. We provide [Dockerfiles](docker) as examples. 
@@ -49,15 +49,9 @@ Refer to [Documentations](docs) for how to launch distributed jobs and more hand
 We choose two models for performance evaluation: VGG16 (communication-intensive) and Resnet50 (computation-intensive). 
 We use Tesla V100 GPUs and set each GPU with batch size equals 64. 
 
-Below shows the performance on NVLink-enabled machines (each machine has 8 GPUs). Machines are inter-connected with 20 Gbit/s TCP networking. 
-BytePS outperforms Horovod by 44% for Resnet50, and 100% for VGG16. 
+Below shows the performance on NVLink-enabled machines (each machine has 8 GPUs). Machines are inter-connected with 20 Gbit/s TCP networking.
+BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16. 
 
-<img src="/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/images/perf_tcp_resnet50.png" width="360" height="220">
+<img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
 
-
-We further evaluate BytePS on RDMA networks. The machines are based on PCIe architecture (4 GPUs under one PCIe switch), and each machine contains two PCIe switches.
-The machines are inter-connected by 100 Gbps RoCEv2 networks.
-In this case, BytePS outperforms Horovod by 7% for Resnet50, and 17% for VGG16. 
-
-<img src="/images/perf_rdma_vgg16.png" width="360" height="220"><img src="/images/perf_rdma_resnet50.png" width="360" height="220">
-
+Evaluation on RDMA networks can be found at [performance.md](docs).   
