@@ -54,7 +54,7 @@ Below shows the performance on NVLink-enabled machines (each machine has 8 GPUs)
 In this case, the network bandwidth is the bottleneck. BytePS outperforms Horovod by 44% for Resnet50, and 100% for VGG16. 
 This is because BytePS uses additional computation resources (PS) to aggregate and reduce traffic.
 
-<img src="/images/perf_tcp_vgg16.png" width="360" height="200"><img src="/images/perf_tcp_resnet50.png" width="360" height="200">
+<img src="/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/images/perf_tcp_resnet50.png" width="360" height="220">
 
 
 We further evaluate BytePS on RDMA-enabled networks. The machines are based on PCIe architecture (4 GPUs under one PCIe switch), and each machine contains two PCIe switches.
@@ -63,5 +63,5 @@ The bottleneck is the local PCIe bandwidth.
 In this case, BytePS outperforms Horovod by 7% for Resnet50, and 17% for VGG16. 
 The performance gain is due to BytePS's NUMA-aware techniques that reduces cross-PCIe switch traffic.  
 
-<img src="/images/perf_rdma_vgg16.png" width="360" height="200"><img src="/images/perf_rdma_resnet50.png" width="360" height="200">
+<img src="/images/perf_rdma_vgg16.png" width="360" height="220"><img src="/images/perf_rdma_resnet50.png" width="360" height="220">
 

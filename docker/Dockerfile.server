@@ -31,7 +31,6 @@ ENV PIP_SOURCE_PROXY https://mirrors.aliyun.com/pypi/simple/
 ENV SERVER_BUILD_OPTS "USE_BLAS=openblas USE_MKL=1 USE_DIST_KVSTORE=1"
 ENV BYTEPS_SERVER_MXNET_PATH /root/incubator-mxnet
 ENV MXNET_SERVER_LINK https://github.com/bytedance/incubator-mxnet
-ENV PSLITE_BYTEPS_LINK https://github.com/bytedance/ps-lite
 
 RUN apt-get update && apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
         build-essential \
@@ -70,22 +69,7 @@ RUN pip --no-cache-dir install \
 
 WORKDIR /root/
 
-RUN echo "/usr/local/cuda/lib64" >> /etc/ld.so.conf.d/cuda.conf && \
-    echo "/usr/local/cudnn/lib64" >> /etc/ld.so.conf.d/cuda.conf && \
-    echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
-    echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf && \
-    ldconfig
-
-RUN git clone --recurse-submodules $MXNET_SERVER_LINK
-
-# to solve the problem of missing cudnn.h
-RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
-    ln -sf /usr/local/cudnn/lib64/libcudnn* /usr/local/cuda/lib64
+RUN git clone --single-branch --branch byteps --recurse-submodules $MXNET_SERVER_LINK
 
 RUN cd $BYTEPS_SERVER_MXNET_PATH && \
-    ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so && \
-    ln -sf /usr/local/cuda/lib64/libcuda.so /usr/local/cuda/lib64/libcuda.so.1 && \
     make clean_all && make -j16 $SERVER_BUILD_OPTS
-
-RUN rm -rf /usr/local/cuda/lib64/libcuda.so && \
-    rm -rf /usr/local/cuda/lib64/libcuda.so.1
