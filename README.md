@@ -1,28 +1,48 @@
 # BytePS
 
-BytePS is a high performance and general distributed training framework that supports TensorFlow, Keras, PyTorch, and MXNet. 
-BytePS achieves higher performance than existing Parameter Server (PS, e.g., MXNet-KVstore) or Collective-based frameworks (e.g., Horovod). 
-BytePS supports both TCP and RDMA. 
+BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network. 
 
+BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on a popular public cloud and with the same number of GPUs, BytePS can *double the training speed* (see below), compared with [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
 
-BytePS achieves high performance by leveraging a hybrid communication strategy: combines PS and Collective primitives together, 
-and incorporates acceleration techniques such as pipelining, tensor partitioning, NUMA-aware local communication and priority-based scheduling, etc. 
+# Performance
+
+For demonstration, we test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive).
+
+We use Tesla V100 16GB GPUs and set batch size equal to 64. The machines are in fact VMs on a popular public cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
+
+BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16. 
+
+<img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
+
+You can reproduce the results using the dockerfiles and example scripts we provide.
+
+Evaluation on RDMA networks can be found at [performance.md](docs).
+
+# Goodbye MPI, Hello Cloud
+
+How can BytePS outperform Horovod by so much? One of the main reasons is that BytePS is designed for cloud and shared clusters, and throws away MPI. 
+
+MPI was born in the HPC world and is good for a cluster built with homogeneous hardware and for running a single job. However, cloud (or in-house shared clusters) is different.
+
+This leads us to rethink the best communication strategy, as explained in [here](docs/rationale.md). In short, BytePS only uses NCCL inside a machine, while re-implements the inter-machine communication.
+
+BytePS also incorporates many acceleration techniques such as hierarchical strategy, pipelining, tensor partitioning, NUMA-aware local communication, priority-based scheduling, etc. 
 
 # Quick Start
 
-Before using BytePS, we assume you have already installed one or many of the following frameworks: TensorFlow / Keras / PyTorch / MXNet.
+Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet.
  
-Clone BytePS and its third party dependency:
+Clone BytePS with its third party dependency:
 
 ```
 git clone --recurse-submodules https://github.com/bytedance/byteps
 ```
 
 Then `cd` into your BytePS directory and install. 
-You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. 
 ```
 python setup.py install
 ```
+Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support. 
 
 Now you can try our [examples](example). Let's say you are using MXNet and want to try a Resnet50 training benchmark:
 
@@ -44,14 +64,10 @@ You may use the same images for the scheduler and the servers.
 
 Refer to [Documentations](docs) for how to launch distributed jobs and more hands-on tutorials.
 
-# Performance
+# Usage
 
-We choose two models for performance evaluation: VGG16 (communication-intensive) and Resnet50 (computation-intensive). 
-We use Tesla V100 GPUs and set each GPU with batch size equals 64. 
+Though being totally different at its core, BytePS is highly compatabile with Horovod interfaces. (Thank you, Horovod community.) We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
 
-Below shows the performance on NVLink-enabled machines (each machine has 8 GPUs). Machines are inter-connected with 20 Gbit/s TCP networking.
-BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16. 
+If your tasks only rely on Horovod's allreduce and broadcast, you should be able to switch to BytePS in 1 minute. Simply replace `import horovod.tensorflow as hvd` by `import byteps.tensorflow as bps`, and then replace all `hvd` in your code by `bps`.
 
-<img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
-
-Evaluation on RDMA networks can be found at [performance.md](docs).   
+Many of our examples were copied from Horovod and modified in this way. For instance, compare [this](https://github.com/bytedance/byteps/blob/master/example/tensorflow/tensorflow_mnist.py) and [this](https://github.com/horovod/horovod/blob/master/examples/tensorflow_mnist.py)

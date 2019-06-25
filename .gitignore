@@ -1,6 +1,5 @@
 # vscode
 .vscode
-byteps/common/mpi.h
 *.gz
 
 # Byte-compiled / optimized / DLL files
