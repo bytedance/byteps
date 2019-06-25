@@ -47,20 +47,17 @@ Refer to [Documentations](docs) for how to launch distributed jobs and more hand
 # Performance
 
 We choose two models for performance evaluation: VGG16 (communication-intensive) and Resnet50 (computation-intensive). 
-We use Tesla V100 GPUs and set each GPU with batch size equals 64. The ideal training speed is calculated by: `# GPUs * single GPU training speed`.
+We use Tesla V100 GPUs and set each GPU with batch size equals 64. 
 
 Below shows the performance on NVLink-enabled machines (each machine has 8 GPUs). Machines are inter-connected with 20 Gbit/s TCP networking. 
-In this case, the network bandwidth is the bottleneck. BytePS outperforms Horovod by 44% for Resnet50, and 100% for VGG16. 
-This is because BytePS uses additional computation resources (PS) to aggregate and reduce traffic.
+BytePS outperforms Horovod by 44% for Resnet50, and 100% for VGG16. 
 
 <img src="/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/images/perf_tcp_resnet50.png" width="360" height="220">
 
 
 We further evaluate BytePS on RDMA networks. The machines are based on PCIe architecture (4 GPUs under one PCIe switch), and each machine contains two PCIe switches.
 The machines are inter-connected by 100 Gbps RoCEv2 networks.
-The bottleneck is the local PCIe bandwidth.
 In this case, BytePS outperforms Horovod by 7% for Resnet50, and 17% for VGG16. 
-The performance gain is due to BytePS's NUMA-aware techniques that reduces cross-PCIe switch traffic.  
 
 <img src="/images/perf_rdma_vgg16.png" width="360" height="220"><img src="/images/perf_rdma_resnet50.png" width="360" height="220">
 
