@@ -5,11 +5,8 @@ BytePS achieves higher performance than existing Parameter Server (PS, e.g., MXN
 BytePS supports both TCP and RDMA. 
 
 
-BytePS achieves high performance by leveraging a hybrid communication strategy: combines PS and Collective primitives together, and incorporates acceleration techniques such as pipelining, tensor partitioning, NUMA-aware local communication and priority-based scheduling, etc. 
-
-* [Documentations](docs)
-* [Dockerfiles & Installations](docker)
-* [Examples](example)
+BytePS achieves high performance by leveraging a hybrid communication strategy: combines PS and Collective primitives together, 
+and incorporates acceleration techniques such as pipelining, tensor partitioning, NUMA-aware local communication and priority-based scheduling, etc. 
 
 # Quick Start
 
@@ -27,7 +24,7 @@ You may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
 python setup.py install
 ```
 
-Now you can try our examples. Let's say you are using MXNet and want to try a Resnet50 training benchmark:
+Now you can try our [examples](example). Let's say you are using MXNet and want to try a Resnet50 training benchmark:
 
 ```
 export NVIDIA_VISIBLE_DEVICES=0,1 \
@@ -42,8 +39,10 @@ export NVIDIA_VISIBLE_DEVICES=0,1 \
 python byteps/launcher/launch.py byteps/example/mxnet/train_imagenet_horovod.py --benchmark 1 --batch-size=32 
 ```
 
-Refer to [Documentations](docs) for more hands-on tutorials.
+For distributed training, you also need to build a server image. We provide [Dockerfiles](docker) as examples. 
+You may use the same images for the scheduler and the servers.
 
+Refer to [Documentations](docs) for how to launch distributed jobs and more hands-on tutorials.
 
 # Performance
 
@@ -57,7 +56,7 @@ This is because BytePS uses additional computation resources (PS) to aggregate a
 <img src="/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/images/perf_tcp_resnet50.png" width="360" height="220">
 
 
-We further evaluate BytePS on RDMA-enabled networks. The machines are based on PCIe architecture (4 GPUs under one PCIe switch), and each machine contains two PCIe switches.
+We further evaluate BytePS on RDMA networks. The machines are based on PCIe architecture (4 GPUs under one PCIe switch), and each machine contains two PCIe switches.
 The machines are inter-connected by 100 Gbps RoCEv2 networks.
 The bottleneck is the local PCIe bandwidth.
 In this case, BytePS outperforms Horovod by 7% for Resnet50, and 17% for VGG16. 
