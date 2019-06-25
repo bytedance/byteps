@@ -1,3 +1,5 @@
 #!/bin/bash
 
-python /opt/tiger/byteps/example/mxnet/train_imagenet_byteps.py $@ 
+path="`dirname $0`"
+
+python $path/train_imagenet_byteps.py $@
