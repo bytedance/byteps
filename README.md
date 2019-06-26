@@ -16,7 +16,7 @@ BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
 
 You can reproduce the results using the dockerfiles and example scripts we provide.
 
-Evaluation on RDMA networks can be found at [performance.md](docs).
+Evaluation on RDMA networks can be found at [performance.md](docs/performance.md).
 
 # Goodbye MPI, Hello Cloud
 
@@ -30,7 +30,7 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 # Quick Start
 
-Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet.
+Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet. BytePS dependes on CUDA and NCCL.
  
 Clone BytePS with its third party dependency:
 
@@ -64,10 +64,19 @@ You may use the same images for the scheduler and the servers.
 
 Refer to [Documentations](docs) for how to launch distributed jobs and more hands-on tutorials.
 
-# Usage
+# Use BytePS in Your Code
 
 Though being totally different at its core, BytePS is highly compatabile with Horovod interfaces. (Thank you, Horovod community.) We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
 
 If your tasks only rely on Horovod's allreduce and broadcast, you should be able to switch to BytePS in 1 minute. Simply replace `import horovod.tensorflow as hvd` by `import byteps.tensorflow as bps`, and then replace all `hvd` in your code by `bps`.
 
 Many of our examples were copied from Horovod and modified in this way. For instance, compare [this](https://github.com/bytedance/byteps/blob/master/example/tensorflow/tensorflow_mnist.py) and [this](https://github.com/horovod/horovod/blob/master/examples/tensorflow_mnist.py)
+
+# Limitations and Future Plans
+
+BytePS does not support pure CPU training for now. One reason is that some [assumptions](docs/rationale.md) of BytePS do not hold for CPU training. Consequently, you need CUDA and NCCL to build and run BytePS.
+
+We would like to have below features, and it is not hard to implement them in BytePS architecture. However, they are not implemented yet:
+* Asynchronous training
+* Fault-tolerance
+* Staggler-mitigation
