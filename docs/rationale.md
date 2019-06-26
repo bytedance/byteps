@@ -20,7 +20,7 @@ Now we check the Parameter Server (PS) communication pattern. For 1MB data, ever
 
 ## Wait. Why did MPI guys not find out this?
 
-Well, MPI guys probably know this, but they might be too focused on homogeneous hardware setup, like what HPC has. The trick of PS here is that you need additional resources, other than the GPU workers, to run the PS. If all your machines are homogeneous, e.g., equiped with 8 GPUs and same CPUs, memory and NICs, and all your machines are only for a single job, then PS does not save you anything. In that case, PS architecture would require you to use only half GPU machines as workers, and the other half as PS, so that the network bandwidth on PS side matches worker side. This along will make you waste half GPUs. So, in a homogeneous setup designed for a single job, allreduce is your best bet.
+Well, MPI guys probably know this, but they might be too focused on homogeneous hardware setup, like what HPC has. The trick of PS here is that you need additional resources, other than the GPU workers, to run the PS. If all your machines are homogeneous, e.g., equipped with 8 GPUs and same CPUs, memory and NICs, and all your machines are only for a single job, then PS does not save you anything. In that case, PS architecture would require you to use only half GPU machines as workers, and the other half as PS, so that the network bandwidth on PS side matches worker side. This along will make you waste half GPUs. So, in a homogeneous setup designed for a single job, allreduce is your best bet.
 
 However, the real data centers are a bit different. Inside a large organization, we usually run a large-scale GPU cluster and provide it as a service to multiple teams for multiple jobs. The GPU clusters are usually connected to other parts of the data center, where there is an enormous pool of CPUs and network bandwidth. The same goes for public cloud.
 
@@ -35,7 +35,7 @@ Therefore, on a public cloud, you just need 2% more spending, you may get up to 
 
 ## I still don't understand. NCCL beats TF (or MXNet) PS so hard..
 
-The poor performance of the original PS impelmentation of Tensorflow and MXNet has many reasons -- poor engineering, did not overlap computation and communication well, did not utlize bidirection network bandwidth well, did not handle local merging across local GPUs well, did not support RDMA, etc. 
+The poor performance of the original PS implementation of Tensorflow and MXNet has many reasons -- poor engineering, did not overlap computation and communication well, did not utilize bidirectional network bandwidth well, did not handle local merging across local GPUs well, did not support RDMA, etc. 
 
 BytePS solves all these problems for you. If you are curious about the implementation details, read the code. We will also release a detailed technical paper soon.
 
@@ -51,4 +51,4 @@ Well, to achieve this, BytePS does not work strictly the same as original PS des
 
 Finally, there are many other benefits of using PS over allreduce. For example, it does not have the synchronization cost when you train on large-scale. Allreduce requires all workers (GPUs) to have a global barrier before each allreduce. PS does not have this problem. Workers are asynchronous by their nature.
 
-Furthermore, it is much easier to support asynchronous training with PS (we will have detailed paper talk about this later) than allreduce. It is also easier to add fault-tolerance, struggler-mitigation, etc. We have not implemented them all, but we plan to, and we welcome contributions. Any such features added to BytePS will benefit all supported framework. Isn't this great?
+Furthermore, it is much easier to support asynchronous training with PS (we will have detailed paper talk about this later) than allreduce. It is also easier to add fault-tolerance, straggler-mitigation, etc. We have not implemented them all, but we plan to, and we welcome contributions. Any such features added to BytePS will benefit all supported framework. Isn't this great?
