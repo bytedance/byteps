@@ -261,7 +261,9 @@ def get_common_options(build_ext):
     LIBRARIES += nccl_libs
 
     # RDMA and NUMA libs
-    LIBRARIES += ['rdmacm', 'ibverbs', 'numa']
+    LIBRARIES += ['numa']
+    if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+        LIBRARIES += ['rdmacm', 'ibverbs']
 
     # ps-lite
     EXTRA_OBJECTS = ['3rdparty/ps-lite/build/libps.a',
