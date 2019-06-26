@@ -35,9 +35,9 @@ We use [ps-lite](https://github.com/bytedance/ps-lite/tree/byteps) for **Push** 
 
 For **Push** stage, the workers send the gradients to servers, as the traditional PS does. 
 
-For **Pull** stage, we pull gradients rather than parameters from the servers, which is different from traditional PS. 
+For **Pull** stage, the workers <u>pull gradients rather than parameters</u> from the servers, which is different from traditional PS. Here is why:
 
-In past, the SGD update is performed on servers, so the workers need to tell the servers what SGD optimizer to use. However, for different frameworks, even the same optimizer algorithm may be implemented in completely different ways, and not to mention there are many user-defined optimizers. So BytePS moves the SGD update from the servers to the workers, leaving the servers only do gradient reduction. So far, this method applies to all frameworks we meet so we believe it is general. 
+In past, the SGD update is performed on servers, so the workers need to tell the servers what SGD optimizer to use. However, for different frameworks, even the same optimizer algorithm may be implemented in completely different ways, and not to mention there are many user-defined optimizers. So BytePS moves the SGD update from the servers to the workers, leaving the servers only do gradient reduction. We believe this is generic because it applies to all frameworks we know so far. 
 
 
 
