@@ -51,7 +51,8 @@ RUN apt-get update && apt-get install -y --allow-downgrades --allow-change-held-
         libjpeg-dev \
         libpng-dev \
         iftop \
-        lsb-release
+        lsb-release \
+        libnuma-dev 
 
 RUN apt-get update &&\
     apt-get -y install python-pip &&\
@@ -116,7 +117,7 @@ RUN cd $BYTEPS_BASE_PATH &&\
 # Remember to set BYTEPS_WITHOUT_PYTORCH=1 or BYTEPS_WITHOUT_TENSORFLOW=1 when you don't have them,
 # But you don't need to set BYTEPS_WITHOUT_MXNET even if your framework isn't MXNet
 RUN cd $BYTEPS_PATH &&\
-    LD_PRELOAD=/usr/lib/libtcmalloc_minimal.so.4 python setup.py install
+    python setup.py install
 
 RUN rm -rf /usr/local/cuda/lib64/libcuda.so && \
     rm -rf /usr/local/cuda/lib64/libcuda.so.1
