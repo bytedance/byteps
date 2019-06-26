@@ -1,4 +1,4 @@
-# Copyright 2019 ByteDance Inc. or its affiliates. All Rights Reserved.
+# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2017 Uber Technologies, Inc. All Rights Reserved.
 #
 # ResNet-50 model training using Keras and BytePS.

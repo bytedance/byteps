@@ -1,4 +1,4 @@
-# Copyright 2019 ByteDance Inc. or its affiliates. All Rights Reserved.
+# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 # Modifications copyright (C) 2018 Uber Technologies, Inc.
 #
