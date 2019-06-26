@@ -27,9 +27,9 @@ pytorch_lib = Extension('byteps.torch.c_lib', [])
 # Package meta-data.
 NAME = 'byteps'
 DESCRIPTION = 'A high-performance cross-framework Parameter Server for Deep Learning'
-URL = 'https://code.byted.org/zhuyibo/byteps'
+URL = 'https://github.com/bytedance/byteps'
 EMAIL = 'lab-hr@bytedance.com'
-AUTHOR = 'ByteDance Inc.'
+AUTHOR = 'Bytedance Inc.'
 REQUIRES_PYTHON = '>=2.7.0'
 VERSION = None
 
@@ -106,7 +106,8 @@ class UploadCommand(Command):
             pass
 
         self.status('Building Source and Wheel (universal) distribution…')
-        os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
+        os.system(
+            '{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
 
         self.status('Uploading the package to PyPI via Twine…')
         os.system('twine upload dist/*')
@@ -245,7 +246,8 @@ def get_common_options(build_ext):
                'byteps/common/cpu_reducer.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
-        COMPILE_FLAGS = cpp_flags + shlex.split(mpi_flags) + ["-DBYTEPS_USE_MPI"]
+        COMPILE_FLAGS = cpp_flags + \
+            shlex.split(mpi_flags) + ["-DBYTEPS_USE_MPI"]
         LINK_FLAGS = link_flags + shlex.split(mpi_flags)
     else:
         COMPILE_FLAGS = cpp_flags
@@ -394,7 +396,8 @@ def build_tf_extension(build_ext, options):
         build_ext, options['COMPILE_FLAGS'])
 
     # We assume we have CUDA
-    cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
+    cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+        build_ext, options['COMPILE_FLAGS'])
     options['MACROS'] += [('HAVE_CUDA', '1')]
     options['INCLUDES'] += cuda_include_dirs
     options['LIBRARY_DIRS'] += cuda_lib_dirs
@@ -436,7 +439,8 @@ def get_mx_include_dirs():
         return path
     except:
         # Try to find the path automatically
-        tmp_mxnet_dir = os.getenv("BYTEPS_SERVER_MXNET_PATH", "/root/mxnet15-rdma")
+        tmp_mxnet_dir = os.getenv(
+            "BYTEPS_SERVER_MXNET_PATH", "/root/mxnet15-rdma")
         MXNET_ROOT = os.getenv("MXNET_SOURCE_ROOT", tmp_mxnet_dir)
         return os.path.join(MXNET_ROOT, 'include/')
 
@@ -600,7 +604,8 @@ def build_mx_extension(build_ext, options):
 
     # Update HAVE_CUDA to mean that MXNet supports CUDA.
     if mx_have_cuda and not macro_have_cuda:
-        cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
+        cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+            build_ext, options['COMPILE_FLAGS'])
         options['MACROS'] += [('HAVE_CUDA', '1')]
         options['INCLUDES'] += cuda_include_dirs
         options['LIBRARY_DIRS'] += cuda_lib_dirs
@@ -665,7 +670,8 @@ def check_torch_version():
                 'Your torch version %s is outdated.  '
                 'BytePS requires torch>=1.0.1' % torch.__version__)
     except ImportError:
-            print('import torch failed, is it installed?\n\n%s' % traceback.format_exc())
+            print('import torch failed, is it installed?\n\n%s' %
+                  traceback.format_exc())
 
     # parse version
     version = parse_version(torch.__version__)
@@ -812,6 +818,7 @@ class custom_build_ext(build_ext):
         if not any(built_plugins):
             raise DistutilsError(
                 'None of TensorFlow, MXNet, PyTorch plugins were built. See errors above.')
+
 
 # Where the magic happens:
 setup(
