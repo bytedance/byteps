@@ -1,5 +1,7 @@
 # BytePS
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network.
 
 BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on a popular public cloud and with the same number of GPUs, BytePS can *double the training speed* (see below), compared with [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
@@ -10,7 +12,7 @@ For demonstration, we test two models: VGG16 (communication-intensive) and Resne
 
 We use Tesla V100 16GB GPUs and set batch size equal to 64. The machines are in fact VMs on a popular public cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
 
-BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16. 
+BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
 
 <img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
 
