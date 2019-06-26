@@ -16,7 +16,7 @@ BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
 
 <img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
 
-You can reproduce the results using the dockerfiles and example scripts we provide.
+You can reproduce the results using the Dockerfiles and example scripts we provide.
 
 Evaluation on RDMA networks can be found at [performance.md](docs/performance.md).
 
@@ -32,7 +32,7 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 ## Quick Start
 
-Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet. BytePS dependes on CUDA and NCCL.
+Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet. BytePS depends on CUDA and NCCL.
 
 Clone BytePS with its third party dependency:
 
@@ -68,7 +68,7 @@ Refer to [Documentations](docs) for how to launch distributed jobs and more hand
 
 ## Use BytePS in Your Code
 
-Though being totally different at its core, BytePS is highly compatabile with Horovod interfaces (Thank you, Horovod community!). We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
+Though being totally different at its core, BytePS is highly compatible with Horovod interfaces (Thank you, Horovod community!). We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
 
 If your tasks only rely on Horovod's allreduce and broadcast, you should be able to switch to BytePS in 1 minute. Simply replace `import horovod.tensorflow as hvd` by `import byteps.tensorflow as bps`, and then replace all `hvd` in your code by `bps`.
 
