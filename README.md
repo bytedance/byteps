@@ -68,11 +68,11 @@ Refer to [Documentations](docs) for how to launch distributed jobs and more hand
 
 ## Use BytePS in Your Code
 
-Though being totally different at its core, BytePS is highly compatabile with Horovod interfaces. (Thank you, Horovod community.) We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
+Though being totally different at its core, BytePS is highly compatabile with Horovod interfaces (Thank you, Horovod community!). We chose Horovod interfaces in order to minimize your efforts for testing BytePS.
 
 If your tasks only rely on Horovod's allreduce and broadcast, you should be able to switch to BytePS in 1 minute. Simply replace `import horovod.tensorflow as hvd` by `import byteps.tensorflow as bps`, and then replace all `hvd` in your code by `bps`.
 
-Many of our examples were copied from Horovod and modified in this way. For instance, compare [this](https://github.com/bytedance/byteps/blob/master/example/tensorflow/tensorflow_mnist.py) and [this](https://github.com/horovod/horovod/blob/master/examples/tensorflow_mnist.py)
+Many of our examples were copied from Horovod and modified in this way. For instance, compare the MNIST example for [BytePS](https://github.com/bytedance/byteps/blob/master/example/tensorflow/tensorflow_mnist.py) and [Horovod](https://github.com/horovod/horovod/blob/master/examples/tensorflow_mnist.py).
 
 ## Limitations and Future Plans
 
