@@ -1,5 +1,9 @@
 # BytePS Environment Variables
 
+Regardless of your framework, TensorFlow, PyTorch or MXNet, you must set the required envrionment variables below, including DMLC_* variables. This is because we leverage the [DMLC/MXNet bootstrapping process](https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html#manually-launching-jobs). 
+
+To run distributed training, you must start one scheduler, at least one server, and at least two workers. If you only have one worker, you won't need scheduler or server.
+
 ## Required for workers
 
 For each worker machine, you must specify the following variables:
@@ -12,9 +16,11 @@ export DMLC_WORKER_ID=x
 export DMLC_NUM_WORKER=y
 ```
 
-If you have ```NVIDIA_VISIBLE_DEVICES``` set, you can run ```launcher/launcher.py YOUR_COMMAND``` to start your job. 
+`DMLC_PS_ROOT_URI` is the IP of your scheduler. `DMLC_PS_ROOT_PORT` is the port that your scheduler binds to.
 
-Alternatively, you can start the job on each GPU after specifying:
+If you have `NVIDIA_VISIBLE_DEVICES` set, you can run `launcher/launcher.py YOUR_COMMAND` to start your job. 
+
+Alternatively, if you don't use `launcher/launcher.py`, you can start the job on each GPU after specifying:
 
 ```
 export BYTEPS_LOCAL_RANK=r
@@ -36,7 +42,7 @@ https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html
 
 In short, you should configure the same DMLC_* variables as the worker, except that DMLC_ROLE should be either server or scheduler.
 
-Also, set DMLC_ENABLE_RDMA accordingly as workers.
+Also, set DMLC_ENABLE_RDMA if you have RDMA network. This must be consistent with workers.
 
 ## BytePS debug
 
