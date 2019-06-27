@@ -20,7 +20,7 @@ Not really. Consider the above flat N-worker example again. No matter with which
 
 ### **Okay, I get that PS has less traffic from workers. But, PS Push and Pull are not duplex, and waste half bandwidth?**
 
-BytePS does not have this problem. It can fully utilize bi-direction network bandwidth. The key ideas are tensor partitioning and pipelining. For example, you have a 100MB tensor to be pushed and pulled. Inside BytePS, we will partition the tensor into small pieces. After pushing the first piece, we will start pulling the first piece. At the same time, we will start pushing the second piece. And so on. For most of the time except the first piece and the last piece, the bi-directional bandwith is fully utilized.
+BytePS does not have this problem. It can fully utilize bi-direction network bandwidth. The key ideas are tensor partitioning and pipelining. For example, you have a 100MB tensor to be pushed and pulled. Inside BytePS, we will partition the tensor into small pieces. After pushing the first piece, we will start pulling the first piece. At the same time, we will start pushing the second piece. And so on. For most of the time except the first piece and the last piece, the bi-directional bandwidth is fully utilized.
 
 ### **Since the bottleneck is the NIC of GPU machines, why not add more NICs?**
 
@@ -32,9 +32,9 @@ If you are building your own cluster for a *single* dedicated *distributed* trai
 
 This is true. For a large job that workers and PS cannot fit side a rack, PS does have more cross-rack traffic.
 
-However, the comparison with allreduce in real life is more complicated. It depends on how well you can control the physical job placement and allreduce rings. If you don't have the full control of placement, or your MPI/NCCL rank assignment is not physical network topology-aware, allreduce would face the exactly same problem. NCCL and most MPIs today are unawared of physical network topology, unless specifically designed for a given HPC.
+However, the comparison with allreduce in real life is more complicated. It depends on how well you can control the physical job placement and allreduce rings. If you don't have the full control of placement, or your MPI/NCCL rank assignment is not physical network topology-aware, allreduce would face the exactly same problem. NCCL and most MPIs today are unaware of physical network topology, unless specifically designed for a given HPC.
 
-Don't be scared of the oversubscription ratio. It exists for a reason -- usually, not all servers in a rack are simultaneously busy on networking. Multiple researches from major cloud providers show that the average bandwidth utilization is low. Remember, this is a shard cluster, not everyone is running distributed training.
+Don't be scared of the oversubscription ratio. It exists for a reason -- usually, not all servers in a rack are simultaneously busy on networking. Multiple researches from major cloud providers show that the average bandwidth utilization is low. Remember, this is a shared cluster, not everyone is running distributed training.
 
 ### **Final remarks**
 
