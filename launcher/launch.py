@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from __future__ import print_function
 import os
 import subprocess
 import threading
@@ -18,7 +19,7 @@ def worker(local_rank, local_size, command):
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
-    print "BytePS launching " + os.environ["DMLC_ROLE"]
+    print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
 
     if os.environ["DMLC_ROLE"] == "worker":
@@ -38,11 +39,8 @@ if __name__ == "__main__":
 
     else:
         if "BYTEPS_SERVER_MXNET_PATH" not in os.environ:
-            print "BYTEPS_SERVER_MXNET_PATH env not set"
+            print("BYTEPS_SERVER_MXNET_PATH env not set")
             os._exit(0)
         sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
         import mxnet
-        print "BytePS Server MXNet version: " + mxnet.__version__
-        # TODO: terminates when workers quit
-        while True:
-            time.sleep(3600)
+
