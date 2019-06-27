@@ -64,7 +64,7 @@ python byteps/launcher/launch.py byteps/example/mxnet/train_imagenet_byteps.py -
 For distributed training, you also need to build a server image. We provide [Dockerfiles](docker) as examples.
 You may use the same images for the scheduler and the servers.
 
-Refer to [Documentations](docs) for how to launch distributed jobs and more hands-on tutorials.
+Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
 ## Use BytePS in Your Code
 
