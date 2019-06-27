@@ -15,7 +15,7 @@ before_install:
   - wget http://developer.download.nvidia.com/compute/machine-learning/repos/${UBUNTU_VERSION}/x86_64/${NCCL_REPO}
   - sudo dpkg -i ${NCCL_REPO}
   - sudo apt update -qq
-  - sudo apt install -y cuda libnccl2 libnccl-dev
+  - sudo apt install -y cuda libnccl2 libnccl-dev libnuma-dev
   - sudo apt clean
   - CUDA_HOME=/usr/local/cuda-${CUDA_SHORT}
   - LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
