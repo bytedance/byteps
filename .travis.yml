@@ -14,6 +14,7 @@ before_install:
   - sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/${UBUNTU_VERSION}/x86_64/7fa2af80.pub
   - wget http://developer.download.nvidia.com/compute/machine-learning/repos/${UBUNTU_VERSION}/x86_64/${NCCL_REPO}
   - sudo dpkg -i ${NCCL_REPO}
+install:
   - sudo apt update -qq
   - sudo apt install -y cuda libnccl2 libnccl-dev libnuma-dev
   - sudo apt clean
@@ -21,6 +22,6 @@ before_install:
   - LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
   - PATH=${CUDA_HOME}/bin:${PATH}
   - pip install mxnet-cu101 tensorflow-gpu torch torchvision
-install:
+script:
   - BYTEPS_CUDA_HOME=${CUDA_HOME}
   - python setup.py install
