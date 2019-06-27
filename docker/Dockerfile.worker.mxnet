@@ -102,7 +102,7 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
 ################################ install your framework ################################
 # install mxnet
 ENV MXNET_VERSION 1.4.1
-RUN pip --no-cache-dir install -i mxnet-cu90==$MXNET_VERSION
+RUN pip --no-cache-dir install mxnet-cu90==$MXNET_VERSION
 
 ################################ install your framework ################################
 
