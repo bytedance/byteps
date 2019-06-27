@@ -755,10 +755,13 @@ class custom_build_ext(build_ext):
     def build_extensions(self):
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
            not os.path.exists("3rdparty/ps-lite/deps/lib"):
-            str_rdma_option = ""
+            make_option = ""
+            if os.environ.get('CI', 'false') == 'false':
+                make_option += "-j "
             if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
-                str_rdma_option += "USE_RDMA=1"
-            make_process = subprocess.Popen('make -j ' + str_rdma_option,
+                make_option += "USE_RDMA=1 "
+
+            make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
                                             stdout=sys.stdout,
                                             stderr=sys.stderr,
