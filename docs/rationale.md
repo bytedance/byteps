@@ -1,5 +1,9 @@
 # The Rationale of BytePS
 
+We find that some users may not fully understand this page. If you have doubts after reading this page, we prepare a detailed [FAQ](/docs/faq.md). If you still have questions, you are welcome to Github raise issues.
+
+## Background
+
 You want to run your training on your expensive GPU cluster. Unfortunately, when you run distributed training, these GPUs are not well fed -- their precious cycles are wasted on waiting for network transmission. You tried many existing solutions, most notably the popular allreduce approach. You probably found NCCL gave you better performance than many other alternatives. You know NCCL is developed by NVIDIA and HPC experts. You guess that may be it.
 
 We understand you. This is why we develop BytePS and want to show you, in a cloud or in-house shared cluster environment, NCCL (and fundamentally allreduce) is suboptimal.
@@ -20,7 +24,7 @@ Now we check the Parameter Server (PS) communication pattern. For 1MB data, ever
 
 ## Wait. Why did MPI guys not find out this?
 
-Well, MPI guys probably know this, but they might be too focused on homogeneous hardware setup, like what HPC has. The trick of PS here is that you need additional resources, other than the GPU workers, to run the PS. If all your machines are homogeneous, e.g., equipped with 8 GPUs and same CPUs, memory and NICs, and all your machines are only for a single job, then PS does not save you anything. In that case, PS architecture would require you to use only half GPU machines as workers, and the other half as PS, so that the network bandwidth on PS side matches worker side. This along will make you waste half GPUs. So, in a homogeneous setup designed for a single job, allreduce is your best bet.
+Well, MPI guys probably know this, but they might be too focused on homogeneous hardware setup, like what HPC has. The trick of PS here is that you need additional resources, other than the GPU workers, to run the PS. If all your machines are homogeneous, e.g., equipped with 8 GPUs and same CPUs, memory and NICs, and all your machines are only for a single job, then PS does not save you anything. In that case, PS architecture would require you to use only half GPU machines as workers, and the other half as PS, so that the network bandwidth on PS side matches worker side. This alone will make you waste half GPUs. So, in a homogeneous setup designed for a single job, allreduce is your best bet.
 
 However, the real data centers are a bit different. Inside a large organization, we usually run a large-scale GPU cluster and provide it as a service to multiple teams for multiple jobs. The GPU clusters are usually connected to other parts of the data center, where there is an enormous pool of CPUs and network bandwidth. The same goes for public cloud.
 
