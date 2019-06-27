@@ -18,6 +18,10 @@ You have N worker machines connected to the same network switch, and each worker
 
 Not really. Consider the above flat N-worker example again. No matter with which allreduce strategy, the conclusion of PS vs. allreduce does not change.
 
+### **Okay, I get that PS has less traffic from workers. But, PS Push and Pull are not duplex, and waste half bandwidth?**
+
+BytePS does not have this problem. It can fully utilize bi-direction network bandwidth. The key ideas are tensor partitioning and pipelining. For example, you have a 100MB tensor to be pushed and pulled. Inside BytePS, we will partition the tensor into small pieces. After pushing the first piece, we will start pulling the first piece. At the same time, we will start pushing the second piece. And so on. For most of the time except the first piece and the last piece, the bi-directional bandwith is fully utilized.
+
 ### **Since the bottleneck is the NIC of GPU machines, why not add more NICs?**
 
 There are indeed [specialized physical server designs](https://images.nvidia.com/content/pdf/dgx1-v100-system-architecture-whitepaper.pdf) doing that. Unfortunately, cloud or shared clusters usually prefer not do this. This is because, as a matter of fact, many training jobs are not distributed. For these jobs, users want the GPUs to be deployed as dense as possible and the network bandwidth requirement is low.
@@ -30,7 +34,7 @@ This is true. For a large job that workers and PS cannot fit side a rack, PS doe
 
 However, the comparison with allreduce in real life is more complicated. It depends on how well you can control the physical job placement and allreduce rings. If you don't have the full control of placement, or your MPI/NCCL rank assignment is not physical network topology-aware, allreduce would face the exactly same problem. NCCL and most MPIs today are unawared of physical network topology, unless specifically designed for a given HPC.
 
-Don't be scared of the oversubscription ratio. It exists for a reason -- usually, not all servers in a rack are simultaneously busy on networking. Multiple researches from major cloud providers show that the average bandwidth utilization is low. Remember, this is a shard cluster, not everyone is running distirbuted training.
+Don't be scared of the oversubscription ratio. It exists for a reason -- usually, not all servers in a rack are simultaneously busy on networking. Multiple researches from major cloud providers show that the average bandwidth utilization is low. Remember, this is a shard cluster, not everyone is running distributed training.
 
 ### **Final remarks**
 
