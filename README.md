@@ -46,25 +46,9 @@ python setup.py install
 ```
 Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
 
-Now you can try our [examples](example). Let's say you are using MXNet and want to try a Resnet50 training benchmark:
+We provide a [step-by-step tutorial](docs/step-by-step-tutorials) for you to run benchmark training tasks.
 
-```
-export NVIDIA_VISIBLE_DEVICES=0,1 \
-       DMLC_NUM_WORKER=1 \
-       DMLC_NUM_SERVER=1 \
-       DMLC_WORKER_ID=0 \
-       DMLC_ROLE=worker \
-       DMLC_PS_ROOT_URI=10.0.0.1 \
-       DMLC_PS_ROOT_PORT=1234 \
-       DMLC_INTERFACE=eth0
-
-python byteps/launcher/launch.py byteps/example/mxnet/train_imagenet_byteps.py --benchmark 1 --batch-size=32
-```
-
-For distributed training, you also need to build a server image. We provide [Dockerfiles](docker) as examples.
-You may use the same images for the scheduler and the servers.
-
-Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
+Also refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
 ## Use BytePS in Your Code
 
