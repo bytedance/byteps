@@ -20,5 +20,6 @@ before_install:
   - CUDA_HOME=/usr/local/cuda-${CUDA_SHORT}
   - LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
   - PATH=${CUDA_HOME}/bin:${PATH}
+  - pip install mxnet-cu101 tensorflow-gpu torch torchvision
 install:
   - python setup.py install
