@@ -46,7 +46,7 @@ python setup.py install
 ```
 Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
 
-We provide a [step-by-step tutorial](docs/step-by-step-tutorials) for you to run benchmark training tasks.
+We provide a [step-by-step tutorial](docs/step-by-step-tutorials.md) for you to run benchmark training tasks.
 
 Also refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
