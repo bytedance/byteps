@@ -79,7 +79,9 @@ def _push_pull(tensor, scope='', name=None):
     """
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(scope+name))
+    full_name = scope + name
+    full_name = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
     return C_LIB.byteps_push_pull(tensor, name=name)
 
 
@@ -108,7 +110,7 @@ def broadcast(tensor, root_rank, name=None, is_variable=True):
     # Broadcast is implemented as push + pull after zero-ing non-root tensors
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name))
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name.encode("ascii")))
     if is_variable and (root_rank != rank()):
         return C_LIB.byteps_push_pull(tensor.assign(tf.zeros_like(tensor)), name=name)
     else:
