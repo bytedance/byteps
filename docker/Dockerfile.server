@@ -22,15 +22,15 @@ RUN rm -f /tmp/pip.conf &&\
 
 RUN if [ "x$REGION" = "xchina" ]; then mkdir -p ~/.pip && mv /tmp/pip.conf ~/.pip/; fi
 
-ENV USE_CUDA_PATH /usr/local/cuda:/usr/local/cudnn/lib64
-ENV PATH /usr/local/cuda/bin:/usr/local/nvidia/bin:${PATH}
-ENV LD_LIBRARY_PATH /usr/local/cudnn/lib64:/usr/local/cuda/lib64:/usr/local/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/nccl/lib:$LD_LIBRARY_PATH
-ENV LIBRARY_PATH /usr/local/cudnn/lib64:/usr/local/cuda/lib64:$LIBRARY_PATH
-ENV PIP_SOURCE_PROXY https://mirrors.aliyun.com/pypi/simple/
+ENV LD_LIBRARY_PATH /root/incubator-mxnet/lib/:/usr/local/lib:$LD_LIBRARY_PATH
 
 ENV SERVER_BUILD_OPTS "USE_BLAS=openblas USE_MKL=1 USE_DIST_KVSTORE=1"
 ENV BYTEPS_SERVER_MXNET_PATH /root/incubator-mxnet
 ENV MXNET_SERVER_LINK https://github.com/bytedance/incubator-mxnet
+
+ENV BYTEPS_BASE_PATH /usr/local
+ENV BYTEPS_PATH $BYTEPS_BASE_PATH/byteps
+ENV BYTEPS_GIT_LINK https://github.com/bytedance/byteps
 
 RUN apt-get update && apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
         build-essential \
@@ -73,3 +73,12 @@ RUN git clone --single-branch --branch byteps --recurse-submodules $MXNET_SERVER
 
 RUN cd $BYTEPS_SERVER_MXNET_PATH && \
     make clean_all && make -j16 $SERVER_BUILD_OPTS
+
+RUN cd $BYTEPS_SERVER_MXNET_PATH && \
+    cd python && \
+    python setup.py build && \
+    python setup.py install
+
+RUN cd $BYTEPS_BASE_PATH &&\
+    git clone --recurse-submodules $BYTEPS_GIT_LINK
+

@@ -100,9 +100,11 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
 
 
 ################################ install your framework ################################
-# install mxnet
-ENV MXNET_VERSION 1.4.1
-RUN pip --no-cache-dir install -i mxnet-cu90==$MXNET_VERSION
+# install tensorflow
+ENV TENSORFLOW_VERSION 1.12.0
+RUN pip --no-cache-dir install tensorflow-gpu==$TENSORFLOW_VERSION && \
+    rm -rf /tmp/pip && \
+    rm -rf /root/.cache
 
 ################################ install your framework ################################
 
@@ -123,7 +125,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
 
 # Install BytePS
 RUN cd $BYTEPS_PATH &&\
-    BYTEPS_WITHOUT_PYTORCH=1 BYTEPS_WITHOUT_TENSORFLOW=1 python setup.py install
+    BYTEPS_WITHOUT_PYTORCH=1 python setup.py install
 
 # Remove GCC pinning
 RUN update-alternatives --remove gcc /usr/bin/gcc-4.9 && \

@@ -100,9 +100,18 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
 
 
 ################################ install your framework ################################
-# install mxnet
-ENV MXNET_VERSION 1.4.1
-RUN pip --no-cache-dir install -i mxnet-cu90==$MXNET_VERSION
+# install pytorch
+ENV TORCH_VERSION 1.0.1
+ RUN pip --no-cache-dir install \
+        future \
+        numpy \
+        pyyaml \
+        setuptools \
+        six \
+        typing \
+        protobuf \
+        torchvision==0.2.2 \
+        torch==$TORCH_VERSION
 
 ################################ install your framework ################################
 
@@ -123,7 +132,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
 
 # Install BytePS
 RUN cd $BYTEPS_PATH &&\
-    BYTEPS_WITHOUT_PYTORCH=1 BYTEPS_WITHOUT_TENSORFLOW=1 python setup.py install
+    BYTEPS_WITHOUT_TENSORFLOW=1 python setup.py install
 
 # Remove GCC pinning
 RUN update-alternatives --remove gcc /usr/bin/gcc-4.9 && \
