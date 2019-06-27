@@ -79,6 +79,7 @@ Many of our examples were copied from Horovod and modified in this way. For inst
 BytePS does not support pure CPU training for now. One reason is that some [assumptions](docs/rationale.md) of BytePS do not hold for CPU training. Consequently, you need CUDA and NCCL to build and run BytePS.
 
 We would like to have below features, and it is not hard to implement them in BytePS architecture. However, they are not implemented yet:
+* Sparse model training
 * Asynchronous training
 * Fault-tolerance
-* Staggler-mitigation
+* Straggler-mitigation
