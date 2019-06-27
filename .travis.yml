@@ -1,5 +1,6 @@
 dist: bionic
 language: python
+cache: pip
 python:
   - "2.7"
   - "3.7"
@@ -22,4 +23,5 @@ before_install:
   - PATH=${CUDA_HOME}/bin:${PATH}
   - pip install mxnet-cu101 tensorflow-gpu torch torchvision
 install:
+  - BYTEPS_CUDA_HOME=${CUDA_HOME}
   - python setup.py install
