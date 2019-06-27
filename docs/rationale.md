@@ -1,10 +1,10 @@
 # The Rationale of BytePS
 
-We find that some users may not fully understand this page. If you have doubts after reading this page, we prepare a detailed [FAQ](/docs/faq.md). If you still have questions, you are welcome to Github raise issues.
+We find that some users may not fully understand this page. If you have doubts after reading this page, we prepare a detailed [FAQ](/docs/faq.md). If you still have questions, you are welcome to raise Github issues.
 
 ## Background
 
-You want to run your training on your expensive GPU cluster. Unfortunately, when you run distributed training, these GPUs are not well fed -- their precious cycles are wasted on waiting for network transmission. You tried many existing solutions, most notably the popular allreduce approach. You probably found NCCL gave you better performance than many other alternatives. You know NCCL is developed by NVIDIA and HPC experts. You guess that may be it.
+You want to run your training in your expensive GPU cluster. Unfortunately, when you run distributed training, these GPUs are not well fed -- their precious cycles are wasted on waiting for network transmission. You tried many existing solutions, most notably the popular allreduce approach. You probably found NCCL gave you better performance than many other alternatives. You know NCCL is developed by NVIDIA and HPC experts. You guess that may be it.
 
 We understand you. This is why we develop BytePS and want to show you, in a cloud or in-house shared cluster environment, NCCL (and fundamentally allreduce) is suboptimal.
 
@@ -35,7 +35,7 @@ In light of this, BytePS is specifically designed to run PS instances using only
 GPUs are extremely expensive compared with CPUs and network bandwidth. Use AWS public price sheet as an example. If you rent 4x [p3.16xlarge](https://aws.amazon.com/ec2/instance-types/p3/), it would cost you nearly $100 per hour. However, to match the network bandwidth, you can rent 4x or even 8x [c5n.xlarge](https://aws.amazon.com/ec2/pricing/on-demand/) as your PS for $0.2 per instance per hour! 
 c5n.xlarge has 4 CPU cores that are sufficient for BytePS and its [up to 25Gbps](https://aws.amazon.com/ec2/instance-types/) network.
 
-Therefore, on a public cloud, you just need 2% more spending, you may get up to 100% improvement because your bottleneck bandwidth it utilized twice as efficient. If you manage your own training cluster, you may not really have any additional spending, because you probably have spare CPU and networking resources somewhere in your data center.
+Therefore, on a public cloud, you just need 2% more spending, you may get up to 100% improvement because your bottleneck bandwidth is utilized twice as efficient. If you manage your own training cluster, you may not really have any additional spending, because you probably have spare CPU and networking resources somewhere in your data center.
 
 ## I still don't understand. NCCL beats TF (or MXNet) PS so hard..
 
