@@ -11,12 +11,11 @@ before_install:
   - NCCL_REPO=nvidia-machine-learning-repo-${UBUNTU_VERSION}_${NCCL}_amd64.deb
   - wget http://developer.download.nvidia.com/compute/cuda/repos/${UBUNTU_VERSION}/x86_64/${CUDA_REPO}
   - sudo dpkg -i ${CUDA_REPO}
-  - wget https://developer.download.nvidia.com/compute/cuda/repos/${UBUNTU_VERSION}/x86_64/7fa2af80.pub
-  - sudo apt-key add 7fa2af80.pub
+  - sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/${UBUNTU_VERSION}/x86_64/7fa2af80.pub
   - wget http://developer.download.nvidia.com/compute/machine-learning/repos/${UBUNTU_VERSION}/x86_64/${NCCL_REPO}
   - sudo dpkg -i ${NCCL_REPO}
   - sudo apt update -qq
-  - sudo apt install -y cuda-core-${CUDA_APT} cuda-cudart-dev-${CUDA_APT} cuda-cufft-dev-${CUDA_APT} libnccl2 libnccl-dev
+  - sudo apt install -y cuda libnccl2 libnccl-dev
   - sudo apt clean
   - CUDA_HOME=/usr/local/cuda-${CUDA_SHORT}
   - LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
