@@ -8,9 +8,9 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 ## Performance
 
-For demonstration, we test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive).
+For demonstration, we test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive). Both models are trained using fp32.
 
-We use Tesla V100 16GB GPUs and set batch size equal to 64. The machines are in fact VMs on a popular public cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
+We use Tesla V100 16GB GPUs and set batch size equal to 64 *per GPU*. The machines are in fact VMs on a popular public cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
 
 BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
 
@@ -32,7 +32,9 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 ## Quick Start
 
-Before using BytePS, we assume you have already installed one or more of the following frameworks: TensorFlow / Keras / PyTorch / MXNet. BytePS depends on CUDA and NCCL.
+We provide a [step-by-step tutorial](docs/step-by-step-tutorials.md) for you to run benchmark training tasks.
+
+Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
 Clone BytePS with its third party dependency:
 
@@ -46,9 +48,7 @@ python setup.py install
 ```
 Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
 
-We provide a [step-by-step tutorial](docs/step-by-step-tutorials.md) for you to run benchmark training tasks.
-
-Also refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
+Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
 ## Use BytePS in Your Code
 
