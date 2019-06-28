@@ -131,7 +131,7 @@ void NcclManager::InitGlobalEnv() { // init all global env/param here
     BPS_LOG(DEBUG) << "nccl_group_size" << " set to " << _nccl_group_size;
     
     _nccl_pcie_size = (getenv("BYTEPS_PCIE_SWITCH_SIZE") ?
-                       atoi(getenv("BYTEPS_PCIE_SWITCH_SIZE")) : 4);
+                       atoi(getenv("BYTEPS_PCIE_SWITCH_SIZE")) : 8);
     auto local_size = BytePSGlobal::GetLocalSize();
     _nccl_pcie_num = local_size / _nccl_pcie_size;
     if (!_nccl_pcie_num) {
