@@ -56,23 +56,25 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
     return new_tensor
 
 
-def broadcast_global_variables(root_rank):
+def broadcast_global_variables(root_rank, scope=''):
     """Broadcasts all global variables from root rank to all other processes.
     Arguments:
         root_rank: rank of the process from which global variables will be broadcasted
         to all other processes.
+        scope: the graph name scope
     """
-    return broadcast_variables(tf.global_variables(), root_rank)
+    return broadcast_variables(tf.global_variables(), root_rank, scope)
 
 
-def broadcast_variables(variables, root_rank):
+def broadcast_variables(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
     Arguments:
         variables: variables for broadcast
         root_rank: rank of the process from which global variables will be broadcasted
                    to all other processes.
+        scope: the graph name scope
     """
-    return tf.group(*[tf.assign(var, broadcast(var, root_rank))
+    return tf.group(*[tf.assign(var, broadcast(var, root_rank, scope))
                       for var in variables])
 
 
