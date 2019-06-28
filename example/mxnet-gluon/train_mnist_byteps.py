@@ -124,7 +124,7 @@ if params is not None:
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
-trainer = gluon.Trainer(params, "sgd", optimizer_params)
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
