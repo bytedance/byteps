@@ -34,7 +34,7 @@ void byteps_init() {
     // The order of func does not matter
     std::vector<LoopFunction> func;
 
-    // Push & Pull in distirbuted mode
+    // Push & Pull in distributed mode
     if (BytePSGlobal::IsDistributed()) {
         if (BytePSGlobal::IsRootDevice()) {
             func.push_back(PullLoop);
@@ -50,7 +50,7 @@ void byteps_init() {
     if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
         func.push_back(CopyDevice2HostLoop);
         if (BytePSGlobal::IsRootDevice()) {
-            // PUSH can be a real push in distirbuted mode
+            // PUSH can be a real push in distributed mode
             // Or a dummy barrier in cross-pcie-switch mode
             func.push_back(PushLoop);
             func.push_back(RootCopyHost2DeviceLoop);
@@ -340,7 +340,7 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
         queue_list->push_back(PCIE_REDUCE);
     }
 
-    // Push in distirbuted mode
+    // Push in distributed mode
     // In case IsCrossPcieSwitch(), PUSH runs as a dummy barrier
     if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
         if (BytePSGlobal::IsRootDevice()) {
@@ -356,7 +356,7 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
     auto queue_list = std::make_shared<std::vector<QueueType>>();
 
-    // Pull in distirbuted mode
+    // Pull in distributed mode
     if (BytePSGlobal::IsDistributed()) {
         if (BytePSGlobal::IsRootDevice()) {
             queue_list->push_back(PULL);
