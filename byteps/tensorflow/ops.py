@@ -81,6 +81,8 @@ def _push_pull(tensor, scope='', name=None):
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
         scope = tf.compat.v1.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
     full_name = scope + name
     full_name = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
@@ -114,6 +116,8 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
         scope = tf.compat.v1.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
     full_name = scope + name
     full_name = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
