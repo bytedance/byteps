@@ -98,7 +98,6 @@ void BytePSGlobal::Init() {
     _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
 
     BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-    BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: env DMLC_NUM_SERVER not set";
 
     _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
@@ -106,6 +105,10 @@ void BytePSGlobal::Init() {
         _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
     }
     _is_distributed_job = (_num_worker>1) ? true : _is_distributed_job;
+
+    if (_is_distributed_job) {
+        BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
+    }
 
     BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
                    << (IsDistributed() ? "" : "non-") << "distributed job";
