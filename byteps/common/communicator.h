@@ -31,8 +31,8 @@
 #include <mutex>
 #include "logging.h"
 
-#define BASE_SOCKET_PATH_RECV   "/usr/local/socket_recv_"
-#define BASE_SOCKET_PATH_SEND   "/usr/local/socket_send_"
+#define DEFAULT_BASE_SOCKET_PATH_RECV   "/tmp/socket_recv_"
+#define DEFAULT_BASE_SOCKET_PATH_SEND   "/tmp/socket_send_"
 #define MAX_LINE 8000
 
 namespace byteps {

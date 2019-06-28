@@ -90,8 +90,13 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank, int* local_si
     *my_role = (_local_rank == _root) ? LOCAL_ROOT : LOCAL_WORKER;
     bool is_root = (*my_role == LOCAL_ROOT) ? true : false;
 
-    _send_path = std::string(BASE_SOCKET_PATH_SEND);
-    _recv_path = std::string(BASE_SOCKET_PATH_RECV);
+    if (getenv("BYTEPS_SOCKET_PATH")) {
+        _send_path = std::string(getenv("BYTEPS_SOCKET_PATH")) + std::string("/socket_send_");
+        _recv_path = std::string(getenv("BYTEPS_SOCKET_PATH")) + std::string("/socket_recv_");
+    } else {
+        _send_path = std::string(DEFAULT_BASE_SOCKET_PATH_SEND);
+        _recv_path = std::string(DEFAULT_BASE_SOCKET_PATH_RECV);
+    }
 
     _send_fd = initSocket(_local_rank, _send_path);
     _recv_fd = initSocket(_local_rank, _recv_path);
