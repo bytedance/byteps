@@ -37,7 +37,7 @@ We provide a [step-by-step tutorial](docs/step-by-step-tutorials.md) for you to 
 
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
-Clone BytePS with its third party dependency:
+For your worker node, clone BytePS with its third party dependency:
 
 ```
 git clone --recurse-submodules https://github.com/bytedance/byteps
@@ -48,6 +48,8 @@ Then `cd` into your BytePS directory and install.
 python setup.py install
 ```
 Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
+
+For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server`. Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our [Dockerfile](docker/Dockerfile.server).
 
 Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
@@ -61,7 +63,7 @@ Many of our examples were copied from Horovod and modified in this way. For inst
 
 ## Limitations and Future Plans
 
-BytePS does not support pure CPU training for now. One reason is that some [assumptions](docs/rationale.md) of BytePS do not hold for CPU training. Consequently, you need CUDA and NCCL to build and run BytePS.
+BytePS does not support pure CPU training for now. One reason is that the [cheap PS assumption](docs/rationale.md) of BytePS do not hold for CPU training. Consequently, you need CUDA and NCCL to build and run BytePS.
 
 We would like to have below features, and it is not hard to implement them in BytePS architecture. However, they are not implemented yet:
 * Sparse model training
