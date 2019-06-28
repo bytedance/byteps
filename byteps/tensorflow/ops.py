@@ -79,6 +79,8 @@ def _push_pull(tensor, scope='', name=None):
     """
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        scope = tf.compat.v1.get_default_graph().get_name_scope()
     full_name = scope + name
     full_name = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
@@ -97,7 +99,7 @@ def _push_pull_grad(op, grad):
     return _push_pull(grad)
 
 
-def broadcast(tensor, root_rank, name=None, is_variable=True):
+def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     """An op which broadcasts the input tensor on root rank to the same input tensor
     on all other BytePS processes.
     The broadcast operation is keyed by the name of the op. The tensor type and
@@ -110,7 +112,11 @@ def broadcast(tensor, root_rank, name=None, is_variable=True):
     # Broadcast is implemented as push + pull after zero-ing non-root tensors
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(name.encode("ascii")))
+    if scope == '' and not _executing_eagerly():
+        scope = tf.compat.v1.get_default_graph().get_name_scope()
+    full_name = scope + name
+    full_name = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
     if is_variable and (root_rank != rank()):
         return C_LIB.byteps_push_pull(tensor.assign(tf.zeros_like(tensor)), name=name)
     else:
