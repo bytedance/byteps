@@ -80,7 +80,10 @@ def _push_pull(tensor, scope='', name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
-        scope = tf.compat.v1.get_default_graph().get_name_scope()
+        try:
+            scope = tf.get_default_graph().get_name_scope()
+        except:
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
         if scope != '':
             scope += '/'
     full_name = scope + name
@@ -115,7 +118,10 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
-        scope = tf.compat.v1.get_default_graph().get_name_scope()
+        try:
+            scope = tf.get_default_graph().get_name_scope()
+        except:
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
         if scope != '':
             scope += '/'
     full_name = scope + name
