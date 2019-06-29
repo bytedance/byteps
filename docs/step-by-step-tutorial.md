@@ -9,7 +9,7 @@ The goal of this tutorial is to help you run BytePS quickly. To ensure that you 
 ```
 docker pull bytepsimage/worker_tensorflow
 
-nvidia-docker run --shm-size=32768m -it bytepsimage/worker_tensorflow bash
+nvidia-docker run -it --net=host --shm-size=32768m bytepsimage/worker_tensorflow bash
 
 # now you are in docker environment
 export NVIDIA_VISIBLE_DEVICES=0,1,2,3  # say you have 4 GPUs 
@@ -35,7 +35,7 @@ python /usr/local/byteps/launcher/launch.py \
 ```
 docker pull bytepsimage/worker_pytorch
 
-nvidia-docker run --shm-size=32768m -it bytepsimage/worker_pytorch bash
+nvidia-docker run -it --net=host --shm-size=32768m bytepsimage/worker_pytorch bash
 
 # now you are in docker environment
 export NVIDIA_VISIBLE_DEVICES=0,1,2,3  # say you have 4 GPUs 
@@ -59,7 +59,7 @@ python /usr/local/byteps/launcher/launch.py \
 ```
 docker pull bytepsimage/worker_mxnet
 
-nvidia-docker run --shm-size=32768m -it bytepsimage/worker_mxnet bash
+nvidia-docker run -it --net=host --shm-size=32768m bytepsimage/worker_mxnet bash
 
 # now you are in docker environment
 export NVIDIA_VISIBLE_DEVICES=0,1,2,3  # say you have 4 GPUs 
@@ -89,7 +89,7 @@ For the scheduler:
 # scheduler can use the same image as servers
 docker pull bytepsimage/byteps_server
 
-docker run -it bytepsimage/byteps_server bash
+docker run -it --net=host bytepsimage/byteps_server bash
 
 # now you are in docker environment
 export DMLC_NUM_WORKER=2 
@@ -105,7 +105,7 @@ For the server:
 ```
 docker pull bytepsimage/byteps_server
 
-docker run -it bytepsimage/byteps_server bash
+docker run -it --net=host bytepsimage/byteps_server bash
 
 # now you are in docker environment
 export DMLC_NUM_WORKER=2 
@@ -123,7 +123,7 @@ For worker-0:
 ```
 docker pull bytepsimage/worker_mxnet
 
-nvidia-docker run --shm-size=32768m -it bytepsimage/worker_mxnet bash
+nvidia-docker run -it --net=host --shm-size=32768m bytepsimage/worker_mxnet bash
 
 # now you are in docker environment
 export NVIDIA_VISIBLE_DEVICES=0,1,2,3  # say you have 4 GPUs 
@@ -145,7 +145,7 @@ For worker-1:
 ```
 docker pull bytepsimage/worker_mxnet
 
-nvidia-docker run --shm-size=32768m -it bytepsimage/worker_mxnet bash
+nvidia-docker run -it --net=host --shm-size=32768m bytepsimage/worker_mxnet bash
 
 # now you are in docker environment
 export NVIDIA_VISIBLE_DEVICES=0,1,2,3  # say you have 4 GPUs 
