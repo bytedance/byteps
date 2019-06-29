@@ -10,7 +10,7 @@ import byteps.torch as bps
 import timeit
 import numpy as np
 import os
-import byteps.bytescheduler.torch as bsc
+import byteps.bytescheduler.torch.optimizer as bsc
 
 """
 This example shows how to enable ByteScheduler on top of BytePS in PyTorch. Note that you can use BytePS without 
@@ -20,7 +20,7 @@ maintaining correct dependencies, e.g., the forward computation of a layer will 
 layer is updated. Hence it can further improves training performance beyond BytePS.
 To use it, you need further wrap BytePS optimizer using ScheduledOptimizer as shown below:
 ```
-optimizer = bsc.ScheduledOptimizer(model, bps_optimizer, num_steps)
+optimizer = ScheduledOptimizer(model, bps_optimizer, num_steps)
 ```
 So far ByteScheduler supports SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for 
 any other optimizers.
@@ -73,6 +73,8 @@ if args.cuda:
     model.cuda()
 
 optimizer = optim.SGD(model.parameters(), lr=0.01)
+# optimizer = optim.Adam(model.parameters(), lr=0.01)
+# optimizer = optim.RMSprop(model.parameters(), lr=0.01)
 
 # BytePS: (optional) compression algorithm.
 compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
@@ -85,8 +87,8 @@ optimizer = bps.DistributedOptimizer(optimizer,
 # ByteScheduler: wrap BytePS optimizer with ScheduledOptimizer.
 # Note that ByteScheduler only supports SGD, Adam and RMSProp optimizers so far.
 optimizer = bsc.ScheduledOptimizer(model,
-                                   optimizer,
-                                   num_steps=args.num_warmup_batches+args.num_iters*args.num_batches_per_iter)
+                               optimizer,
+                               num_steps=args.num_warmup_batches+args.num_iters*args.num_batches_per_iter)
 
 # BytePS: broadcast parameters & optimizer state.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -101,6 +103,7 @@ for _ in range(100):
         data, target = data.cuda(), target.cuda()
     datasets.append(data)
 data_index = 0
+
 
 def benchmark_step():
     global data_index
