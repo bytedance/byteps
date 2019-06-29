@@ -44,10 +44,9 @@ def log(s, nl=True):
 
 def benchmark(tensor, average, name):
     if not args.no_wait and bps.rank() == 0:
-        # let other workers submit allreduce request first
+        # let other workers submit push-pull request first
         time.sleep(0.01)
     start = time.time()
-    # do not use allreduce_() as it polls every 1ms
     handle = push_pull_async_inplace(tensor, average, name)
     while True:
         if poll(handle):

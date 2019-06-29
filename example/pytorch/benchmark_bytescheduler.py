@@ -10,6 +10,21 @@ import byteps.torch as bps
 import timeit
 import numpy as np
 import os
+import byteps.bytescheduler.torch as bsc
+
+"""
+This example shows how to enable ByteScheduler on top of BytePS in PyTorch. Note that you can use BytePS without 
+ByteScheduler at all, so the limitations of ByteScheduler do not apply to BytePS.
+ByteScheduler enables overlapping gradient push-pull with both backward computation and forward computation, while
+maintaining correct dependencies, e.g., the forward computation of a layer will not start until the parameter of this 
+layer is updated. Hence it can further improves training performance beyond BytePS.
+To use it, you need further wrap BytePS optimizer using ScheduledOptimizer as shown below:
+```
+optimizer = bsc.ScheduledOptimizer(model, bps_optimizer, num_steps)
+```
+So far ByteScheduler supports SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for 
+any other optimizers.
+"""
 
 # Benchmark settings
 parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
@@ -66,6 +81,12 @@ compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.n
 optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression=compression)
+
+# ByteScheduler: wrap BytePS optimizer with ScheduledOptimizer.
+# Note that ByteScheduler only supports SGD, Adam and RMSProp optimizers so far.
+optimizer = bsc.ScheduledOptimizer(model,
+                                   optimizer,
+                                   num_steps=args.num_warmup_batches+args.num_iters*args.num_batches_per_iter)
 
 # BytePS: broadcast parameters & optimizer state.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -127,5 +148,4 @@ img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
     (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
-
 
