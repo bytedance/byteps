@@ -51,13 +51,12 @@ class ScheduledOptimizer(_DistributedOptimizer):
             for p in param_group['params']:
                 self._locks[p] = threading.Lock()
 
-        assert len(self._grad_accs) == 0
         if size() > 1:
             self._register_forward_hooks()
             self._register_hooks()
 
         # Poll whether the tensor push-pull is finished.
-        self.event_queue = queue.Queue()
+        self._event_queue = queue.Queue()
         self._poller = threading.Thread(target=self._poll, args=())
         self._poller.start()
 
@@ -66,33 +65,20 @@ class ScheduledOptimizer(_DistributedOptimizer):
 
     def __del__(self):
         """Clean up"""
-        self.event_queue.put((None, None, None, None, None))
+        self._event_queue.put((None, None, None))
         self._poller.join()
-
-    def _synchronize(self):
-        """Push pull missing parameters"""
-        missing_p = self._requires_update - set(self._handles.keys())
-        for p in missing_p:
-            handle, ctx = self._push_pull_grad_async(p)
-            self._handles[p] = (handle, ctx)
-
-        for p, value in self._handles.items():
-            handle, ctx = value
-            if handle is None:
-                handle, ctx = self._push_pull_grad_async(p)
-                self._handles[p] = (handle, ctx)
 
     def step(self, closure=None):
         """Override the default step function."""
         self._logger.debug("{} calls step() {}".format(self._desc, self._step))
 
-        self._synchronize()
         # Step 0 is called for parameter initialization after parameter broadcast
         if size() > 1 and self._step > 0:
+            self._synchronize()
             # if it is the final training step, wait for the completion of all tensors
             if self._step == self._final_step:
                 self._logger.debug("final step {}, waiting for push-pull completion.".format(self._final_step))
-                while not self.event_queue.empty():
+                while not self._event_queue.empty():
                     time.sleep(0.001)
             loss = None
             if closure is not None:
@@ -114,6 +100,30 @@ class ScheduledOptimizer(_DistributedOptimizer):
         else:
             self._opt.zero_grad()
 
+    def _register_hooks(self):
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                if p.requires_grad:
+                    p.grad = p.data.new(p.size()).zero_()
+                    self._requires_update.add(p)
+                    p_tmp = p.expand_as(p)
+                    grad_acc = p_tmp.grad_fn.next_functions[0][0]
+                    grad_acc.register_hook(self._make_hook(p))
+                    self._grad_accs.append(grad_acc)
+
+    def _synchronize(self):
+        """Push pull missing parameters"""
+        missing_p = self._requires_update - set(self._handles.keys())
+        for p in missing_p:
+            handle, ctx = self._push_pull_grad_async(p)
+            self._handles[p] = (handle, ctx)
+
+        for p, value in self._handles.items():
+            handle, ctx = value
+            if handle is None:
+                handle, ctx = self._push_pull_grad_async(p)
+                self._handles[p] = (handle, ctx)
+
     def _push_pull_grad_async(self, p):
         """Call byteps API to push-pull gradient asynchronously
         Arguments:
@@ -128,22 +138,22 @@ class ScheduledOptimizer(_DistributedOptimizer):
 
         self._locks[p].acquire()
         handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-
+        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._parameter_names[p]))
         # Add to queue to poll completion
-        self.event_queue.put((name, p, handle, ctx))
+        self._event_queue.put((p, handle, ctx))
         return handle, ctx
 
     def _poll(self):
         """Poll the completion of the tensor's backward or push-pull from a FIFO event_queue"""
         while True:
-            p, grad, handle, ctx = self.event_queue.get()
+            p, handle, ctx = self._event_queue.get()
             if p is None:
                 self._logger.debug("poller exits.")
                 break
             # Check whether the push-pull is finished. If so, start updating parameters.
             if handle is not None and poll(handle):
                 output = synchronize(handle)
-                grad.set_(self._compression.decompress(output, ctx))
+                p.grad.set_(self._compression.decompress(output, ctx))
                 self._logger.debug("{} {} finished push-pull".format(self._desc, self._parameter_names[p]))
                 self._push_pull_delay[p] = self.backward_passes_per_step
                 del self._handles[p]
@@ -160,7 +170,7 @@ class ScheduledOptimizer(_DistributedOptimizer):
                 # notify update completion and parameter is ready for forward propagation
                 self._locks[p].release()
             else:
-                self.event_queue.put((p, grad, handle, ctx))
+                self._event_queue.put((p, handle, ctx))
 
     def _register_forward_hooks(self):
         """Add hook before forward propagation of each layer to block forward computation until the push-pull and
@@ -354,3 +364,21 @@ class ScheduledOptimizer(_DistributedOptimizer):
                 else:
                     p.data.addcdiv_(-group['lr'], grad, avg)
                 break
+
+
+def init():
+    """Replace _register_hook() function in _DistributedOptimizer with empty function."""
+
+    def hijack(obj, func_name):
+        orig_func = getattr(obj, func_name)
+        print("hijack function {}".format(orig_func))
+
+        def wrapped_func(*args, **kwargs):
+            print("function {} is hijacked to do nothing.".format(orig_func))
+            return
+        setattr(obj, func_name, wrapped_func)
+
+    hijack(_DistributedOptimizer, '_register_hooks')
+
+
+init()
