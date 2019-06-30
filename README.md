@@ -49,7 +49,8 @@ python setup.py install
 ```
 Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support.
 
-For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server`. Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our [Dockerfile](docker/Dockerfile.server).
+For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server`. Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our [Dockerfile](docker/Dockerfile.server). Note that RDMA support is not included in the prebuilt docker image. For that, please add `USE_RDMA=1`
+to the MXNet build flags.
 
 Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
