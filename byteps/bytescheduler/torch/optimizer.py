@@ -1,20 +1,31 @@
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from byteps.torch.compression import Compression
+from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
+from byteps.torch.ops import poll, synchronize
+from byteps.torch.ops import init, shutdown
+from byteps.torch.ops import size, local_size, rank, local_rank
+
 import threading
 import logging
 try:
     import queue
 except ImportError:
     import Queue as queue
-import torch
-from byteps.torch import _DistributedOptimizer
-from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
-from byteps.torch.ops import poll, synchronize
-from byteps.torch.ops import size, rank
 import time
 import math
+import torch
+import byteps.torch as bps
+
+_DistributedOptimizer = bps._DistributedOptimizer
+_bps_DistributedOptimizer = bps.DistributedOptimizer
+broadcast_parameters = bps.broadcast_parameters
+broadcast_optimizer_state = bps.broadcast_optimizer_state
 
 
-class ScheduledOptimizer(_DistributedOptimizer):
+class _ScheduledOptimizer(_DistributedOptimizer):
     """An optimizer that wraps a _DistributedOptimizer, intercepting push-pull operations.
     This class enables overlapping gradient push-pull with both backward and forward propagation while maintaining
     correct dependencies. It can achieve even higher training performance than current BytePS.
@@ -27,13 +38,6 @@ class ScheduledOptimizer(_DistributedOptimizer):
             byteps_opt: Optimizer to use for averaging gradients and applying updates.
             num_steps: The maximum number of training steps. ByteScheduler needs to know when to stop cross-iteration
             scheduling.
-        Usage example:
-        ```
-        optimizer = bps.DistributedOptimizer(optimizer, named_parameters, compression)
-        # ByteScheduler: wrap BytePS optimizer with ScheduledOptimizer.
-        import byteps.bytescheduler.torch as bsc
-        optimizer = bsc.ScheduledOptimizer(model, optimizer, num_steps)
-        ```
         """
         self._model = model
         self._opt = byteps_opt
@@ -80,6 +84,7 @@ class ScheduledOptimizer(_DistributedOptimizer):
                 self._logger.debug("final step {}, waiting for push-pull completion.".format(self._final_step))
                 while not self._event_queue.empty():
                     time.sleep(0.001)
+                self._logger.debug("training finished!")
             loss = None
             if closure is not None:
                 loss = closure()
@@ -156,7 +161,6 @@ class ScheduledOptimizer(_DistributedOptimizer):
                 p.grad.set_(self._compression.decompress(output, ctx))
                 self._logger.debug("{} {} finished push-pull".format(self._desc, self._parameter_names[p]))
                 self._push_pull_delay[p] = self.backward_passes_per_step
-                del self._handles[p]
                 # So far ByteScheduler only supports SGD, Adam and RMSprop optimizers in torch
                 if isinstance(self._opt, torch.optim.SGD):
                     self._sgd(p)
@@ -168,7 +172,8 @@ class ScheduledOptimizer(_DistributedOptimizer):
                     raise ValueError("Invalid optimizer! ByteScheduler only supports SGD, Adam and RMSprop.")
                 self._zero_one_grad(p)
                 # notify update completion and parameter is ready for forward propagation
-                self._locks[p].release()
+                if p in self._locks:
+                    self._locks[p].release()
             else:
                 self._event_queue.put((p, handle, ctx))
 
@@ -190,6 +195,8 @@ class ScheduledOptimizer(_DistributedOptimizer):
 
         def pre_forward_hook(mod, input):
             for p in mod.parameters():
+                if p in self._handles:
+                    del self._handles[p]
                 if p not in self._locks:
                     continue
                 with self._locks[p]:
@@ -366,19 +373,30 @@ class ScheduledOptimizer(_DistributedOptimizer):
                 break
 
 
-def init():
+def _init_bsc():
     """Replace _register_hook() function in _DistributedOptimizer with empty function."""
 
     def hijack(obj, func_name):
         orig_func = getattr(obj, func_name)
-        print("hijack function {}".format(orig_func))
+        # print("hijack function {}".format(orig_func))
 
         def wrapped_func(*args, **kwargs):
-            print("function {} is hijacked to do nothing.".format(orig_func))
+            # print("function {} is hijacked to do nothing.".format(orig_func))
             return
         setattr(obj, func_name, wrapped_func)
 
     hijack(_DistributedOptimizer, '_register_hooks')
 
 
-init()
+def DistributedOptimizer(model,
+                         optimizer,
+                         named_parameters=None,
+                         compression=Compression.none,
+                         backward_passes_per_step=1,
+                         num_steps=10**6):
+    """Wrap Torch optimizer using BytePS DistributedOptimizer and ByteScheduler _ScheduledOptimizer."""
+    bps_opt = _bps_DistributedOptimizer(optimizer, named_parameters, compression, backward_passes_per_step)
+    return _ScheduledOptimizer(model, bps_opt, num_steps)
+
+
+_init_bsc()
