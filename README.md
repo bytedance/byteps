@@ -33,7 +33,7 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 ## Quick Start
 
-We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks.
+We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks. After you can start BytePS, read [best practice](docs/best-practice.md) to get the best performance.
 
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
