@@ -43,14 +43,17 @@ If you want to build BytePS using our provided pip source, you can pick YOUR_WHE
 python -m pip install --index-url https://test.pypi.org/simple/ --no-deps YOUR_WHEEL_URL
 ``` 
 
-If you want to build from source code (please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.worker.pytorch.cu100#L123-L131) is an example):
+If the above does not contain your desired pip version, or you want to try building from source code: 
 
 ```
 git clone --recurse-submodules https://github.com/bytedance/byteps
 cd byteps
 python setup.py install
 ```
-Note: you may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
+
+Notes:
+- Please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.worker.pytorch.cu100#L123-L131) is an example.
+- You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
 
 
 For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server`. Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our [Dockerfile](docker/Dockerfile.server). Note that RDMA support is not included in the prebuilt docker image. For that, please add `USE_RDMA=1`
