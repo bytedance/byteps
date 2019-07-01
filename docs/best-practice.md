@@ -27,7 +27,7 @@ To address this, you can try running more BytePS server instances on the server 
 
 In the single machine case, if you leave `BYTEPS_PCIE_SWITCH_SIZE` unmodified, BytePS performance should never be lower than Horovod/NCCL.
 
-In multi-machine case, if the deployment satisfies the two requirements above, you should see 40% - 100% training speed improvement compared with Horovod/NCCL.
+In multi-machine case, if the deployment satisfies the two requirements above, you should see BytePS is at least as fast as Horovod or TF and MXNet's native PS. If each of your workers has two or more GPUs, you should see significant improvement, like 40% - 100% compared with other existing solutions.
 
 If you have to deploy server instances on the same physical machines as workers, the performance will be similar to Horovod/NCCL.
 
