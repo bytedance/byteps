@@ -38,12 +38,9 @@ We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to r
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
 
-If you want to build BytePS using our provided pip source, you can pick YOUR_WHEEL_URL from [pip-list.md](docs/pip-list.md), and then:
-```
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps YOUR_WHEEL_URL
-``` 
+If you want to build BytePS using our provided pip source, you can download our wheels and then install. Please refer to [pip-list.md](docs/pip-list.md) for more instructions.
 
-If the above does not contain your desired pip version, or you want to try building from source code: 
+If the above does not contain your desired wheel version, or you want to try building from source code: 
 
 ```
 git clone --recurse-submodules https://github.com/bytedance/byteps

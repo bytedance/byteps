@@ -3,7 +3,8 @@
 Choose a pip source according to the framework and CUDA version you already have. Find YOUR_WHEEL_URL from the below lists, and then: 
 
 ```
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps YOUR_WHEEL_URL
+wget -O byteps-0.1.0-cp27-none-any.whl YOUR_WHEEL_URL
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps byteps-0.1.0-cp27-none-any.whl
 ```
 
 Note: All of the following are only valid for workers. You should refer to [this](/docker/Dockerfile.server) for server/scheduler images.  
