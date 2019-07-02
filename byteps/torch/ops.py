@@ -106,17 +106,15 @@ class BytePSPushPull(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        # Not sure whether this is correct
-        return push_pull_compress(grad_output,
+        return push_pull(grad_output,
             ctx.average, ctx.name, ctx.version, ctx.priority), None, None
 
 
-def push_pull_compress(tensor, average=True, name=None, version=0, priority=0, compression=Compression.none):
+def push_pull(tensor, average=True, name=None, version=0, priority=0, compression=Compression.none):
     """
     A function that performs averaging or summation of the input tensor over all the
-    BytePS processes. The input tensor is not modified.
-    The reduction operation is keyed by the name. If name is not provided, an incremented
-    auto-generated name is used. The tensor type and shape must be the same on all
+    BytePS processes. The input tensor is not modified. The reduction operation is keyed 
+    by the name. The name must be provided. The tensor type and shape must be the same on all
     BytePS processes for a given name. The reduction will not start until all processes
     are ready to send and receive the tensor.
     This acts as a thin wrapper around an autograd function.  If your input
@@ -134,6 +132,8 @@ def push_pull_compress(tensor, average=True, name=None, version=0, priority=0, c
         A tensor of the same shape and type as `tensor`, averaged or summed across all
         processes.
     """
+    if name == None:
+        raise AssertionError("To manually call push_pull, you must specify a name by name=...")
     tensor_compressed, ctx = compression.compress(tensor)
     summed_tensor_compressed = BytePSPushPull.apply(tensor_compressed, average, name, version, priority)
     return compression.decompress(summed_tensor_compressed, ctx)
