@@ -78,7 +78,8 @@ RUN cd $BYTEPS_SERVER_MXNET_PATH && \
 RUN cd $BYTEPS_SERVER_MXNET_PATH && \
     cd python && \
     python setup.py build && \
-    python setup.py install
+    python setup.py install &&\
+    python setup.py bdist_wheel
 
 RUN cd $BYTEPS_BASE_PATH &&\
     git clone --recurse-submodules $BYTEPS_GIT_LINK
