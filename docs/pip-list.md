@@ -1,13 +1,22 @@
 # BytePS pip list
 
-Choose a pip source according to the framework and CUDA version you already have. Find YOUR_WHEEL_URL from the below lists, and then: 
+Note: For now the following source does not support RDMA. We will release RDMA-enabled source soon. 
+
+## Server & Scheduler
+
+```
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps \
+    https://test-files.pythonhosted.org/packages/ca/1e/6bf1dbd7e1e6dff1ef50d1e7c569d7500ec23b389b6d18a4c516b8ea39bd/byteps_server-1.5.0-py2-none-any.whl 
+```
+
+## Worker
+
+Choose a pypi source according to the framework and CUDA version you already have. Find YOUR_WHEEL_URL from the below lists, and then: 
 
 ```
 wget -O byteps-0.1.0-cp27-none-any.whl YOUR_WHEEL_URL
 python -m pip install --index-url https://test.pypi.org/simple/ --no-deps byteps-0.1.0-cp27-none-any.whl
 ```
-
-Note: All of the following are only valid for workers. You should refer to [this](/docker/Dockerfile.server) for server/scheduler images.  
 
 
 
@@ -37,5 +46,4 @@ MXNet
 | --- | --- | --- |
 | 1.4.1 | 9.0 | https://test-files.pythonhosted.org/packages/11/3c/0abba947c2d212ea205801108e81d8445d08686bbf91a72d3dc8249dd266/byteps_mxnet1.4.1_cu90-0.1.0-cp27-none-any.whl |
 | 1.4.1 | 10.0 | https://test-files.pythonhosted.org/packages/3b/c5/c9545305cac2669f90819e33c748c169a7ae6daf454326a21879b3376fff/byteps_mxnet1.4.1_cu100-0.1.0-cp27-none-any.whl |
-
 
