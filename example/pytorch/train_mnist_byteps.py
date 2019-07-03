@@ -130,7 +130,7 @@ def train(epoch):
 
 def metric_average(val, name):
     tensor = torch.tensor(val)
-    avg_tensor = bps.allreduce(tensor, name=name)
+    avg_tensor = bps.push_pull(tensor, name=name)
     return avg_tensor.item()
 
 
