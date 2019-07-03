@@ -21,8 +21,6 @@
 #include "communicator.h"
 #include "logging.h"
 
-#define BYTEPS_CPU_REDUCER_THREADS 16
-
 namespace byteps {
 namespace common {
 

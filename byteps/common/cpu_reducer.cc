@@ -28,7 +28,12 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
         peers.push_back(i);
     }
     _comm = std::make_shared<BytePSCommSocket>(comm, std::string("cpu"), peers);
-    _num_threads = BYTEPS_CPU_REDUCER_THREADS;
+    if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
+        _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
+    }
+    else {
+        _num_threads = 4;
+    }
     return;
 }
 
