@@ -128,10 +128,10 @@ class DistributedTrainer(mx.gluon.Trainer):
     """A subclass of MXNet gluon.Trainer.
 
     There are two differences between DistributedTrainer and Trainer:
-    1. DistributedTrainer calculates gradients using Byteps push pull
+    1. DistributedTrainer calculates gradients using BytePS push pull
        API while Trainer does it using kvstore push/pull APIs;
-    2. DistributedTrainer performs allreduce(summation) and average
-       while Trainer only performs allreduce(summation).
+    2. DistributedTrainer performs push_pull(summation) and average,
+       while Trainer only performs push_pull(summation).
 
     Parameters
     ----------
@@ -158,8 +158,8 @@ class DistributedTrainer(mx.gluon.Trainer):
             params, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
         # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
-        # function. Normalizing it by byteps size, which is equivalent to performing
-        # average in allreduce, has better performance.
+        # function. Normalizing it by BytePS size, which is equivalent to performing
+        # average in push_pull, has better performance.
         self._scale /= size()
 
     def _allreduce_grads(self):
