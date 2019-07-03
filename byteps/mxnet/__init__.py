@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import warnings
 
 from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
@@ -122,4 +123,48 @@ def broadcast_parameters(params, root_rank=0):
     for tensor in tensors:
         tensor.wait_to_read()
 
+
+class DistributedTrainer(mx.gluon.Trainer):
+    """A subclass of MXNet gluon.Trainer.
+
+    There are two differences between DistributedTrainer and Trainer:
+    1. DistributedTrainer calculates gradients using BytePS push pull
+       API while Trainer does it using kvstore push/pull APIs;
+    2. DistributedTrainer performs push_pull(summation) and average,
+       while Trainer only performs push_pull(summation).
+
+    Parameters
+    ----------
+    params : ParameterDict
+        The set of parameters to optimize.
+    optimizer : str or Optimizer
+        The optimizer to use. See
+        `help <http://mxnet.io/api/python/optimization/optimization.html#the-mxnet-optimizer-package>`_
+        on Optimizer for a list of available optimizers.
+    optimizer_params : dict
+        Key-word arguments to be passed to optimizer constructor. For example,
+        `{'learning_rate': 0.1}`. All optimizers accept learning_rate, wd (weight decay),
+        clip_gradient, and lr_scheduler. See each optimizer's
+        constructor for a list of additional supported arguments.
+    """
+
+    def __init__(self, params, optimizer, optimizer_params=None):
+        if isinstance(optimizer, DistributedOptimizer):
+            optimizer = optimizer._optimizer
+            warnings.warn("DistributedTrainer does not take DistributedOptimizer "
+                          "as its optimizer. We have unwrapped it for you.")
+
+        super(DistributedTrainer, self).__init__(
+            params, optimizer, optimizer_params=optimizer_params, kvstore=None)
+
+        # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
+        # function. Normalizing it by BytePS size, which is equivalent to performing
+        # average in push_pull, has better performance.
+        self._scale /= size()
+
+    def _allreduce_grads(self):
+        for i, param in enumerate(self._params):
+            if param.grad_req != 'null':
+                byteps_push_pull(param.list_grad()[0], is_average=False,
+                                 name="parameter_"+str(i), priority=-i)
 
