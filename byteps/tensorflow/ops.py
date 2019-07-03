@@ -127,10 +127,14 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     full_name = scope + name
     full_name = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
-    if is_variable and (root_rank != rank()):
-        return C_LIB.byteps_push_pull(tensor.assign(tf.zeros_like(tensor)), name=name)
+    if root_rank != rank():
+        if is_variable:
+            with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                return C_LIB.byteps_push_pull(tensor, name=name)
+        else:
+            with tf.device(tensor.device):
+                return C_LIB.byteps_push_pull(tensor * 0, name=name)
     else:
-        # TODO: needs to zero-out non-variable tensors, too
         return C_LIB.byteps_push_pull(tensor, name=name)
 
 @ops.RegisterGradient('BytePSBroadcast')
