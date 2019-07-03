@@ -216,6 +216,7 @@ Status EnqueueTensor(BPSContext &context,
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     std::lock_guard<std::mutex> lock(context.init_mutex);
     if (context.initialized) { return; }
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
 
     BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
     // Get metadata
