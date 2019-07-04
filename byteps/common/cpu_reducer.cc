@@ -13,7 +13,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "cpu_reducer.h"
 #include "global.h"
 
 namespace byteps {
@@ -84,16 +83,37 @@ int CpuReducer::_sum_float64(void* dst, void* src, size_t len) {
 }
 
 int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
-    // convert half precision to fp32 --> do sum --> convert fp32 to half precision
-    auto d = (uint16_t*) dst;
-    auto s = (uint16_t*) src;
-#pragma omp parallel for simd num_threads(_num_threads)
-    for (size_t i = 0; i < len / (size_t) 2; ++i) {
-        float d_fp32 = _convert_half_to_full_precision((uint16_t) d[i]);
-        float s_fp32 = _convert_half_to_full_precision((uint16_t) s[i]);
-        d_fp32 = d_fp32 + s_fp32;
-        d[i] = _convert_full_to_half_precision((float) d_fp32);
+    // cast src and dst to your float16 type
+    auto* in = (unsigned short*)src;
+    auto* inout = (unsigned short*)dst;
+
+    int i = 0;
+#if __AVX__ && __F16C__
+    if (is_avx_and_f16c()) {
+      for (; i < (int) (len / 8) * 8; i += 8) {
+        // convert in & inout to m256
+        __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in + i)));
+        __m256 inout_m256 =
+            _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(inout + i)));
+
+        // add them together to new_inout_m256
+        __m256 new_inout_m256 = _mm256_add_ps(in_m256, inout_m256);
+
+        // convert back and store in inout
+        __m128i new_inout_m128i = _mm256_cvtps_ph(new_inout_m256, 0);
+        _mm_storeu_si128((__m128i*)(inout + i), new_inout_m128i);
+      }
     }
+#endif
+    for (; i < (int) len; ++i) {
+      float in_float;
+      float inout_float;
+      HalfBits2Float(in + i, &in_float);
+      HalfBits2Float(inout + i, &inout_float);
+      inout_float += in_float;
+      Float2HalfBits(&inout_float, inout + i);
+    }
+
     return 0;
 }
 
@@ -182,19 +202,6 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
 }
 
 int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
-    // convert half precision to fp32 --> do sum --> convert fp32 to half precision
-    auto d = (uint16_t*) dst;
-    auto s1 = (uint16_t*) src1;
-    auto s2 = (uint16_t*) src2;
-
-#pragma omp parallel for simd num_threads(_num_threads)
-    for (size_t i = 0; i < len / (size_t) 2; ++i) {
-        float d_fp32 = _convert_half_to_full_precision((uint16_t) d[i]);
-        float s1_fp32 = _convert_half_to_full_precision((uint16_t) s1[i]);
-        float s2_fp32 = _convert_half_to_full_precision((uint16_t) s2[i]);
-        d_fp32 = s1_fp32 + s2_fp32;
-        d[i] = _convert_full_to_half_precision((float) d_fp32);
-    }
     return 0;
 }
 
@@ -242,16 +249,7 @@ int CpuReducer::_sum_int64(void* dst, void* src1, void* src2, size_t len) {
     return 0;
 }
 
-float CpuReducer::_convert_half_to_full_precision(uint16_t h) {
-    float f = ((h&0x8000)<<16) | (((h&0x7c00)+0x1C000)<<13) | ((h&0x03FF)<<13);
-    return f;
-}
 
-uint16_t CpuReducer::_convert_full_to_half_precision(float f) {
-    uint32_t x = *((uint32_t*)&f);
-    uint16_t h = ((x>>16)&0x8000) | ((((x&0x7f800000)-0x38000000)>>13)&0x7c00) | ((x>>13)&0x03ff);
-    return h;
-}
 
 
 } // namespace common
