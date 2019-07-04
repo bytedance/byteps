@@ -202,6 +202,38 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
 }
 
 int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
+    // cast src and dst to your float16 type
+    auto* in1 = (unsigned short*)src1;
+    auto* in2 = (unsigned short*)src2;
+    auto* out = (unsigned short*)dst;
+
+    int i = 0;
+#if __AVX__ && __F16C__
+    if (is_avx_and_f16c()) {
+      for (; i < (int) (len / 8) * 8; i += 8) {
+        // convert in1 & in2 to m256
+        __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
+        __m256 inout_m256 =
+            _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in2 + i)));
+
+        // add them together to new_inout_m256
+        __m256 new_inout_m256 = _mm256_add_ps(in_m256, inout_m256);
+
+        // convert back and store in out
+        __m128i new_inout_m128i = _mm256_cvtps_ph(new_inout_m256, 0);
+        _mm_storeu_si128((__m128i*)(out + i), new_inout_m128i);
+      }
+    }
+#endif
+    for (; i < (int) len; ++i) {
+      float in1_float;
+      float in2_float;
+      float out_float;
+      HalfBits2Float(in1 + i, &in1_float);
+      HalfBits2Float(in2 + i, &in2_float);
+      out_float = in1_float + in2_float;
+      Float2HalfBits(&out_float, out + i);
+    }
     return 0;
 }
 
