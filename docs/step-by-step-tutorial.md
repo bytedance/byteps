@@ -200,7 +200,7 @@ export DMLC_NUM_SERVER=1
 # the RDMA interface name of the scheduler
 export DMLC_INTERFACE=eth5
 
-# your scheduler's RDMA NIC information (IP, port, interface name)
+# your scheduler's RDMA NIC information (IP, port)
 export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
@@ -224,7 +224,7 @@ export DMLC_NUM_SERVER=1
 # the RDMA interface name of the server
 export DMLC_INTERFACE=eth5
 
-# your scheduler's RDMA NIC information (IP, port, interface name)
+# your scheduler's RDMA NIC information (IP, port)
 export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
@@ -252,7 +252,7 @@ export DMLC_NUM_SERVER=1
 # the RDMA interface name of this worker
 export DMLC_INTERFACE=eth5
 
-# your scheduler's RDMA NIC information (IP, port, interface name)
+# your scheduler's RDMA NIC information (IP, port)
 export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
@@ -284,7 +284,7 @@ export DMLC_NUM_SERVER=1
 # the RDMA interface name of this worker
 export DMLC_INTERFACE=eth5
 
-# your scheduler's RDMA NIC information (IP, port, interface name)
+# your scheduler's RDMA NIC information (IP, port)
 export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
