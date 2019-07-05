@@ -83,7 +83,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
     auto enqueue_result = common::EnqueueTensor(
         context, byteps_input, byteps_output, ready_event,
         device, priority, version,
-        [handle, average, tensor](const Status& status) mutable {
+        [handle, average, tensor, output](const Status& status) mutable {
             // Will execute in the `device` context.
             if (average) {
                 output.div_(byteps_size());
