@@ -86,7 +86,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
         [handle, average, tensor](const Status& status) mutable {
             // Will execute in the `device` context.
             if (average) {
-                tensor.div_(byteps_size());
+                output.div_(byteps_size());
             }
             handle_manager.MarkDone(handle, status);
         }, queue_list);
