@@ -18,19 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
 import warnings
+import mxnet as mx
 
 from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
-import mxnet as mx
-import types
+parameter_index = 0
 
 
-# This is where BytePS's DistributedOptimizer wrapper for MXNet goes
 class DistributedOptimizer(mx.optimizer.Optimizer):
+    """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
     def __init__(self, optimizer):
         self._optimizer = optimizer
 
@@ -43,11 +42,13 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor(grad[i], "gradient_"+str(index[i]))
-                byteps_push_pull(grad[i], version=0, priority=-index[i], name="gradient_"+str(index[i]), is_average=True)
+                byteps_declare_tensor(grad[i], "gradient_" + str(index[i]))
+                byteps_push_pull(grad[i], version=0, priority=-index[i],
+                                 name="gradient_" + str(index[i]), is_average=True)
         else:
-            byteps_declare_tensor(grad, "gradient_"+str(index))
-            byteps_push_pull(grad, version=0, priority=-index, name="gradient_"+str(index), is_average=True)
+            byteps_declare_tensor(grad, "gradient_" + str(index))
+            byteps_push_pull(grad, version=0, priority=-index,
+                             name="gradient_" + str(index), is_average=True)
 
     def update(self, index, weight, grad, state):
         self._do_push_pull(index, grad)
@@ -66,62 +67,45 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def set_wd_mult(self, args_wd_mult):
         self._optimizer.set_wd_mult(args_wd_mult)
 
-# Wrapper to inject BytePS broadcast after parameter initialization
-def _append_broadcast_init(param, root_rank, index):
-    init_impl = getattr(param, '_init_impl')
-    def wrapped_init_impl(self, *args, **kwargs):
-        init_impl(*args, **kwargs)
-        # Broadcast is implemented as push + pull in BytePS
-        byteps_push_pull(self.data(), version=0, priority=0, name="parameter_"+str(index), is_average=False)
-        self.data().wait_to_read()
-    return wrapped_init_impl
-
-parameter_index = 0
 
 def broadcast_parameters(params, root_rank=0):
     """
     Broadcasts the parameters from root rank to all other processes.
-    Typical usage is to broadcast the `Module.get_params()` or the
-    `Block.collect_params()`.
+    Typical usage is to broadcast the `Module.get_params()`.
+
     Arguments:
-        params: One of the following:
-            - dict of parameters to broadcast
-            - ParameterDict to broadcast
+        params: dict of parameters to broadcast
         root_rank: The rank of the process from which parameters will be
                    broadcasted to all other processes.
     """
-    tensors = []
+    global parameter_index
+
     if isinstance(params, dict):
         tensors = [p for _, p in sorted(params.items())]
+
+        # Run tensor initilization
+        for i in range(len(tensors)):
+            byteps_declare_tensor(tensors[i], "parameter_" + str(parameter_index))
+            # Broadcast is implemented as push + pull in BytePS
+            # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
+            if rank() != root_rank:
+                tensors[i].__imul__(0)
+            byteps_push_pull(tensors[i], version=0, priority=0,
+                             name="parameter_" + str(parameter_index), is_average=False)
+            parameter_index += 1
+
+        # Make sure tensors pushed to MXNet engine get processed such that all
+        # workers are synced before starting training.
+        for tensor in tensors:
+            tensor.wait_to_read()
+
     elif isinstance(params, mx.gluon.parameter.ParameterDict):
-        for _, p in sorted(params.items()):
-            try:
-                tensors.append(p.data())
-            except mx.gluon.parameter.DeferredInitializationError:
-                # Inject wrapper method with post-initialization broadcast to
-                # handle parameters with deferred initialization
-                global parameter_index
-                byteps_declare_tensor(p.data(), "parameter_"+str(parameter_index))
-                new_init = _append_broadcast_init(p, root_rank, parameter_index)
-                parameter_index += 1
-                p._init_impl = types.MethodType(new_init, p)
+        raise TypeError("For gluon users, you should not call this function. "
+                        "DistributedTrainer will broadcast all parameters at "
+                        "the first training step.")
+
     else:
-        raise ValueError('invalid params of type: %s' % type(params))
-
-    # Run tensor initilization
-    for i in range(len(tensors)):
-        byteps_declare_tensor(tensors[i], "parameter_"+str(parameter_index))
-        # Broadcast is implemented as push + pull in BytePS
-        # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
-        if rank() != root_rank:
-            tensors[i].__imul__(0)
-        byteps_push_pull(tensors[i], version=0, priority=0, name="parameter_"+str(parameter_index), is_average=False)
-        parameter_index += 1
-
-    # Make sure tensors pushed to MXNet engine get processed such that all
-    # workers are synced before starting training.
-    for tensor in tensors:
-        tensor.wait_to_read()
+        raise ValueError('Invalid params of type: %s' % type(params))
 
 
 class DistributedTrainer(mx.gluon.Trainer):
@@ -148,7 +132,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         constructor for a list of additional supported arguments.
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None):
+    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
@@ -161,10 +145,29 @@ class DistributedTrainer(mx.gluon.Trainer):
         # function. Normalizing it by BytePS size, which is equivalent to performing
         # average in push_pull, has better performance.
         self._scale /= size()
+        self.root_rank = root_rank
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
+                byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
-                                 name="parameter_"+str(i), priority=-i)
+                                 name="gradient_" + str(i), priority=-i)
 
+    def _init_params(self):
+        tensors = []
+        for param in self._params_to_init:
+            if param._deferred_init:
+                tensors.append(param)
+            else:
+                param_arrays = param._check_and_get(param._data, list)
+                idx = self._param2idx[param.name]
+                byteps_declare_tensor(param_arrays[0], "parameter_" + str(idx))
+
+                if rank() != self.root_rank:
+                    param_arrays[0].__imul__(0)
+                byteps_push_pull(param_arrays[0], version=0, priority=0,
+                                 name="parameter_" + str(idx), is_average=False)
+                param_arrays[0].wait_to_read()
+
+        self._params_to_init = tensors
