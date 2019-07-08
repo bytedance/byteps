@@ -133,7 +133,8 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
                 return C_LIB.byteps_push_pull(tensor, name=name)
         else:
             with tf.device(tensor.device):
-                return C_LIB.byteps_push_pull(tensor * 0, name=name)
+                input_tensor = tf.zeros_like(tensor)
+            return C_LIB.byteps_push_pull(input_tensor, name=name)
     else:
         return C_LIB.byteps_push_pull(tensor, name=name)
 
