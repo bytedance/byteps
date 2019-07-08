@@ -84,13 +84,14 @@ int CpuReducer::_sum_float64(void* dst, void* src, size_t len) {
 
 int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
     // cast src and dst to your float16 type
-    auto* in = (unsigned short*)src;
-    auto* inout = (unsigned short*)dst;
+    auto in = (unsigned short*)src;
+    auto inout = (unsigned short*)dst;
+    len = len / (size_t) 2;
 
-    int i = 0;
 #if __AVX__ && __F16C__
     if (is_avx_and_f16c()) {
-      for (; i < (int) (len / 8) * 8; i += 8) {
+#pragma omp parallel for simd num_threads(_num_threads)
+      for (size_t i = 0; i < (size_t) (len / 8) * 8; i += 8) {
         // convert in & inout to m256
         __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in + i)));
         __m256 inout_m256 =
@@ -102,10 +103,11 @@ int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
         // convert back and store in inout
         __m128i new_inout_m128i = _mm256_cvtps_ph(new_inout_m256, 0);
         _mm_storeu_si128((__m128i*)(inout + i), new_inout_m128i);
+
       }
     }
 #endif
-    for (; i < (int) len; ++i) {
+    for (size_t i = (len / 8) * 8; i < (size_t) len; ++i) {
       float in_float;
       float inout_float;
       HalfBits2Float(in + i, &in_float);
@@ -203,14 +205,15 @@ int CpuReducer::_sum_float64(void* dst, void* src1, void* src2, size_t len) {
 
 int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
     // cast src and dst to your float16 type
-    auto* in1 = (unsigned short*)src1;
-    auto* in2 = (unsigned short*)src2;
-    auto* out = (unsigned short*)dst;
+    auto in1 = (unsigned short*)src1;
+    auto in2 = (unsigned short*)src2;
+    auto out = (unsigned short*)dst;
+    len = len / (size_t) 2;
 
-    int i = 0;
 #if __AVX__ && __F16C__
     if (is_avx_and_f16c()) {
-      for (; i < (int) (len / 8) * 8; i += 8) {
+#pragma omp parallel for simd num_threads(_num_threads)
+      for (size_t i = 0; i < (size_t) (len / 8) * 8; i += 8) {
         // convert in1 & in2 to m256
         __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
         __m256 inout_m256 =
@@ -225,7 +228,7 @@ int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
       }
     }
 #endif
-    for (; i < (int) len; ++i) {
+    for (size_t i = (size_t) (len / 8) * 8; i < (size_t) len; ++i) {
       float in1_float;
       float in2_float;
       float out_float;
@@ -280,9 +283,6 @@ int CpuReducer::_sum_int64(void* dst, void* src1, void* src2, size_t len) {
     }
     return 0;
 }
-
-
-
 
 } // namespace common
 } // namespace byteps
