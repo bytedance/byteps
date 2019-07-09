@@ -22,6 +22,7 @@
 #include <mxnet/c_api_error.h>
 #include <mxnet/engine.h>
 #include <mxnet/ndarray.h>
+#include "../common/common.h"
 
 namespace byteps {
 namespace mxnet {
