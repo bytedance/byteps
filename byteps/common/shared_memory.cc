@@ -16,7 +16,6 @@
 #include "shared_memory.h"
 #include <fcntl.h>
 #include <numa.h>
-#include <sys/mman.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/types.h>
