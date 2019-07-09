@@ -57,8 +57,7 @@ Notes:
 - You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
 
 
-For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server`. Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our [Dockerfile](docker/Dockerfile.server). Note that RDMA support is not included in the prebuilt docker image. For that, please add `USE_RDMA=1`
-to the MXNet build flags.
+For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server` (TCP) or `bytepsimage/byteps_server_rdma` (RDMA). Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our dockerfiles: [Dockerfile.server](docker/Dockerfile.server) and [Dockerfile.server.rdma](docker/Dockerfile.server.rdma). 
 
 Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 

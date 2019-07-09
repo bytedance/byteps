@@ -1,12 +1,13 @@
 # BytePS pip list
 
-Note: For now the following source does not support RDMA. We will release RDMA-enabled source soon. 
+Note: For now the following source does not support RDMA. You may compile RDMA-enabled docker images using our [dockerfiles](/docker).
 
 ## Server & Scheduler
 
 ```
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps \
-    https://test-files.pythonhosted.org/packages/ca/1e/6bf1dbd7e1e6dff1ef50d1e7c569d7500ec23b389b6d18a4c516b8ea39bd/byteps_server-1.5.0-py2-none-any.whl 
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps byteps-server
+
+export BYTEPS_SERVER_MXNET_PATH=/usr/local/lib/python2.7/dist-packages/mxnet
 ```
 
 ## Worker
