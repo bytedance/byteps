@@ -17,6 +17,7 @@
 #define BYTEPS_SHARED_MEMORY_H
 
 #include <cuda_runtime.h>
+#include <sys/mman.h>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
