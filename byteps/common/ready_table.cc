@@ -13,32 +13,29 @@
 // limitations under the License.
 // =============================================================================
 
-#include "logging.h"
 #include "ready_table.h"
-
+#include "logging.h"
 
 namespace byteps {
 namespace common {
 
-
 // below are methods for accessing/modifying the _ready_table
 bool ReadyTable::IsKeyReady(uint64_t key) {
-    std::lock_guard<std::mutex> lock(_table_mutex);
-    return _ready_table[key] == (_ready_count);
+  std::lock_guard<std::mutex> lock(_table_mutex);
+  return _ready_table[key] == (_ready_count);
 }
 
 int ReadyTable::AddReadyCount(uint64_t key) {
-    std::lock_guard<std::mutex> lock(_table_mutex);
-    BPS_CHECK_LT(_ready_table[key], _ready_count)
-        << _table_name << ": "
-        << _ready_table[key] << ", " << (_ready_count);
-    return ++_ready_table[key];
+  std::lock_guard<std::mutex> lock(_table_mutex);
+  BPS_CHECK_LT(_ready_table[key], _ready_count)
+      << _table_name << ": " << _ready_table[key] << ", " << (_ready_count);
+  return ++_ready_table[key];
 }
 
 void ReadyTable::ClearReadyCount(uint64_t key) {
-    std::lock_guard<std::mutex> lock(_table_mutex);
-    _ready_table[key] = 0;
+  std::lock_guard<std::mutex> lock(_table_mutex);
+  _ready_table[key] = 0;
 }
 
-}
-}
+}  // namespace common
+}  // namespace byteps

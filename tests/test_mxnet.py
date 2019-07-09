@@ -124,7 +124,7 @@ class MXTest:
             return
 
         dtypes = ['int32',   'int64',
-                  'float32', 'float64'] 
+                  'float32', 'float64']
         dims = [1, 2, 3]
         ctx = self._current_context()
         count = 0

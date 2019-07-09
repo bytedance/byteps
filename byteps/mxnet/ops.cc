@@ -14,13 +14,11 @@
 // limitations under the License.
 // =============================================================================
 
+#include "ops.h"
 #include <atomic>
-
 #include "../common/operations.h"
-
 #include "adapter.h"
 #include "cuda_util.h"
-#include "ops.h"
 #include "ready_event.h"
 #include "tensor_util.h"
 
@@ -32,82 +30,84 @@ namespace {
 std::atomic_int op_count;
 
 std::string GetOpName(std::string prefix, char* name) {
-    if (name != nullptr) {
-      return prefix + "." + std::string(name);
-    }
+  if (name != nullptr) {
+    return prefix + "." + std::string(name);
+  }
 
-    op_count.fetch_add(1);
-    return prefix + ".noname." + std::to_string(op_count);
+  op_count.fetch_add(1);
+  return prefix + ".noname." + std::to_string(op_count);
 }
-} // namespace
+}  // namespace
 
 inline void InvokeCompleteCallback(Callback on_complete, const Status& status) {
-    if (status.ok()) {
-      on_complete();
-    } else {
-      auto error = dmlc::Error(status.reason());
-      on_complete(&error);
-    }
+  if (status.ok()) {
+    on_complete();
+  } else {
+    auto error = dmlc::Error(status.reason());
+    on_complete(&error);
+  }
 }
 
-void DoPushPull(BPSContext &context, NDArray* input, int version, int priority,
-                 Callback on_complete) {
-    ThrowIfError(common::CheckInitialized());
+void DoPushPull(BPSContext& context, NDArray* input, int version, int priority,
+                Callback on_complete) {
+  ThrowIfError(common::CheckInitialized());
 
-    auto device = TensorUtil::GetDevice(input);
-    auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
-    auto queue_list = common::GetPushQueueList(device);
-    auto queue_list_pull = common::GetPullQueueList(device);
-    queue_list->insert(queue_list->end(),
-                       queue_list_pull->begin(), queue_list_pull->end());
+  auto device = TensorUtil::GetDevice(input);
+  auto byteps_input = std::make_shared<MXTensor<NDArray>>(input);
+  auto queue_list = common::GetPushQueueList(device);
+  auto queue_list_pull = common::GetPullQueueList(device);
+  queue_list->insert(queue_list->end(), queue_list_pull->begin(),
+                     queue_list_pull->end());
 
-    auto enqueue_result =
-        common::EnqueueTensor(context, byteps_input, byteps_input, nullptr,
-                              device, priority, version,
-                              [on_complete](const Status& status) {
-                                InvokeCompleteCallback(on_complete, status);
-                              }, queue_list);
-    ThrowIfError(enqueue_result);
+  auto enqueue_result = common::EnqueueTensor(
+      context, byteps_input, byteps_input, nullptr, device, priority, version,
+      [on_complete](const Status& status) {
+        InvokeCompleteCallback(on_complete, status);
+      },
+      queue_list);
+  ThrowIfError(enqueue_result);
 }
 
-extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor,
-                                            char* name, int version, int priority, bool is_average) {
-    MX_API_BEGIN();
+extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
+                                            int version, int priority,
+                                            bool is_average) {
+  MX_API_BEGIN();
 
-    std::string tensor_name = GetOpName("byteps", name);
+  std::string tensor_name = GetOpName("byteps", name);
 
-    auto& context = common::GetContextFromName(tensor_name);
-    auto dtype = TensorUtil::GetDType(tensor);
-    auto size = TensorUtil::GetSize(tensor);
-    auto device = TensorUtil::GetDevice(tensor);
-    void* cpubuff = (device == CPU_DEVICE_ID) ? 
-        const_cast<void*>(std::make_shared<MXTensor<NDArray>>(tensor)->data()) : nullptr;
-    common::InitTensor(context, size, dtype, cpubuff);
+  auto& context = common::GetContextFromName(tensor_name);
+  auto dtype = TensorUtil::GetDType(tensor);
+  auto size = TensorUtil::GetSize(tensor);
+  auto device = TensorUtil::GetDevice(tensor);
+  void* cpubuff = (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(
+                            std::make_shared<MXTensor<NDArray>>(tensor)->data())
+                      : nullptr;
+  common::InitTensor(context, size, dtype, cpubuff);
 
-    auto push_pull_async_fn = [&context, tensor, version, priority](RunContext rctx,
-                                      Callback on_complete) mutable {
-        DoPushPull(context, tensor, version, priority, on_complete);
-    };
+  auto push_pull_async_fn = [&context, tensor, version, priority](
+                                RunContext rctx, Callback on_complete) mutable {
+    DoPushPull(context, tensor, version, priority, on_complete);
+  };
 
-    Engine::Get()->PushAsync(push_pull_async_fn, Context::CPU(),
-                            {}, {tensor->var()},
-                            FnProperty::kCPUPrioritized, 0, "BytePSPushPull");
+  Engine::Get()->PushAsync(push_pull_async_fn, Context::CPU(), {},
+                           {tensor->var()}, FnProperty::kCPUPrioritized, 0,
+                           "BytePSPushPull");
 
-    if (is_average) {
-        // average the aggregated gradient
-        auto num_worker = byteps_size();
-        *tensor /= num_worker;
-    }
+  if (is_average) {
+    // average the aggregated gradient
+    auto num_worker = byteps_size();
+    *tensor /= num_worker;
+  }
 
-    MX_API_END();
+  MX_API_END();
 }
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
-    std::string tensor_name = GetOpName("byteps", name);
-    common::IsTensorDeclared(tensor_name);
-    return;
+  std::string tensor_name = GetOpName("byteps", name);
+  common::IsTensorDeclared(tensor_name);
+  return;
 }
 
-
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps

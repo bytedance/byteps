@@ -32,12 +32,13 @@ typedef ::mxnet::Engine Engine;
 typedef ::mxnet::NDArray NDArray;
 typedef ::mxnet::Engine::CallbackOnComplete Callback;
 
-extern "C" int byteps_mxnet_push_pull_async(NDArray* input,
-                                            char* name, int version, int priority, bool is_average);
+extern "C" int byteps_mxnet_push_pull_async(NDArray* input, char* name,
+                                            int version, int priority,
+                                            bool is_average);
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name);
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps
 
-#endif // BYTEPS_MXNET_OPS_H
+#endif  // BYTEPS_MXNET_OPS_H

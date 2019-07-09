@@ -20,10 +20,10 @@
 #include <mxnet/ndarray.h>
 
 #if HAVE_CUDA
-#include "cuda_runtime.h"
 #include <mutex>
 #include <queue>
 #include <unordered_map>
+#include "cuda_runtime.h"
 
 #include "../common/common.h"
 
@@ -33,18 +33,19 @@ namespace mxnet {
 using namespace byteps::common;
 typedef ::mxnet::NDArray NDArray;
 
-template <class T> class MXReadyEvent : public ReadyEvent {
-public:
+template <class T>
+class MXReadyEvent : public ReadyEvent {
+ public:
   MXReadyEvent(NDArray* tensor);
   ~MXReadyEvent();
   virtual bool Ready() const override;
 
-private:
+ private:
   NDArray* tensor_;
 };
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps
 #endif
 
-#endif // BYTEPS_MXNET_READY_EVENT_H
+#endif  // BYTEPS_MXNET_READY_EVENT_H

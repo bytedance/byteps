@@ -30,19 +30,19 @@ namespace torch {
 using namespace byteps::common;
 
 class HandleManager {
-public:
+ public:
   int AllocateHandle();
   void MarkDone(int handle, const Status& status);
   bool PollHandle(int handle);
   std::shared_ptr<Status> ReleaseHandle(int handle);
 
-private:
+ private:
   std::atomic_int last_handle_;
   std::unordered_map<int, std::shared_ptr<Status>> results_;
   std::mutex mutex_;
 };
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps
 
-#endif // BYTEPS_TORCH_HANDLE_MANAGER_H
+#endif  // BYTEPS_TORCH_HANDLE_MANAGER_H
