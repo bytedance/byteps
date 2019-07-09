@@ -17,10 +17,9 @@
 #ifndef BYTEPS_MXNET_TENSOR_UTIL_H
 #define BYTEPS_MXNET_TENSOR_UTIL_H
 
-#include <cassert>
 #include <mxnet/base.h>
 #include <mxnet/ndarray.h>
-
+#include <cassert>
 #include "../common/common.h"
 #include "cuda_util.h"
 #include "util.h"
@@ -32,7 +31,7 @@ using namespace byteps::common;
 using namespace ::mxnet;
 
 class TensorUtil {
-public:
+ public:
   static const DataType GetDType(NDArray* tensor);
   static const TensorShape GetShape(NDArray* tensor);
   static const void* GetData(NDArray* tensor);
@@ -49,7 +48,7 @@ public:
   static void AsyncCopyCudaToCPU(NDArray* cuda, NDArray* cpu);
 #endif
 
-private:
+ private:
   static const size_t kFloat32Size = 4;
   static const size_t kFloat64Size = 8;
   static const size_t kFloat16Size = 2;
@@ -59,7 +58,7 @@ private:
   static const size_t kInt64Size = 8;
 };
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps
 
-#endif // BYTEPS_MXNET_TENSOR_UTIL_H
+#endif  // BYTEPS_MXNET_TENSOR_UTIL_H

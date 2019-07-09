@@ -78,6 +78,7 @@ def push_pull(value, name=None, average=True):
     """
     return _impl.push_pull(K, value, name, average)
 
+
 def broadcast(value, root_rank, name=None):
     """
     Perform a broadcast on a tensor-compatible value.

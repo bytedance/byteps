@@ -14,8 +14,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include <sstream>
 #include <cassert>
+#include <sstream>
 
 #include "common.h"
 #include "logging.h"
@@ -30,9 +30,7 @@ Status::Status(StatusType type, std::string reason) {
   reason_ = reason;
 }
 
-Status Status::OK() {
-  return Status();
-}
+Status Status::OK() { return Status(); }
 
 Status Status::UnknownError(std::string message) {
   return Status(StatusType::UNKNOWN_ERROR, message);
@@ -50,29 +48,17 @@ Status Status::InvalidArgument(std::string message) {
   return Status(StatusType::INVALID_ARGUMENT, message);
 }
 
-Status Status::InProgress() {
-  return Status(StatusType::IN_PROGRESS, "");
-}
+Status Status::InProgress() { return Status(StatusType::IN_PROGRESS, ""); }
 
-bool Status::ok() const {
-  return type_ == StatusType::OK;
-}
+bool Status::ok() const { return type_ == StatusType::OK; }
 
-bool Status::in_progress() const {
-  return type_ == StatusType::IN_PROGRESS;
-}
+bool Status::in_progress() const { return type_ == StatusType::IN_PROGRESS; }
 
-StatusType Status::type() const {
-  return type_;
-}
+StatusType Status::type() const { return type_; }
 
-const std::string& Status::reason() const {
-  return reason_;
-}
+const std::string& Status::reason() const { return reason_; }
 
-void TensorShape::AddDim(int64_t dim) {
-  shape_.push_back(dim);
-}
+void TensorShape::AddDim(int64_t dim) { shape_.push_back(dim); }
 
 void TensorShape::AppendShape(TensorShape& other) {
   for (auto dim : other.shape_) {
@@ -93,9 +79,7 @@ const std::string TensorShape::DebugString() const {
   return args.str();
 }
 
-int TensorShape::dims() const {
-  return (int)shape_.size();
-}
+int TensorShape::dims() const { return (int)shape_.size(); }
 
 int64_t TensorShape::dim_size(int idx) const {
   assert(idx >= 0);
@@ -157,5 +141,5 @@ int getDataTypeLength(int dtype) {
   return 4;
 }
 
-} // namespace common
-} // namespace byteps
+}  // namespace common
+}  // namespace byteps

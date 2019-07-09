@@ -30,9 +30,10 @@ namespace torch {
 
 using namespace byteps::common;
 
-#define PUSHPULL_H(torch_Tensor, THTensor)                                    \
-  extern "C" int byteps_torch_push_pull_async_##torch_Tensor(                 \
-      THTensor* tensor, THTensor* output, int average, char* name, int version, int priority);
+#define PUSHPULL_H(torch_Tensor, THTensor)                         \
+  extern "C" int byteps_torch_push_pull_async_##torch_Tensor(      \
+      THTensor* tensor, THTensor* output, int average, char* name, \
+      int version, int priority);
 
 PUSHPULL_H(torch_IntTensor, THIntTensor)
 PUSHPULL_H(torch_LongTensor, THLongTensor)
@@ -49,7 +50,7 @@ PUSHPULL_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
 extern "C" int byteps_torch_poll(int handle);
 extern "C" void byteps_torch_wait_and_clear(int handle);
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps
 
-#endif // BYTEPS_TORCH_OPS_H
+#endif  // BYTEPS_TORCH_OPS_H

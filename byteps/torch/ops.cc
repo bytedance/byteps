@@ -14,11 +14,11 @@
 // limitations under the License.
 // =============================================================================
 
+#include <torch/extension.h>
+#include <torch/torch.h>
 #include <chrono>
 #include <memory>
 #include <thread>
-#include <torch/extension.h>
-#include <torch/torch.h>
 
 #include "../common/operations.h"
 #include "adapter.h"
@@ -48,52 +48,55 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
   return CPU_DEVICE_ID;
 }
 
-} // namespace
+}  // namespace
 
 int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
-                const std::string& name, int version, int priority) {
-    ThrowIfError(common::CheckInitialized());
+               const std::string& name, int version, int priority) {
+  ThrowIfError(common::CheckInitialized());
 
-    auto handle = handle_manager.AllocateHandle();
-    auto device = GetDeviceID(tensor);
-    auto ready_event = RecordReadyEvent(device);
-    auto byteps_input = std::make_shared<TorchTensor>(tensor);
-    auto byteps_output = std::make_shared<TorchTensor>(output);
+  auto handle = handle_manager.AllocateHandle();
+  auto device = GetDeviceID(tensor);
+  auto ready_event = RecordReadyEvent(device);
+  auto byteps_input = std::make_shared<TorchTensor>(tensor);
+  auto byteps_output = std::make_shared<TorchTensor>(output);
 
-    std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
-    size_t size = byteps_input->size();
-    auto dtype = byteps_input->dtype();
+  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+  size_t size = byteps_input->size();
+  auto dtype = byteps_input->dtype();
 
-    // check if we need to init the tensor
-    if (!common::IsTensorDeclared(tensor_name)) {
-        // we need to init this tensor with PS
-        auto& context = common::GetContextFromName(tensor_name);
-        // the following init is blocking, in order to guarantee the order
-        common::InitTensor(context, size, dtype,
-          (device == CPU_DEVICE_ID) ? const_cast<void*>(byteps_input->data()) : nullptr);
-    }
-
+  // check if we need to init the tensor
+  if (!common::IsTensorDeclared(tensor_name)) {
+    // we need to init this tensor with PS
     auto& context = common::GetContextFromName(tensor_name);
+    // the following init is blocking, in order to guarantee the order
+    common::InitTensor(context, size, dtype,
+                       (device == CPU_DEVICE_ID)
+                           ? const_cast<void*>(byteps_input->data())
+                           : nullptr);
+  }
 
-    auto queue_list = common::GetPushQueueList(device);
-    auto queue_list_pull = common::GetPullQueueList(device);
-    queue_list->insert(queue_list->end(),
-                       queue_list_pull->begin(), queue_list_pull->end());
+  auto& context = common::GetContextFromName(tensor_name);
 
-    auto enqueue_result = common::EnqueueTensor(
-        context, byteps_input, byteps_output, ready_event,
-        device, priority, version,
-        [handle, average, tensor, output](const Status& status) mutable {
-            // Will execute in the `device` context.
-            if (average) {
-                output.div_(byteps_size());
-            }
-            handle_manager.MarkDone(handle, status);
-        }, queue_list);
+  auto queue_list = common::GetPushQueueList(device);
+  auto queue_list_pull = common::GetPullQueueList(device);
+  queue_list->insert(queue_list->end(), queue_list_pull->begin(),
+                     queue_list_pull->end());
 
-    ThrowIfError(enqueue_result);
+  auto enqueue_result = common::EnqueueTensor(
+      context, byteps_input, byteps_output, ready_event, device, priority,
+      version,
+      [handle, average, tensor, output](const Status& status) mutable {
+        // Will execute in the `device` context.
+        if (average) {
+          output.div_(byteps_size());
+        }
+        handle_manager.MarkDone(handle, status);
+      },
+      queue_list);
 
-    return handle;
+  ThrowIfError(enqueue_result);
+
+  return handle;
 }
 
 int PollHandle(int handle) { return handle_manager.PollHandle(handle) ? 1 : 0; }
@@ -127,5 +130,5 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_wait_and_clear", &WaitAndClear);
 }
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps

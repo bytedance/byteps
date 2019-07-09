@@ -28,20 +28,20 @@ namespace torch {
 using namespace byteps::common;
 
 class TorchTensor : public Tensor {
-public:
+ public:
   TorchTensor(::torch::Tensor tensor);
   virtual const DataType dtype() const override;
   virtual const TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;
 
-protected:
+ protected:
   ::torch::Tensor tensor_;
 };
 
 void ThrowIfError(Status status);
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps
 
-#endif // BYTEPS_TORCH_ADAPTER_H
+#endif  // BYTEPS_TORCH_ADAPTER_H

@@ -28,6 +28,7 @@ from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
 
+
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
               compression=Compression.none):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
@@ -52,7 +53,7 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         new_tensor = (tf.div(summed_tensor, byteps_size)
-                        if average else summed_tensor)
+                      if average else summed_tensor)
     return new_tensor
 
 

@@ -25,13 +25,16 @@
 namespace byteps {
 namespace mxnet {
 
-template <class T> MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
+template <class T>
+MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
 
-template <class T> const DataType MXTensor<T>::dtype() const {
+template <class T>
+const DataType MXTensor<T>::dtype() const {
   return TensorUtil::GetDType(tensor_);
 }
 
-template <class T> const TensorShape MXTensor<T>::shape() const {
+template <class T>
+const TensorShape MXTensor<T>::shape() const {
   auto shape = TensorUtil::GetShape(tensor_);
   if (shape.dims() == 0) {
     // Tensor with empty shape is a Tensor with no values in MXNet, unlike a
@@ -42,15 +45,17 @@ template <class T> const TensorShape MXTensor<T>::shape() const {
   return shape;
 }
 
-template <class T> const void* MXTensor<T>::data() const {
+template <class T>
+const void* MXTensor<T>::data() const {
   return TensorUtil::GetData(tensor_);
 }
 
-template <class T> int64_t MXTensor<T>::size() const {
+template <class T>
+int64_t MXTensor<T>::size() const {
   return TensorUtil::GetSize(tensor_);
 }
 
 template class MXTensor<NDArray>;
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps

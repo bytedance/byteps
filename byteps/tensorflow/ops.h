@@ -31,30 +31,29 @@ namespace byteps {
 namespace tensorflow {
 
 class TFReadyEvent : public common::ReadyEvent {
-public:
+ public:
   TFReadyEvent(::tensorflow::DeviceContext* device_context);
   bool Ready() const override;
 
-private:
+ private:
   std::shared_ptr<perftools::gputools::Event> event_;
 };
 
 class TFTensor : public common::Tensor {
-public:
+ public:
   TFTensor(::tensorflow::Tensor& tensor);
   virtual const common::DataType dtype() const override;
   virtual const common::TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;
 
-protected:
+ protected:
   ::tensorflow::Tensor tensor_;
 };
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name);
 
+}  // namespace tensorflow
+}  // namespace byteps
 
-} // namespace tensorflow
-} // namespace byteps
-
-#endif // BYTEPS_TENSORFLOW_OPS_H
+#endif  // BYTEPS_TENSORFLOW_OPS_H

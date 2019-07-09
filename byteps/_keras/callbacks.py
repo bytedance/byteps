@@ -112,7 +112,7 @@ class LearningRateScheduleCallbackImpl(object):
             # See the paper cited above for more information about momentum correction.
             self.restore_momentum = self.backend.get_value(self.model.optimizer.momentum)
             self.backend.set_value(self.model.optimizer.momentum,
-                        self.restore_momentum * new_lr / old_lr)
+                                   self.restore_momentum * new_lr / old_lr)
 
     def _restore_momentum_if_needed(self):
         if self.restore_momentum:

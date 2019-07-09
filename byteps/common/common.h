@@ -17,15 +17,15 @@
 #ifndef BYTEPS_COMMON_H
 #define BYTEPS_COMMON_H
 
+#include <cuda_runtime.h>
+#include <nccl.h>
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
-#include <atomic>
 #include <vector>
-#include <mutex>
-#include <nccl.h>
-#include <cuda_runtime.h>
 
 namespace byteps {
 namespace common {
@@ -54,25 +54,41 @@ enum DataType {
 // List of supported frameworks.
 enum Framework { TENSORFLOW, PYTORCH, MXNET };
 
-enum StatusType { OK, UNKNOWN_ERROR, PRECONDITION_ERROR, ABORTED, INVALID_ARGUMENT, IN_PROGRESS };
+enum StatusType {
+  OK,
+  UNKNOWN_ERROR,
+  PRECONDITION_ERROR,
+  ABORTED,
+  INVALID_ARGUMENT,
+  IN_PROGRESS
+};
 
 enum DeviceType { CPU, GPU };
 
-enum QueueType { COORDINATE_REDUCE, REDUCE, COPYD2H,
-                 PCIE_REDUCE, COORDINATE_PUSH, PUSH, PULL,
-                 COPYH2D, COORDINATE_BROADCAST, BROADCAST,
-                 QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST };
-
-const int QueueNum = (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
-
-const std::vector<std::string> LogStrings = {
-  "COORDINATE_REDUCE", "REDUCE", "COPYD2H",
-  "PCIE_REDUCE", "COORDINATE_PUSH", "PUSH", "PULL",
-  "COPYH2D", "COORDINATE_BROADCAST", "BROADCAST"
+enum QueueType {
+  COORDINATE_REDUCE,
+  REDUCE,
+  COPYD2H,
+  PCIE_REDUCE,
+  COORDINATE_PUSH,
+  PUSH,
+  PULL,
+  COPYH2D,
+  COORDINATE_BROADCAST,
+  BROADCAST,
+  QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
 };
 
+const int QueueNum =
+    (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
+
+const std::vector<std::string> LogStrings = {
+    "COORDINATE_REDUCE",    "REDUCE",   "COPYD2H", "PCIE_REDUCE",
+    "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
+    "COORDINATE_BROADCAST", "BROADCAST"};
+
 class Status {
-public:
+ public:
   Status();
   static Status OK();
   static Status UnknownError(std::string message);
@@ -85,14 +101,14 @@ public:
   StatusType type() const;
   const std::string& reason() const;
 
-private:
+ private:
   StatusType type_ = StatusType::OK;
   std::string reason_ = "";
   Status(StatusType type, std::string reason);
 };
 
 class TensorShape {
-public:
+ public:
   void AddDim(int64_t dim);
   void AppendShape(TensorShape& other);
 
@@ -109,36 +125,36 @@ public:
     return shape_ != rhs.shape_;
   }
 
-private:
+ private:
   std::vector<int64_t> shape_;
 };
 
 class ReadyEvent {
-public:
+ public:
   virtual bool Ready() const = 0;
   virtual ~ReadyEvent() = default;
 };
 
 typedef struct BytePSContext {
-    bool initialized;
-    std::mutex init_mutex;
-    // tensor name
-    std::string tensor_name;
-    // using ps::Key = uint64_t
-    uint64_t declared_key;
-    // the actual keys being used
-    std::vector<uint64_t> key_list;
-    // a copy on CPU
-    void* cpubuff;
-    // GPU ptr if the tensor is on CPU
-    void* gpu_ptr;
-    // CPU buffer for cross-PCIe-switch merging
-    std::vector<void*> pcie_cpubuff;
-    size_t buff_len;
+  bool initialized;
+  std::mutex init_mutex;
+  // tensor name
+  std::string tensor_name;
+  // using ps::Key = uint64_t
+  uint64_t declared_key;
+  // the actual keys being used
+  std::vector<uint64_t> key_list;
+  // a copy on CPU
+  void* cpubuff;
+  // GPU ptr if the tensor is on CPU
+  void* gpu_ptr;
+  // CPU buffer for cross-PCIe-switch merging
+  std::vector<void*> pcie_cpubuff;
+  size_t buff_len;
 } BPSContext;
 
 class Tensor {
-public:
+ public:
   virtual const DataType dtype() const = 0;
   virtual const TensorShape shape() const = 0;
   virtual const void* data() const = 0;
@@ -194,7 +210,9 @@ struct TensorTableEntry {
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 
 enum class RequestType {
-  kDefaultPushPull, kRowSparsePushPull, kCompressedPushPull
+  kDefaultPushPull,
+  kRowSparsePushPull,
+  kCompressedPushPull
 };
 
 int GetCommandType(RequestType requestType, int d);
@@ -203,7 +221,7 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-} // namespace common
-} // namespace byteps
+}  // namespace common
+}  // namespace byteps
 
-#endif // BYTEPS_COMMON_H
+#endif  // BYTEPS_COMMON_H
