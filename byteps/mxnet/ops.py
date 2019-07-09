@@ -68,12 +68,13 @@ def byteps_push_pull(tensor, version=0, priority=0, name=None, is_average=True):
     c_in = tensor.handle
     if isinstance(name, string_types):
         check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
-                   c_str(name), ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
+                                                                 c_str(name), ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
     else:
         check_call(MXNET_LIB_CTYPES.byteps_mxnet_push_pull_async(c_in,
-                   name, ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
+                                                                 name, ctypes.c_int(version), ctypes.c_int(priority), ctypes.c_bool(is_average)))
 
     return
+
 
 def byteps_declare_tensor(tensor, name):
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(tensor.handle, c_str(name)))

@@ -30,18 +30,18 @@ namespace {
 
 ::tensorflow::Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
-  case common::OK:
-    return ::tensorflow::Status::OK();
-  case common::UNKNOWN_ERROR:
-    return ::tensorflow::errors::Unknown(status.reason());
-  case common::PRECONDITION_ERROR:
-    return ::tensorflow::errors::FailedPrecondition(status.reason());
-  case common::ABORTED:
-    return ::tensorflow::errors::Aborted(status.reason());
-  case common::INVALID_ARGUMENT:
-    return ::tensorflow::errors::InvalidArgument(status.reason());
-  default:
-    return ::tensorflow::errors::Unknown("Unknown error.");
+    case common::OK:
+      return ::tensorflow::Status::OK();
+    case common::UNKNOWN_ERROR:
+      return ::tensorflow::errors::Unknown(status.reason());
+    case common::PRECONDITION_ERROR:
+      return ::tensorflow::errors::FailedPrecondition(status.reason());
+    case common::ABORTED:
+      return ::tensorflow::errors::Aborted(status.reason());
+    case common::INVALID_ARGUMENT:
+      return ::tensorflow::errors::InvalidArgument(status.reason());
+    default:
+      return ::tensorflow::errors::Unknown("Unknown error.");
   }
 }
 
@@ -57,32 +57,32 @@ int GetDeviceID(::tensorflow::OpKernelContext* context) {
 // Define all types for TensorUtil.
 const common::DataType ConvertDType(int dtype) {
   switch (dtype) {
-  case ::tensorflow::DT_UINT8:
-    return common::BYTEPS_UINT8;
-  case ::tensorflow::DT_INT8:
-    return common::BYTEPS_INT8;
-  // case ::tensorflow::DT_UINT16:
-  //   return common::BYTEPS_UINT16;
-  // case ::tensorflow::DT_INT16:
-  //   return common::BYTEPS_INT16;
-  case ::tensorflow::DT_INT32:
-    return common::BYTEPS_INT32;
-  case ::tensorflow::DT_INT64:
-    return common::BYTEPS_INT64;
-  case ::tensorflow::DT_HALF:
-    return common::BYTEPS_FLOAT16;
-  case ::tensorflow::DT_FLOAT:
-    return common::BYTEPS_FLOAT32;
-  case ::tensorflow::DT_DOUBLE:
-    return common::BYTEPS_FLOAT64;
-  // case ::tensorflow::DT_BOOL:
-  //   return common::BYTEPS_BOOL;
-  default:
-    throw std::logic_error("Invalid tensor type.");
+    case ::tensorflow::DT_UINT8:
+      return common::BYTEPS_UINT8;
+    case ::tensorflow::DT_INT8:
+      return common::BYTEPS_INT8;
+    // case ::tensorflow::DT_UINT16:
+    //   return common::BYTEPS_UINT16;
+    // case ::tensorflow::DT_INT16:
+    //   return common::BYTEPS_INT16;
+    case ::tensorflow::DT_INT32:
+      return common::BYTEPS_INT32;
+    case ::tensorflow::DT_INT64:
+      return common::BYTEPS_INT64;
+    case ::tensorflow::DT_HALF:
+      return common::BYTEPS_FLOAT16;
+    case ::tensorflow::DT_FLOAT:
+      return common::BYTEPS_FLOAT32;
+    case ::tensorflow::DT_DOUBLE:
+      return common::BYTEPS_FLOAT64;
+    // case ::tensorflow::DT_BOOL:
+    //   return common::BYTEPS_BOOL;
+    default:
+      throw std::logic_error("Invalid tensor type.");
   }
 }
 
-} // namespace
+}  // namespace
 
 TFReadyEvent::TFReadyEvent(::tensorflow::DeviceContext* device_context) {
   auto executor = device_context->stream()->parent();
@@ -111,7 +111,9 @@ const common::TensorShape TFTensor::shape() const {
   return shape;
 }
 
-const void* TFTensor::data() const { return (const void*)tensor_.tensor_data().data(); }
+const void* TFTensor::data() const {
+  return (const void*)tensor_.tensor_data().data();
+}
 
 int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
@@ -126,48 +128,49 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
 }
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name) {
-    std::string tensor_name(name);
-    common::IsTensorDeclared(tensor_name);
-    return;
+  std::string tensor_name(name);
+  common::IsTensorDeclared(tensor_name);
+  return;
 }
 
 void StartTask(::tensorflow::OpKernelContext* context,
                ::tensorflow::AsyncOpKernel::DoneCallback done,
-               std::string node_name,
-               std::shared_ptr<TFTensor> byteps_input,
+               std::string node_name, std::shared_ptr<TFTensor> byteps_input,
                std::shared_ptr<TFTensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
   auto& byteps_context = common::GetContextFromName(node_name);
   auto device = GetDeviceID(context);
   auto size = byteps_input->size();
   auto dtype = byteps_input->dtype();
-  void* cpubuff = (device == CPU_DEVICE_ID) ?
-      const_cast<void*>(byteps_input->data()) : nullptr;
+  void* cpubuff = (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(byteps_input->data())
+                      : nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
-  queue_list->insert(queue_list->end(),
-                      queue_list_pull->begin(), queue_list_pull->end());
+  queue_list->insert(queue_list->end(), queue_list_pull->begin(),
+                     queue_list_pull->end());
 
   // TODO: assign priority based on topological sort
-  auto enqueue_result = EnqueueTensor(
-      byteps_context, byteps_input, byteps_output, ready_event,
-      device, -byteps_context.declared_key, 0,
-      [context, done](const common::Status& status) {
-        context->SetStatus(ConvertStatus(status));
-        done();
-      }, queue_list);
+  auto enqueue_result =
+      EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
+                    device, -byteps_context.declared_key, 0,
+                    [context, done](const common::Status& status) {
+                      context->SetStatus(ConvertStatus(status));
+                      done();
+                    },
+                    queue_list);
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
-
 }
 
 class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
-public:
+ public:
   explicit BytePSPushPullOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {}
 
-  void ComputeAsync(::tensorflow::OpKernelContext* context, DoneCallback done) override {
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
                          done);
 
@@ -176,16 +179,17 @@ public:
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, tensor.shape(), &output), done);
     // ReadyEvent makes sure input tensor is ready, and output is allocated.
-    auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
     auto bps_input = std::make_shared<TFTensor>(tensor);
     auto bps_output = std::make_shared<TFTensor>(*output);
     auto node_name = name();
     auto& bps_context = common::GetContextFromName(node_name);
     if (bps_context.initialized) {
       StartTask(context, done, node_name, bps_input, bps_output, ready_event);
-    }
-    else {
-      std::thread t(StartTask, context, done, node_name, bps_input, bps_output, ready_event);
+    } else {
+      std::thread t(StartTask, context, done, node_name, bps_input, bps_output,
+                    ready_event);
       t.detach();
     }
   }
@@ -215,5 +219,5 @@ Output
     sum:    A tensor with the same shape as `tensor`, summed across all processes.
 )doc");
 
-} // namespace tensorflow
-} // namespace byteps
+}  // namespace tensorflow
+}  // namespace byteps

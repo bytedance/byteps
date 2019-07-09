@@ -15,8 +15,8 @@
 // =============================================================================
 
 #if HAVE_CUDA
-#include "cuda_runtime.h"
 #include <mxnet/base.h>
+#include "cuda_runtime.h"
 #endif
 
 #include "../common/common.h"
@@ -34,8 +34,9 @@ with_device::with_device(int device) {
     CUDA_CALL(cudaGetDevice(&restore_device_));
     CUDA_CALL(cudaSetDevice(device));
 #else
-    throw std::logic_error("Internal error. Requested device context manager "
-                           "with GPU device but not compiled with CUDA.");
+    throw std::logic_error(
+        "Internal error. Requested device context manager "
+        "with GPU device but not compiled with CUDA.");
 #endif
   }
 }
@@ -48,5 +49,5 @@ with_device::~with_device() {
 #endif
 }
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps

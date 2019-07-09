@@ -15,8 +15,8 @@
 
 #include "global.h"
 #include <malloc.h>
-#include <unistd.h>
 #include <numa.h>
+#include <unistd.h>
 
 namespace byteps {
 namespace common {
@@ -65,261 +65,267 @@ std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
-    return (BytePSScheduledQueue*)_queues[queueType];
+  return (BytePSScheduledQueue*)_queues[queueType];
 }
 
 void BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
-    std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
-    if (!_queues[queueType]) {
-        _queues[queueType] = new BytePSScheduledQueue(queueType);
-    }
-    return;
+  std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
+  if (!_queues[queueType]) {
+    _queues[queueType] = new BytePSScheduledQueue(queueType);
+  }
+  return;
 }
 
 void BytePSGlobal::Init() {
-    std::lock_guard<std::mutex> lock(_init_mutex);
-    
-    // We only init once
-    if (_initialized) {
-        return;
-    }
+  std::lock_guard<std::mutex> lock(_init_mutex);
 
-    _basic_comm = std::make_shared<BytePSCommSocket>();
-
-    _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id, &_my_role);
-
-    _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
-    if (getenv("BYTEPS_PARTITION_BYTES")) {
-        _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
-    }
-    BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
-                   << ", aligned to " << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
-    // alignment for Reduce-Scatter/All-Gather
-    _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
-
-    BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-
-    _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
-
-    if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
-        _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
-    }
-    _is_distributed_job = (_num_worker>1) ? true : _is_distributed_job;
-
-    if (_is_distributed_job) {
-        BPS_CHECK(getenv("DMLC_NUM_SERVER")) << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
-    }
-
-    BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
-                   << (IsDistributed() ? "" : "non-") << "distributed job";
-
-    _shm_obj = std::make_shared<BytePSSharedMemory>(); // share memory obj
-
-    if (IsDistributed() && _my_role == BytePSRole::LOCAL_ROOT) { // only the root need to do networking
-        // init low-level ps implementation
-        _ps = new ps::KVWorker<char>(0, 0);
-        ps::StartAsync(0, "byteps\0");
-        if (!ps::Postoffice::Get()->is_recovery()) {
-            ps::Postoffice::Get()->Barrier(
-                0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-        }
-    }
-
-    // Set to associated GPU
-    CUDA_CALL(cudaSetDevice(_local_rank));
-
-    // Init NCCL
-    _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
-    _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
-
-    // Bind to NUMA node
-    if (_is_cross_pcie_switch) {
-        auto numa_index = (GetPcieSwitchIndex() >  numa_max_node()) ?
-                          numa_max_node() : GetPcieSwitchIndex();
-        numa_bind(numa_parse_nodestring(std::to_string(numa_index).c_str()));
-    }
-
-    // Init CPU Reducer
-    if (_is_cross_pcie_switch) {
-        _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
-    }
-
-    // ReadyTable for Push & Pull
-    if (_is_root_device) {
-        _push_table = new ReadyTable(_local_size-1, "PUSH");
-    }
-    else {
-        _copy_table = new ReadyTable(1, "COPY");
-    }
-
-    // ReadyTable for cross-PCIe-switch reduce
-    if (_is_cross_pcie_switch) {
-        if (_cpu_reducer->isRoot()) {
-            _pcie_reduce_table = new ReadyTable(GetPcieSwitchNum()-1, "PCIE_REDUCE");
-        }
-    }
-
-    // ReadyTable for per-PCIe-switch NCCL calls
-    if (_nccl_manager->IsSignalRoot()) {
-        _reduce_table = new ReadyTable(GetPcieSwitchSize()-1, "NCCL_REDUCE");
-        _broadcast_table = new ReadyTable(GetPcieSwitchSize()-1, "NCCL_BROADCAST");
-    }
-
-    // Create CUDA streams for GPU-CPU copies
-    _copy_host2device_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    _copy_device2host_stream  = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
-    CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream, cudaStreamNonBlocking));
-    CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream, cudaStreamNonBlocking));
-    CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
-    CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
-
-    // Create queues
-    for (int i = 0; i < QueueNum; i++) {
-        BPS_LOG(DEBUG) << "Create schedule queue " << i;
-        auto type = static_cast<QueueType>(i);
-        BytePSGlobal::CreateScheduledQueue(type);
-    }
-
-    _initialized = true;
-    BPS_LOG(DEBUG) << "Inited rank=" << _rank
-                   << " local_rank=" << _local_rank
-                   << " size=" << _size
-                   << " local_size=" << _local_size
-                   << " worker_id=" << _worker_id;
-
-    if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
-        _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
-    }
+  // We only init once
+  if (_initialized) {
     return;
-}
+  }
 
-void BytePSGlobal::Start(const std::vector<LoopFunction> &func) {
-    // Start background threads
-    for (size_t i = 0; i < func.size(); i++) {
-        _threads.push_back(new std::thread(func[i]));
+  _basic_comm = std::make_shared<BytePSCommSocket>();
+
+  _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
+                    &_my_role);
+
+  _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+  if (getenv("BYTEPS_PARTITION_BYTES")) {
+    _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
+  }
+  BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
+                 << ", aligned to "
+                 << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
+  // alignment for Reduce-Scatter/All-Gather
+  _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
+
+  BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
+
+  _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
+
+  if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
+    _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
+  }
+  _is_distributed_job = (_num_worker > 1) ? true : _is_distributed_job;
+
+  if (_is_distributed_job) {
+    BPS_CHECK(getenv("DMLC_NUM_SERVER"))
+        << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
+  }
+
+  BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
+                 << (IsDistributed() ? "" : "non-") << "distributed job";
+
+  _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
+
+  if (IsDistributed() &&
+      _my_role ==
+          BytePSRole::LOCAL_ROOT) {  // only the root need to do networking
+    // init low-level ps implementation
+    _ps = new ps::KVWorker<char>(0, 0);
+    ps::StartAsync(0, "byteps\0");
+    if (!ps::Postoffice::Get()->is_recovery()) {
+      ps::Postoffice::Get()->Barrier(
+          0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
-    BPS_LOG(DEBUG) << "Started " << func.size() << " background threads. rank=" << _local_rank;
+  }
+
+  // Set to associated GPU
+  CUDA_CALL(cudaSetDevice(_local_rank));
+
+  // Init NCCL
+  _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
+  _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
+
+  // Bind to NUMA node
+  if (_is_cross_pcie_switch) {
+    auto numa_index = (GetPcieSwitchIndex() > numa_max_node())
+                          ? numa_max_node()
+                          : GetPcieSwitchIndex();
+    numa_bind(numa_parse_nodestring(std::to_string(numa_index).c_str()));
+  }
+
+  // Init CPU Reducer
+  if (_is_cross_pcie_switch) {
+    _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
+  }
+
+  // ReadyTable for Push & Pull
+  if (_is_root_device) {
+    _push_table = new ReadyTable(_local_size - 1, "PUSH");
+  } else {
+    _copy_table = new ReadyTable(1, "COPY");
+  }
+
+  // ReadyTable for cross-PCIe-switch reduce
+  if (_is_cross_pcie_switch) {
+    if (_cpu_reducer->isRoot()) {
+      _pcie_reduce_table =
+          new ReadyTable(GetPcieSwitchNum() - 1, "PCIE_REDUCE");
+    }
+  }
+
+  // ReadyTable for per-PCIe-switch NCCL calls
+  if (_nccl_manager->IsSignalRoot()) {
+    _reduce_table = new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_REDUCE");
+    _broadcast_table =
+        new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_BROADCAST");
+  }
+
+  // Create CUDA streams for GPU-CPU copies
+  _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+
+  // Create queues
+  for (int i = 0; i < QueueNum; i++) {
+    BPS_LOG(DEBUG) << "Create schedule queue " << i;
+    auto type = static_cast<QueueType>(i);
+    BytePSGlobal::CreateScheduledQueue(type);
+  }
+
+  _initialized = true;
+  BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
+                 << " size=" << _size << " local_size=" << _local_size
+                 << " worker_id=" << _worker_id;
+
+  if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
+    _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
+  }
+  return;
 }
 
+void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
+  // Start background threads
+  for (size_t i = 0; i < func.size(); i++) {
+    _threads.push_back(new std::thread(func[i]));
+  }
+  BPS_LOG(DEBUG) << "Started " << func.size()
+                 << " background threads. rank=" << _local_rank;
+}
 
 const Status NOT_INITIALIZED_ERROR = Status::PreconditionError(
     "BytePS has not been initialized; use bps.init().");
 
 Status BytePSGlobal::CheckInit() {
-    if (_initialized) {
-        return Status::OK();
-    }
-    else {
-        return NOT_INITIALIZED_ERROR;
-    }
+  if (_initialized) {
+    return Status::OK();
+  } else {
+    return NOT_INITIALIZED_ERROR;
+  }
 }
 
 void BytePSGlobal::Shutdown() {
-    _should_shutdown = true;
-    for (size_t i = 0; i < _threads.size(); i++) {
-        if (_threads[i]->joinable()) {
-            _threads[i]->join();
-            delete _threads[i];
-        }
+  _should_shutdown = true;
+  for (size_t i = 0; i < _threads.size(); i++) {
+    if (_threads[i]->joinable()) {
+      _threads[i]->join();
+      delete _threads[i];
     }
+  }
 
-    for (size_t i = 0; i < QueueNum; i++) {
-        if (_queues[i]) {
-            delete _queues[i];
-        }
+  for (size_t i = 0; i < QueueNum; i++) {
+    if (_queues[i]) {
+      delete _queues[i];
     }
+  }
 
-    if (_ps) {
-        ps::Finalize(0, false);
-        delete _ps;
-    }
+  if (_ps) {
+    ps::Finalize(0, false);
+    delete _ps;
+  }
 
-    CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
-    CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+  CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
+  CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
 
-    if (_reduce_table) {
-        delete _reduce_table;
-    }
-    if (_pcie_reduce_table) {
-        delete _pcie_reduce_table;
-    }
-    if (_broadcast_table) {
-        delete _broadcast_table;
-    }
-    if (_push_table) {
-        delete _push_table;
-    }
+  if (_reduce_table) {
+    delete _reduce_table;
+  }
+  if (_pcie_reduce_table) {
+    delete _pcie_reduce_table;
+  }
+  if (_broadcast_table) {
+    delete _broadcast_table;
+  }
+  if (_push_table) {
+    delete _push_table;
+  }
 
-    if (_copy_table) {
-        delete _copy_table;
-    }
+  if (_copy_table) {
+    delete _copy_table;
+  }
 
-    _basic_comm.reset();
-    _shm_obj.reset();
-    _cpu_reducer.reset();
-    _nccl_manager.reset();
+  _basic_comm.reset();
+  _shm_obj.reset();
+  _cpu_reducer.reset();
+  _nccl_manager.reset();
 
-    BPS_LOG(DEBUG) << "Clear all BytePS resources";
-    return;
+  BPS_LOG(DEBUG) << "Clear all BytePS resources";
+  return;
 }
 
-BPSContext& BytePSGlobal::GetContextFromName(const std::string &name) {
-    std::lock_guard<std::mutex> lock(_context_mutex);
-    BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end()) << name << " is not initialized";
-    return _name_to_cxt[name];
+BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
+      << name << " is not initialized";
+  return _name_to_cxt[name];
 }
 
-bool BytePSGlobal::IsTensorDeclared(const std::string &name) {
-    std::lock_guard<std::mutex> lock(_context_mutex);
-    if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-        _name_to_cxt[name].initialized = false;
-        _name_to_cxt[name].tensor_name = name.c_str(); // disable copy-on-write
-        _name_to_cxt[name].declared_key = (ps::Key) next_key_++;
-        BPS_LOG(DEBUG) << "Declared tensor " << name
-                       << ", declared key (not PS key): " << _name_to_cxt[name].declared_key
-                       << " rank=" << BytePSGlobal::GetLocalRank();
-        return false;
-    }
-    return true;
+bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+    _name_to_cxt[name].initialized = false;
+    _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
+    _name_to_cxt[name].declared_key = (ps::Key)next_key_++;
+    BPS_LOG(DEBUG) << "Declared tensor " << name
+                   << ", declared key (not PS key): "
+                   << _name_to_cxt[name].declared_key
+                   << " rank=" << BytePSGlobal::GetLocalRank();
+    return false;
+  }
+  return true;
 }
 
 PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
-    std::lock_guard<std::mutex> lock(_encode_mutex);
-    PSKV& pskv = ps_kv_[key];
-    if (!pskv.keys.empty()) {
-        BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
-            << "The value size cannot be changed " << len
-            << ". Key is " << key;
-    } else {
-        auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
-        const int num_servers = krs.size();
-        BPS_CHECK_GT(num_servers, 0);
-        // send it to a single random picked server
-        int server = (((key >> 16) + key) * 9973) % num_servers;
-        BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server;
-        ps::Key ps_key = krs[server].begin() + key;
-        BPS_CHECK_LT(ps_key, krs[server].end());
-        pskv.keys.push_back(ps_key);
-        pskv.lens.push_back(len);
-        pskv.size = len;
-    }
-    BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0];
-    return pskv;
+  std::lock_guard<std::mutex> lock(_encode_mutex);
+  PSKV& pskv = ps_kv_[key];
+  if (!pskv.keys.empty()) {
+    BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
+        << "The value size cannot be changed " << len << ". Key is " << key;
+  } else {
+    auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+    const int num_servers = krs.size();
+    BPS_CHECK_GT(num_servers, 0);
+    // send it to a single random picked server
+    int server = (((key >> 16) + key) * 9973) % num_servers;
+    BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server;
+    ps::Key ps_key = krs[server].begin() + key;
+    BPS_CHECK_LT(ps_key, krs[server].end());
+    pskv.keys.push_back(ps_key);
+    pskv.lens.push_back(len);
+    pskv.size = len;
+  }
+  BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0];
+  return pskv;
 }
 
 uint32_t BytePSGlobal::GetTensorCount() {
-    std::lock_guard<std::mutex> lock(_context_mutex);
-    return BytePSGlobal::_name_to_cxt.size();
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  return BytePSGlobal::_name_to_cxt.size();
 }
 
 cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
-    return BytePSGlobal::_copy_device2host_stream;
+  return BytePSGlobal::_copy_device2host_stream;
 }
 
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
-    return BytePSGlobal::_copy_host2device_stream;
+  return BytePSGlobal::_copy_host2device_stream;
 }
 
-
-} // namespace common
-} // namespace byteps
+}  // namespace common
+}  // namespace byteps

@@ -214,7 +214,6 @@ def broadcast_parameters(params, root_rank):
         synchronize(handle)
 
 
-
 def broadcast_optimizer_state(optimizer, root_rank):
     """
     Broadcasts an optimizer state from root rank to all other processes.
@@ -286,7 +285,8 @@ def broadcast_optimizer_state(optimizer, root_rank):
 
     def _create_option_callback(index, option_key, option_tensor, dtypes):
         def _from_tensor():
-            optimizer.param_groups[index][option_key] = _recursive_cast(option_tensor.numpy()[0], dtypes)
+            optimizer.param_groups[index][option_key] = _recursive_cast(
+                option_tensor.numpy()[0], dtypes)
         return _from_tensor
 
     # Param groups are an ordered list, normally there is only one per model,

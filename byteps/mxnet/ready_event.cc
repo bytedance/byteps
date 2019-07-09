@@ -29,12 +29,16 @@ MXReadyEvent<T>::MXReadyEvent(NDArray* tensor) : tensor_(tensor) {
   assert(tensor->ctx().real_dev_id() != CPU_DEVICE_ID);
 }
 
-template <class T> MXReadyEvent<T>::~MXReadyEvent() {}
+template <class T>
+MXReadyEvent<T>::~MXReadyEvent() {}
 
-template <class T> bool MXReadyEvent<T>::Ready() const { return true; }
+template <class T>
+bool MXReadyEvent<T>::Ready() const {
+  return true;
+}
 
 template class MXReadyEvent<NDArray>;
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps
 #endif

@@ -35,7 +35,7 @@ if __name__ == "__main__":
             t[i].start()
 
         for i in range(local_size):
-            t[i].join() 
+            t[i].join()
 
     else:
         if "BYTEPS_SERVER_MXNET_PATH" not in os.environ:
@@ -43,4 +43,3 @@ if __name__ == "__main__":
             os._exit(0)
         sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
         import mxnet
-
