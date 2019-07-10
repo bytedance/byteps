@@ -115,29 +115,29 @@ int CpuReducer::sum(void* dst, void* src1, void* src2, size_t len,
                     DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src),
+      return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src1),
                   reinterpret_cast<float*>(src2), len);
     case BYTEPS_FLOAT64:
       return _sum(reinterpret_cast<double*>(dst),
-                  reinterpret_cast<double*>(src),
+                  reinterpret_cast<double*>(src1),
                   reinterpret_cast<double*>(src2), len);
     case BYTEPS_FLOAT16:
       return _sum_float16(dst, src1, src2, len);
     case BYTEPS_UINT8:
       return _sum(reinterpret_cast<uint8_t*>(dst),
-                  reinterpret_cast<uint8_t*>(src),
+                  reinterpret_cast<uint8_t*>(src1),
                   reinterpret_cast<uint8_t*>(src2), len);
     case BYTEPS_INT32:
       return _sum(reinterpret_cast<int32_t*>(dst),
-                  reinterpret_cast<int32_t*>(src),
+                  reinterpret_cast<int32_t*>(src1),
                   reinterpret_cast<int32_t*>(src2), len);
     case BYTEPS_INT8:
       return _sum(reinterpret_cast<int8_t*>(dst),
-                  reinterpret_cast<int8_t*>(src),
+                  reinterpret_cast<int8_t*>(src1),
                   reinterpret_cast<int8_t*>(src2), len);
     case BYTEPS_INT64:
       return _sum(reinterpret_cast<int64_t*>(dst),
-                  reinterpret_cast<int64_t*>(src),
+                  reinterpret_cast<int64_t*>(src1),
                   reinterpret_cast<int64_t*>(src2), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
