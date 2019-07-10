@@ -159,21 +159,14 @@ class CpuReducer {
     *dest = u;
   }
 
-  int _sum_float32(void* dst, void* src, size_t len);
-  int _sum_float64(void* dst, void* src, size_t len);
-  int _sum_float16(void* dst, void* src, size_t len);
-  int _sum_unit8(void* dst, void* src, size_t len);
-  int _sum_int32(void* dst, void* src, size_t len);
-  int _sum_int8(void* dst, void* src, size_t len);
-  int _sum_int64(void* dst, void* src, size_t len);
+  template <typename T>
+  int _sum(T* dst, T* src, size_t len);
 
-  int _sum_float32(void* dst, void* src1, void* src2, size_t len);
-  int _sum_float64(void* dst, void* src1, void* src2, size_t len);
+  template <typename T>
+  int _sum(T* dst, T* src1, T* src2, size_t len);
+
+  int _sum_float16(void* dst, void* src, size_t len);
   int _sum_float16(void* dst, void* src1, void* src2, size_t len);
-  int _sum_unit8(void* dst, void* src1, void* src2, size_t len);
-  int _sum_int32(void* dst, void* src1, void* src2, size_t len);
-  int _sum_int8(void* dst, void* src1, void* src2, size_t len);
-  int _sum_int64(void* dst, void* src1, void* src2, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
