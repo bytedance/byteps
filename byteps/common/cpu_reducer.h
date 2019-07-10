@@ -13,13 +13,13 @@
 // limitations under the License.
 // =============================================================================
 
+#ifndef BYTEPS_CPU_REDUCER_H
+#define BYTEPS_CPU_REDUCER_H
+
 #if __AVX__ && __F16C__
 #include <cpuid.h>
 #include <immintrin.h>
 #endif
-
-#ifndef BYTEPS_CPU_REDUCER_H
-#define BYTEPS_CPU_REDUCER_H
 
 #include <memory>
 #include "common.h"
