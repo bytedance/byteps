@@ -26,7 +26,7 @@ export DMLC_PS_ROOT_PORT=1234
 export EVAL_TYPE=benchmark 
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/tensorflow/run_tensorflow_byteps.sh \
-       --model ResNet50 --num-iters 1000        
+       --model ResNet50 --num-iters 1000000        
 ```
 
 ### PyTorch
@@ -51,7 +51,7 @@ export DMLC_PS_ROOT_PORT=1234
 export EVAL_TYPE=benchmark 
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/pytorch/start_pytorch_byteps.sh \
-       --model resnet50 --num-iters 1000      
+       --model resnet50 --num-iters 1000000      
 ```
 
 ### MXNet
@@ -166,7 +166,7 @@ If your workers use TensorFlow, you need to change the image name to `bytepsimag
 ```
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/tensorflow/run_tensorflow_byteps.sh \
-       --model ResNet50 --num-iters 1000     
+       --model ResNet50 --num-iters 1000000     
 ```
 
 If your workers use PyTorch, you need to change the image name to `bytepsimage/worker_pytorch`, and replace the python script with
@@ -174,7 +174,7 @@ If your workers use PyTorch, you need to change the image name to `bytepsimage/w
 ```
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/pytorch/start_pytorch_byteps.sh \
-       --model resnet50 --num-iters 1000   
+       --model resnet50 --num-iters 1000000   
 ```
 
 ## Distributed Training with RDMA
@@ -300,7 +300,7 @@ If your workers use TensorFlow, you need to change the image name to `bytepsimag
 ```
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/tensorflow/run_tensorflow_byteps.sh \
-       --model ResNet50 --num-iters 1000     
+       --model ResNet50 --num-iters 1000000     
 ```
 
 If your workers use PyTorch, you need to change the image name to `bytepsimage/worker_pytorch_rdma`, and replace the python script with
@@ -308,5 +308,5 @@ If your workers use PyTorch, you need to change the image name to `bytepsimage/w
 ```
 python /usr/local/byteps/launcher/launch.py \
        /usr/local/byteps/example/pytorch/start_pytorch_byteps.sh \
-       --model resnet50 --num-iters 1000   
+       --model resnet50 --num-iters 1000000   
 ```
