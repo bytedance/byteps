@@ -14,8 +14,8 @@ import os
 # Benchmark settings
 parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during byteps pushpull')
 
 parser.add_argument('--model', type=str, default='resnet50',
                     help='model to benchmark')
@@ -60,7 +60,7 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(optimizer,
@@ -127,5 +127,4 @@ img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
     (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
-
 
