@@ -17,6 +17,8 @@
 #ifndef BYTEPS_TORCH_CUDA_UTIL_H
 #define BYTEPS_TORCH_CUDA_UTIL_H
 
+#include "../common/common.h"
+
 namespace byteps {
 namespace torch {
 
