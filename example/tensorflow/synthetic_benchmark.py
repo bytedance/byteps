@@ -13,8 +13,8 @@ from tensorflow.keras import applications
 # Benchmark settings
 parser = argparse.ArgumentParser(description='TensorFlow Synthetic Benchmark',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
 
 parser.add_argument('--model', type=str, default='ResNet50',
                     help='model to benchmark')
@@ -58,7 +58,7 @@ model = getattr(applications, args.model)(weights=None)
 opt = tf.train.GradientDescentOptimizer(0.01)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 opt = bps.DistributedOptimizer(opt, compression=compression)
