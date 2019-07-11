@@ -97,15 +97,15 @@ def evaluate(model, data_iter, context):
     return metric.get()
 
 
+# Load training and validation data
+train_data, val_data, train_size = get_mnist_iterator()
+
 # Initialize BytePS
 bps.init()
 
 # BytePS: pin context to local rank
 context = mx.cpu(bps.local_rank()) if args.no_cuda else mx.gpu(bps.local_rank())
 num_workers = bps.size()
-
-# Load training and validation data
-train_data, val_data, train_size = get_mnist_iterator()
 
 # Build model
 model = conv_nets()
