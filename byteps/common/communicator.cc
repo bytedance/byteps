@@ -159,9 +159,12 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
   char buffer[MAX_LINE];
   while (true) {
     int rc;
-    rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
-    BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
-
+    while (true) {
+      rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
+      if (errno == EINTR) continue;
+      BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+      break;
+    }
     auto message = *(BytePSCommMsg*)buffer;
 
     switch (message.signal) {
@@ -216,11 +219,15 @@ int BytePSCommSocket::sendSignalToRoot(void* data, int len) {
 }
 
 int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
-  int rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
-  BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
-  BPS_CHECK_LE(rc, max_len)
-      << "recv_len=" << rc << ", but given max_len=" << max_len;
-
+  int rc;
+  while (true) {
+    rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
+    if (errno == EINTR) continue;
+    BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+    BPS_CHECK_LE(rc, max_len)
+        << "recv_len=" << rc << ", but given max_len=" << max_len;
+    break;
+  }
   auto message = *(BytePSCommMsg*)data;
   *source = message.src;
 
