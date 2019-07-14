@@ -14,8 +14,8 @@ parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                     help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                    help='number of epochs to train (default: 10)')
+parser.add_argument('--epochs', type=int, default=100, metavar='N',
+                    help='number of epochs to train (default: 100)')
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
@@ -26,8 +26,8 @@ parser.add_argument('--seed', type=int, default=42, metavar='S',
                     help='random seed (default: 42)')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -96,7 +96,7 @@ optimizer = optim.SGD(model.parameters(), lr=args.lr * bps.size(),
                       momentum=args.momentum)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(optimizer,
@@ -130,7 +130,7 @@ def train(epoch):
 
 def metric_average(val, name):
     tensor = torch.tensor(val)
-    avg_tensor = bps.allreduce(tensor, name=name)
+    avg_tensor = bps.push_pull(tensor, name=name)
     return avg_tensor.item()
 
 

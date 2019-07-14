@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
+from byteps.torch.ops import push_pull
 from byteps.torch.ops import poll, synchronize
 from byteps.torch.ops import init, shutdown
 from byteps.torch.ops import size, local_size, rank, local_rank
@@ -213,7 +214,6 @@ def broadcast_parameters(params, root_rank):
         synchronize(handle)
 
 
-
 def broadcast_optimizer_state(optimizer, root_rank):
     """
     Broadcasts an optimizer state from root rank to all other processes.
@@ -285,7 +285,8 @@ def broadcast_optimizer_state(optimizer, root_rank):
 
     def _create_option_callback(index, option_key, option_tensor, dtypes):
         def _from_tensor():
-            optimizer.param_groups[index][option_key] = _recursive_cast(option_tensor.numpy()[0], dtypes)
+            optimizer.param_groups[index][option_key] = _recursive_cast(
+                option_tensor.numpy()[0], dtypes)
         return _from_tensor
 
     # Param groups are an ordered list, normally there is only one per model,

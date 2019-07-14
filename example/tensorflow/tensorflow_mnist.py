@@ -128,7 +128,7 @@ def main(_):
         bps.BroadcastGlobalVariablesHook(0),
 
         # BytePS: adjust number of steps based on number of GPUs.
-        tf.train.StopAtStepHook(last_step=20000 // bps.size()),
+        tf.train.StopAtStepHook(last_step=200000 // bps.size()),
 
         tf.train.LoggingTensorHook(tensors={'step': global_step, 'loss': loss},
                                    every_n_iter=10),

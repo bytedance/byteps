@@ -14,8 +14,8 @@
 // =============================================================================
 
 #if HAVE_CUDA
-#include "cuda_runtime.h"
 #include <THC/THC.h>
+#include "cuda_runtime.h"
 #endif
 
 #include "../common/common.h"
@@ -32,8 +32,9 @@ with_device::with_device(int device) {
     THCudaCheck(cudaGetDevice(&restore_device_));
     THCudaCheck(cudaSetDevice(device));
 #else
-    throw std::logic_error("Internal error. Requested device context manager "
-                           "with GPU device but not compiled with CUDA.");
+    throw std::logic_error(
+        "Internal error. Requested device context manager "
+        "with GPU device but not compiled with CUDA.");
 #endif
   }
 }
@@ -46,5 +47,5 @@ with_device::~with_device() {
 #endif
 }
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps

@@ -24,6 +24,7 @@ RUN if [ "x$REGION" = "xchina" ]; then mkdir -p ~/.pip && mv /tmp/pip.conf ~/.pi
 
 ENV LD_LIBRARY_PATH /root/incubator-mxnet/lib/:/usr/local/lib:$LD_LIBRARY_PATH
 
+# To enable RDMA, add `USE_RDMA=1` to `SERVER_BUILD_OPTS` below.
 ENV SERVER_BUILD_OPTS "USE_BLAS=openblas USE_MKL=1 USE_DIST_KVSTORE=1"
 ENV BYTEPS_SERVER_MXNET_PATH /root/incubator-mxnet
 ENV MXNET_SERVER_LINK https://github.com/bytedance/incubator-mxnet
@@ -77,7 +78,8 @@ RUN cd $BYTEPS_SERVER_MXNET_PATH && \
 RUN cd $BYTEPS_SERVER_MXNET_PATH && \
     cd python && \
     python setup.py build && \
-    python setup.py install
+    python setup.py install &&\
+    python setup.py bdist_wheel
 
 RUN cd $BYTEPS_BASE_PATH &&\
     git clone --recurse-submodules $BYTEPS_GIT_LINK

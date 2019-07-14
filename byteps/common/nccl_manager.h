@@ -16,114 +16,105 @@
 #ifndef BYTEPS_NCCL_MANAGER_H
 #define BYTEPS_NCCL_MANAGER_H
 
-#include <vector>
 #include <memory>
 #include <queue>
+#include <vector>
 #include "common.h"
-#include "scheduled_queue.h"
 #include "communicator.h"
+#include "scheduled_queue.h"
 
 namespace byteps {
 namespace common {
 
-
 class NcclGroupEntry {
+ public:
+  void RecordEvents();
+  void SynchronizeEvents();
+  void DestroyEvents();
 
-public:
-    void RecordEvents();
-    void SynchronizeEvents();
-    void DestroyEvents();
+  std::vector<std::shared_ptr<TensorTableEntry>> tasks;
+  std::vector<BytePSScheduledQueue*> queues;
 
-    std::vector<std::shared_ptr<TensorTableEntry>> tasks;
-    std::vector<BytePSScheduledQueue*> queues;
-
-private:
-    std::vector<cudaEvent_t> _events;
+ private:
+  std::vector<cudaEvent_t> _events;
 };
 
-
 class NcclManager {
-
-public:
-    NcclManager(std::shared_ptr<BytePSComm> comm);
-    ~NcclManager() {
-        if (_nccl_stream) {
-            CUDA_CALL(cudaStreamDestroy(*_nccl_stream));
-        }
-        if (_nccl_id) {
-            free(_nccl_id);
-        }
-        if (_nccl_comm) {
-            free(_nccl_comm);
-        }
-        if (_signal_comm) {
-            _signal_comm.reset();
-        }
-        if (_global_comm) {
-            _global_comm.reset();
-        }
-        while(!_nccl_pipeline.empty()) _nccl_pipeline.pop();
-
-        BPS_LOG(DEBUG) << "Clear NcclManager";
+ public:
+  NcclManager(std::shared_ptr<BytePSComm> comm);
+  ~NcclManager() {
+    if (_nccl_stream) {
+      CUDA_CALL(cudaStreamDestroy(*_nccl_stream));
     }
+    if (_nccl_id) {
+      free(_nccl_id);
+    }
+    if (_nccl_comm) {
+      free(_nccl_comm);
+    }
+    if (_signal_comm) {
+      _signal_comm.reset();
+    }
+    if (_global_comm) {
+      _global_comm.reset();
+    }
+    while (!_nccl_pipeline.empty()) _nccl_pipeline.pop();
 
-    int GetGroupSize() { return _nccl_group_size; }
-    void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
-    std::shared_ptr<NcclGroupEntry> DequeueGroup();
+    BPS_LOG(DEBUG) << "Clear NcclManager";
+  }
 
-    virtual cudaStream_t GetStream(uint64_t key, QueueType op);
-    virtual ncclComm_t GetComm(uint64_t key, QueueType op);
-    virtual int GetRoot(uint64_t key, QueueType op);
-    virtual int GetRank(uint64_t key, QueueType op);
+  int GetGroupSize() { return _nccl_group_size; }
+  void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
+  std::shared_ptr<NcclGroupEntry> DequeueGroup();
 
-    int GetSize() { return _nccl_size; }
-    std::shared_ptr<BytePSComm> GetSignalComm() { return _signal_comm; }
-    bool IsSignalRoot();
-    
+  virtual cudaStream_t GetStream(uint64_t key, QueueType op);
+  virtual ncclComm_t GetComm(uint64_t key, QueueType op);
+  virtual int GetRoot(uint64_t key, QueueType op);
+  virtual int GetRank(uint64_t key, QueueType op);
 
-protected:
-    void InitGlobalEnv();
-    virtual void ConstructRings();
+  int GetSize() { return _nccl_size; }
+  std::shared_ptr<BytePSComm> GetSignalComm() { return _signal_comm; }
+  bool IsSignalRoot();
 
-    cudaStream_t* _nccl_stream;
-    ncclUniqueId* _nccl_id;
-    ncclComm_t* _nccl_comm;
-    
-    // global user-defined env
-    size_t _nccl_group_size;
-    size_t _nccl_pcie_size;
-    size_t _nccl_pcie_num;
-    size_t _nccl_num_rings;
+ protected:
+  void InitGlobalEnv();
+  virtual void ConstructRings();
 
-    int _nccl_size;
+  cudaStream_t* _nccl_stream;
+  ncclUniqueId* _nccl_id;
+  ncclComm_t* _nccl_comm;
 
-    // for pipelining nccl
-    std::mutex _nccl_mutex;
-    std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
+  // global user-defined env
+  size_t _nccl_group_size;
+  size_t _nccl_pcie_size;
+  size_t _nccl_pcie_num;
+  size_t _nccl_num_rings;
 
-    std::shared_ptr<BytePSComm> _signal_comm;
-    std::shared_ptr<BytePSComm> _global_comm;
+  int _nccl_size;
 
+  // for pipelining nccl
+  std::mutex _nccl_mutex;
+  std::queue<std::shared_ptr<NcclGroupEntry>> _nccl_pipeline;
+
+  std::shared_ptr<BytePSComm> _signal_comm;
+  std::shared_ptr<BytePSComm> _global_comm;
 };
 
 class NcclManagerExpr : public NcclManager {
+ public:
+  cudaStream_t GetStream(uint64_t key, QueueType op);
+  ncclComm_t GetComm(uint64_t key, QueueType op);
+  int GetRoot(uint64_t key, QueueType op);
+  int GetRank(uint64_t key, QueueType op);
 
-public:
-    cudaStream_t GetStream(uint64_t key, QueueType op);
-    ncclComm_t GetComm(uint64_t key, QueueType op);
-    int GetRoot(uint64_t key, QueueType op);
-    int GetRank(uint64_t key, QueueType op);
+ protected:
+  void ConstructRings();
 
-protected:
-    void ConstructRings();
-
-    // for multi-ring
-    std::vector<std::vector<int>> _rings;
-
+  // for multi-ring
+  std::vector<std::vector<int>> _rings;
 };
 
+}  // namespace common
+}  // namespace byteps
 
-} // namespace common
-} // namespace byteps
-
-#endif // BYTEPS_NCCL_MANAGER_H
+#endif  // BYTEPS_NCCL_MANAGER_H

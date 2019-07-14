@@ -22,23 +22,24 @@ namespace mxnet {
 // Define all types for TensorUtil.
 const DataType TensorUtil::GetDType(NDArray* tensor) {
   switch (tensor->dtype()) {
-  case mshadow::kFloat32:
-    return DataType::BYTEPS_FLOAT32;
-  case mshadow::kFloat64:
-    return DataType::BYTEPS_FLOAT64;
-  case mshadow::kFloat16:
-    return DataType::BYTEPS_FLOAT16;
-  case mshadow::kUint8:
-    return DataType::BYTEPS_UINT8;
-  case mshadow::kInt32:
-    return DataType::BYTEPS_INT32;
-  case mshadow::kInt8:
-    return DataType::BYTEPS_INT8;
-  case mshadow::kInt64:
-    return DataType::BYTEPS_INT64;
-  default:
-    throw std::logic_error("GetDType: Type " + std::to_string(tensor->dtype()) +
-                           " is not supported.");
+    case mshadow::kFloat32:
+      return DataType::BYTEPS_FLOAT32;
+    case mshadow::kFloat64:
+      return DataType::BYTEPS_FLOAT64;
+    case mshadow::kFloat16:
+      return DataType::BYTEPS_FLOAT16;
+    case mshadow::kUint8:
+      return DataType::BYTEPS_UINT8;
+    case mshadow::kInt32:
+      return DataType::BYTEPS_INT32;
+    case mshadow::kInt8:
+      return DataType::BYTEPS_INT8;
+    case mshadow::kInt64:
+      return DataType::BYTEPS_INT64;
+    default:
+      throw std::logic_error("GetDType: Type " +
+                             std::to_string(tensor->dtype()) +
+                             " is not supported.");
   }
 }
 
@@ -57,23 +58,23 @@ const void* TensorUtil::GetData(NDArray* tensor) {
   // The following returns an error:
   // return tensor->data().dptr<void>();
   switch (tensor->dtype()) {
-  case mshadow::kFloat32:
-    return static_cast<void*>(tensor->data().dptr<float>());
-  case mshadow::kFloat64:
-    return static_cast<void*>(tensor->data().dptr<double>());
-  case mshadow::kFloat16:
-    return static_cast<void*>(tensor->data().dptr<mshadow::half::half_t>());
-  case mshadow::kUint8:
-    return static_cast<void*>(tensor->data().dptr<uint8_t>());
-  case mshadow::kInt32:
-    return static_cast<void*>(tensor->data().dptr<int32_t>());
-  case mshadow::kInt8:
-    return static_cast<void*>(tensor->data().dptr<int8_t>());
-  case mshadow::kInt64:
-    return static_cast<void*>(tensor->data().dptr<int64_t>());
-  default:
-    throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
-                           " is not supported in BytePS.");
+    case mshadow::kFloat32:
+      return static_cast<void*>(tensor->data().dptr<float>());
+    case mshadow::kFloat64:
+      return static_cast<void*>(tensor->data().dptr<double>());
+    case mshadow::kFloat16:
+      return static_cast<void*>(tensor->data().dptr<mshadow::half::half_t>());
+    case mshadow::kUint8:
+      return static_cast<void*>(tensor->data().dptr<uint8_t>());
+    case mshadow::kInt32:
+      return static_cast<void*>(tensor->data().dptr<int32_t>());
+    case mshadow::kInt8:
+      return static_cast<void*>(tensor->data().dptr<int8_t>());
+    case mshadow::kInt64:
+      return static_cast<void*>(tensor->data().dptr<int64_t>());
+    default:
+      throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
+                             " is not supported in BytePS.");
   }
 }
 
@@ -81,30 +82,30 @@ const void* TensorUtil::GetData(NDArray* tensor) {
 int64_t TensorUtil::GetSize(NDArray* tensor) {
   int64_t element_size = 0;
   switch (tensor->dtype()) {
-  case mshadow::kFloat32:
-    element_size = kFloat32Size;
-    break;
-  case mshadow::kFloat64:
-    element_size = kFloat64Size;
-    break;
-  case mshadow::kFloat16:
-    element_size = kFloat16Size;
-    break;
-  case mshadow::kUint8:
-    element_size = kUInt8Size;
-    break;
-  case mshadow::kInt32:
-    element_size = kInt32Size;
-    break;
-  case mshadow::kInt8:
-    element_size = kInt8Size;
-    break;
-  case mshadow::kInt64:
-    element_size = kInt64Size;
-    break;
-  default:
-    throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
-                           " is not supported in BytePS.");
+    case mshadow::kFloat32:
+      element_size = kFloat32Size;
+      break;
+    case mshadow::kFloat64:
+      element_size = kFloat64Size;
+      break;
+    case mshadow::kFloat16:
+      element_size = kFloat16Size;
+      break;
+    case mshadow::kUint8:
+      element_size = kUInt8Size;
+      break;
+    case mshadow::kInt32:
+      element_size = kInt32Size;
+      break;
+    case mshadow::kInt8:
+      element_size = kInt8Size;
+      break;
+    case mshadow::kInt64:
+      element_size = kInt64Size;
+      break;
+    default:
+      throw std::logic_error("Type " + std::to_string(tensor->dtype()) +
+                             " is not supported in BytePS.");
   }
   return (int64_t)(tensor->shape().Size()) * element_size;
 }
@@ -113,8 +114,7 @@ int64_t TensorUtil::GetSize(NDArray* tensor) {
 // Otherwise return CPU_DEVICE_ID (-1)
 int TensorUtil::GetDevice(NDArray* tensor) {
   int dev_mask = tensor->ctx().dev_mask();
-  if (dev_mask == gpu::kDevMask)
-    return tensor->ctx().real_dev_id();
+  if (dev_mask == gpu::kDevMask) return tensor->ctx().real_dev_id();
   return CPU_DEVICE_ID;
 }
 
@@ -156,5 +156,5 @@ void TensorUtil::AsyncCopyCudaToCPU(NDArray* cuda, NDArray* cpu) {
 }
 #endif
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps

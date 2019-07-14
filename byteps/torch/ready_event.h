@@ -32,12 +32,12 @@ using namespace byteps::common;
 
 #if HAVE_CUDA
 class TorchReadyEvent : public ReadyEvent {
-public:
+ public:
   TorchReadyEvent(int device);
   ~TorchReadyEvent();
   virtual bool Ready() const override;
 
-private:
+ private:
   int device_ = CPU_DEVICE_ID;
   cudaEvent_t cuda_event_ = nullptr;
 };
@@ -45,7 +45,7 @@ private:
 
 std::shared_ptr<ReadyEvent> RecordReadyEvent(int device);
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps
 
-#endif // BYTEPS_TORCH_READY_EVENT_H
+#endif  // BYTEPS_TORCH_READY_EVENT_H

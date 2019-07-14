@@ -127,3 +127,4 @@ img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
     (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
+

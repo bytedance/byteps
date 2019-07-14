@@ -42,7 +42,7 @@ https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html
 
 In short, you should configure the same DMLC_* variables as the worker, except that DMLC_ROLE should be either server or scheduler.
 
-Also, set DMLC_ENABLE_RDMA if you have RDMA network. This must be consistent with workers.
+Also, set DMLC_ENABLE_RDMA if you have RDMA network. This must be consistent with workers. Note that MXNet in the server and scheduler must be built with `USE_RDMA=1`. Please check out this [Dockerfile](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.server#L27) as an example.
 
 ## BytePS debug
 

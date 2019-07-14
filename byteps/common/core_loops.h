@@ -45,7 +45,7 @@ void NonRootCopyListenLoop();
 
 void NonRootCopyHost2DeviceLoop();
 
-} // namespace common
-} // namespace byteps
+}  // namespace common
+}  // namespace byteps
 
-#endif // BYTEPS_CORE_LOOPS_H
+#endif  // BYTEPS_CORE_LOOPS_H

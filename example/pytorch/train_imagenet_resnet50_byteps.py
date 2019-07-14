@@ -24,11 +24,11 @@ parser.add_argument('--log-dir', default='./logs',
                     help='tensorboard log directory')
 parser.add_argument('--checkpoint-format', default='./checkpoint-{epoch}.pth.tar',
                     help='checkpoint file format')
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
-parser.add_argument('--batches-per-allreduce', type=int, default=1,
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
+parser.add_argument('--batches-per-pushpull', type=int, default=1,
                     help='number of batches processed locally before '
-                         'executing allreduce across workers; it multiplies '
+                         'executing pushpull across workers; it multiplies '
                          'total batch size.')
 
 # Default settings from https://arxiv.org/abs/1706.02677.
@@ -55,7 +55,7 @@ parser.add_argument('--seed', type=int, default=42,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-allreduce_batch_size = args.batch_size * args.batches_per_allreduce
+pushpull_batch_size = args.batch_size * args.batches_per_pushpull
 
 bps.init()
 torch.manual_seed(args.seed)
@@ -101,7 +101,7 @@ train_dataset = \
 train_sampler = torch.utils.data.distributed.DistributedSampler(
     train_dataset, num_replicas=bps.size(), rank=bps.rank())
 train_loader = torch.utils.data.DataLoader(
-    train_dataset, batch_size=allreduce_batch_size,
+    train_dataset, batch_size=pushpull_batch_size,
     sampler=train_sampler, **kwargs)
 
 val_dataset = \
@@ -127,20 +127,20 @@ if args.cuda:
     model.cuda()
 
 # BytePS: scale learning rate by the number of GPUs.
-# Gradient Accumulation: scale learning rate by batches_per_allreduce
+# Gradient Accumulation: scale learning rate by batches_per_pushpull
 optimizer = optim.SGD(model.parameters(),
                       lr=(args.base_lr *
-                          args.batches_per_allreduce * bps.size()),
+                          args.batches_per_pushpull * bps.size()),
                       momentum=args.momentum, weight_decay=args.wd)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(
     optimizer, named_parameters=model.named_parameters(),
     compression=compression,
-    backward_passes_per_step=args.batches_per_allreduce)
+    backward_passes_per_step=args.batches_per_pushpull)
 
 # Restore from a previous checkpoint, if initial_epoch is specified.
 # BytePS: restore on the first worker which will broadcast weights to other workers.
@@ -233,7 +233,7 @@ def adjust_learning_rate(epoch, batch_idx):
     else:
         lr_adj = 1e-3
     for param_group in optimizer.param_groups:
-        param_group['lr'] = args.base_lr * bps.size() * args.batches_per_allreduce * lr_adj
+        param_group['lr'] = args.base_lr * bps.size() * args.batches_per_pushpull * lr_adj
 
 
 def accuracy(output, target):

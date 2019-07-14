@@ -17,19 +17,21 @@
 #ifndef BYTEPS_TORCH_CUDA_UTIL_H
 #define BYTEPS_TORCH_CUDA_UTIL_H
 
+#include "../common/common.h"
+
 namespace byteps {
 namespace torch {
 
 class with_device {
-public:
+ public:
   with_device(int device);
   ~with_device();
 
-private:
+ private:
   int restore_device_ = CPU_DEVICE_ID;
 };
 
-}
-}
+}  // namespace torch
+}  // namespace byteps
 
-#endif // BYTEPS_TORCH_CUDA_UTIL_H
+#endif  // BYTEPS_TORCH_CUDA_UTIL_H

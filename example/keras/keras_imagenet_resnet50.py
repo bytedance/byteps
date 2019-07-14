@@ -33,8 +33,8 @@ parser.add_argument('--log-dir', default='./logs',
                     help='tensorboard log directory')
 parser.add_argument('--checkpoint-format', default='./checkpoint-{epoch}.h5',
                     help='checkpoint file format')
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
 
 # Default settings from https://arxiv.org/abs/1706.02677.
 parser.add_argument('--batch-size', type=int, default=32,
@@ -96,7 +96,7 @@ test_iter = test_gen.flow_from_directory(args.val_dir,
 model = keras.applications.resnet50.ResNet50(weights=None)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # Restore from a previous checkpoint, if initial_epoch is specified.
 # BytePS: restore on the first worker which will broadcast both model and optimizer weights

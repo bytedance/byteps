@@ -21,15 +21,15 @@ namespace byteps {
 namespace mxnet {
 
 class with_device {
-public:
+ public:
   with_device(int device);
   ~with_device();
 
-private:
+ private:
   int restore_device_;
 };
 
-} // namespace mxnet
-} // namespace byteps
+}  // namespace mxnet
+}  // namespace byteps
 
-#endif // BYTEPS_MXNET_CUDA_UTIL_H
+#endif  // BYTEPS_MXNET_CUDA_UTIL_H

@@ -22,8 +22,8 @@
 #include <unordered_map>
 #endif
 
-#include "ready_event.h"
 #include "cuda_util.h"
+#include "ready_event.h"
 
 #if HAVE_CUDA
 extern THCState* state;
@@ -86,11 +86,12 @@ std::shared_ptr<ReadyEvent> RecordReadyEvent(int device) {
 #if HAVE_CUDA
     return std::make_shared<TorchReadyEvent>(device);
 #else
-    throw std::logic_error("Internal error. Requested ReadyEvent "
-                           "with GPU device but not compiled with CUDA.");
+    throw std::logic_error(
+        "Internal error. Requested ReadyEvent "
+        "with GPU device but not compiled with CUDA.");
 #endif
   }
 }
 
-} // namespace torch
-} // namespace byteps
+}  // namespace torch
+}  // namespace byteps

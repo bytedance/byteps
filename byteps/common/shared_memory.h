@@ -16,50 +16,47 @@
 #ifndef BYTEPS_SHARED_MEMORY_H
 #define BYTEPS_SHARED_MEMORY_H
 
+#include <cuda_runtime.h>
+#include <sys/mman.h>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
-#include <unordered_map>
-#include <vector>
+#include <cstring>
 #include <mutex>
 #include <thread>
-#include <cerrno>
-#include <cstring>
-#include <cuda_runtime.h>
+#include <unordered_map>
+#include <vector>
 #include "logging.h"
 
 namespace byteps {
 namespace common {
 
 class BytePSSharedMemory {
+ public:
+  BytePSSharedMemory() {}
 
-public:
-
-    BytePSSharedMemory() {}
-
-    ~BytePSSharedMemory() {
-        for (auto &it : _key_shm_addr) {
-            CUDA_CALL(cudaHostUnregister(it.second));
-            munmap(it.second, _key_shm_size[it.first]);
-            shm_unlink(it.first.c_str());
-        }
-
-        BPS_LOG(DEBUG) << "Clear BytePSSharedMemory: All BytePS shared memory released/unregistered.";
+  ~BytePSSharedMemory() {
+    for (auto &it : _key_shm_addr) {
+      CUDA_CALL(cudaHostUnregister(it.second));
+      munmap(it.second, _key_shm_size[it.first]);
+      shm_unlink(it.first.c_str());
     }
 
-    void* openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
-    std::vector<void*> openPcieSharedMemory(uint64_t key, size_t size);
+    BPS_LOG(DEBUG) << "Clear BytePSSharedMemory: All BytePS shared memory "
+                      "released/unregistered.";
+  }
 
-private:
+  void *openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
+  std::vector<void *> openPcieSharedMemory(uint64_t key, size_t size);
 
-    std::unordered_map<std::string, void *> _key_shm_addr;
-    std::unordered_map<std::string, size_t> _key_shm_size;
+ private:
+  std::unordered_map<std::string, void *> _key_shm_addr;
+  std::unordered_map<std::string, size_t> _key_shm_size;
 
-    std::mutex _shm_mu;
-
+  std::mutex _shm_mu;
 };
 
+}  // namespace common
+}  // namespace byteps
 
-} // namespace common
-} // namespace byteps
-
-#endif // BYTEPS_SHARED_MEMORY_H
+#endif  // BYTEPS_SHARED_MEMORY_H

@@ -16,123 +16,126 @@
 #ifndef BYTEPS_COMMUNICATOR_H
 #define BYTEPS_COMMUNICATOR_H
 
-#include <cstdlib>
-#include <cstdio>
-#include <vector>
-#include <sys/mman.h>
 #include <errno.h>
-#include <unistd.h>
-#include <sys/un.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <nccl.h>
-#include <thread>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
+#include <vector>
 #include "logging.h"
 
-#define BASE_SOCKET_PATH_RECV   "/usr/local/socket_recv_"
-#define BASE_SOCKET_PATH_SEND   "/usr/local/socket_send_"
+#define DEFAULT_BASE_SOCKET_PATH_RECV "/tmp/socket_recv_"
+#define DEFAULT_BASE_SOCKET_PATH_SEND "/tmp/socket_send_"
 #define MAX_LINE 8000
 
 namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
-enum BytePSCommSignal { REDUCE_READY, PCIE_REDUCE_READY, BCAST_READY, PUSH_READY, DO_REDUCE, DO_BROADCAST, DO_GROUP, DO_COPYH2D };
+enum BytePSCommSignal {
+  REDUCE_READY,
+  PCIE_REDUCE_READY,
+  BCAST_READY,
+  PUSH_READY,
+  DO_REDUCE,
+  DO_BROADCAST,
+  DO_GROUP,
+  DO_COPYH2D
+};
 
 struct BytePSCommMsg {
-    int src;
-    BytePSCommSignal signal;
-    uint64_t key;
+  int src;
+  BytePSCommSignal signal;
+  uint64_t key;
 };
 
 class BytePSComm {
+ public:
+  BytePSComm() { _comm = nullptr; }
 
-public:
-    BytePSComm() { _comm = nullptr; }
+  virtual void init(int* rank, int* size, int* local_rank, int* local_size,
+                    int* worker_id, BytePSRole* my_role) = 0;
+  virtual int sendSignal(int destination, void* data, int len) = 0;
+  virtual int sendSignalToRoot(void* data, int len) = 0;
+  virtual int recvSignal(int* source, void* data, int max_len) = 0;
+  virtual int recvSignalFromRoot(void* data, int max_len) = 0;
+  virtual int broadcastSignal(void* data, int len) = 0;
 
-    virtual void init(int* rank, int* size, int* local_rank, int* local_size,
-                      int* worker_id, BytePSRole* my_role) = 0;
-    virtual int sendSignal(int destination, void* data, int len) = 0;
-    virtual int sendSignalToRoot(void* data, int len) = 0;
-    virtual int recvSignal(int* source, void* data, int max_len) = 0;
-    virtual int recvSignalFromRoot(void* data, int max_len) = 0;
-    virtual int broadcastSignal(void* data, int len) = 0;
+  virtual int getRank() { return _rank; }
+  virtual int getSize() { return _size; }
+  virtual int getLocalRank() { return _local_rank; }
+  virtual int getLocalSize() { return _local_size; }
+  virtual int getWorkerID() { return _worker_id; }
 
-    virtual int getRank() { return _rank; }
-    virtual int getSize() { return _size; }
-    virtual int getLocalRank() { return _local_rank; }
-    virtual int getLocalSize() { return _local_size; }
-    virtual int getWorkerID() { return _worker_id; }
+  virtual std::vector<int> getMembers() { return _members; }
+  virtual int getRoot() { return _root; }
 
-    virtual std::vector<int> getMembers() { return _members; }
-    virtual int getRoot() { return _root; }
+ protected:
+  int _rank;
+  int _size;
+  int _local_rank;
+  int _local_size;
+  int _worker_id;
 
-protected:
+  std::vector<int> _members;
+  int _root;
 
-    int _rank;
-    int _size;
-    int _local_rank;
-    int _local_size;
-    int _worker_id;
-
-    std::vector<int> _members;
-    int _root;
-
-    void* _comm;
+  void* _comm;
 };
 
 class BytePSCommSocket : public BytePSComm {
+ public:
+  BytePSCommSocket() {}
+  BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
+                   const std::string& path_suffix,
+                   const std::vector<int>& members);
 
-public:
-
-    BytePSCommSocket() {}
-    BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
-                     const std::string &path_suffix,
-                     const std::vector<int> &members);
-
-    ~BytePSCommSocket() {
-        if (_listen_thread->joinable()) {
-            _listen_thread->join();
-        }
-        close(_recv_fd);
-        close(_send_fd);
-
-        BPS_LOG(DEBUG) << "Clear BytePSCommSocket";
+  ~BytePSCommSocket() {
+    if (_listen_thread->joinable()) {
+      _listen_thread->join();
     }
+    close(_recv_fd);
+    close(_send_fd);
 
-    void init(int* rank, int* size, int* local_rank, int* local_size,
-              int* worker_id, BytePSRole* my_role);
-    int sendSignal(int destination, void* data, int len);
-    int sendSignalToRoot(void* data, int len);
-    int recvSignal(int* source, void* data, int max_len);
-    int recvSignalFromRoot(void* data, int max_len);
-    int broadcastSignal(void* data, int len);
+    BPS_LOG(DEBUG) << "Clear BytePSCommSocket";
+  }
 
-    int getSendFd() { return _send_fd; }
-    int getRecvFd() { return _recv_fd; }
+  void init(int* rank, int* size, int* local_rank, int* local_size,
+            int* worker_id, BytePSRole* my_role);
+  int sendSignal(int destination, void* data, int len);
+  int sendSignalToRoot(void* data, int len);
+  int recvSignal(int* source, void* data, int max_len);
+  int recvSignalFromRoot(void* data, int max_len);
+  int broadcastSignal(void* data, int len);
 
-    std::string getSendPath() { return _send_path; }
-    std::string getRecvPath() { return _recv_path; }
+  int getSendFd() { return _send_fd; }
+  int getRecvFd() { return _recv_fd; }
 
-protected:
+  std::string getSendPath() { return _send_path; }
+  std::string getRecvPath() { return _recv_path; }
 
-    void startListenThread();
-    int initSocket(int rank, const std::string &path);
+ protected:
+  void startListenThread();
+  int initSocket(int rank, const std::string& path);
 
-    std::thread* _listen_thread;
+  std::thread* _listen_thread;
 
-    std::string _send_path;
-    std::string _recv_path;
-    int _recv_fd;
-    int _send_fd;
+  std::string _send_path;
+  std::string _recv_path;
+  int _recv_fd;
+  int _send_fd;
 
-    std::mutex _socket_mu;
-
+  std::mutex _socket_mu;
 };
 
-} // namespace common
-} // namespace byteps
+}  // namespace common
+}  // namespace byteps
 
-#endif // BYTEPS_COMMUNICATOR_H
+#endif  // BYTEPS_COMMUNICATOR_H
