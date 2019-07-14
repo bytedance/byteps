@@ -28,11 +28,18 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
     _is_scheduled = false;
   }
 
+  size_t credit_in_partition = BytePSGlobal::GetNccl()->GetGroupSize() + 1;
+  if (getenv("BYTEPS_SCHEDULING_CREDIT")) {
+    credit_in_partition = atoi(getenv("BYTEPS_SCHEDULING_CREDIT"));
+  }
+  if (!credit_in_partition) {
+    _is_scheduled = false;
+  }
+
   _qt = type;
   _credits = _is_scheduled
-                 ? BytePSGlobal::GetPartitionBound() *
-                       (BytePSGlobal::GetNccl()->GetGroupSize() + 1)
-                 : 34359738368;  // 32GB, basically disabling credit control
+              ? BytePSGlobal::GetPartitionBound() * credit_in_partition
+              : 34359738368;  // 32GB, basically disabling credit control
   _rt = nullptr;
 
   switch (_qt) {
