@@ -44,7 +44,6 @@ def log(s, nl=True):
 
 def benchmark(tensor, average, name):
     if not args.no_wait and bps.rank() == 0:
-        # let other workers submit push-pull request first
         time.sleep(0.01)
     start = time.time()
     handle = push_pull_async_inplace(tensor, average, name)
