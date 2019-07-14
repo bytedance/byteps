@@ -44,7 +44,6 @@ def log(s, nl=True):
 
 def benchmark(tensor, average, name):
     if not args.no_wait and bps.rank() == 0:
-        # let other workers submit push-pull request first
         time.sleep(0.01)
     start = time.time()
     handle = push_pull_async_inplace(tensor, average, name)
@@ -61,8 +60,8 @@ log('Number of GPUs: %d' % (bps.size()))
 # Benchmark
 log('Running benchmark...')
 
-log('size (Byte)    avg. time (ms)    std.dev (ms)')
-for i in range(10):
+log('size (Byte) \t avg. time (ms) \t std.dev (ms)')
+for i in range(8):
     size = 10**i
     data = torch.rand(size, dtype=torch.float32)
     if args.cuda:
@@ -78,6 +77,6 @@ for i in range(10):
     avg = np.mean(durations)
     std = np.std(durations)
 
-    log('%d    %s    %s' % (4*size, '%.3f'%avg, '%.3f'%std))
+    log('%d \t %s \t %s' % (4*size, '%.3f'%avg, '%.3f'%std))
 
 log('End benchmark.')
