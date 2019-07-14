@@ -17,12 +17,15 @@ completion of all parameters.
 Fig.1 shows the dependency graph with global barrier. Machine learning frameworks such as PyTorch and TensorFlow have 
 similar dependencies when using BytePS for push and pull.
 
-[Fig.1: Dependency Graph With Global Barrier](docs/DAG_barrier.png)
+![](docs/DAG_barrier.png)
+
+*Fig.1: Dependency Graph With Global Barrier*
 
 Fig. 2 shows the dependency graph after removing global barrier. What ByteScheduler does is to change the dependency 
 graph from Fig. 1 to Fig. 2 by removing the barrier, building layer-wise dependencies while guaranteeing computation correctness.
 
-[Fig.2: Dependency Graph After Removing Global Barrier](docs/DAG.png)
+![](docs/DAG.png)
+*Fig.2: Dependency Graph After Removing Global Barrier*
 
 ## Usage
 
