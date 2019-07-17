@@ -1,6 +1,6 @@
 # A Step-by-Step Tutorial 
 
-The goal of this tutorial is to help you run BytePS quickly. To ensure that you don't get trouble with system environments problem, we recommend you to use our provided images (as the first step).
+The goal of this tutorial is to help you run BytePS quickly. To ensure that you don't get trouble with system environments problem, we recommend you to use our provided images.
 
  
 ## Single Machine Training 
