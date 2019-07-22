@@ -21,7 +21,7 @@ The key here is to make sure the following:
 
 If you are using RDMA, this should be sufficient. However, with TCP and >=25Gbps networks, it's possible that BytePS cannot fully utilize the bandwidth because a single TCP connection usually cannot run up to 25Gbps.
 
-To address this, you can try running more BytePS server instances on the server machines. For example, you can try running two server instances per server machines. This effectively doubles the number of TCP connections and should be sufficient for 25Gbps networks. For 40Gbps/50Gbps networks, you need three server instances per server machine, and so on.
+To address this, you can try running more BytePS server instances on the server machines. For example, you can try running two server instances per server machines. This effectively doubles the number of TCP connections and should be sufficient for 25Gbps networks. For 40Gbps/50Gbps networks, you need three server instances per server machine, and so on. When doing this, you probably need to set `MXNET_OMP_MAX_THREADS` as: your CPU cores number divided by number of server instances per machine. For example, one machine has 32 cores and you put 4 server instances on it, then you need to `export MXNET_OMP_MAX_THREADS=8`. The idea is to reduce the CPU contention of different server instances.
 
 ## The expected performance
 

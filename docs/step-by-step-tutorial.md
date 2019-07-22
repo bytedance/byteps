@@ -2,6 +2,7 @@
 
 The goal of this tutorial is to help you run BytePS quickly. To ensure that you don't get trouble with system environments problem, we recommend you to use our provided images.
 
+When you have successfully run through these examples, read the [best practice](./best-practice.md) and [performance tuning tips](https://github.com/bytedance/byteps/blob/master/docs/env.md#performance-tuning) to get the best performance on your setup.
  
 ## Single Machine Training 
 
