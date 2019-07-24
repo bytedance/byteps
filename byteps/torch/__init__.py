@@ -81,7 +81,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             self._register_hooks()
 
         # declare tensors
-        for name, tensor in named_parameters
+        for name in self._parameter_names.values():
             declare("Gradient."+name)
             declare("Parameter."+name)
 
