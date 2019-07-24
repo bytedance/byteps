@@ -54,8 +54,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         if len(named_parameters) > 0:
             if isinstance(named_parameters[0][1], torch.Tensor):
                 if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
-                    raise ValueError('named_parameters should be a sequence of '
-                             'tuples (name, torch.Tensor), and should be consistent.')
+                    raise ValueError('named_parameters should consistently be a sequence of '
+                                     'tuples (name, torch.Tensor)')
                 self._is_tensor_instance = True
                 # there is an issue when using torch.Tensor as key, so use its hash instead
                 # https://github.com/pytorch/pytorch/issues/7733
@@ -96,8 +96,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             self._push_pull_delay[p] = self.backward_passes_per_step
 
     def _register_hooks(self):
-        if self._is_tensor_instance:
-            for p in self._tensor_list:
+        for param_group in self.param_groups:
+            for p in param_group['params']:
                 if p.requires_grad:
                     p.grad = p.data.new(p.size()).zero_()
                     self._requires_update.add(p)
@@ -105,16 +105,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     grad_acc = p_tmp.grad_fn.next_functions[0][0]
                     grad_acc.register_hook(self._make_hook(p))
                     self._grad_accs.append(grad_acc)
-        else:
-            for param_group in self.param_groups:
-                for p in param_group['params']:
-                    if p.requires_grad:
-                        p.grad = p.data.new(p.size()).zero_()
-                        self._requires_update.add(p)
-                        p_tmp = p.expand_as(p)
-                        grad_acc = p_tmp.grad_fn.next_functions[0][0]
-                        grad_acc.register_hook(self._make_hook(p))
-                        self._grad_accs.append(grad_acc)
 
     def _push_pull_grad_async(self, p):
         if self._is_tensor_instance:
@@ -123,7 +113,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             name = self._parameter_names.get(p)
         tensor = p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
-
         handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
 
