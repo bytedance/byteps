@@ -63,6 +63,7 @@ def _push_pull_function_factory(tensor):
 
 
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
+    c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_function_factory, tensor)
     handle = getattr(c_lib, function)(tensor, output, average,
                                       name.encode() if name is not None else _NULL,
@@ -193,6 +194,11 @@ def poll(handle):
         A flag indicating whether the operation has completed.
     """
     return c_lib.byteps_torch_poll(handle) != 0
+
+
+def declare(name):
+    c_lib.byteps_torch_declare_tensor(name.encode())
+    return 0
 
 
 def synchronize(handle):

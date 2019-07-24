@@ -21,7 +21,7 @@ from __future__ import print_function
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import push_pull
-from byteps.torch.ops import poll, synchronize
+from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown
 from byteps.torch.ops import size, local_size, rank, local_rank
 
@@ -79,6 +79,11 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._requires_update = set()
         if size() > 1:
             self._register_hooks()
+
+        # declare tensors
+        for name, tensor in named_parameters
+            declare("Gradient."+name)
+            declare("Parameter."+name)
 
     @staticmethod
     def find_duplicates(lst):

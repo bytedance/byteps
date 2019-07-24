@@ -64,18 +64,11 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
   size_t size = byteps_input->size();
   auto dtype = byteps_input->dtype();
 
-  // check if we need to init the tensor
-  if (!common::IsTensorDeclared(tensor_name)) {
-    // we need to init this tensor with PS
-    auto& context = common::GetContextFromName(tensor_name);
-    // the following init is blocking, in order to guarantee the order
-    common::InitTensor(context, size, dtype,
-                       (device == CPU_DEVICE_ID)
-                           ? const_cast<void*>(byteps_input->data())
-                           : nullptr);
-  }
-
   auto& context = common::GetContextFromName(tensor_name);
+  common::InitTensor(context, size, dtype,
+                      (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(byteps_input->data())
+                      : nullptr);
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -100,6 +93,11 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
 }
 
 int PollHandle(int handle) { return handle_manager.PollHandle(handle) ? 1 : 0; }
+
+void DeclareTensor(const std::string& name) {
+  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+  common::IsTensorDeclared(tensor_name);
+}
 
 void WaitAndClear(int handle) {
   while (!handle_manager.PollHandle(handle)) {
@@ -128,6 +126,7 @@ PYBIND11_MODULE(c_lib, m) {
   // basics
   m.def("byteps_torch_poll", &PollHandle);
   m.def("byteps_torch_wait_and_clear", &WaitAndClear);
+  m.def("byteps_torch_declare_tensor", &DeclareTensor);
 }
 
 }  // namespace torch

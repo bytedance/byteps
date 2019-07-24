@@ -49,6 +49,7 @@ PUSHPULL_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
 
 extern "C" int byteps_torch_poll(int handle);
 extern "C" void byteps_torch_wait_and_clear(int handle);
+extern "C" void byteps_torch_declare_tensor(char* name);
 
 }  // namespace torch
 }  // namespace byteps
