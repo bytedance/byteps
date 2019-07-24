@@ -99,7 +99,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         if self._is_tensor_instance:
             for p in self._tensor_list:
                 if p.requires_grad:
-                    p.grad = p.new(p.size()).zero_()
+                    p.grad = p.data.new(p.size()).zero_()
                     self._requires_update.add(p)
                     p_tmp = p.expand_as(p)
                     grad_acc = p_tmp.grad_fn.next_functions[0][0]
