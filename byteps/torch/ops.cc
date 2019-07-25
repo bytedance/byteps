@@ -50,8 +50,8 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 
 }  // namespace
 
-void StartTask(::torch::Tensor& tensor, ::torch::Tensor& output, int average,
-               const std::string& tensor_name, int version, int priority, int handle) {
+void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
+               const std::string tensor_name, int version, int priority, int handle) {
 
   auto device = GetDeviceID(tensor);
   auto ready_event = RecordReadyEvent(device);
@@ -98,7 +98,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
   if (context.initialized) {
     StartTask(tensor, output, average, tensor_name, version, priority, handle);
   } else {
-    std::thread t(StartTask, std::ref(tensor), std::ref(output), average, std::ref(tensor_name), version, priority, handle);
+    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
     t.detach();
   }
   return handle;
