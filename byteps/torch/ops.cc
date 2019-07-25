@@ -50,17 +50,13 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 
 }  // namespace
 
-int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string& name, int version, int priority) {
-  ThrowIfError(common::CheckInitialized());
+void StartTask(::torch::Tensor& tensor, ::torch::Tensor& output, int average,
+               const std::string& tensor_name, int version, int priority, int handle) {
 
-  auto handle = handle_manager.AllocateHandle();
   auto device = GetDeviceID(tensor);
   auto ready_event = RecordReadyEvent(device);
   auto byteps_input = std::make_shared<TorchTensor>(tensor);
   auto byteps_output = std::make_shared<TorchTensor>(output);
-
-  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
   size_t size = byteps_input->size();
   auto dtype = byteps_input->dtype();
 
@@ -88,7 +84,23 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
       queue_list);
 
   ThrowIfError(enqueue_result);
+  return;
 
+}
+
+int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
+               const std::string& name, int version, int priority) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto handle = handle_manager.AllocateHandle();
+  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+  auto& context = common::GetContextFromName(tensor_name);
+  if (context.initialized) {
+    StartTask(tensor, output, average, tensor_name, version, priority, handle);
+  } else {
+    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
+    t.detach();
+  }
   return handle;
 }
 
