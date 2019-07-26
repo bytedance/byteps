@@ -161,9 +161,155 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         return super(self.__class__, self).step(closure)
 
 
+class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
+    def  __init__(self, params, named_parameters, master_params, loss_scale,
+                 compression, backward_passes_per_step=1):
+        super(self.__class__, self).__init__(params)
+        self._compression = compression
+
+        if named_parameters is not None:
+            named_parameters = list(named_parameters)
+        else:
+            named_parameters = []
+
+        self.model_params = [param for name, param in named_parameters if param.requires_grad]
+        self.master_params = master_params
+        self.loss_scale = loss_scale
+
+        # make sure that named_parameters are tuples
+        if any([not isinstance(p, tuple) for p in named_parameters]):
+            raise ValueError('named_parameters should be a sequence of '
+                             'tuples (name, parameter), usually produced by '
+                             'model.named_parameters().')
+
+        dups = _DistributedOptimizer.find_duplicates([k for k, _ in named_parameters])
+        if len(dups) > 0:
+            raise ValueError('Parameter names in named_parameters must be unique. '
+                             'Found duplicates: %s' % ', '.join(dups))
+
+        if len(named_parameters) > 0:
+            if isinstance(named_parameters[0][1], torch.Tensor):
+                if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
+                    raise ValueError('named_parameters should consistently be a sequence of '
+                                     'tuples (name, torch.Tensor)')
+                self._is_tensor_instance = True
+                # there is an issue when using torch.Tensor as key, so use its hash instead
+                # https://github.com/pytorch/pytorch/issues/7733
+                self._parameter_names = {v.__hash__(): k for k, v
+                                         in sorted(named_parameters)}
+                self._tensor_list = [tensor for name, tensor in named_parameters]
+            else:
+                self._is_tensor_instance = False
+                self._parameter_names = {v: k for k, v
+                                         in sorted(named_parameters)}
+        else:
+            self._is_tensor_instance = False
+            self._parameter_names = {v: 'push_pull.noname.%s' % i
+                                     for param_group in self.param_groups
+                                     for i, v in enumerate(param_group['params'])}
+        self.backward_passes_per_step = backward_passes_per_step
+        self._push_pull_delay = {v: self.backward_passes_per_step
+                                 for _, v in sorted(named_parameters)}
+        self._handles = {}
+        self._grad_accs = []
+        self._requires_update = set()
+        if size() > 1:
+            self._register_hooks()
+
+        # declare tensors
+        for name in self._parameter_names.values():
+            declare("Gradient."+name)
+            declare("Parameter."+name)
+
+    @staticmethod
+    def find_duplicates(lst):
+        seen = set()
+        dups = set()
+        for el in lst:
+            if el in seen:
+                dups.add(el)
+            seen.add(el)
+        return dups
+
+    def set_backward_passes_per_step(self, passes):
+        self.backward_passes_per_step = passes
+        for p in self._push_pull_delay:
+            self._push_pull_delay[p] = self.backward_passes_per_step
+
+    def _register_hooks(self):
+        for p in self.model_params:
+            if p.requires_grad:
+                p.grad = p.data.new(p.size()).zero_()
+                self._requires_update.add(p)
+                p_tmp = p.expand_as(p)
+                grad_acc = p_tmp.grad_fn.next_functions[0][0]
+                grad_acc.register_hook(self._make_hook(p))
+                self._grad_accs.append(grad_acc)
+
+    def _push_pull_grad_async(self, p):
+        if self._is_tensor_instance:
+            name = self._parameter_names.get(p.__hash__())
+        else:
+            name = self._parameter_names.get(p)
+        tensor = p.grad
+        tensor_compressed, ctx = self._compression.compress(tensor)
+        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+        return handle, ctx
+
+    def _make_hook(self, p):
+        def hook(*ignore):
+            if p in self._handles and self._handles[p][0] is not None:
+                if self._push_pull_delay[p] <= 0:
+                    raise AssertionError(
+                        "Gradients were computed more than "
+                        "backward_passes_per_step times before call "
+                        "to step(). Increase backward_passes_per_step to "
+                        "accumulate gradients locally.")
+            assert not p.grad.requires_grad
+            assert self._push_pull_delay[p] > 0
+            handle, ctx = None, None
+            self._push_pull_delay[p] -= 1
+            if self._push_pull_delay[p] == 0:
+                handle, ctx = self._push_pull_grad_async(p)
+            self._handles[p] = (handle, ctx)
+        return hook
+
+    def synchronize(self):
+        missing_p = self._requires_update - set(self._handles.keys())
+        for p in missing_p:
+            handle, ctx = self._push_pull_grad_async(p)
+            self._handles[p] = (handle, ctx)
+
+        for p, value in self._handles.items():
+            handle, ctx = value
+            if handle is None:
+                handle, ctx = self._push_pull_grad_async(p)
+                self._handles[p] = (handle, ctx)
+        for p, (handle, _) in self._handles.items():
+            output = synchronize(handle)
+            self._push_pull_delay[p] = self.backward_passes_per_step
+            p.grad.set_(self._compression.decompress(output, ctx))
+        self._handles.clear()
+
+    def step(self, closure=None):
+        self.synchronize()
+        for model, master in zip(self.model_params, self.master_params):
+            if model.grad is not None:
+                if master.grad is None:
+                    master.grad = Variable(master.data.new(*master.data.size()))
+                master.grad.data.copy_(model.grad.data)
+            else:
+                master.grad = None
+        for param in self.master_params: param.grad.data = param.grad.data / self.loss_scale
+        return super(self.__class__, self).step(closure)
+
+
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
-                         backward_passes_per_step=1):
+                         backward_passes_per_step=1,
+                         half=False,
+                         master_params=None,
+                         loss_scale=1024):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
@@ -197,10 +343,16 @@ def DistributedOptimizer(optimizer, named_parameters=None,
     """
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override the `step()` method with an push_pull implementation.
-    cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
-               dict(_DistributedOptimizer.__dict__))
-    return cls(optimizer.param_groups, named_parameters,
-               compression, backward_passes_per_step)
+    if half:
+        cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
+                   dict(_HalfPrecisionDistributedOptimizer.__dict__))
+        return cls(optimizer.param_groups, named_parameters,
+                             master_params, loss_scale, compression, backward_passes_per_step)
+    else:
+        cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
+                   dict(_DistributedOptimizer.__dict__))
+        return cls(optimizer.param_groups, named_parameters,
+                   compression, backward_passes_per_step)
 
 
 def broadcast_parameters(params, root_rank):
@@ -229,7 +381,7 @@ def broadcast_parameters(params, root_rank):
         # To make it a real broadcast, we set the non-root tensors all 0.
         if rank() != root_rank:
             p.fill_(0)
-        # Remember to diable averaging because we are doing broadcast
+        # Remember to disable averaging because we are doing broadcast
         handle = byteps_push_pull(p, average=False, name="Parameter."+name)
         synchronize(handle)
 
