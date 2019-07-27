@@ -250,7 +250,11 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                 if p.requires_grad:
                     p.grad = p.data.new(p.size()).zero_()
                     self._requires_update.add(p)
-                    p_tmp = p.expand_as(p)
+                    if self._is_tensor_instance:
+                        fp16_p = self._parameter_map.get(p.__hash__())
+                    else:
+                        fp16_p = self._parameter_map.get(p)
+                    p_tmp = fp16_p.expand_as(fp16_p)
                     grad_acc = p_tmp.grad_fn.next_functions[0][0]
                     grad_acc.register_hook(self._make_hook(p))
                     self._grad_accs.append(grad_acc)
