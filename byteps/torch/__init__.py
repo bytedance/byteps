@@ -162,7 +162,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
 
 class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
-    def  __init__(self, params, named_parameters, master_params, loss_scale,
+    def  __init__(self, params, named_parameters, fp16_params, fp32_params, loss_scale,
                  compression, backward_passes_per_step=1):
         super(self.__class__, self).__init__(params)
         self._compression = compression
@@ -172,8 +172,8 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         else:
             named_parameters = []
 
-        self.model_params = [param for name, param in named_parameters if param.requires_grad]
-        self.master_params = master_params
+        self.fp32_params = fp32_params
+        self.fp16_params = fp16_params
         self.loss_scale = loss_scale
 
         # make sure that named_parameters are tuples
@@ -207,6 +207,14 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             self._parameter_names = {v: 'push_pull.noname.%s' % i
                                      for param_group in self.param_groups
                                      for i, v in enumerate(param_group['params'])}
+
+        self._parameter_map = {}
+        for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
+            if self._is_tensor_instance:
+                self._parameter_map[fp32_p.__hash__()] = fp16_p
+            else:
+                self._parameter_map[fp32_p] = fp16_p
+
         self.backward_passes_per_step = backward_passes_per_step
         self._push_pull_delay = {v: self.backward_passes_per_step
                                  for _, v in sorted(named_parameters)}
@@ -237,21 +245,24 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             self._push_pull_delay[p] = self.backward_passes_per_step
 
     def _register_hooks(self):
-        for p in self.model_params:
-            if p.requires_grad:
-                p.grad = p.data.new(p.size()).zero_()
-                self._requires_update.add(p)
-                p_tmp = p.expand_as(p)
-                grad_acc = p_tmp.grad_fn.next_functions[0][0]
-                grad_acc.register_hook(self._make_hook(p))
-                self._grad_accs.append(grad_acc)
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                if p.requires_grad:
+                    p.grad = p.data.new(p.size()).zero_()
+                    self._requires_update.add(p)
+                    p_tmp = p.expand_as(p)
+                    grad_acc = p_tmp.grad_fn.next_functions[0][0]
+                    grad_acc.register_hook(self._make_hook(p))
+                    self._grad_accs.append(grad_acc)
 
     def _push_pull_grad_async(self, p):
         if self._is_tensor_instance:
             name = self._parameter_names.get(p.__hash__())
+            fp16_p = self._parameter_map.get(p.__hash__())
         else:
             name = self._parameter_names.get(p)
-        tensor = p.grad
+            fp16_p = self._parameter_map.get(p)
+        tensor = fp16_p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
         handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
@@ -285,22 +296,39 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             if handle is None:
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
-        for p, (handle, _) in self._handles.items():
-            output = synchronize(handle)
-            self._push_pull_delay[p] = self.backward_passes_per_step
-            p.grad.set_(self._compression.decompress(output, ctx))
+        
+        while len(self._handles.keys()) > 0:
+            params = list(self._handles.keys())
+            for p in params:
+                handle, _ = self._handles[p]
+                if poll(handle):
+                    output = synchronize(handle)
+                    self._push_pull_delay[p] = self.backward_passes_per_step
+                    if self._is_tensor_instance:
+                        fp16_p = self._parameter_map.get(p.__hash__())
+                    else:
+                        fp16_p = self._parameter_map.get(p)
+                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
+                    if p.grad is None:
+                        p.grad = Variable(p.data.new(*p.data.size()))
+                    p.grad.data.copy_(fp16_p.grad.data)
+                    p.grad.data = p.grad.data / self.loss_scale
+                    self._handles.pop(p)
+
         self._handles.clear()
 
     def step(self, closure=None):
         self.synchronize()
-        for model, master in zip(self.model_params, self.master_params):
+        '''        
+        for model, master in zip(self.fp16_params, self.fp32_params):
             if model.grad is not None:
                 if master.grad is None:
                     master.grad = Variable(master.data.new(*master.data.size()))
                 master.grad.data.copy_(model.grad.data)
             else:
                 master.grad = None
-        for param in self.master_params: param.grad.data = param.grad.data / self.loss_scale
+        for param in self.fp32_params: param.grad.data = param.grad.data / self.loss_scale
+        '''
         return super(self.__class__, self).step(closure)
 
 
@@ -308,7 +336,8 @@ def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
                          backward_passes_per_step=1,
                          half=False,
-                         master_params=None,
+                         fp16_params=None,
+                         fp32_params=None,
                          loss_scale=1024):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
@@ -347,7 +376,7 @@ def DistributedOptimizer(optimizer, named_parameters=None,
         cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                    dict(_HalfPrecisionDistributedOptimizer.__dict__))
         return cls(optimizer.param_groups, named_parameters,
-                             master_params, loss_scale, compression, backward_passes_per_step)
+                   fp16_params, fp32_params, loss_scale, compression, backward_passes_per_step)
     else:
         cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                    dict(_DistributedOptimizer.__dict__))
