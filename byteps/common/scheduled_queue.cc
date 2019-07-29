@@ -129,6 +129,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
     BPS_LOG(TRACE) << "Queue " << LogStrings[_qt]
                    << " getTask: " << task->tensor_name << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
+    task->ready_event = nullptr;
     return task;
   }
   return nullptr;
@@ -153,6 +154,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
                    << " getTask(key): " << task->tensor_name
                    << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
+    task->ready_event = nullptr;
     return task;
   }
   return nullptr;
