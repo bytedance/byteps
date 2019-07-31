@@ -26,6 +26,7 @@ from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown
 from byteps.torch.ops import size, local_size, rank, local_rank
 
+import time
 import threading
 try:
     import queue
@@ -50,6 +51,9 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         self.fp32_params = fp32_params
         self.fp16_params = fp16_params
         self.loss_scale = loss_scale
+
+        # Track training steps
+        # self._step = 0
 
         # make sure that named_parameters are tuples
         if any([not isinstance(p, tuple) for p in named_parameters]):
@@ -134,6 +138,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             seen.add(el)
         return dups
 
+    '''
     def zero_grad(self):
         """Override the default zero_grad function.
         Clears the gradients of all optimized tensors.
@@ -142,6 +147,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             return
         else:
             super(self.__class__, self).zero_grad()
+    '''
 
     def set_backward_passes_per_step(self, passes):
         self.backward_passes_per_step = passes
@@ -172,7 +178,10 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             fp16_p = self._parameter_map.get(p)
         tensor = fp16_p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
-        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+        self._locks[p].acquire()
+        handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name)
+        # Add to queue to poll completion
+        self._event_queue.put((p, handle, ctx))
         return handle, ctx
 
     def _make_hook(self, p):
@@ -204,34 +213,23 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             if handle is None:
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
-        
-        while len(self._handles.keys()) > 0:
-            params = list(self._handles.keys())
-            for p in params:
-                handle, _ = self._handles[p]
-                if poll(handle):
-                    output = synchronize(handle)
-                    self._push_pull_delay[p] = self.backward_passes_per_step
-                    if self._is_tensor_instance:
-                        fp16_p = self._parameter_map.get(p.__hash__())
-                    else:
-                        fp16_p = self._parameter_map.get(p)
-                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
-                    if p.grad is None:
-                        p.grad = Variable(p.data.new(*p.data.size()))
-                    p.grad.data.copy_(fp16_p.grad.data)
-                    p.grad.data = p.grad.data / self.loss_scale
-                    self.step_one_param(p)
-                    self._handles.pop(p)
 
-        self._handles.clear()
+    def step(self, closure=None, wait_for_finish=True):
+        if size() > 1:
+            self.synchronize()
+            if wait_for_finish:
+                while not self._event_queue.empty():
+                    time.sleep(0.001)
+            loss = None
+            if closure is not None:
+                loss = closure()
+            return loss
+        else:
+            super(self._opt.__class__, self._opt).step()
 
-    def step(self, closure=None):
-        self.synchronize()
-        return None
 
     def step_one_param(self, param, closure=None):
-        """Performs a single optimization step.
+        """Performs a single optimization step. Only applicable to SGD.
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
@@ -279,10 +277,17 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             # Check whether the push-pull is finished. If so, start updating parameters.
             if handle is not None and poll(handle):
                 output = synchronize(handle)
-                p.grad.set_(self._compression.decompress(output, ctx))
                 self._push_pull_delay[p] = self.backward_passes_per_step
+                if self._is_tensor_instance:
+                    fp16_p = self._parameter_map.get(p.__hash__())
+                else:
+                    fp16_p = self._parameter_map.get(p)
+                fp16_p.grad.set_(self._compression.decompress(output, ctx))
+                p.grad.data.copy_(fp16_p.grad.data)
+                p.grad.data = p.grad.data / (self.loss_scale * size())
                 self.step_one_param(p)
-                self._zero_one_grad(p)
+                fp16_p.data.copy_(p.data)
+                self._zero_one_grad(fp16_p)
                 # notify update completion and parameter is ready for forward propagation
                 if p in self._locks:
                     self._locks[p].release()
@@ -379,3 +384,152 @@ def DistributedOptimizer(optimizer, named_parameters=None,
         return cls(optimizer.param_groups, named_parameters,
                    compression, backward_passes_per_step)
 
+
+def broadcast_parameters(params, root_rank):
+    """
+    Broadcasts the parameters from root rank to all other processes.
+    Typical usage is to broadcast the `model.state_dict()`,
+    `model.named_parameters()`, or `model.parameters()`.
+    Arguments:
+        params: One of the following:
+            - list of parameters to broadcast
+            - dict of parameters to broadcast
+        root_rank: The rank of the process from which parameters will be
+                   broadcasted to all other processes.
+    """
+    if isinstance(params, dict):
+        params = sorted(params.items())
+    elif isinstance(params, list):
+        # support both named_parameters() and regular parameters()
+        params = [p if isinstance(p, tuple) else (None, p) for p in params]
+    else:
+        raise ValueError('invalid params of type: %s' % type(params))
+
+    # Run synchronous broadcasts.
+    for name, p in params:
+        # Broadcast is implemented as push + pull in BytePS
+        # To make it a real broadcast, we set the non-root tensors all 0.
+        if rank() != root_rank:
+            p.fill_(0)
+        # Remember to disable averaging because we are doing broadcast
+        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        synchronize(handle)
+
+
+def broadcast_optimizer_state(optimizer, root_rank):
+    """
+    Broadcasts an optimizer state from root rank to all other processes.
+    Arguments:
+        optimizer: An optimizer.
+        root_rank: The rank of the process from which the optimizer will be
+                   broadcasted to all other processes.
+    """
+    if isinstance(optimizer, torch.optim.LBFGS):
+        # TODO(travis): L-BFGS cannot be easily supported without serializing
+        # the entire state_dict, as its structure is deeply nested and contains
+        # None type parameter values
+        raise ValueError('cannot broadcast torch.optim.LBFGS state')
+
+    state_dict = optimizer.state_dict()
+
+    # Newly created optimizers will not have their state initialized, so
+    # do that initialization here
+    if len(state_dict['state']) == 0:
+        for group in optimizer.param_groups:
+            for p in group['params']:
+                p.grad = p.data.new(p.size()).zero_()
+        # This function accepts a torch.optim.Optimizer or a DistributedOptimizer
+        # wrapped around a torch optimizer. Calling step() with a DistributedOptimizer
+        # forces push_pull on all model parameters, which will result in deadlock
+        # unless every rank calls step(). Therefore, to finish state initialization
+        # only call optimizer.step() with a torch.optim.Optimizer.
+        if optimizer.__module__ == DistributedOptimizer.__module__:
+            super(optimizer.__class__, optimizer).step()
+        else:
+            optimizer.step()
+        state_dict = optimizer.state_dict()
+
+    # If the state_dict is still empty after initialization, then
+    # the optimizer is stateless, and there is nothing to broadcast.
+    # Furthermore, attempting to access the state dict would result in
+    # an error.
+    if len(state_dict['state']) == 0:
+        return
+
+    params = []
+    callbacks = {}
+    occurrences = collections.defaultdict(int)
+
+    # Returns the full type structure of the possibly nested objects for recursive casting back
+    def _get_types(x):
+        if isinstance(x, collections.Iterable):
+            return type(x), [_get_types(xi) for xi in x]
+        else:
+            return type(x)
+
+    # Casts an object encoded in a tensor back into its original type and subtypes
+    def _recursive_cast(x, dtype):
+        if isinstance(dtype, tuple):
+            t, dtypes = dtype
+            x = t(x)
+            return t([_recursive_cast(x[i], dtypes[i]) for i in range(len(x))])
+        else:
+            return dtype(x)
+
+    # Some optimizer parameters may be represented as scalars instead of
+    # tensors.  In such cases, we need to wrap the scalar in a tensor, then
+    # broadcast, then update the appropriate value in the state_dict with the
+    # new unwrapped scalar value via a callback.
+    def _create_callback(pid, name, t, p):
+        def _from_tensor():
+            state_dict['state'][pid][name] = t(p.numpy()[0])
+        return _from_tensor
+
+    def _create_option_callback(index, option_key, option_tensor, dtypes):
+        def _from_tensor():
+            optimizer.param_groups[index][option_key] = _recursive_cast(
+                option_tensor.numpy()[0], dtypes)
+        return _from_tensor
+
+    # Param groups are an ordered list, normally there is only one per model,
+    # but users can add additional param groups for example to train
+    # previously frozen layers
+    for index, group in enumerate(state_dict['param_groups']):
+        # Broadcast options like learning rate
+        for option_key, option_value in group.items():
+            if option_key == 'params':
+                continue
+
+            # Options like the learning rate are scalar, and need to be wrapped in tensors
+            key = '%s.%d' % (option_key, index)
+            dtypes = _get_types(option_value)
+            option_tensor = torch.Tensor([option_value])
+            callbacks[key] = _create_option_callback(index, option_key, option_tensor, dtypes)
+            params.append((key, option_tensor))
+
+        # The params list here is ordered by the layers in the model
+        for pid in group['params']:
+            param_state = state_dict['state'][pid]
+            for name, p in param_state.items():
+                # Some parameter names may appear more than once, in which
+                # case we ensure they have a unique identifier defined by
+                # their order
+                occurrences[name] += 1
+                key = '%s.%d' % (str(name), occurrences[name])
+
+                if not torch.is_tensor(p):
+                    # Wrap the scalar in a FloatTensor, and remember its type
+                    # so we can cast it back after unwrapping
+                    t = type(p)
+                    p = torch.Tensor([p])
+                    callbacks[key] = _create_callback(pid, name, t, p)
+
+                params.append((key, p))
+
+    # Synchronized broadcast of all parameters
+    broadcast_parameters(params, root_rank)
+
+    # Post-broadcast clenaup for non-tensor parameters
+    for key, p in params:
+        if key in callbacks:
+            callbacks[key]()
