@@ -87,12 +87,15 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                                      for param_group in self.param_groups
                                      for i, v in enumerate(param_group['params'])}
 
+        # Use lock to block the forward propagation of each parameter.
+        self._locks = {}
         self._parameter_map = {}
         for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
             if self._is_tensor_instance:
                 self._parameter_map[fp32_p.__hash__()] = fp16_p
             else:
                 self._parameter_map[fp32_p] = fp16_p
+            self._locks[fp16_p] = threading.Lock()
 
         self.backward_passes_per_step = backward_passes_per_step
         self._push_pull_delay = {v: self.backward_passes_per_step
@@ -100,12 +103,6 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
-
-        # Use lock to block the forward propagation of each parameter.
-        self._locks = {}
-        for param_group in self.param_groups:
-            for p in param_group['params']:
-                self._locks[p] = threading.Lock()
 
         if size() > 1:
             self._register_forward_hooks()
@@ -178,7 +175,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             fp16_p = self._parameter_map.get(p)
         tensor = fp16_p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
-        self._locks[p].acquire()
+        self._locks[fp16_p].acquire()
         handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name)
         # Add to queue to poll completion
         self._event_queue.put((p, handle, ctx))
@@ -289,8 +286,8 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                 fp16_p.data.copy_(p.data)
                 self._zero_one_grad(fp16_p)
                 # notify update completion and parameter is ready for forward propagation
-                if p in self._locks:
-                    self._locks[p].release()
+                if fp16_p in self._locks:
+                    self._locks[fp16_p].release()
             else:
                 self._event_queue.put((p, handle, ctx))
 
