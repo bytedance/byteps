@@ -105,7 +105,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         if size() > 1:
             self._register_forward_hooks()
-            self._register_hooks()
+            self._register_backward_hooks()
 
         self._lock = threading.Lock()
 
@@ -129,23 +129,57 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             seen.add(el)
         return dups
 
-    '''
-    def zero_grad(self):
-        """Override the default zero_grad function.
-        Clears the gradients of all optimized tensors.
-        """
-        if size() > 1 and self._step > 0:
-            return
-        else:
-            super(self.__class__, self).zero_grad()
-    '''
-
     def set_backward_passes_per_step(self, passes):
         self.backward_passes_per_step = passes
         for p in self._push_pull_delay:
             self._push_pull_delay[p] = self.backward_passes_per_step
 
-    def _register_hooks(self):
+    def _register_forward_hooks(self):
+        """Add hook before forward propagation of each layer to block forward computation until the push-pull and
+        parameter update is finished. The blocking is implemented using a lock."""
+        # Recursively find all submodules
+        submodules = []
+        q = queue.LifoQueue()
+        for mod in self._model.children():
+            q.put(mod)
+        while not q.empty():
+            mod = q.get()
+            if len(list(mod.children())) == 0:
+                submodules.append(mod)
+            else:
+                for m in mod.children():
+                    q.put(m)
+
+        def pre_forward_hook(mod, input):
+            for p in mod.parameters():
+                fp32_p = self._fp16_to_fp32_map[p]
+                if fp32_p in self._handles:
+                    while True:
+                        with self._lock:
+                            if fp32_p not in self._handles:
+                                break
+                            if self._try_to_synchronize(fp32_p):
+                                break
+                            else:
+                                # In order not to waste GPU cycles, we find another handle to synchronize
+                                params = list(self._handles.keys())
+                                for other_p in params:
+                                    if other_p.__hash__() == fp32_p.__hash__():
+                                        continue
+                                    if self._try_to_synchronize(other_p):
+                                        break
+                        time.sleep(0.0001)
+
+        def after_forward_hook(mod, input, result):
+            for p in mod.parameters():
+                self._zero_one_grad(p)
+
+        # Register pre-hook and hook for each module
+        for mod in reversed(submodules):
+            mod.register_forward_pre_hook(pre_forward_hook)
+            mod.register_forward_hook(after_forward_hook)
+
+    def _register_backward_hooks(self):
         for param_group in self.param_groups:
             for p in param_group['params']:
                 if p.requires_grad:
@@ -193,7 +227,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             self._handles[p] = (handle, ctx)
         return hook
 
-    def synchronize(self):
+    def _sync_missing_gradients(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
             handle, ctx = self._push_pull_grad_async(p)
@@ -207,10 +241,9 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
     def step(self, closure=None, wait_for_finish=True):
         if size() > 1:
-            self.synchronize()
-            # Poll whether the tensor push-pull is finished.
+            self._sync_missing_gradients()
             if wait_for_finish:
-                self._poll()
+                self._wait_for_all()
             loss = None
             if closure is not None:
                 loss = closure()
@@ -219,7 +252,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             super(self.__class__, self).step()
 
 
-    def step_one_param(self, param, closure=None):
+    def _step_one_param(self, param, closure=None):
         """Performs a single optimization step. Only applicable to SGD.
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
@@ -259,14 +292,20 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         return loss
 
-    def _poll(self):
-        self._stop_poll = False
+    def _zero_one_grad(self, p):
+        """Clears the gradient of one variable as torch accumulates gradients by default.
+        Arguments:
+            p: the parameter.
+        """
+        if p.grad is not None:
+            p.grad.detach_()
+            p.grad.zero_()
+
+    def _wait_for_all(self):
         while len(self._handles.keys()) > 0:
             params = list(self._handles.keys())
             for p in params:
                 self._try_to_synchronize(p)
-                if self._stop_poll:
-                    return
 
     def _try_to_synchronize(self, p):
         handle, ctx = self._handles[p]
@@ -280,65 +319,13 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             fp16_p.grad.set_(self._compression.decompress(output, ctx))
             p.grad.data.copy_(fp16_p.grad.data)
             p.grad.data = p.grad.data / (self.loss_scale * size())
-            self.step_one_param(p)
+            self._step_one_param(p)
             fp16_p.data.copy_(p.data)
             self._handles.pop(p)
             return True
         else:
             return False
 
-    def _register_forward_hooks(self):
-        """Add hook before forward propagation of each layer to block forward computation until the push-pull and
-        parameter update is finished. The blocking is implemented using a lock."""
-        # Recursively find all submodules
-        submodules = []
-        q = queue.LifoQueue()
-        for mod in self._model.children():
-            q.put(mod)
-        while not q.empty():
-            mod = q.get()
-            if len(list(mod.children())) == 0:
-                submodules.append(mod)
-            else:
-                for m in mod.children():
-                    q.put(m)
-
-        def pre_forward_hook(mod, input):
-            for p in mod.parameters():
-                fp32_p = self._fp16_to_fp32_map[p]
-                if fp32_p in self._handles:
-                    while True:
-                        with self._lock:
-                            if fp32_p not in self._handles:
-                                break
-                            if self._try_to_synchronize(fp32_p):
-                                break
-                            else:
-                                # In order not to waste GPU cycles, we find another handle to synchronize
-                                params = list(self._handles.keys())
-                                for other_p in params:
-                                    if other_p.__hash__() == fp32_p.__hash__():
-                                        continue
-                                    if self._try_to_synchronize(other_p):
-                                        break
-
-        def after_forward_hook(mod, input, result):
-            for p in mod.parameters():
-                self._zero_one_grad(p)
-
-        # Register pre-hook and hook for each module
-        for mod in reversed(submodules):
-            mod.register_forward_pre_hook(pre_forward_hook)
-            mod.register_forward_hook(after_forward_hook)
-
-    def _zero_one_grad(self, p):
-        """Clears the gradient of one variable as torch accumulates gradients by default.
-        Arguments:
-            p: the parameter.
-        """
-        if p.grad is not None:
-            p.grad.detach_()
-            p.grad.zero_()
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
