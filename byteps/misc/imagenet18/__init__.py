@@ -107,6 +107,8 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             self._register_forward_hooks()
             self._register_hooks()
 
+        self._lock = threading.Lock()
+
         # declare tensors
         for name in self._parameter_names.values():
             declare("Gradient."+name)
@@ -258,24 +260,32 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         return loss
 
     def _poll(self):
+        self._stop_poll = False
         while len(self._handles.keys()) > 0:
             params = list(self._handles.keys())
             for p in params:
-                handle, ctx = self._handles[p]
-                if poll(handle):
-                    output = synchronize(handle)
-                    self._push_pull_delay[p] = self.backward_passes_per_step
-                    if self._is_tensor_instance:
-                        fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
-                    else:
-                        fp16_p = self._fp32_to_fp16_map.get(p)
-                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
-                    p.grad.data.copy_(fp16_p.grad.data)
-                    p.grad.data = p.grad.data / (self.loss_scale * size())
-                    self.step_one_param(p)
-                    fp16_p.data.copy_(p.data)
-                    self._handles.pop(p)
-        self._handles.clear()
+                self._try_to_synchronize(p)
+                if self._stop_poll:
+                    return
+
+    def _try_to_synchronize(self, p):
+        handle, ctx = self._handles[p]
+        if poll(handle):
+            output = synchronize(handle)
+            self._push_pull_delay[p] = self.backward_passes_per_step
+            if self._is_tensor_instance:
+                fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
+            else:
+                fp16_p = self._fp32_to_fp16_map.get(p)
+            fp16_p.grad.set_(self._compression.decompress(output, ctx))
+            p.grad.data.copy_(fp16_p.grad.data)
+            p.grad.data = p.grad.data / (self.loss_scale * size())
+            self.step_one_param(p)
+            fp16_p.data.copy_(p.data)
+            self._handles.pop(p)
+            return True
+        else:
+            return False
 
     def _register_forward_hooks(self):
         """Add hook before forward propagation of each layer to block forward computation until the push-pull and
@@ -295,18 +305,22 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         def pre_forward_hook(mod, input):
             for p in mod.parameters():
-                fp16_p = p
-                fp32_p = self._fp16_to_fp32_map[fp16_p]
+                fp32_p = self._fp16_to_fp32_map[p]
                 if fp32_p in self._handles:
-                    handle, ctx = self._handles[fp32_p]
-                    output = synchronize(handle)
-                    self._push_pull_delay[fp32_p] = self.backward_passes_per_step
-                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
-                    fp32_p.grad.data.copy_(fp16_p.grad.data)
-                    fp32_p.grad.data = fp32_p.grad.data / (self.loss_scale * size())
-                    self.step_one_param(fp32_p)
-                    fp16_p.data.copy_(fp32_p.data)
-                    self._handles.pop(fp32_p)
+                    while True:
+                        with self._lock:
+                            if fp32_p not in self._handles:
+                                break
+                            if self._try_to_synchronize(fp32_p):
+                                break
+                            else:
+                                # In order not to waste GPU cycles, we find another handle to synchronize
+                                params = list(self._handles.keys())
+                                for other_p in params:
+                                    if other_p.__hash__() == fp32_p.__hash__():
+                                        continue
+                                    if self._try_to_synchronize(other_p):
+                                        break
 
         def after_forward_hook(mod, input, result):
             for p in mod.parameters():
