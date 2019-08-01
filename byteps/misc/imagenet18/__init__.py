@@ -114,16 +114,9 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         # We use two loops for load-balancing
         for name in self._parameter_names.values():
             declare("Parameter."+name)
-
-        # Poll whether the tensor push-pull is finished.
-        self._event_queue = queue.Queue()
-        self._poller = threading.Thread(target=self._poll, args=())
-        self._poller.start()
-
-    def __del__(self):
-        """Clean up"""
-        self._event_queue.put((None, None, None))
-        self._poller.join()
+        
+        self.priorities = {}
+        self.gradient_count = 0
 
     @staticmethod
     def find_duplicates(lst):
@@ -175,10 +168,11 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             fp16_p = self._parameter_map.get(p)
         tensor = fp16_p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
+        if fp16_p not in self.priorities:
+            self.priorities[fp16_p] = self.gradient_count
+            self.gradient_count += 1
         self._locks[fp16_p].acquire()
-        handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name)
-        # Add to queue to poll completion
-        self._event_queue.put((p, handle, ctx))
+        handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name, priority=self.priorities[fp16_p])
         return handle, ctx
 
     def _make_hook(self, p):
@@ -214,9 +208,14 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
     def step(self, closure=None, wait_for_finish=True):
         if size() > 1:
             self.synchronize()
+            # Poll whether the tensor push-pull is finished.
+            # DEBUG
+            wait_for_finish = True
             if wait_for_finish:
-                while not self._event_queue.empty():
-                    time.sleep(0.001)
+                self._poll()
+            else:
+                poller = threading.Thread(target=self._poll, args=())
+                poller.start()
             loss = None
             if closure is not None:
                 loss = closure()
@@ -266,30 +265,27 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         return loss
 
     def _poll(self):
-        """Poll the completion of the tensor's backward or push-pull from a FIFO event_queue"""
-        while True:
-            p, handle, ctx = self._event_queue.get()
-            if p is None:
-                break
-            # Check whether the push-pull is finished. If so, start updating parameters.
-            if handle is not None and poll(handle):
-                output = synchronize(handle)
-                self._push_pull_delay[p] = self.backward_passes_per_step
-                if self._is_tensor_instance:
-                    fp16_p = self._parameter_map.get(p.__hash__())
-                else:
-                    fp16_p = self._parameter_map.get(p)
-                fp16_p.grad.set_(self._compression.decompress(output, ctx))
-                p.grad.data.copy_(fp16_p.grad.data)
-                p.grad.data = p.grad.data / (self.loss_scale * size())
-                self.step_one_param(p)
-                fp16_p.data.copy_(p.data)
-                self._zero_one_grad(fp16_p)
-                # notify update completion and parameter is ready for forward propagation
-                if fp16_p in self._locks:
-                    self._locks[fp16_p].release()
-            else:
-                self._event_queue.put((p, handle, ctx))
+        while len(self._handles.keys()) > 0:
+            params = list(self._handles.keys())
+            for p in params:
+                handle, ctx = self._handles[p]
+                if poll(handle):
+                    output = synchronize(handle)
+                    self._push_pull_delay[p] = self.backward_passes_per_step
+                    if self._is_tensor_instance:
+                        fp16_p = self._parameter_map.get(p.__hash__())
+                    else:
+                        fp16_p = self._parameter_map.get(p)
+                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
+                    p.grad.data.copy_(fp16_p.grad.data)
+                    p.grad.data = p.grad.data / (self.loss_scale * size())
+                    self.step_one_param(p)
+                    fp16_p.data.copy_(p.data)
+                    # notify update completion and parameter is ready for forward propagation
+                    if fp16_p in self._locks:
+                        self._locks[fp16_p].release()
+                    self._handles.pop(p)
+        self._handles.clear()
 
     def _register_forward_hooks(self):
         """Add hook before forward propagation of each layer to block forward computation until the push-pull and
@@ -309,16 +305,22 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         def pre_forward_hook(mod, input):
             for p in mod.parameters():
-                if p in self._handles:
-                    del self._handles[p]
+                # if p in self._handles:
+                #    del self._handles[p]
                 if p not in self._locks:
                     continue
                 with self._locks[p]:
                     pass
 
+        def after_forward_hook(mod, input, result):
+            for p in mod.parameters():
+                self._zero_one_grad(p)
+
         # Register pre-hook and hook for each module
         for mod in reversed(submodules):
-            mod.register_forward_pre_hook(pre_forward_hook)
+            # DEBUG
+            # mod.register_forward_pre_hook(pre_forward_hook)
+            mod.register_forward_hook(after_forward_hook)
 
     def _zero_one_grad(self, p):
         """Clears the gradient of one variable as torch accumulates gradients by default.
