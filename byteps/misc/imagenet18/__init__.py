@@ -87,15 +87,14 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                                      for param_group in self.param_groups
                                      for i, v in enumerate(param_group['params'])}
 
-        # Use lock to block the forward propagation of each parameter.
-        self._locks = {}
-        self._parameter_map = {}
+        self._fp32_to_fp16_map = {}
+        self._fp16_to_fp32_map = {}
         for fp16_p, fp32_p in zip(self.fp16_params, self.fp32_params):
             if self._is_tensor_instance:
-                self._parameter_map[fp32_p.__hash__()] = fp16_p
+                self._fp32_to_fp16_map[fp32_p.__hash__()] = fp16_p
             else:
-                self._parameter_map[fp32_p] = fp16_p
-            self._locks[fp16_p] = threading.Lock()
+                self._fp32_to_fp16_map[fp32_p] = fp16_p
+            self._fp16_to_fp32_map[fp16_p] = fp32_p
 
         self.backward_passes_per_step = backward_passes_per_step
         self._push_pull_delay = {v: self.backward_passes_per_step
@@ -151,9 +150,9 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                     p.grad = p.data.new(p.size()).zero_()
                     self._requires_update.add(p)
                     if self._is_tensor_instance:
-                        fp16_p = self._parameter_map.get(p.__hash__())
+                        fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
                     else:
-                        fp16_p = self._parameter_map.get(p)
+                        fp16_p = self._fp32_to_fp16_map.get(p)
                     p_tmp = fp16_p.expand_as(fp16_p)
                     grad_acc = p_tmp.grad_fn.next_functions[0][0]
                     grad_acc.register_hook(self._make_hook(p))
@@ -162,16 +161,15 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
     def _push_pull_grad_async(self, p):
         if self._is_tensor_instance:
             name = self._parameter_names.get(p.__hash__())
-            fp16_p = self._parameter_map.get(p.__hash__())
+            fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
         else:
             name = self._parameter_names.get(p)
-            fp16_p = self._parameter_map.get(p)
+            fp16_p = self._fp32_to_fp16_map.get(p)
         tensor = fp16_p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
         if fp16_p not in self.priorities:
             self.priorities[fp16_p] = self.gradient_count
             self.gradient_count += 1
-        self._locks[fp16_p].acquire()
         handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name, priority=self.priorities[fp16_p])
         return handle, ctx
 
@@ -209,19 +207,14 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         if size() > 1:
             self.synchronize()
             # Poll whether the tensor push-pull is finished.
-            # DEBUG
-            wait_for_finish = True
             if wait_for_finish:
                 self._poll()
-            else:
-                poller = threading.Thread(target=self._poll, args=())
-                poller.start()
             loss = None
             if closure is not None:
                 loss = closure()
             return loss
         else:
-            super(self._opt.__class__, self._opt).step()
+            super(self.__class__, self).step()
 
 
     def step_one_param(self, param, closure=None):
@@ -273,17 +266,14 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                     output = synchronize(handle)
                     self._push_pull_delay[p] = self.backward_passes_per_step
                     if self._is_tensor_instance:
-                        fp16_p = self._parameter_map.get(p.__hash__())
+                        fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
                     else:
-                        fp16_p = self._parameter_map.get(p)
+                        fp16_p = self._fp32_to_fp16_map.get(p)
                     fp16_p.grad.set_(self._compression.decompress(output, ctx))
                     p.grad.data.copy_(fp16_p.grad.data)
                     p.grad.data = p.grad.data / (self.loss_scale * size())
                     self.step_one_param(p)
                     fp16_p.data.copy_(p.data)
-                    # notify update completion and parameter is ready for forward propagation
-                    if fp16_p in self._locks:
-                        self._locks[fp16_p].release()
                     self._handles.pop(p)
         self._handles.clear()
 
@@ -305,12 +295,18 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         def pre_forward_hook(mod, input):
             for p in mod.parameters():
-                # if p in self._handles:
-                #    del self._handles[p]
-                if p not in self._locks:
-                    continue
-                with self._locks[p]:
-                    pass
+                fp16_p = p
+                fp32_p = self._fp16_to_fp32_map[fp16_p]
+                if fp32_p in self._handles:
+                    handle, ctx = self._handles[fp32_p]
+                    output = synchronize(handle)
+                    self._push_pull_delay[fp32_p] = self.backward_passes_per_step
+                    fp16_p.grad.set_(self._compression.decompress(output, ctx))
+                    fp32_p.grad.data.copy_(fp16_p.grad.data)
+                    fp32_p.grad.data = fp32_p.grad.data / (self.loss_scale * size())
+                    self.step_one_param(fp32_p)
+                    fp16_p.data.copy_(fp32_p.data)
+                    self._handles.pop(fp32_p)
 
         def after_forward_hook(mod, input, result):
             for p in mod.parameters():
@@ -318,8 +314,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         # Register pre-hook and hook for each module
         for mod in reversed(submodules):
-            # DEBUG
-            # mod.register_forward_pre_hook(pre_forward_hook)
+            mod.register_forward_pre_hook(pre_forward_hook)
             mod.register_forward_hook(after_forward_hook)
 
     def _zero_one_grad(self, p):
