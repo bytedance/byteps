@@ -161,7 +161,7 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
     int rc;
     while (true) {
       rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
-      if (errno == EINTR) continue;
+      if (rc < 0 && errno == EINTR) continue;
       BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
       break;
     }
@@ -222,7 +222,7 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   int rc;
   while (true) {
     rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
-    if (errno == EINTR) continue;
+    if (rc < 0 && errno == EINTR) continue;
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len)
         << "recv_len=" << rc << ", but given max_len=" << max_len;
