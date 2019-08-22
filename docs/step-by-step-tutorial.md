@@ -115,6 +115,9 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 # the scheduler IP 
 export DMLC_PS_ROOT_PORT=1234  # the scheduler port
 
+# 4 threads should be enough for a server
+export MXNET_OMP_MAX_THREADS=4 
+
 python /usr/local/byteps/launcher/launch.py
 ```
 
@@ -224,6 +227,9 @@ export DMLC_NUM_SERVER=1
 
 # the RDMA interface name of the server
 export DMLC_INTERFACE=eth5
+
+# 4 threads should be enough for a server
+export MXNET_OMP_MAX_THREADS=4 
 
 # your scheduler's RDMA NIC information (IP, port)
 export DMLC_PS_ROOT_URI=10.0.0.100
