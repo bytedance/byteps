@@ -191,7 +191,7 @@ void BytePSGlobal::Init() {
 ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
   // we reuse _init_mutex, because BytePS should have been inited
   std::lock_guard<std::mutex> lock(_init_mutex);
-  if (IsDistributed() &&
+  if (!_ps && IsDistributed() &&
       _my_role ==
           BytePSRole::LOCAL_ROOT) {  // only the root needs networking
       // init low-level ps implementation
@@ -202,6 +202,7 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
             0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
   }
+  return _ps;
 }
 
 void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
