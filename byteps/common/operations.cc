@@ -275,8 +275,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // cmd type
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
-      BytePSGlobal::GetPS()->Wait(
-          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      auto ps = BytePSGlobal::GetOrInitPS();
+      ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
     }
 
     accumulated += len;

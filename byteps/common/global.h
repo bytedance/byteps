@@ -77,6 +77,7 @@ class BytePSGlobal {
   static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
   static void CreateScheduledQueue(QueueType queueType);
   static ps::KVWorker<char>* GetPS() { return _ps; }
+  static ps::KVWorker<char>* GetOrInitPS();
 
   static bool IsTensorDeclared(const std::string& name);
   static ps::Key GetKeyFromName(const std::string& name);

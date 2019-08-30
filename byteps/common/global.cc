@@ -118,18 +118,6 @@ void BytePSGlobal::Init() {
 
   _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
 
-  if (IsDistributed() &&
-      _my_role ==
-          BytePSRole::LOCAL_ROOT) {  // only the root need to do networking
-    // init low-level ps implementation
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
-    if (!ps::Postoffice::Get()->is_recovery()) {
-      ps::Postoffice::Get()->Barrier(
-          0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-    }
-  }
-
   // Set to associated GPU
   CUDA_CALL(cudaSetDevice(_local_rank));
 
@@ -198,6 +186,22 @@ void BytePSGlobal::Init() {
     _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
   }
   return;
+}
+
+ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
+  // we reuse _init_mutex, because BytePS should have been inited
+  std::lock_guard<std::mutex> lock(_init_mutex);
+  if (IsDistributed() &&
+      _my_role ==
+          BytePSRole::LOCAL_ROOT) {  // only the root needs networking
+      // init low-level ps implementation
+      _ps = new ps::KVWorker<char>(0, 0);
+      ps::StartAsync(0, "byteps\0");
+      if (!ps::Postoffice::Get()->is_recovery()) {
+        ps::Postoffice::Get()->Barrier(
+            0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+    }
+  }
 }
 
 void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
