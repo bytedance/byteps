@@ -1,0 +1,23 @@
+diff --git a/scripts/tf_cnn_benchmarks/convnet_builder.py b/scripts/tf_cnn_benchmarks/convnet_builder.py
+index 81bb0e8..dd938cc 100644
+@@ -325,6 +327,8 @@ class ConvNetBuilder(object):
+       kernel = self.get_variable(
+           'weights', [num_channels_in, num_out_channels],
+           self.variable_dtype, self.dtype,
++          # TODO(byronyi): use other configuration mechanism
++          partitioner=tf.variable_axis_size_partitioner((512 << 10)),
+           initializer=tf.truncated_normal_initializer(stddev=stddev))
+       biases = self.get_variable('biases', [num_out_channels],
+                                  self.variable_dtype, self.dtype,
+diff --git a/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py b/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py
+index 707dd60..5dfea32 100644
+--- a/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py
++++ b/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py
+@@ -32,6 +32,7 @@ import flags
+ import mlperf
+ from cnn_util import log_fn
+ 
++tf.load_library('./libplugin.so')
+ 
+ flags.define_flags()
+ for name in flags.param_specs.keys():
