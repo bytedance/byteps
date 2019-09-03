@@ -268,6 +268,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
 
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
+      auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
       // false means not to delete data when SArray is deleted
@@ -275,7 +276,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // cmd type
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
-      auto ps = BytePSGlobal::GetOrInitPS();
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
     }
 
