@@ -1,15 +1,17 @@
 # bytescheduler
 
-Bytescheduler is a communication scheduler for distributed training framework such as PyTorch and MXNet. The goal of ByteScheduler is to make
-distributed Deep Learning fast.
+Bytescheduler is a generic communication scheduler for distributed training framework such as TensorFlow, PyTorch, MXNet. It separates tensor partitioning and 
+communication scheduling from various training frameworks, gradient update architectures and network protocols, without modifying their implementations much. 
+We open source ByteScheduler's source code here and hope it can facilitate further research and development in distributed DNN training acceleration and related directions.
 
 **Table of Contents**
 
 - [Why Generic Communication Scheduling?](#Why-Generic-Communication-Scheduling)
 - [Install](#install)
 - [Usage](#usage)
-- [Priority Scheduling](#priority-scheduling)
+- [Communication Scheduling](#communication-scheduling)
 - [Debugging](#debugging)
+- [Limitations](#limitations)
 - [References](#references)
 
 ## Why Generic Communication Scheduling?
@@ -24,9 +26,13 @@ ByteScheduler is a generic scheduling layer for distributed training to address 
 1. Communication of former layers of a neural network has higher priority and can preempt communication of latter layers.
 2. Partition large layers and merge small layers.
 
-In order to let all existing and future ML frameworks benefit from communication scheduling, we design a generic communication scheduler, i.e., ByteScheduler. It sits between the framework (Python) API layer and the engine of popular training frameworks, including MXNet, PyTorch, TensorFlow and potentially others. 
-It also works with different communication options, including PS architecture and NCCL. Check [this](docs/ByteScheduler_Arch.png) for ByteSchduler's architecture. 
-The difference with BytePS is: ByteScheduler works as a shim between tensor programming and framework engine layer, while BytePS runs as a communication library below the engine. Both provide tensor partitioning and credit-based preemptive scheduling feature.
+In order to let all existing and future ML frameworks benefit from communication scheduling, we design a generic communication scheduler, i.e., ByteScheduler. 
+It sits between the framework (Python) API layer and the engine of popular training frameworks, including MXNet, PyTorch, TensorFlow and potentially others. 
+It also works with different communication options, including PS architecture and all-reduce. Check [this](docs/ByteScheduler_Arch.png) for ByteSchduler's architecture. 
+
+The difference with BytePS is: ByteScheduler works as a shim between tensor programming layer and framework engine layer, while BytePS runs as a PS communication library below the engine. 
+Though both provide tensor partitioning, credit-based preemptive scheduling and generality features, the design [rationale](https://github.com/bytedance/byteps/blob/master/docs/rationale.md)
+ and [architecture](https://github.com/bytedance/byteps/blob/master/docs/architecture.md) of BytePS are different.
 
 ByteScheduler is fast. Below is a chart representing the benchmark that was done on GPU
 servers with 8 V100 GPUs each connected by RoCE-capable 100 Gbit/s network:
@@ -122,11 +128,11 @@ It will instrument the distributed TF program, coordinate the scheduling of the 
 For tensor partitioning, you need to partition the model manually. For reference, we have a quick patch [benchmarks.patch](examples/tensorflow/benchmarks.patch) for [tensorflow/benchmarks](https://github.com/tensorflow/benchmarks), which adds partitioning to weight variables of large fully-connected layers.
 
 
-## Priority Scheduling
+## Communication Scheduling
 
 One of the unique things about ByteScheduler is its ability to schedule communication with tensor partitioning. 
 
-See [here](docs/priority-scheduling.md) for full details and tweaking instructions.
+See [here](docs/scheduling.md) for full details and tweaking instructions.
 
 ## Debugging
 
@@ -139,6 +145,24 @@ You can check the queueing time and communication time of each tensor.
 ![Timeline](docs/timeline.png)
 
 Please submit a ticket if you have trouble in using ByteScheduler.
+
+
+## Limitations
+
+This is the demo code of ByteScheduler and it is not meant for production use. We welcome any code or idea contributions from the community. 
+So far the prototype has the following major limitations. 
+
+1. Auto-tuning support for PS architecture. Changing the partition size of
+tensors during training may incur tensor shape errors. A workaround but general solution would be checkpointing 
+and restart the training.
+
+2. Optimizer rewriting. For PyTorch and TensorFlow, we support SGD optimizer in this code. For each optimizer in the two frameworks,
+ ByteScheduler requires rewriting it in order to cross the global barrier and make communication scheduling 
+ effective. MXNet does not have such an issue.
+  
+
+
+
 
 ## References
 

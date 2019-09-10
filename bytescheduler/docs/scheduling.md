@@ -1,6 +1,6 @@
-# Priority Scheduling
+# Communication Scheduling
 
-## Why Priority Scheduling?
+## An Example of Communication Scheduling
 
 By default, ML framework engines execute communication operations in a FIFO order, because the underlying communication stack, either PS or all-reduce, TCP or RDMA, 
 is inherently based on FIFO queues. This is shown in below figure: since push_0 and push_1 both require upload bandwidth, push_1 gets 
@@ -39,6 +39,7 @@ For allreduce architecture, the value should be much larger, e.g., 8000000.
 
 The credit can be set using `BYTESCHEDULER_CREDIT` environment variable and its unit is number of parameters. The default value is 4000000.
 For allreduce architecture, the value should be larger, e.g., 16000000. 
+
 ## Auto-Tuning
 Selecting appropriate partition threshold and credit size is critical for high performance. Fortunately, ByteScheduler has auto-tuning mechanism for 
 setting the values of partition threshold and credit size. Credit tuning is enabled by default and can be disabled by setting
