@@ -49,7 +49,7 @@ ByteScheduler achieves up to 171% speedup.
 To install ByteScheduler, simply run the command below after cloning the source code:
 
 ```bash
-$ python2 setup install && python3 setup install
+$ python2 setup.py install && python3 setup.py install
 ```
 
 Check the [Dockerfiles](docker/) for more details when installing with MXNet or PyTorch.
