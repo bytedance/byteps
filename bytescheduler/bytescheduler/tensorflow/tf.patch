@@ -1,0 +1,44 @@
+diff --git a/tensorflow/core/distributed_runtime/base_rendezvous_mgr.cc b/tensorflow/core/distributed_runtime/base_rendezvous_mgr.cc
+index 3bae8ecbb6..412f3f03cb 100644
+--- a/tensorflow/core/distributed_runtime/base_rendezvous_mgr.cc
++++ b/tensorflow/core/distributed_runtime/base_rendezvous_mgr.cc
+@@ -101,6 +101,20 @@ Status BaseRendezvousMgr::RecvLocal(int64 step_id,
+ }
+
+ void BaseRendezvousMgr::Cleanup(int64 step_id) {
++  // Delay the cleanup by 1024 steps for ByteScheduler
++  int64 step_to_clean;
++  {
++    mutex_lock l(mu_);
++    if (steps_to_clean_.size() >= 1024) {
++      step_to_clean = steps_to_clean_.front();
++      steps_to_clean_.pop_front();
++      steps_to_clean_.push_back(step_id);
++    } else {
++      steps_to_clean_.push_back(step_id);
++    }
++  }
++  step_id = step_to_clean;
++
+   Rendezvous* rendez = nullptr;
+   {
+     mutex_lock l(mu_);
+diff --git a/tensorflow/core/distributed_runtime/base_rendezvous_mgr.h b/tensorflow/core/distributed_runtime/base_rendezvous_mgr.h
+index fde589b351..d232866cae 100644
+--- a/tensorflow/core/distributed_runtime/base_rendezvous_mgr.h
++++ b/tensorflow/core/distributed_runtime/base_rendezvous_mgr.h
+@@ -16,6 +16,7 @@ limitations under the License.
+ #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
+ #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
+
++#include <deque>
+ #include <string>
+ #include <unordered_set>
+
+@@ -102,6 +103,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
+   // Not owned.
+   const WorkerEnv* const worker_env_;
+
++  std::deque<int64> steps_to_clean_ GUARDED_BY(mu_);
+   mutex mu_;
+   Table table_ GUARDED_BY(mu_);
