@@ -81,10 +81,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             self._register_hooks()
 
         # declare tensors
-        for name in self._parameter_names.values():
+        for name in sorted(self._parameter_names.values()):
             declare("Gradient."+name)
         # We use two loops for load-balancing
-        for name in self._parameter_names.values():
+        for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
 
     @staticmethod
