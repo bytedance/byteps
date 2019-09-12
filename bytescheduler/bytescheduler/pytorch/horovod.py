@@ -76,7 +76,6 @@ class ScheduledOptimizer(hvd._DistributedOptimizer):
             self._immediate = True
 
         core.start(rank=self._rank, arch="allreduce")
-        core.set_broadcaster(self._broadcast_partition, synchronize)
 
     def __getattr__(self, item):
         return getattr(self._opt, item)
