@@ -7,6 +7,14 @@ BytePS is a high performance and general distributed training framework. It supp
 
 BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on a popular public cloud and with the same number of GPUs, BytePS can *double the training speed* (see below), compared with [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
 
+## News
+
+- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116) 
+
+- [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
+
+- [Asynchronous training support for MXNet](https://github.com/bytedance/byteps/pull/114)
+
 ## Performance
 
 For demonstration, we test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive). Both models are trained using fp32.
