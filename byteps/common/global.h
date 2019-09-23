@@ -84,8 +84,9 @@ class BytePSGlobal {
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
 
-  static std::hash<ps::Key> key_hash_;
-  static std::vector<unsigned long> server_accumulated_len_;
+  static bool _use_hash;
+  static std::hash<ps::Key> _hash_fn;
+  static std::vector<unsigned long> _server_accumulated_len;
   static std::unordered_map<uint64_t, PSKV> ps_kv_;
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 
