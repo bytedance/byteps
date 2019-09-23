@@ -239,7 +239,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
                  << ", parts=" << key_list.size();
 
-  // If cpubuff is not nullprt, the tensor itself is on CPU
+  // If cpubuff is not nullptr, the tensor itself is on CPU
   // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
