@@ -41,6 +41,8 @@ uint32_t BytePSGlobal::_partition_bytes = 4096000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
+std::hash<ps::Key> BytePSGlobal::key_hash_;
+std::vector<unsigned long> BytePSGlobal::server_accumulated_len_;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
@@ -111,6 +113,8 @@ void BytePSGlobal::Init() {
   if (_is_distributed_job) {
     BPS_CHECK(getenv("DMLC_NUM_SERVER"))
         << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
+    int num_server = atoi(getenv("DMLC_NUM_SERVER"));
+    for (int i = 0; i < num_server; ++i) server_accumulated_len_.push_back(0);
   }
 
   BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
@@ -307,13 +311,16 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     const int num_servers = krs.size();
     BPS_CHECK_GT(num_servers, 0);
     // send it to a single random picked server
-    int server = (((key >> 16) + key) * 9973) % num_servers;
-    BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server;
+    int server = key_hash_(key) % num_servers;
+    server_accumulated_len_[server] += len;
+    BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
+                   << ", current workload for this server is " << server_accumulated_len_[server];
     ps::Key ps_key = krs[server].begin() + key;
     BPS_CHECK_LT(ps_key, krs[server].end());
     pskv.keys.push_back(ps_key);
     pskv.lens.push_back(len);
     pskv.size = len;
+
   }
   BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0];
   return pskv;
