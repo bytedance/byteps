@@ -317,7 +317,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     if (_use_hash) {
       server = _hash_fn(key) % num_servers;
     } else {
-      server = ((key >> 16) + (key % 65536)) % num_servers;
+      server = (((key >> 16) + (key % 65536)) * 9973) % num_servers;
     }
     _server_accumulated_len[server] += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
