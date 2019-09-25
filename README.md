@@ -9,10 +9,9 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 ## News
 
+- Find your training stragglers using [server timeline](docs/timeline.md)
 - [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116) 
-
 - [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
-
 - [Asynchronous training support for MXNet](https://github.com/bytedance/byteps/pull/114)
 
 ## Performance
@@ -82,7 +81,6 @@ BytePS does not support pure CPU training for now. One reason is that the [cheap
 
 We would like to have below features, and it is not hard to implement them in BytePS architecture. However, they are not implemented yet:
 * Sparse model training
-* Asynchronous training
 * Fault-tolerance
 * Straggler-mitigation
 
