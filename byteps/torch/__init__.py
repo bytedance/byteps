@@ -25,6 +25,7 @@ from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown
 from byteps.torch.ops import size, local_size, rank, local_rank
 
+import os
 import torch
 import collections
 
@@ -39,6 +40,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             named_parameters = list(named_parameters)
         else:
             named_parameters = []
+
+        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
+        if self._enable_async:
+            assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
+                "Async is only valid for distributed training"
+            print('BytePS: enable asynchronous training')
 
         # make sure that named_parameters are tuples
         if any([not isinstance(p, tuple) for p in named_parameters]):
@@ -118,9 +125,14 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             name = self._parameter_names.get(p.__hash__())
         else:
             name = self._parameter_names.get(p)
-        tensor = p.grad
-        tensor_compressed, ctx = self._compression.compress(tensor)
-        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+        if self._enable_async:
+            tensor = p
+            _, ctx = self._compression.compress(tensor)
+            handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+        else:
+            tensor = p.grad
+            tensor_compressed, ctx = self._compression.compress(tensor)
+            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p):
@@ -155,12 +167,26 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         for p, (handle, _) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
-            p.grad.set_(self._compression.decompress(output, ctx))
+            if not self._enable_async:
+                p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
 
     def step(self, closure=None):
-        self.synchronize()
-        return super(self.__class__, self).step(closure)
+        if self._enable_async:
+            old_weight_map = {}
+            # store the weights before update
+            for p, _ in self._handles.items():
+                old_weight_map[p] = p.data.clone().detach()
+            # update
+            loss = super(self.__class__, self).step(closure)
+            # get the diff for each weight (in-place)
+            for p, _ in self._handles.items():
+                p.data.sub_(old_weight_map.get(p))
+            self.synchronize()
+            return loss
+        else:
+            self.synchronize()
+            return super(self.__class__, self).step(closure)
 
 
 def DistributedOptimizer(optimizer, named_parameters=None,
