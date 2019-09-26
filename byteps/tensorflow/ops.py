@@ -24,7 +24,6 @@ import re
 import os
 import ctypes
 
-import tensorflow as tf
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -32,6 +31,7 @@ from tensorflow.python.platform import resource_loader
 from byteps.common import get_ext_suffix
 from byteps.common import BytePSBasics as _BytePSBasics
 from byteps.tensorflow.util import _executing_eagerly
+import tensorflow as tf
 
 
 def _load_library(name):
