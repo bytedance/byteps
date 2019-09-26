@@ -180,34 +180,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # store the weights before update
             for p, _ in self._handles.items():
                 temp_weight[p] = p.data.clone().detach()
-
             # update
             loss = super(self.__class__, self).step(closure)
-
             # get the diff for each weight (in-place)
             for p, _ in self._handles.items():
-                temp_weight[p] = p - temp_weight.get(p)
-
-            # self.synchronize()
-            handles = {}
-            missing_p = self._requires_update - set(handles.keys())
-            for p in missing_p:
-                handle, ctx = self._push_pull_grad_async(temp_weight.get(p))
-                handles[p] = (handle, ctx)
-            for p, value in handles.items():
-                handle, ctx = value
-                if handle is None:
-                    handle, ctx = self._push_pull_grad_async(temp_weight.get(p))
-                    handles[p] = (handle, ctx)
-            for p, (handle, _) in handles.items():
-                output = synchronize(handle)
-                self._push_pull_delay[p] = self.backward_passes_per_step
-                p.copy_(temp_weight.get(p))
-                if self._enable_async:
-                    p.set_(self._compression.decompress(output, ctx))
-                else:
-                    p.grad.set_(self._compression.decompress(output, ctx))
-
+                p = p - temp_weight.get(p)
+            self.synchronize()
             return loss
         else:
             self.synchronize()
