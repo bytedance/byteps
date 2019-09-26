@@ -181,7 +181,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             loss = super(self.__class__, self).step(closure)
             # get the diff for each weight (in-place)
             for p, _ in self._handles.items():
-                p.sub_(old_weight_map.get(p))
+                # new_weight = p.data.clone().detach()
+                # old_weight = old_weight_map.get(p)
+                # p.data = new_weight - old_weight
+                p.data = p.data - old_weight_map.get(p)
             self.synchronize()
             return loss
         else:
