@@ -175,16 +175,17 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
     def step(self, closure=None):
         if self._enable_async:
-            temp_weight = {}
-
+            old_weight_map = {}
             # store the weights before update
             for p, _ in self._handles.items():
-                temp_weight[p] = p.data.clone().detach()
+                old_weight_map[p] = p.data.clone().detach()
             # update
             loss = super(self.__class__, self).step(closure)
             # get the diff for each weight (in-place)
             for p, _ in self._handles.items():
-                p = p - temp_weight.get(p)
+                new_weight = p.data.clone().detach()
+                old_weight = old_weight_map.get(p)
+                p = new_weight - old_weight
             self.synchronize()
             return loss
         else:
