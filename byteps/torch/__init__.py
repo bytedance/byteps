@@ -167,9 +167,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         for p, (handle, _) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
-            if self._enable_async:
-                p.set_(self._compression.decompress(output, ctx))
-            else:
+            if not self._enable_async:
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
 
@@ -183,9 +181,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             loss = super(self.__class__, self).step(closure)
             # get the diff for each weight (in-place)
             for p, _ in self._handles.items():
-                new_weight = p.data.clone().detach()
-                old_weight = old_weight_map.get(p)
-                p.data = new_weight - old_weight
+                p.sub_(old_weight_map.get(p))
             self.synchronize()
             return loss
         else:
