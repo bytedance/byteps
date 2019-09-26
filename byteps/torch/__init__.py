@@ -185,7 +185,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             for p, _ in self._handles.items():
                 new_weight = p.data.clone().detach()
                 old_weight = old_weight_map.get(p)
-                p = new_weight - old_weight
+                p.data = new_weight - old_weight
             self.synchronize()
             return loss
         else:
