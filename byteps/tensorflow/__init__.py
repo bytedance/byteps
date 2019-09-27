@@ -208,10 +208,11 @@ class DistributedOptimizer(tf.train.Optimizer):
     def minimize(self, loss, global_step=None, var_list=None,
                  gate_gradients=tf.train.Optimizer.GATE_OP,
                  aggregation_method=None,
-                 colocate_gradients_with_ops=False, 
+                 colocate_gradients_with_ops=False,
                  name=None, grad_loss=None):
-        """Override this function for async training.
-        BytePS currently only supports async training based on minimize().
+        """Override this function for async training. BytePS currently
+        only supports async training based on minimize(). We do not support
+        the case where a user calls compute_gradients and apply_gradients explicitly.
         """
         grads_and_vars = self._optimizer.compute_gradients(
             loss, var_list=var_list, gate_gradients=gate_gradients,
@@ -238,10 +239,14 @@ class DistributedOptimizer(tf.train.Optimizer):
             apply_ops = self._optimizer.apply_gradients(grads_and_vars,
                                                         global_step=global_step,
                                                         name=name)
+            # get the delta parameter
             for i, var in enumerate(vars):
                 tf.assign_sub(var, old_vars[i])
+
+            # reuse the _push_pul_grads(), but is transferring variables
             updated_vars = self._push_pull_grads(vars)
 
+            # copy the updated variable back
             for i, update_var in enumerate(updated_vars):
                 vars[i].assign(update_var)
             return apply_ops
