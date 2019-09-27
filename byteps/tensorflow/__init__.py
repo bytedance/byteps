@@ -206,17 +206,18 @@ class DistributedOptimizer(tf.train.Optimizer):
         return self._optimizer.apply_gradients(*args, **kwargs)
 
     def minimize(self, loss, global_step=None, var_list=None,
-               gate_gradients=GATE_OP, aggregation_method=None,
-               colocate_gradients_with_ops=False, name=None,
-               grad_loss=None):
+                 gate_gradients=tf.train.Optimizer.GATE_OP,
+                 aggregation_method=None,
+                 colocate_gradients_with_ops=False, 
+                 name=None, grad_loss=None):
         """Override this function for async training.
         BytePS currently only supports async training based on minimize().
         """
-        grads_and_vars = self._optimizer.compute_gradients(loss, var_list=var_list,
-                            gate_gradients=gate_gradients,
-                            aggregation_method=aggregation_method,
-                            colocate_gradients_with_ops=colocate_gradients_with_ops,
-                            grad_loss=grad_loss)
+        grads_and_vars = self._optimizer.compute_gradients(
+            loss, var_list=var_list, gate_gradients=gate_gradients,
+            aggregation_method=aggregation_method,
+            colocate_gradients_with_ops=colocate_gradients_with_ops,
+            grad_loss=grad_loss)
 
         vars_with_grad = [v for g, v in grads_and_vars if g is not None]
         if not vars_with_grad:
@@ -235,8 +236,8 @@ class DistributedOptimizer(tf.train.Optimizer):
             for var in vars:
                 old_vars.append(tf.Variable(var))
             apply_ops = self._optimizer.apply_gradients(grads_and_vars,
-                                                   global_step=global_step,
-                                                   name=name)
+                                                        global_step=global_step,
+                                                        name=name)
             for i, var in enumerate(vars):
                 tf.assign_sub(var, old_vars[i])
             updated_vars = self._push_pull_grads(vars)
