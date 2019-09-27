@@ -214,7 +214,7 @@ class DistributedOptimizer(tf.train.Optimizer):
         only supports async training based on minimize(). We do not support
         the case where a user calls compute_gradients and apply_gradients explicitly.
         """
-        grads_and_vars = self._optimizer.compute_gradients(
+        grads_and_vars = compute_gradients(
             loss, var_list=var_list, gate_gradients=gate_gradients,
             aggregation_method=aggregation_method,
             colocate_gradients_with_ops=colocate_gradients_with_ops,
