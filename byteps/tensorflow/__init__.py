@@ -215,11 +215,18 @@ class DistributedOptimizer(tf.train.Optimizer):
         the case where a user calls compute_gradients and apply_gradients explicitly.
         """
         if not self._enable_async:
-            grads_and_vars = compute_gradients(loss, var_list=var_list,
-                                               gate_gradients=gate_gradients,
-                                               aggregation_method=aggregation_method,
-                                               colocate_gradients_with_ops=colocate_gradients_with_ops,
-                                               grad_loss=grad_loss)
+            gradients = self._optimizer.compute_gradients(
+                                                loss, var_list=var_list,
+                                                gate_gradients=gate_gradients,
+                                                aggregation_method=aggregation_method,
+                                                colocate_gradients_with_ops=colocate_gradients_with_ops,
+                                                grad_loss=grad_loss)
+            if size() > 1:
+                grads, vars = zip(*gradients)
+                avg_grads = self._push_pull_grads(grads)
+                grads_and_vars = list(zip(avg_grads, vars))
+            else:
+                grads_and_vars = gradients
 
             vars_with_grad = [v for g, v in grads_and_vars if g is not None]
             if not vars_with_grad:
