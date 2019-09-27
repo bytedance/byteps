@@ -27,6 +27,7 @@ from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
+import os
 
 
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
