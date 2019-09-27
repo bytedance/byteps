@@ -12,7 +12,10 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 - Find your training stragglers using [server timeline](docs/timeline.md)
 - [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116) 
 - [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
-- [Asynchronous training support for MXNet](https://github.com/bytedance/byteps/pull/114)
+- Asynchronous training support for
+[PyTorch](https://github.com/bytedance/byteps/pull/121), 
+[TensorFlow](https://github.com/bytedance/byteps/pull/122), 
+[MXNet](https://github.com/bytedance/byteps/pull/114)
 
 ## Performance
 
