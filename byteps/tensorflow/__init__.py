@@ -27,7 +27,7 @@ from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
-import os
+import os, sys
 
 
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
@@ -49,18 +49,15 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         processes.
     """
     with tf.device(device_dense):
+        byteps_size = tf.cast(size(), dtype=tensor.dtype)
+        tensor_compressed, ctx = compression.compress(tensor)
+        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
+        summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
-            byteps_size = tf.cast(size(), dtype=tensor.dtype)
-            tensor_compressed, ctx = compression.compress(tensor)
-            summed_tensor_compressed = _push_pull(tensor_compressed, scope)
-            summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
             new_tensor = (tf.div(summed_tensor, byteps_size)
                           if average else summed_tensor)
-        else:
-            tensor_compressed, ctx = compression.compress(tensor)
-            summed_tensor_compressed = _push_pull(tensor, scope) # should not push the compressed tensor
-            summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
-            new_tensor = summed_tensor # no need to average
+        else: # no need to average for async training
+            new_tensor = summed_tensor
     return new_tensor
 
 
@@ -196,32 +193,46 @@ class DistributedOptimizer(tf.train.Optimizer):
         In DistributedOptimizer, compute_gradients() is overriden to also
         push_pull the gradients before returning them.
         """
+        gradients = self._optimizer.compute_gradients(*args, **kwargs)
+        if size() > 1:
+            grads, vars = zip(*gradients)
+            avg_grads = self._push_pull_grads(grads)
+            return list(zip(avg_grads, vars))
+        else:
+            return gradients
+
+    def apply_gradients(self, *args, **kwargs):
+        """Calls this same method on the underlying optimizer."""
+        return self._optimizer.apply_gradients(*args, **kwargs)
+
+    def minimize(self, *args, **kwargs):
+        """Override this function for async training.
+        BytePS currently only supports async training based on minimize().
+        """
+        grads_and_vars = self._optimizer.compute_gradients(*args, **kwargs)
+
+        vars_with_grad = [v for g, v in grads_and_vars if g is not None]
+        if not vars_with_grad:
+            raise ValueError(
+                "No gradients provided for any variable, check your graph for ops"
+                " that do not support gradients, between variables %s and loss %s." %
+                ([str(v) for _, v in grads_and_vars], loss))
+
         if not self._enable_async:
-            gradients = self._optimizer.compute_gradients(*args, **kwargs)
-            if size() > 1:
-                grads, vars = zip(*gradients)
-                avg_grads = self._push_pull_grads(grads)
-                return list(zip(avg_grads, vars))
-            else:
-                return gradients
-        else: # async
-            grads_and_vars = self._optimizer.compute_gradients(*args, **kwargs)
+            return self._optimizer.apply_gradients(*args, **kwargs)
+        else: # asynchronous training
             grads, vars = zip(*grads_and_vars)
             old_vars = []
             for var in vars:
                 old_vars.append(tf.Variable(var))
-            self._optimizer.apply_gradients(grads_and_vars)
+            apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
             for i, var in enumerate(vars):
                 tf.assign_sub(var, old_vars[i])
             updated_vars = self._push_pull_grads(vars)
-            return list(zip(grads, updated_vars))
 
-    def apply_gradients(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        if not self._enable_async:
-            return self._optimizer.apply_gradients(*args, **kwargs)
-        else: # the operation has been merged in compute_gradients
-            pass
+            for i, update_var in enumerate(updated_vars):
+                vars[i].assign(update_var)
+            return apply_ops
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
