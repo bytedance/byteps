@@ -28,7 +28,7 @@ from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
 import os, sys
-
+from tensorflow.python.ops import control_flow_ops
 
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
               compression=Compression.none, enable_async=False):
@@ -273,10 +273,9 @@ class DistributedOptimizer(tf.train.Optimizer):
                 for i, tensor in enumerate(updated_tensors):
                     assign_op_list.append(tf.assign(vars[i], tensor))
 
-                with tf.control_dependencies(assign_op_list):
-                    dump_op = tf.identity(apply_ops)
+            dump_op = control_flow_ops.group(*assign_op_list)
 
-                return dump_op
+            return dump_op
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
