@@ -261,9 +261,9 @@ class DistributedOptimizer(tf.train.Optimizer):
                                                         global_step=global_step,
                                                         name=name)
             with tf.control_dependencies([apply_ops]):
-                # get the delta parameter
+                # get the delta
                 for i, var in enumerate(vars):
-                    old_tensors[i] = var - old_tensors[i]
+                    old_tensors[i] = tf.subtract(var, old_tensors[i])
 
                 # reuse the _push_pul_grads(), but is transferring parameters
                 updated_tensors = self._push_pull_grads(old_tensors)
