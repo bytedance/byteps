@@ -274,7 +274,7 @@ class DistributedOptimizer(tf.train.Optimizer):
                     assign_op_list.append(tf.assign(vars[i], tensor))
 
             with tf.control_dependencies([assign_op_list]):
-                dump_op = tf.identity(assign_op_list)
+                dump_op = tf.identity(apply_ops)
 
             return dump_op
 
