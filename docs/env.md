@@ -118,3 +118,12 @@ Increasing the number of engine CPU threads may also improves server performance
 ```
 export MXNET_CPU_WORKER_NTHREADS=p
 ```
+
+## Asynchronous training
+
+Enable asynchronous training with (on all workers and servers)
+
+```
+export BYTEPS_ENABLE_ASYNC=1
+```
+
