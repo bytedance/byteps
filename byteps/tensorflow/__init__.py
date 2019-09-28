@@ -260,6 +260,7 @@ class DistributedOptimizer(tf.train.Optimizer):
             apply_ops = self._optimizer.apply_gradients(grads_and_vars,
                                                         global_step=global_step,
                                                         name=name)
+            assign_op_list = []
             with tf.control_dependencies([apply_ops]):
                 # get the delta
                 for i, var in enumerate(vars):
@@ -270,8 +271,12 @@ class DistributedOptimizer(tf.train.Optimizer):
 
                 # copy the updated variable back
                 for i, tensor in enumerate(updated_tensors):
-                    vars[i].assign(tensor)
-            return apply_ops
+                    assign_op_list.append(tf.assign(vars[i], tensor))
+
+            with tf.control_dependencies([assign_op_list]):
+                dump_op = tf.identity(assign_op_list)
+
+            return dump_op
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
