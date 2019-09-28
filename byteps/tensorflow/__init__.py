@@ -254,22 +254,23 @@ class DistributedOptimizer(tf.train.Optimizer):
                     ([str(v) for _, v in grads_and_vars], loss))
 
             grads, vars = zip(*grads_and_vars)
-            old_vars = []
+            old_tensors = []
             for var in vars:
-                old_vars.append(tf.Variable(var))
+                old_tensors.append(tf.convert_to_tensor(var))
             apply_ops = self._optimizer.apply_gradients(grads_and_vars,
                                                         global_step=global_step,
                                                         name=name)
-            # get the delta parameter
-            for i, var in enumerate(vars):
-                tf.assign_sub(var, old_vars[i])
+            with tf.control_dependencies([apply_ops]):
+                # get the delta parameter
+                for i, var in enumerate(vars):
+                    old_tensors[i] = var - old_tensors[i]
 
-            # reuse the _push_pul_grads(), but is transferring variables
-            updated_vars = self._push_pull_grads(vars)
+                # reuse the _push_pul_grads(), but is transferring parameters
+                updated_tensors = self._push_pull_grads(old_tensors)
 
-            # copy the updated variable back
-            for i, update_var in enumerate(updated_vars):
-                vars[i].assign(update_var)
+                # copy the updated variable back
+                for i, tensor in enumerate(updated_tensors):
+                    vars[i].assign(tensor)
             return apply_ops
 
     def get_slot(self, *args, **kwargs):
