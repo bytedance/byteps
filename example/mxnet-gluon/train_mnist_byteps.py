@@ -117,10 +117,7 @@ model.initialize(mx.init.MSRAPrelu(), ctx=context)
 model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(bps.local_rank())))
 model.hybridize()
 
-# BytePS: fetch and broadcast parameters
 params = model.collect_params()
-if params is not None:
-    bps.broadcast_parameters(params, root_rank=0)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
