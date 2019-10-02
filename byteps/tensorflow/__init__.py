@@ -194,7 +194,7 @@ class DistributedOptimizer(tf.train.Optimizer):
         push_pull the gradients before returning them.
         """
         gradients = self._optimizer.compute_gradients(*args, **kwargs)
-        if size() > 1:
+        if size() > 1 and not self._enable_async:
             grads, vars = zip(*gradients)
             avg_grads = self._push_pull_grads(grads)
             return list(zip(avg_grads, vars))
@@ -203,58 +203,26 @@ class DistributedOptimizer(tf.train.Optimizer):
 
     def apply_gradients(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
-        return self._optimizer.apply_gradients(*args, **kwargs)
+        grads_and_vars = args[0]
+        _, vars = zip(*grads_and_vars)
+        old_tensors = []
+        for var in vars:
+            old_tensors.append(tf.convert_to_tensor(var))
+        apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
+        with tf.control_dependencies([apply_ops]):
+            # get the delta
+            for i, var in enumerate(vars):
+                old_tensors[i] = tf.subtract(var, old_tensors[i])
 
-    def minimize(self, loss, global_step=None, var_list=None,
-                 gate_gradients=tf.train.Optimizer.GATE_OP,
-                 aggregation_method=None,
-                 colocate_gradients_with_ops=False,
-                 name=None, grad_loss=None):
-        """Override this function for async training. BytePS currently
-        only supports async training based on minimize(). We do not support
-        the case where a user calls compute_gradients and apply_gradients explicitly.
-        """
-        if not self._enable_async:
-            return super().minimize(loss, global_step, var_list, gate_gradients, aggregation_method,
-                                    colocate_gradients_with_ops, name, grad_loss)
-        else: # asynchronous training
-            grads_and_vars = self._optimizer.compute_gradients(
-                                                loss, var_list=var_list,
-                                                gate_gradients=gate_gradients,
-                                                aggregation_method=aggregation_method,
-                                                colocate_gradients_with_ops=colocate_gradients_with_ops,
-                                                grad_loss=grad_loss)
+            # reuse the _push_pul_grads(), but is transferring parameters
+            updated_tensors = self._push_pull_grads(old_tensors)
 
-            vars_with_grad = [v for g, v in grads_and_vars if g is not None]
-            if not vars_with_grad:
-                raise ValueError(
-                    "No gradients provided for any variable, check your graph for ops"
-                    " that do not support gradients, between variables %s and loss %s." %
-                    ([str(v) for _, v in grads_and_vars], loss))
+            # copy the updated variable back
+            assign_op_list = []
+            for i, tensor in enumerate(updated_tensors):
+                assign_op_list.append(tf.assign(vars[i], tensor))
 
-            grads, vars = zip(*grads_and_vars)
-            old_tensors = []
-            for var in vars:
-                old_tensors.append(tf.convert_to_tensor(var))
-            apply_ops = self._optimizer.apply_gradients(grads_and_vars,
-                                                        global_step=global_step,
-                                                        name=name)
-            with tf.control_dependencies([apply_ops]):
-                # get the delta
-                for i, var in enumerate(vars):
-                    old_tensors[i] = tf.subtract(var, old_tensors[i])
-
-                # reuse the _push_pul_grads(), but is transferring parameters
-                updated_tensors = self._push_pull_grads(old_tensors)
-
-                # copy the updated variable back
-                assign_op_list = []
-                for i, tensor in enumerate(updated_tensors):
-                    assign_op_list.append(tf.assign(vars[i], tensor))
-
-            dumb_op = control_flow_ops.group(*assign_op_list)
-
-            return dumb_op
+        return control_flow_ops.group(*assign_op_list)
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
