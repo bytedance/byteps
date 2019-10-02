@@ -203,26 +203,29 @@ class DistributedOptimizer(tf.train.Optimizer):
 
     def apply_gradients(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
-        grads_and_vars = args[0]
-        _, vars = zip(*grads_and_vars)
-        old_tensors = []
-        for var in vars:
-            old_tensors.append(tf.convert_to_tensor(var))
-        apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
-        with tf.control_dependencies([apply_ops]):
-            # get the delta
-            for i, var in enumerate(vars):
-                old_tensors[i] = tf.subtract(var, old_tensors[i])
+        if self._enable_async: # async training
+            grads_and_vars = args[0]
+            _, vars = zip(*grads_and_vars)
+            old_tensors = []
+            for var in vars:
+                old_tensors.append(tf.convert_to_tensor(var))
+            apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
+            with tf.control_dependencies([apply_ops]):
+                # get the delta
+                for i, var in enumerate(vars):
+                    old_tensors[i] = tf.subtract(var, old_tensors[i])
 
-            # reuse the _push_pul_grads(), but is transferring parameters
-            updated_tensors = self._push_pull_grads(old_tensors)
+                # reuse the _push_pul_grads(), but is transferring parameters
+                updated_tensors = self._push_pull_grads(old_tensors)
 
-            # copy the updated variable back
-            assign_op_list = []
-            for i, tensor in enumerate(updated_tensors):
-                assign_op_list.append(tf.assign(vars[i], tensor))
+                # copy the updated variable back
+                assign_op_list = []
+                for i, tensor in enumerate(updated_tensors):
+                    assign_op_list.append(tf.assign(vars[i], tensor))
 
-        return control_flow_ops.group(*assign_op_list)
+            return control_flow_ops.group(*assign_op_list)
+        else:
+            return self._optimizer.apply_gradients(*args, **kwargs)
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
