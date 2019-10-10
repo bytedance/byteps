@@ -15,11 +15,11 @@
 
 import os
 import errno
-import tensorflow as tf
 import byteps.tensorflow as bps
 import numpy as np
 
 from tensorflow import keras
+import tensorflow as tf
 
 layers = tf.layers
 
