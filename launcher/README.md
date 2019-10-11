@@ -25,3 +25,4 @@ python dist_launcher.py --worker-hostfile worker_hosts --server-hostfile server_
         'echo this is $DMLC_ROLE; python byteps/launcher/launch.py YOUR_COMMAND'
 ```
 
+The script will automatically help you setup the necessary [environment variables](/docs/env.md) and launch BytePS processes.
