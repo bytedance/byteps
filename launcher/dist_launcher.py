@@ -52,15 +52,22 @@ def get_hosts_from_file(filename):
     return hosts
 
 
-def start_ssh(prog, node, port, username):
+def start_ssh(prog, node, port, username, fname):
     def run(prog):
         subprocess.check_call(prog, shell=True)
 
+    dirname = 'sshlog'
+    if not os.path.exists(dirname):
+        os.mkdir(dirname)
+
+    pname = dirname + '/' + fname
     if username is not None:
         prog = 'ssh -o StrictHostKeyChecking=no ' + ' -l ' + username \
-               + ' ' + node + ' -p ' + port + ' \'' + prog + '\''
+               + ' ' + node + ' -p ' + port + ' \'' + prog + '\'' \
+               + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
     else:
-        prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' -p ' + port + ' \'' + prog + '\''
+        prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' -p ' + port + ' \'' + prog + '\'' \
+               + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
 
     thread = Thread(target=run, args=(prog,))
     thread.setDaemon(True)
@@ -91,17 +98,21 @@ def submit(args):
 
     threads = []
     for (node, port) in [(args.scheduler_ip, args.scheduler_ssh_port)]:
-        pass_envs['DMLC_ROLE'] = 'scheduler'
+        name = 'scheduler'
+        pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username))
-    for (node, port) in worker_hosts:
-        pass_envs['DMLC_ROLE'] = 'worker'
+        threads.append(start_ssh(prog, node, port, username, name))
+    for i, (node, port) in enumerate(worker_hosts):
+        name = 'worker'
+        pass_envs['DMLC_ROLE'] = name
+        pass_envs['DMLC_WORKER_ID'] = str(i)
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username))
-    for (node, port) in server_hosts:
-        pass_envs['DMLC_ROLE'] = 'server'
+        threads.append(start_ssh(prog, node, port, username, name + str(i)))
+    for i, (node, port) in enumerate(server_hosts):
+        name = 'server'
+        pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username))
+        threads.append(start_ssh(prog, node, port, username, name + str(i)))
 
     for t in threads:
         t.join()
