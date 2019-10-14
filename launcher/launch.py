@@ -14,9 +14,14 @@ SERVER_REQUIRED_ENVS = ["BYTEPS_SERVER_MXNET_PATH"]
 
 def check_env():
     assert "DMLC_ROLE" in os.environ and \
-           os.environ["DMLC_ROLE"] in ["worker", "server", "scheduler"]
+           os.environ["DMLC_ROLE"].lower() in ["worker", "server", "scheduler"]
     required_envs = COMMON_REQUIRED_ENVS
     if os.environ["DMLC_ROLE"] == "worker":
+        assert "DMLC_NUM_WORKER" in os.environ
+        num_worker = int(os.environ["DMLC_NUM_WORKER"])
+        assert num_worker >= 1
+        if num_worker == 1:
+            required_envs = []
         required_envs += WORKER_REQUIRED_ENVS
     else:
         required_envs += SERVER_REQUIRED_ENVS
