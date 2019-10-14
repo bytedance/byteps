@@ -22,7 +22,7 @@ def check_env():
         required_envs += SERVER_REQUIRED_ENVS
     for env in required_envs:
         if env not in os.environ:
-            print(env + " env not set")
+            print("The env " + env + " is missing")
             os._exit(0)
 
 def worker(local_rank, local_size, command):
