@@ -58,6 +58,10 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list);
 
+// huhanpeng
+BPSCommTime *GetComm(const std::string &name);
+void delete_point(BPSCommTime *p);
+
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 // Only call these in Framework plugins for the best performance

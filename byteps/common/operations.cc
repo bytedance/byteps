@@ -22,6 +22,9 @@
 #include "global.h"
 #include "logging.h"
 
+// huhanpeng:
+#include <unistd.h>
+
 namespace byteps {
 namespace common {
 
@@ -175,6 +178,17 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
+
+    //huhanepng: add for profiling
+    if (context.profile_flag && i == 0) {
+      auto now = std::chrono::system_clock::now();
+      auto duration = now.time_since_epoch();
+      auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+      context.start_t.push((long long)(us.count()));
+      // if (BytePSGlobal::GetRank() == 0){
+      //   std::cout << "In operations.cc,EnqueueTensor, _ts: " << context.start_t << " Size: " << sizeof(context.start_t) << std::endl;
+      // }
+    }
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
     BPS_CHECK(task->tensor_name != "");
@@ -195,6 +209,31 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
                  << ", rank=" << BytePSGlobal::GetLocalRank();
   return Status::OK();
+}
+
+// huhanpeng: API provided for profiling communication events
+BPSCommTime *GetComm(const std::string &name) {
+  BPSContext &context = BytePSGlobal::GetContextFromName(name);
+
+  if (context.profile_flag) context.profile_flag = false;
+
+  BPSCommTime *ret = new BPSCommTime;
+  long long start_t = context.start_t.front();
+  long long dur = context.dur.front();
+  context.start_t.pop();
+  context.dur.pop();
+  *ret = {start_t, dur, std::min(context.start_t.size(), context.dur.size())};
+  // if (BytePSGlobal::GetRank() == 0){
+  //   std::cout << "In operations.cc, GetComm, _ts: " << ret->start_t << " dur: " << dur << " CNT: " << context.cnt << std::endl;
+  //   // std::cout << "In operations.cc, get p: " << ret << std::endl;
+  // }
+  return ret;
+}
+void delete_point(BPSCommTime *p){
+  // if (BytePSGlobal::GetRank() == 0){
+  //   std::cout << "In operations.cc, delete p: " << p << std::endl;
+  // }
+  delete p;
 }
 
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {

@@ -299,7 +299,11 @@ def fit(args, network, data_loader, **kwargs):
     print(str(os.environ) + "=============" + str(bps.rank()))
 
     # else:
-    opt = bps.DistributedOptimizer(opt)
+    # huhanpeng !!! add network to DistributedOptimizer as a new argument
+    opt = bps.DistributedOptimizer(opt, sym=network)
+    if bps.rank() == 0:
+        print(str(opt))
+        sys.stdout.flush()
 
     # BytePS: better to explicitly init
 
