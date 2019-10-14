@@ -25,3 +25,8 @@ install:
 script:
   - BYTEPS_CUDA_HOME=${CUDA_HOME}
   - python setup.py install
+  - cd 3rdparty/ps-lite && make -j
+  - DMLC_NUM_WORKER=1 DMLC_NUM_SERVER=1 DMLC_PS_ROOT_URI=127.0.0.1 DMLC_PS_ROOT_PORT=9000 DMLC_ROLE=scheduler /tests/test_kv_app_benchmark 4000 100 0 &
+  - DMLC_NUM_WORKER=1 DMLC_NUM_SERVER=1 DMLC_PS_ROOT_URI=127.0.0.1 DMLC_PS_ROOT_PORT=9000 DMLC_ROLE=server /tests/test_kv_app_benchmark 4000 100 0 &
+  - DMLC_NUM_WORKER=1 DMLC_NUM_SERVER=1 DMLC_PS_ROOT_URI=127.0.0.1 DMLC_PS_ROOT_PORT=9000 DMLC_ROLE=worker /tests/test_kv_app_benchmark 4000 100 0 
+
