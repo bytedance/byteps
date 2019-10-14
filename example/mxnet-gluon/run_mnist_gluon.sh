@@ -41,8 +41,10 @@ if [ $DMLC_ROLE = "worker" ]; then
 			--indent_level=2 \
 			--content_str="import os
 _param_names = [name for i, name in enumerate(self.arg_names) if name in self.param_names]
-path = os.environ.get('TRACE_DIR')
+path = os.environ.get('TRACE_DIR', '.') + '/' + os.environ.get('BYTEPS_RANK') + '_' + os.environ.get('BYTEPS_LOCAL_RANK') + '/'
 if path:
+	if not os.path.exists(path):
+		os.makedirs(path)
 	with open(os.path.join(path, 'arg_namesINpara_names.txt'), 'w') as f:
 		for name in _param_names:
 			f.write('%s\n' % name) # output execution graph"

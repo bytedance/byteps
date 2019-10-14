@@ -24,6 +24,7 @@ import math
 import byteps.mxnet as bps
 import mxnet as mx
 
+import sys
 
 def _get_lr_scheduler(args):
     if 'lr_factor' not in args or args.lr_factor >= 1:
