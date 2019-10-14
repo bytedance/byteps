@@ -7,6 +7,23 @@ import threading
 import sys
 import time
 
+COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
+                        "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
+WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
+SERVER_REQUIRED_ENVS = ["BYTEPS_SERVER_MXNET_PATH"]
+
+def check_env():
+    assert "DMLC_ROLE" in os.environ and \
+           os.environ["DMLC_ROLE"] in ["worker", "server", "scheduler"]
+    required_envs = COMMON_REQUIRED_ENVS
+    if os.environ["DMLC_ROLE"] == "worker":
+        required_envs += WORKER_REQUIRED_ENVS
+    else:
+        required_envs += SERVER_REQUIRED_ENVS
+    for env in required_envs:
+        if env not in os.environ:
+            print(env + " env not set")
+            os._exit(0)
 
 def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
@@ -21,7 +38,7 @@ def worker(local_rank, local_size, command):
 if __name__ == "__main__":
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
-
+    check_env()
     if os.environ["DMLC_ROLE"] == "worker":
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
             local_size = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
@@ -38,8 +55,5 @@ if __name__ == "__main__":
             t[i].join()
 
     else:
-        if "BYTEPS_SERVER_MXNET_PATH" not in os.environ:
-            print("BYTEPS_SERVER_MXNET_PATH env not set")
-            os._exit(0)
         sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
         import mxnet
