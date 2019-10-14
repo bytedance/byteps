@@ -76,6 +76,18 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
       task->callback(Status::OK());
+
+      //huhanpeng: add for profiling communication events
+      auto now = std::chrono::system_clock::now();
+      auto duration = now.time_since_epoch();
+      auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+      if (task->context->start_t.size() == (task->context->dur.size() + 1)) {
+        task->context->dur.push((long long)(us.count()) - task->context->start_t.back());
+      } else {
+        BPS_CHECK(task->context->start_t.size() == task->context->dur.size()) 
+                      << "start_t.size: " << task->context->start_t.size() 
+                      << "->dur.size(): " << task->context->dur.size();
+      }
     }
   }
   return;

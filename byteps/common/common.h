@@ -27,6 +27,10 @@
 #include <unordered_map>
 #include <vector>
 
+//huhanpeng: add for profiling communication events
+#include <chrono>
+#include <queue>
+
 namespace byteps {
 namespace common {
 
@@ -151,7 +155,18 @@ typedef struct BytePSContext {
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
+  //huhanpeng: used for profiling communication events
+  std::queue<long long> start_t;
+  std::queue<long long> dur;
+  bool profile_flag = true;
 } BPSContext;
+
+// add for profiling
+typedef struct CommTime {
+  long long start_t;
+  long long dur;
+  int ramain;
+} BPSCommTime;
 
 class Tensor {
  public:
