@@ -159,7 +159,7 @@ void NcclManager::InitGlobalEnv() {  // init all global env/param here
                                        : 1);
   if (_nccl_num_rings != 1) {
     BPS_LOG(WARNING) << "nccl_num_rings is not 1, "
-                     << "this may lead to occasional hanging problem!";
+                     << "this may leads to occasional hanging problem!";
   }
   return;
 }
