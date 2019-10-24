@@ -34,7 +34,7 @@ def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
-    if os.getenv("BYTEPS_ENABLE_GDB", 0):
+    if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
             command = "python " + command
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
