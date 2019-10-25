@@ -604,70 +604,82 @@ void CoordinateReduceLoop() {
   while (RunCoordinateLoopOnce(COORDINATE_REDUCE) &&
          !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void CoordinateBroadcastLoop() {
   while (RunCoordinateLoopOnce(COORDINATE_BROADCAST) &&
          !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void CoordinatePushLoop() {
   while (RunCoordinateLoopOnce(COORDINATE_PUSH) &&
          !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void PcieReduceLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void RootNcclLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootNcclLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunNonRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void SyncNcclLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunSyncNcclOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void CopyDevice2HostLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void PushLoop() {
   while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void PullLoop() {
   while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void RootCopyHost2DeviceLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyListenLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
   while (RunNonRootCopyListenLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyHost2DeviceLoop() {
@@ -675,6 +687,7 @@ void NonRootCopyHost2DeviceLoop() {
   while (RunNonRootCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 }  // namespace common

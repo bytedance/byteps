@@ -98,7 +98,7 @@ class BytePSCommSocket : public BytePSComm {
                    const std::vector<int>& members);
 
   ~BytePSCommSocket() {
-    if (_listen_thread->joinable()) {
+    if (_listen_thread && _listen_thread->joinable()) {
       _listen_thread->join();
     }
     close(_recv_fd);

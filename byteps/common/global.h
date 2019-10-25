@@ -109,6 +109,10 @@ class BytePSGlobal {
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
+  static void ReportThreadFinish() { joined_thread_cnt.fetch_add(1); }
+  static bool IsAllThreadFinish(int total_thread_num);
+  static std::atomic_int joined_thread_cnt;
+
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;

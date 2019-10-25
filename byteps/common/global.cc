@@ -66,6 +66,7 @@ std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
+std::atomic_int BytePSGlobal::joined_thread_cnt;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
   return (BytePSScheduledQueue*)_queues[queueType];
@@ -183,6 +184,8 @@ void BytePSGlobal::Init() {
     BytePSGlobal::CreateScheduledQueue(type);
   }
 
+  joined_thread_cnt = 0;
+
   _initialized = true;
   BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
                  << " size=" << _size << " local_size=" << _local_size
@@ -233,11 +236,18 @@ Status BytePSGlobal::CheckInit() {
 
 void BytePSGlobal::Shutdown() {
   _should_shutdown = true;
+  int total_thread_num = _threads.size();
+
   for (size_t i = 0; i < _threads.size(); i++) {
     if (_threads[i]->joinable()) {
       _threads[i]->join();
       delete _threads[i];
     }
+  }
+
+  while (!IsAllThreadFinish(total_thread_num)) {
+    // wait until all threads joined
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
 
   for (size_t i = 0; i < QueueNum; i++) {
@@ -345,6 +355,11 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
   return BytePSGlobal::_copy_host2device_stream;
 }
+
+bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
+  int k = BytePSGlobal::joined_thread_cnt.fetch_add(0);
+  return (k==total_thread_num);
+};
 
 }  // namespace common
 }  // namespace byteps
