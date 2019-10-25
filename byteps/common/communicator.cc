@@ -260,6 +260,7 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
 int BytePSCommSocket::recvSignalFromRoot(void* data, int max_len) {
   int src;
   int rc = recvSignal(&src, data, max_len);
+  if (BytePSGlobal::ShouldShutdown()) return rc;
   BPS_CHECK_EQ(src, _root) << "Non-root received signal from another non-root";
   return rc;
 }
