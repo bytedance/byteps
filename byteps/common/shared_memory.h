@@ -42,7 +42,7 @@ class BytePSSharedMemory {
       shm_unlink(it.first.c_str());
     }
 
-    BPS_LOG(DEBUG) << "Clear BytePSSharedMemory: All BytePS shared memory "
+    BPS_LOG(DEBUG) << "Clear shared memory: all BytePS shared memory "
                       "released/unregistered.";
   }
 

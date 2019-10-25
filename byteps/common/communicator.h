@@ -99,7 +99,7 @@ class BytePSCommSocket : public BytePSComm {
                    const std::vector<int>& members);
 
   ~BytePSCommSocket() {
-    if (_listen_thread) {
+    if ((_root == _local_rank) && _listen_thread) {
       _listen_thread->join();
     }
     close(_recv_fd);
