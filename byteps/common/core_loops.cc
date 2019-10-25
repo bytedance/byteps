@@ -268,6 +268,7 @@ bool RunNonRootNcclLoopOnce() {
   NCCLCHECK(ncclGroupStart());
   while (1) {
     signal_comm->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
+    if (BytePSGlobal::ShouldShutdown()) return true;
     if (msg.signal == DO_GROUP) {
       break;
     }
@@ -576,6 +577,7 @@ bool RunNonRootCopyListenLoopOnce() {
   struct BytePSCommMsg msg = {};
 
   signal_comm->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
+  if (BytePSGlobal::ShouldShutdown()) return true;
   BPS_CHECK_EQ(msg.signal, DO_COPYH2D) << msg.signal;
 
   BytePSGlobal::GetCopyTable()->AddReadyCount(msg.key);
