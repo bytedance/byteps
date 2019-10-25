@@ -235,6 +235,8 @@ Status BytePSGlobal::CheckInit() {
 }
 
 void BytePSGlobal::Shutdown() {
+  BPS_LOG(DEBUG) << "Shutdown BytePS: start to clean the resources"
+                 << " (rank=" << _local_rank << ")";
   _should_shutdown = true;
   int total_thread_num = _threads.size();
 
@@ -249,12 +251,16 @@ void BytePSGlobal::Shutdown() {
     // wait until all threads joined
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
+  BPS_LOG(DEBUG) << "Shutdown BytePS: All threads joined"
+                 << " (rank=" << _local_rank << ")";
 
   for (size_t i = 0; i < QueueNum; i++) {
     if (_queues[i]) {
       delete _queues[i];
     }
   }
+  BPS_LOG(DEBUG) << "Shutdown BytePS: all queues deleted"
+                 << " (rank=" << _local_rank << ")";
 
   if (_ps) {
     ps::Finalize(0, false);
@@ -280,13 +286,16 @@ void BytePSGlobal::Shutdown() {
   if (_copy_table) {
     delete _copy_table;
   }
+  BPS_LOG(DEBUG) << "Shutdown BytePS: all tables deleted"
+                 << " (rank=" << _local_rank << ")";
 
   _basic_comm.reset();
   _shm_obj.reset();
   _cpu_reducer.reset();
   _nccl_manager.reset();
 
-  BPS_LOG(DEBUG) << "Clear all BytePS resources";
+  BPS_LOG(DEBUG) << "Shutdown BytePS: all BytePS resources has been cleaned"
+                 << " (rank=" << _local_rank << ")";
   return;
 }
 
