@@ -94,6 +94,8 @@ def benchmark_step():
 
 
 def log(s, nl=True):
+    if bps.local_rank() != 0:
+        return
     print(s, end='\n' if nl else '')
     sys.stdout.flush()
 
