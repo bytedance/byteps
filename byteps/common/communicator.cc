@@ -168,7 +168,7 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
     while (true) {
       rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
       if (rc < 0 && errno == EINTR) continue;
-      if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){ // timeout
+      if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
         if (BytePSGlobal::ShouldShutdown()) break; // on exit
         else continue; // normal timeout
       }
@@ -237,7 +237,7 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   while (true) {
     rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
     if (rc < 0 && errno == EINTR) continue;
-    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){ // timeout
+    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
         if (BytePSGlobal::ShouldShutdown()) break; // on exit
         else continue; // normal timeout
     }
