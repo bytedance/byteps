@@ -18,20 +18,11 @@ def worker(local_rank, local_size, command):
             command = "python " + command
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
 
-    ## only enable profiling for the worker with rank of 0
-    # if os.environ.get("DMLC_WORKER_ID") == "0" and local_rank == 0:
-    #     # my_env["BYTEPS_LOG_LEVEL"] = "TRACE"
-    #     my_env["TRACE_ON"] = "ON"
-    #     my_env["TRACE_END_STEP"] = "110"
-    #     my_env["TRACE_DIR"]= "./traces"
-    #     print("\n!!!Enable profiling for WORKER_ID: 0 and local_rank: 0!!!\nCommand: %s\n" % command)
-    #     sys.stdout.flush()
-    if os.environ.get("TRACE_ON", "") == "ON":
+    if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
         print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" % (os.environ.get("DMLC_WORKER_ID"), local_rank))
-        print("TRACE_END_STEP: %s\t TRACE_DIR: %s" % (os.environ.get("TRACE_END_STEP", ""), os.environ.get("TRACE_DIR", "")))
+        print("BYTEPS_TRACE_END_STEP: %s\t BYTEPS_TRACE_DIR: %s" % (os.environ.get("BYTEPS_TRACE_END_STEP", ""), os.environ.get("BYTEPS_TRACE_DIR", "")))
         print("Command: %s\n" % command)
         sys.stdout.flush()
-    # command = "nvprof -f -o /mnt/cephfs_new_wj/mlsys/huhanpeng/prof/worker_" + str(os.environ["DMLC_WORKER_ID"]) + "_"  + str(local_rank) + ".nvvp " + command
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":

@@ -132,15 +132,12 @@ extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
   return;
 }
 
-// huhanpeng: add for profiling
+// Add for profiling
 extern "C" BPSCommTime *byteps_mxnet_get_comm(NDArray* tensor, char* name) {
   std::string tensor_name = GetOpName("byteps", name);
   return common::GetComm(tensor_name);
 }
 extern "C" void byteps_mxnet_delete_point(BPSCommTime *p) {
-  // if (common::byteps_rank() == 0){
-  //   std::cout << "In ops.cc, p address: " << p << std::endl;
-  // }
   common::delete_point(p);
 }
 

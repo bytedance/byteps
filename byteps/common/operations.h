@@ -58,7 +58,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list);
 
-// huhanpeng
 BPSCommTime *GetComm(const std::string &name);
 void delete_point(BPSCommTime *p);
 

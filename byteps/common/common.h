@@ -27,7 +27,7 @@
 #include <unordered_map>
 #include <vector>
 
-//huhanpeng: add for profiling communication events
+// Add for profiling communication events
 #include <chrono>
 #include <queue>
 
@@ -139,6 +139,15 @@ class ReadyEvent {
   virtual ~ReadyEvent() = default;
 };
 
+// add for profiling
+typedef struct CommTime {
+  long long start_t;
+  long long dur = 0;
+  bool end = false;
+  int key = -1;
+  int type = -1;
+} BPSCommTime;
+
 typedef struct BytePSContext {
   bool initialized;
   std::mutex init_mutex;
@@ -155,18 +164,13 @@ typedef struct BytePSContext {
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
-  //huhanpeng: used for profiling communication events
-  std::queue<long long> start_t;
-  std::queue<long long> dur;
+  // Used for profiling communication events
+  std::queue<BPSCommTime *> comm_time;
   bool profile_flag = true;
+  std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
 } BPSContext;
 
-// add for profiling
-typedef struct CommTime {
-  long long start_t;
-  long long dur;
-  int ramain;
-} BPSCommTime;
+
 
 class Tensor {
  public:

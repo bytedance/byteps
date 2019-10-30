@@ -62,7 +62,6 @@ if __name__ == '__main__':
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
 
-    # huhanpeng: train
     import traceback 
     try:
         fit.fit(args, sym, data.get_rec_iter)
