@@ -97,6 +97,33 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
   return;
 }
 
+// huhanpeng
+void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
+  HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetRank() == 0) << "start";
+
+  auto context = task->context;
+  //huhanepng: add for profiling
+  if (context->profile_flag) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+
+    auto &queue_list = task->queue_list;
+    BPS_CHECK_GE(queue_list.size(), 1);
+    auto this_op = queue_list[0];
+
+    BPSCommTime *ret = new BPSCommTime;
+    ret->start_t = (long long)(us.count());
+    ret->key = task->key;
+    ret->type = this_op; 
+    context->part_comm_time[task->key][this_op].push(ret);
+    HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
+                  << " key=" << task->key
+                  << " type=" << this_op
+                  << " _ts=" << ret->start_t;
+  }
+}
+
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
   std::lock_guard<std::mutex> lock(_mutex);
   std::shared_ptr<TensorTableEntry> task;
@@ -130,10 +157,14 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
                    << " getTask: " << task->tensor_name << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
+
+    // huhanpeng
+    recorderTs(task);
     return task;
   }
   return nullptr;
 }
+
 
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
   BPS_CHECK(!_is_scheduled);
@@ -155,6 +186,9 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
                    << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
+
+    // huhanpeng
+    recorderTs(task);
     return task;
   }
   return nullptr;

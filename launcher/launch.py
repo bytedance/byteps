@@ -26,7 +26,7 @@ def worker(local_rank, local_size, command):
     #     my_env["TRACE_DIR"]= "./traces"
     #     print("\n!!!Enable profiling for WORKER_ID: 0 and local_rank: 0!!!\nCommand: %s\n" % command)
     #     sys.stdout.flush()
-    if os.environ.get("TRACE_ON", "") == "ON":
+    if os.environ.get("TRACE_ON", "") == "1":
         print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" % (os.environ.get("DMLC_WORKER_ID"), local_rank))
         print("TRACE_END_STEP: %s\t TRACE_DIR: %s" % (os.environ.get("TRACE_END_STEP", ""), os.environ.get("TRACE_DIR", "")))
         print("Command: %s\n" % command)

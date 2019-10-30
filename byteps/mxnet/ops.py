@@ -43,8 +43,9 @@ MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 # huhanpeng: debug
 import sys
-def log(s):
-    if rank() == 0:
+def HHP_log(s, debug=False):
+    #! log debug info when debug is True and env HHP_DEBUG is set
+    if rank() == 0 and ((debug and os.getenv("HHP_DEBUG", None)) or not debug) :
         print(s)
         sys.stdout.flush()
 
@@ -92,7 +93,9 @@ def byteps_declare_tensor(tensor, name):
 class BPSCommTime(ctypes.Structure):
     _fields_ = [('start_t', ctypes.c_longlong),
                 ('dur', ctypes.c_longlong),
-                ('remain', ctypes.c_int)]
+                ('end', ctypes.c_bool),
+                ('key', ctypes.c_int),
+                ('type', ctypes.c_int)]
 
 MXNET_LIB_CTYPES.byteps_mxnet_get_comm.restype = ctypes.c_void_p
 MXNET_LIB_CTYPES.byteps_mxnet_delete_point.argtypes = [ctypes.c_void_p]
@@ -101,11 +104,11 @@ def get_comm_time(tensor, name):
     while True:
         void_p = MXNET_LIB_CTYPES.byteps_mxnet_get_comm(tensor.handle, c_str(name))
         ret = BPSCommTime.from_address(void_p)
-        _ts, _dur, _remain = ret.start_t, ret.dur, ret.remain
-        rst.append((_ts, _dur))
-        MXNET_LIB_CTYPES.byteps_mxnet_delete_point(void_p)
-        if _remain == 0:
+        if ret.end:
+            MXNET_LIB_CTYPES.byteps_mxnet_delete_point(void_p)
             break
+        rst.append((ret.start_t, ret.dur, ret.key, ret.type))
+        MXNET_LIB_CTYPES.byteps_mxnet_delete_point(void_p)
     # log("In ops.py, _ts: %s, Size: %s, type: %s" % (str(_ts), str(sys.getsizeof(_ts)), type(_ts)))
     # log("In ops.py, p address: " % str(void_p))
     return rst

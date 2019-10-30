@@ -36,25 +36,41 @@ import networkx as nx
 
 parameter_index = 0
 
+QueueType = [
+  "COORDINATE_REDUCE",
+  "REDUCE",
+  "COPYD2H",
+  "PCIE_REDUCE",
+  "COORDINATE_PUSH",
+  "PUSH",
+  "PULL",
+  "COPYH2D",
+  "COORDINATE_BROADCAST",
+  "BROADCAST",
+  "QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST"
+]
+
 # huhanpeng:
-def log(s):
-    if rank() == 0:
+def HHP_log(s, debug=False):
+    #! log debug info when debug is True and env HHP_DEBUG is set
+    if rank() == 0 and ((debug and os.getenv("HHP_DEBUG", None)) or not debug) :
         print(s)
         sys.stdout.flush()
 
+
 class Recorder(object):
     # huhanpeng: class used to collect trace info
-    def __init__(self, only_symbolic=True):
+    def __init__(self):
         self.time_dict = {"traceEvents":[]}
         self.idx_dict = {}
         self.gradient_name_list = None
         self.step_cnt = 0
-        if os.environ.get("TRACE_ON", "") != 'ON':
+        if os.environ.get("TRACE_ON", "") != '1':
             self._end_trace = True
             return
         self._end_trace = False
         self.end_step = int(os.environ.get("TRACE_END_STEP", "10"))
-        self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_RANK") + "_" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+        self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
@@ -155,7 +171,7 @@ class Recorder(object):
 
         # -- Output the dag, only containing forward info
         nx.write_gml(self.dag, self.trace_dir + "dag.gml", lambda x: str(x))
-        log("Stop tracing, output trace: %s" % self.trace_path)
+        HHP_log("Stop tracing, output trace: %s" % self.trace_path)
         # -- clear the time dict after save it
         self.time_dict = None
 
@@ -284,32 +300,52 @@ class Recorder(object):
         # -- read communication traces offline
         _ts_dur_list = get_comm_time(tensor, name) 
 
-        def return_event(index, _ts, _dur):
+        def return_event(index, _ts, _dur, _key, _type):
             if _ts == 0:
                 raise ValueError("_ts should not be 0")
             para_name = self.gradient_name_list[index]
             op_name = "_".join(para_name.split("_")[:-1])
-            return {
-                    "name": "Comm." + para_name,
-                    "ts": _ts,
-                    "dur": _dur,
-                    "ph": "X",
-                    "pid": "Comm." + para_name,
-                    "args": {
+
+            HHP_log("key:%d, type:%d" %(_key, _type), True)
+            if _key == -1:
+                # communication traces of coarsed grain
+                return {
                         "name": "Comm." + para_name,
-                        "input0": "BW." + op_name
+                        "ts": _ts,
+                        "dur": _dur,
+                        "ph": "X",
+                        "pid": "Comm." + para_name,
+                        "tid": "total",
+                        "args": {
+                            "name": "Comm." + para_name,
+                            "input0": "BW." + op_name
+                            }
                         }
-                    }
-        self.time_dict["traceEvents"] += [return_event(index, _ts, _dur) for (_ts, _dur) in _ts_dur_list]
+            else:
+                # communication traces of partitioned tasks
+                return {
+                        "name": QueueType[_type] if _type < len(QueueType) else "UnknownLargeTypeId",
+                        "ts": _ts,
+                        "dur": _dur,
+                        "ph": "X",
+                        "pid": "Comm." + para_name,
+                        "tid": _key,
+                        "args": {
+                            "name": "Comm." + para_name,
+                            "input0": "BW." + op_name
+                            }
+                        }
+
+        self.time_dict["traceEvents"] += [return_event(index, _ts, _dur, _key, _type) for (_ts, _dur, _key, _type) in _ts_dur_list]
         self.idx_dict[index] = True # avoid repeatedly read
-        # log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
+        # HHP_log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
     def __init__(self, optimizer, sym=None):
         self._optimizer = optimizer
         # huhanpeng: debug
-        log("This is a new DistributedOptimizer with auto profiling")
+        HHP_log("This is a new DistributedOptimizer with auto profiling")
         """tracing configure""" 
         self.recorder = Recorder()
         self.recorder.symbol = sym
@@ -466,8 +502,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                           "as its optimizer. We have unwrapped it for you.")
 
         # huhanpeng: debug
-        log("This is a new DistributedTrainer with auto profiling")
-        self.recorder = Recorder(only_symbolic=False)
+        HHP_log("This is a new DistributedTrainer with auto profiling")
+        self.recorder = Recorder()
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
         self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
         if block is None:
@@ -506,8 +542,12 @@ class DistributedTrainer(mx.gluon.Trainer):
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
+
+                HHP_log("before byteps_push_pull", True)
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
+                HHP_log("after byteps_push_pull", True)
+
                 param_arrays[0].wait_to_read()
 
         self._params_to_init = tensors
