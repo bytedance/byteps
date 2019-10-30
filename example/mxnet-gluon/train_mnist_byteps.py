@@ -127,14 +127,7 @@ optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_wo
 params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
-batch = list(train_data)[0]
-batch_data = batch[0].as_in_context(ctx)
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params,
-                                block=model,
-                                batch_data=batch_data, 
-                                ctx=context
-                                )
-model = trainer.update_model()
+trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, block=model)
 
 # Train model
 for epoch in range(args.epochs):

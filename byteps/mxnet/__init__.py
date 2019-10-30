@@ -462,10 +462,7 @@ class DistributedTrainer(mx.gluon.Trainer):
     def __init__(self, params, optimizer, 
                 optimizer_params=None, 
                 root_rank=0, 
-                block=None,
-                batch_data=None,
-                ctx=None,
-                data_num=None):
+                block=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
@@ -481,31 +478,6 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.recorder.block = block
         self.imported_net = None
 
-        if not self.recorder.end_trace():
-            if batch_data is None or ctx is None:
-                raise ValueError("`batch_data` and `ctx` must be given if you want to call auto-profiling.")
-
-            # --------------------- warmup and export ---------------
-            output = block(*batch_data)
-            prefix = "GluonModel"
-            block.export(prefix)
-            assert os.path.isfile(prefix + '-symbol.json')
-            assert os.path.isfile(prefix + '-0000.params')
-
-            # --------------------- import with SymbolBlock ----------
-            if data_num:
-                _data = ['data%d'%i for i in range(data_num)]
-            else:
-                _data = ['data']
-            self.imported_net = mx.gluon.nn.SymbolBlock.imports(prefix + '-symbol.json',
-                                                               _data,
-                                                               prefix + '-0000.params',
-                                                               ctx=ctx)
-            self.imported_net.hybridize(static_shape=True, static_alloc=True)
-            # BytePS: fetch and broadcast parameters
-            params = self.imported_net.collect_params()
-
-
         super(DistributedTrainer, self).__init__(
             params, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
@@ -514,12 +486,6 @@ class DistributedTrainer(mx.gluon.Trainer):
         # average in push_pull, has better performance.
         self._scale /= size()
         self.root_rank = root_rank
-
-    def update_model(self):
-        if self.recorder.end_trace():
-            return self.recorder.block
-        else:
-            return self.imported_net
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
