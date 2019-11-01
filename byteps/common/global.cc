@@ -331,8 +331,9 @@ uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 5381;
   int c;
-  while (c = *str++) { // hash(i) = hash(i-1) * 33 ^ str[i]
+  while (c = *str) { // hash(i) = hash(i-1) * 33 ^ str[i]
     hash = ((hash << 5) + hash) + c; 
+    str++;
   }
   return hash;
 }
@@ -341,8 +342,9 @@ uint64_t BytePSGlobal::Hash_SDBM(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 0;
   int c;
-  while (c = *str++) { // hash(i) = hash(i-1) * 65599 + str[i]
+  while (c = *str) { // hash(i) = hash(i-1) * 65599 + str[i]
     hash = c + (hash << 6) + (hash << 16) - hash;
+    str++;
   }
   return hash;
 }
@@ -362,14 +364,14 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     if (!_hash_knob.compare(std::string("naive"))) {
       server = Hash_Naive(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("built_in"))) {
-        server = Hash_BuiltIn(key) % num_servers;
+      server = Hash_BuiltIn(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("djb2"))) {
-        server = Hash_DJB2(key) % num_servers;
+      server = Hash_DJB2(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("sdbm"))) {
-        server = Hash_SDBM(key) % num_servers;
+      server = Hash_SDBM(key) % num_servers;
     } else {
-        BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
-                     << "must be one of [naive, built_in, djb2, sdbm]";
+      BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
+                   << "must be one of [naive, built_in, djb2, sdbm]";
     }
     
     _server_accumulated_len[server] += len;
