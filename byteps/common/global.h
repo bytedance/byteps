@@ -84,8 +84,7 @@ class BytePSGlobal {
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
 
-  static bool _use_hash;
-  static std::hash<ps::Key> _hash_fn;
+  static std::hash<ps::Key> _built_in_hash_fn;
   static std::vector<unsigned long> _server_accumulated_len;
   static std::unordered_map<uint64_t, PSKV> ps_kv_;
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
@@ -164,6 +163,13 @@ class BytePSGlobal {
   static int AlignTo(int input, int alignment) {
     return input / alignment * alignment;
   }
+  
+  // hash functions
+  static std::string _hash_knob;
+  static uint64_t Hash_Naive(uint64_t key);
+  static uint64_t Hash_BuiltIn(uint64_t key);
+  static uint64_t Hash_DJB2(uint64_t key);
+  static uint64_t Hash_SDBM(uint64_t key);
 };
 
 }  // namespace common
