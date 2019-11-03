@@ -26,7 +26,7 @@ from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
 from byteps.mxnet.ops import init, shutdown
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
-# huhanpeng
+# append for auto_profiling
 from byteps.mxnet.ops import get_comm_time
 import logging
 import sys, os
@@ -50,8 +50,7 @@ QueueType = [
   "QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST"
 ]
 
-# huhanpeng:
-def HHP_log(s, debug=False):
+def BYTEPS_TRACE_DEBUG(s, debug=False):
     #! log debug info when debug is True and env HHP_DEBUG is set
     if rank() == 0 and ((debug and os.getenv("HHP_DEBUG", None)) or not debug) :
         print(s)
@@ -59,18 +58,18 @@ def HHP_log(s, debug=False):
 
 
 class Recorder(object):
-    # huhanpeng: class used to collect trace info
+    #! class used to collect trace info
     def __init__(self):
         self.time_dict = {"traceEvents":[]}
         self.idx_dict = {}
         self.gradient_name_list = None
         self.step_cnt = 0
-        if os.environ.get("TRACE_ON", "") != '1':
+        if os.environ.get("BYTEPS_TRACE_ON", "") != '1':
             self._end_trace = True
             return
         self._end_trace = False
-        self.end_step = int(os.environ.get("TRACE_END_STEP", "10"))
-        self.trace_dir = os.environ.get("TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
+        self.end_step = int(os.environ.get("BYTEPS_TRACE_END_STEP", "10"))
+        self.trace_dir = os.environ.get("BYTEPS_TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
         self.trace_path = self.trace_dir + 'bps_trace_local_rank%s_%dstep.json' % (os.environ.get("BYTEPS_LOCAL_RANK"), self.end_step)
@@ -171,7 +170,7 @@ class Recorder(object):
 
         # -- Output the dag, only containing forward info
         nx.write_gml(self.dag, self.trace_dir + "dag.gml", lambda x: str(x))
-        HHP_log("Stop tracing, output trace: %s" % self.trace_path)
+        BYTEPS_TRACE_DEBUG("Stop tracing, output trace: %s" % self.trace_path)
         # -- clear the time dict after save it
         self.time_dict = None
 
@@ -293,7 +292,6 @@ class Recorder(object):
         name : str
             A name of the reduction operation.
         '''
-        # huhanpeng: can be removed
         if self.end_trace():
             return
 
@@ -306,7 +304,7 @@ class Recorder(object):
             para_name = self.gradient_name_list[index]
             op_name = "_".join(para_name.split("_")[:-1])
 
-            HHP_log("key:%d, type:%d" %(_key, _type), True)
+            BYTEPS_TRACE_DEBUG("key:%d, type:%d" %(_key, _type), True)
             if _key == -1:
                 # communication traces of coarsed grain
                 return {
@@ -338,14 +336,12 @@ class Recorder(object):
 
         self.time_dict["traceEvents"] += [return_event(index, _ts, _dur, _key, _type) for (_ts, _dur, _key, _type) in _ts_dur_list]
         self.idx_dict[index] = True # avoid repeatedly read
-        # HHP_log("_ts: %s, _dur: %s" % (str(_ts), str(_dur)))
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
     def __init__(self, optimizer, sym=None):
         self._optimizer = optimizer
-        # huhanpeng: debug
-        HHP_log("This is a new DistributedOptimizer with auto profiling")
+        BYTEPS_TRACE_DEBUG("This is a new DistributedOptimizer with auto profiling")
         """tracing configure""" 
         self.recorder = Recorder()
         self.recorder.symbol = sym
@@ -372,7 +368,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
             byteps_declare_tensor(grad, "gradient_" + str(index))
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
-        # huhanpeng: modify scheduler for when the index is tuple or list, 
+        # modify scheduler for when the index is tuple or list, 
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
                 if self.recorder.scheduler(index[i], (True if index[i] == 0 else False)):
@@ -383,7 +379,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
 
 
     def _do_push_pull_param(self, index, delta_weight):
-        # huhanpeng: not implemented
+        # not implemented
         raise ValueError("Not implemented")
 
         if isinstance(index, (tuple, list)):
@@ -501,8 +497,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
 
-        # huhanpeng: debug
-        HHP_log("This is a new DistributedTrainer with auto profiling")
+        BYTEPS_TRACE_DEBUG("This is a new DistributedTrainer with auto profiling")
         self.recorder = Recorder()
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
         self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
@@ -526,7 +521,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-            # huhanpeng
+            # check whether to collect traces
             if self.recorder.scheduler(i, (True if i == 0 else False)) and param.grad_req != 'null':
                 self.recorder.byteps_collect_comm(i, param.list_grad()[0], "gradient_" + str(i))
 
@@ -543,10 +538,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
 
-                HHP_log("before byteps_push_pull", True)
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                HHP_log("after byteps_push_pull", True)
 
                 param_arrays[0].wait_to_read()
 

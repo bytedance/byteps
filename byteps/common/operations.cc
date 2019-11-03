@@ -22,7 +22,6 @@
 #include "global.h"
 #include "logging.h"
 
-// huhanpeng:
 #include <unistd.h>
 
 namespace byteps {
@@ -176,7 +175,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     return Status::OK();
   }
 
-  //huhanepng: add for profiling
+  // add for profiling
   if (context.profile_flag) {
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
@@ -185,7 +184,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     BPSCommTime *ret = new BPSCommTime;
     ret->start_t = (long long)(us.count());
     context.comm_time.push(ret);
-    HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
+    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
                   << "record main task start time,"
                   << " _ts=" << ret->start_t;
   }
@@ -214,7 +213,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   return Status::OK();
 }
 
-// huhanpeng: API provided for profiling communication events
+// API provided for profiling communication events
 BPSCommTime *GetComm(const std::string &name) {
   BPSContext &context = BytePSGlobal::GetContextFromName(name);
 
@@ -225,7 +224,7 @@ BPSCommTime *GetComm(const std::string &name) {
     ret = context.comm_time.front();
     context.comm_time.pop();
     ret->end = false;
-    HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
+    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
                     << "Collect communication traces of main task, "
                     << " ret->key=" << ret->key
                     << " ret->type=" << ret->type;
@@ -261,7 +260,7 @@ BPSCommTime *GetComm(const std::string &name) {
         context.part_comm_time.erase(part_id);
       }
     }
-    HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
+    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
                     << "Collect communication traces, "
                     << " ret->key=" << ret->key
                     << " ret->type=" << ret->type;
@@ -295,8 +294,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   context.buff_len = size;
   size_t accumulated = 0;
 
-  //huhanpeng, initialize the profile flag
-  auto is_trace = getenv("TRACE_ON");
+  //Initialize the profile flag
+  auto is_trace = getenv("BYTEPS_TRACE_ON");
   if ( is_trace && atoi(is_trace) == 1) {
     context.profile_flag = true;
   } else {

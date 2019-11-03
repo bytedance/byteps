@@ -3,13 +3,10 @@ import json
 import argparse
 import networkx as nx
 
-
-# TRACE_DIR = "/Users/huhanpeng/prof/20191009_haibinlin_profiling_debug_rst"
-
 parser = argparse.ArgumentParser(description="Trace Analysis",
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 # parser.add_argument("-s", action="store_true", help="sort the output result")
-parser.add_argument("--type", type=str, default="statistic", 
+parser.add_argument("--option", type=str, default="statistic", 
 					help="The type of analysis to process. including:\n" + 
 						"* statistic: show the statistic results\n" + 
 						"* graph: show the dependency graph\n")
@@ -19,7 +16,6 @@ parser.add_argument("--path2", type=str, required=False, help="The path of the f
 args = parser.parse_args()
 
 def read_traces(traces_path):
-	# traces_path= TRACE_DIR + "/bytePS_COMM_110.json"
 	with open(traces_path, 'r') as fp:
 		_traces = json.load(fp)
 
@@ -48,7 +44,7 @@ if args.type == "statistic":
 		else:
 			name2sta[name] = {"cnt": 1, "time": event["dur"], 
 				"min_t": event["dur"], "max_t": event["dur"],
-				# \TODO huhanpeng: add `cat` field for communication traces
+				# \TODO: add `cat` field for communication traces
 				# "cat": event["cat"] 
 				"cat": event["name"].split(".")[0]
 				}
@@ -109,7 +105,6 @@ if args.type == "statistic":
 
 
 if args.type == "graph":
-	# mygraph = nx.read_gml(TRACE_DIR + "/dag.gml")
 	mygraph = nx.read_gml(args.path)
 	import matplotlib.pyplot as plt
 	# import pylab as plt

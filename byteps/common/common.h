@@ -27,7 +27,7 @@
 #include <unordered_map>
 #include <vector>
 
-//huhanpeng: add for profiling communication events
+// Add for profiling communication events
 #include <chrono>
 #include <queue>
 
@@ -164,11 +164,10 @@ typedef struct BytePSContext {
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
-  //huhanpeng: used for profiling communication events
+  // Used for profiling communication events
   std::queue<BPSCommTime *> comm_time;
   bool profile_flag = true;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
-  // std::unordered_map<uint64_t, std::unordered_map<QueueType, std::queue<long long>>> sub_task_dur;
 } BPSContext;
 
 

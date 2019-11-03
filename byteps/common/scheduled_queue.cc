@@ -97,12 +97,12 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
   return;
 }
 
-// huhanpeng
+// Record the start time of the sub-tasks for all QueueTypes of each partition.
 void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
-  HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetRank() == 0) << "start";
+  BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetRank() == 0) << "start";
 
   auto context = task->context;
-  //huhanepng: add for profiling
+  // add for profiling
   if (context->profile_flag) {
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
@@ -117,7 +117,7 @@ void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
     ret->key = task->key;
     ret->type = this_op; 
     context->part_comm_time[task->key][this_op].push(ret);
-    HHP_DEBUG(getenv("HHP_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
+    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
                   << " key=" << task->key
                   << " type=" << this_op
                   << " _ts=" << ret->start_t;
@@ -158,7 +158,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
 
-    // huhanpeng
+    // Append for auto byteps_profiling
     recorderTs(task);
     return task;
   }
@@ -187,7 +187,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
 
-    // huhanpeng
+    // Append for auto byteps_profiling
     recorderTs(task);
     return task;
   }

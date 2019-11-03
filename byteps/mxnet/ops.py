@@ -41,11 +41,10 @@ dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
-# huhanpeng: debug
 import sys
-def HHP_log(s, debug=False):
-    #! log debug info when debug is True and env HHP_DEBUG is set
-    if rank() == 0 and ((debug and os.getenv("HHP_DEBUG", None)) or not debug) :
+def BYTEPS_TRACE_DEBUG(s, debug=False):
+    #! log debug info when debug is True and env BYTEPS_TRACE_DEBUG is set
+    if rank() == 0 and ((debug and os.getenv("BYTEPS_TRACE_DEBUG", None)) or not debug) :
         print(s)
         sys.stdout.flush()
 
@@ -88,8 +87,7 @@ def byteps_declare_tensor(tensor, name):
 
 
 
-# huhanpeng: add for profiling
-# huhanpeng: return a structure from c library
+# Return a structure from c library
 class BPSCommTime(ctypes.Structure):
     _fields_ = [('start_t', ctypes.c_longlong),
                 ('dur', ctypes.c_longlong),

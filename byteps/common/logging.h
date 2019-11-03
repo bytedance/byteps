@@ -27,8 +27,8 @@ enum class LogLevel { TRACE, DEBUG, INFO, WARNING, ERROR, FATAL };
 
 #define LOG_LEVELS "TDIWEF"
 
-// debug for byteprofile, use LogLevel::FATAL to force to output log
-#define HHP_DEBUG(x) \
+// Debug for byteprofile, use LogLevel::FATAL to force to output log
+#define BYTEPS_TRACE_DEBUG(x) \
   if (x)          \
   common::LogMessage(__FILE__, __LINE__, LogLevel::FATAL) << "Debug:" << ' '
 
