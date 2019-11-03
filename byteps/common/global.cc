@@ -331,7 +331,7 @@ uint64_t BytePSGlobal::Hash_Naive(uint64_t key) {
 }
 uint64_t BytePSGlobal::Hash_BuiltIn(uint64_t key) {
   auto str = std::to_string(key).c_str();
-  return _built_in_hash_fn(str);
+  return _built_in_hash_fn(str) * _built_in_hash_coefficient;
 }
 
 uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
