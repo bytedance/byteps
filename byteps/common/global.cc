@@ -41,7 +41,6 @@ uint32_t BytePSGlobal::_partition_bytes = 4096000;
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
-std::hash<ps::Key> BytePSGlobal::_built_in_hash_fn;
 std::vector<unsigned long> BytePSGlobal::_server_accumulated_len;
 std::string BytePSGlobal::_hash_knob;
 
@@ -64,6 +63,9 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
+
+std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
+unsigned int BytePSGlobal::_built_in_hash_coefficient;
 
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 std::atomic_int BytePSGlobal::joined_thread_cnt;
@@ -119,6 +121,10 @@ void BytePSGlobal::Init() {
     // set hash function
     _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
     BPS_LOG(DEBUG) << "Using key hash function type: " << _hash_knob;
+    if (!_hash_knob.compare(std::string("built_in"))) {
+      _built_in_hash_coefficient = getenv("BYTEPS_BUILT_IN_HASH_COEF") ? atoi(getenv("BYTEPS_BUILT_IN_HASH_COEF")) : 1;
+      BPS_LOG(DEBUG) << "The built in hash coefficient is set to " << _built_in_hash_coefficient;
+    }
 
     // set server load counter
     int num_server = atoi(getenv("DMLC_NUM_SERVER"));
@@ -324,7 +330,8 @@ uint64_t BytePSGlobal::Hash_Naive(uint64_t key) {
   return ((key >> 16) + (key % 65536)) * 9973;
 }
 uint64_t BytePSGlobal::Hash_BuiltIn(uint64_t key) {
-  return _built_in_hash_fn(key);
+  auto str = std::to_string(key).c_str();
+  return _built_in_hash_fn(str);
 }
 
 uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
