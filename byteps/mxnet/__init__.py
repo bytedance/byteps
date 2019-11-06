@@ -326,7 +326,7 @@ class Recorder(object):
             else:
                 # communication traces of partitioned tasks
                 return {
-                        "name": QueueType[_type] if _type < len(QueueType) else "UnknownLargeTypeId",
+                        "name": "Comm." + para_name + "." + QueueType[_type],
                         "ts": _ts,
                         "dur": _dur,
                         "ph": "X",

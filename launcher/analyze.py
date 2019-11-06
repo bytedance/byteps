@@ -13,6 +13,10 @@ parser.add_argument("--option", type=str, default="statistic",
 # parser.add_argument("--graph", type=bool, default=False, help="show the dependency graph")
 parser.add_argument("--path", type=str, required=True, help="The path of the file you want to analyze.")
 parser.add_argument("--path2", type=str, required=False, help="The path of the file you want to analyze.")
+
+parser.add_argument("--sort", type=bool, default=True, help="Sorted in descending order")
+parser.add_argument("--head", type=int, default=None, help="Print the first few lines")
+
 args = parser.parse_args()
 
 def read_traces(traces_path):
@@ -27,10 +31,7 @@ def read_traces(traces_path):
 		raise ValueError("The output file not follow the stardard chrome tracing format!: " + traces_path)
 	return traces
 
-if args.option == "statistic":
-	""" Read traces """
-	traces = read_traces(args.path)
-	
+def return_stat(traces):
 	""" Basic Statistic """
 	name2sta = {}
 	cat2sta = {}
@@ -69,17 +70,25 @@ if args.option == "statistic":
 	for name, statistic in name2sta.items():
 		statistic["var"] = statistic["var"] / float(statistic["cnt"])
 
+	return name2sta, cat2sta
 
+if args.option == "statistic":
+	""" Read traces """
+	traces = read_traces(args.path)
+	name2sta, cat2sta = return_stat(traces)
 
 	""" Output the statistic results """
 	# \TODO: device id
 	def output(_name2sta):
 		print("Profile Statistics.")
 		print("===================")
-		print("%-30s\t Total Count\t Time (ms)\t Min Time (ms)\t Max Time (ms)\t Avg Time (ms)\t Variance (ms^2)" % "Name")
-		print("%-30s\t -----------\t ---------\t -------------\t -------------\t -------------\t ---------------" % "----")
+		print("%-60s\t Total Count\t Time (ms)\t Min Time (ms)\t Max Time (ms)\t Avg Time (ms)\t Variance (ms^2)" % "Name")
+		print("%-60s\t -----------\t ---------\t -------------\t -------------\t -------------\t ---------------" % "----")
+		line_cnt = 0
 		for name, statistic in _name2sta:
-			print("%-30s\t %11d\t %9.4f\t %12.4f\t %13.4f\t %13.4f\t %13.4f" % 
+			if (args.head and line_cnt >= args.head):
+				break		
+			print("%-60s\t %11d\t %9.4f\t %12.4f\t %13.4f\t %13.4f\t %13.4f" % 
 					(name,
 					statistic["cnt"],
 					statistic["time"] / 1000.0,
@@ -88,9 +97,10 @@ if args.option == "statistic":
 					statistic["avg"] / 1000.0,
 					statistic["var"] / 1000.0 / 1000.0
 					))
+			line_cnt += 1
 
 	# output(sorted(name2sta.items(), lambda x, y: cmp(x[1]["avg"], y[1]["avg"])))
-	if args.s:
+	if args.sort:
 		sort_sta = sorted(name2sta.items(), key=lambda x: x[1]["avg"], reverse=True)
 	else:
 		sort_sta = name2sta.items()
@@ -100,9 +110,12 @@ if args.option == "statistic":
 	print
 	print("Group by category")
 	print("===================")
+	line_cnt = 0
 	for cat, statistic in cat2sta.items():
+		if (args.head and line_cnt >= args.head):
+				break
 		print("Category: %-10s\t The most time-consuming OP: %-30s -> %13.4f (ms)" % (cat, statistic["max_name"], statistic["max_t"] / 1000.0))
-
+		line_cnt += 1
 
 if args.option == "graph":
 	mygraph = nx.read_gml(args.path)
@@ -131,6 +144,41 @@ if args.option == "combine":
 
 	with open(rst_path, 'w') as f:
 		json.dump(rst_traces, f, indent=4)
+
+if args.option == "compare":
+	if not (args.path and args.path2):
+		raise ValueError("To compare two files, two paths must be given")
+	traces = [read_traces(args.path), read_traces(args.path2)]
+	name2sta = [return_stat(_traces)[0] for _traces in traces]
+	name2compare = {}
+	for name, statistic in name2sta[0].items():
+		assert name in name2sta[1]
+		name2compare[name] = {
+				"avg_absolute": name2sta[1][name]["avg"] - statistic["avg"],
+				"avg_relative": (name2sta[1][name]["avg"] - statistic["avg"]) / statistic["avg"]
+			}
+
+	if args.sort:
+		sort_sta = sorted(name2compare.items(), key=lambda x: x[1]["avg_relative"], reverse=True)
+	else:
+		sort_sta = name2compare.items()
+
+	print("Compare following two files:")
+	print("File 1: " + args.path)
+	print("File 2: " + args.path2)
+	print("===================")
+	print("%-60s\t Absolute Avg Time Increase (ms)\t Relative Avg Time Increase" % "Name")
+	line_cnt = 0
+	for name, compare in sort_sta:
+		if (args.head and line_cnt >= args.head):
+			break	
+		print("%-60s\t %24.4f\t %24.4f" %
+				(name, compare["avg_absolute"] / 1000.0, compare["avg_relative"]))
+		line_cnt += 1
+
+
+
+
 
 
 
