@@ -27,7 +27,7 @@ def read_traces(traces_path):
 		raise ValueError("The output file not follow the stardard chrome tracing format!: " + traces_path)
 	return traces
 
-if args.type == "statistic":
+if args.option == "statistic":
 	""" Read traces """
 	traces = read_traces(args.path)
 	
@@ -104,7 +104,7 @@ if args.type == "statistic":
 		print("Category: %-10s\t The most time-consuming OP: %-30s -> %13.4f (ms)" % (cat, statistic["max_name"], statistic["max_t"] / 1000.0))
 
 
-if args.type == "graph":
+if args.option == "graph":
 	mygraph = nx.read_gml(args.path)
 	import matplotlib.pyplot as plt
 	# import pylab as plt
@@ -114,7 +114,7 @@ if args.type == "graph":
 	nx.draw(mygraph, pos, with_labels=True, font_size=6)
 	plt.show()
 
-if args.type == "combine":
+if args.option == "combine":
 	traces = read_traces(args.path)
 	traces2 = read_traces(args.path2)
 	rank = args.path.split('/')[-2]
