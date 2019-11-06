@@ -59,7 +59,11 @@ def BYTEPS_TRACE_DEBUG(s, debug=False):
 
 class Recorder(object):
     #! class used to collect trace info
-    def __init__(self):
+    def __init__(self, profile_symbolic=True,
+                    profile_imperative=False,
+                    profile_memory=False,
+                    profile_api=False,
+                    aggregate_stats=False):
         self.time_dict = {"traceEvents":[]}
         self.idx_dict = {}
         self.gradient_name_list = None
@@ -76,12 +80,12 @@ class Recorder(object):
 
         """config the mxnet profile"""
 
-        profiler.set_config(profile_symbolic=True,
-                    profile_imperative=False,
-                    profile_memory=False,
-                    profile_api=False,
+        profiler.set_config(profile_symbolic=profile_symbolic,
+                    profile_imperative=profile_imperative,
+                    profile_memory=profile_memory,
+                    profile_api=profile_api,
                     # profile_process=False,
-                    aggregate_stats=False, 
+                    aggregate_stats=aggregate_stats, 
                     filename=self.trace_dir+'temp.json')
 
         profiler.set_state('run')
@@ -498,7 +502,11 @@ class DistributedTrainer(mx.gluon.Trainer):
                           "as its optimizer. We have unwrapped it for you.")
 
         BYTEPS_TRACE_DEBUG("This is a new DistributedTrainer with auto profiling")
-        self.recorder = Recorder()
+        self.recorder = Recorder(profile_symbolic=False,
+                    profile_imperative=True,
+                    profile_memory=False,
+                    profile_api=False,
+                    aggregate_stats=False)
         # self.recorder.gradient_name_list = [param.name for param in list(params.values)]
         self.recorder.gradient_name_list = [gradient_name for gradient_name in list(params)]
         if block is None:
