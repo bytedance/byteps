@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 import networkx as nx
+import traceback
 
 parser = argparse.ArgumentParser(description="Trace Analysis",
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -16,6 +17,7 @@ parser.add_argument("--path2", type=str, required=False, help="The path of the f
 
 parser.add_argument("--sort", type=bool, default=True, help="Sorted in descending order")
 parser.add_argument("--head", type=int, default=None, help="Print the first few lines")
+parser.add_argument("--xlsx", type=bool, default=False, help="Output XLSX file of the statistic results")
 
 args = parser.parse_args()
 
@@ -39,12 +41,12 @@ def return_stat(traces):
 		name = event["name"]
 		if name in name2sta:
 			name2sta[name]["cnt"] += 1
-			name2sta[name]["time"] += event["dur"]
-			name2sta[name]["min_t"] = min(name2sta[name]["min_t"], event["dur"])
-			name2sta[name]["max_t"] = max(name2sta[name]["max_t"], event["dur"])
+			name2sta[name]["time"] += event["dur"] / 1000.0
+			name2sta[name]["min_t"] = min(name2sta[name]["min_t"], event["dur"] / 1000.0)
+			name2sta[name]["max_t"] = max(name2sta[name]["max_t"], event["dur"] / 1000.0)
 		else:
-			name2sta[name] = {"cnt": 1, "time": event["dur"], 
-				"min_t": event["dur"], "max_t": event["dur"],
+			name2sta[name] = {"cnt": 1, "time": event["dur"] / 1000.0, 
+				"min_t": event["dur"] / 1000.0, "max_t": event["dur"] / 1000.0,
 				# \TODO: add `cat` field for communication traces
 				# "cat": event["cat"] 
 				"cat": event["name"].split(".")[0]
@@ -65,12 +67,35 @@ def return_stat(traces):
 	"""calculate the variance"""
 	for event in traces:
 		name = event["name"]
-		name2sta[name]["var"] += pow(event["dur"] - name2sta[name]["avg"], 2)
+		name2sta[name]["var"] += pow(event["dur"] / 1000.0 - name2sta[name]["avg"], 2)
 
 	for name, statistic in name2sta.items():
 		statistic["var"] = statistic["var"] / float(statistic["cnt"])
 
 	return name2sta, cat2sta
+
+import xlsxwriter
+def export2xlsx(_dict, _dir, _order=False):
+	workbook = xlsxwriter.Workbook(_dir + '/statistic.xlsx')
+	worksheet = workbook.add_worksheet()
+	row = 0
+	header = []
+	for name, statistic in _dict.items():
+		if row == 0:
+			# -- Output the header of the sheet
+			col = 0
+			worksheet.write(row, col, "Name")
+			for key in statistic:
+				col += 1
+				header.append(key)
+				worksheet.write(row, col, key)
+		row += 1
+		col = 0
+		worksheet.write(row, col, name)
+		for key in header:
+			col += 1
+			worksheet.write(row, col, statistic[key])
+	workbook.close()
 
 if args.option == "statistic":
 	""" Read traces """
@@ -91,11 +116,11 @@ if args.option == "statistic":
 			print("%-60s\t %11d\t %9.4f\t %12.4f\t %13.4f\t %13.4f\t %13.4f" % 
 					(name,
 					statistic["cnt"],
-					statistic["time"] / 1000.0,
-					statistic["min_t"] / 1000.0,
-					statistic["max_t"] / 1000.0,
-					statistic["avg"] / 1000.0,
-					statistic["var"] / 1000.0 / 1000.0
+					statistic["time"],
+					statistic["min_t"],
+					statistic["max_t"],
+					statistic["avg"],
+					statistic["var"]
 					))
 			line_cnt += 1
 
@@ -105,6 +130,8 @@ if args.option == "statistic":
 	else:
 		sort_sta = name2sta.items()
 	output(sort_sta)
+	if args.xlsx:
+		export2xlsx(name2sta, '/'.join(args.path.split('/')[:-1]))
 
 	# Group by category
 	print
@@ -152,7 +179,12 @@ if args.option == "compare":
 	name2sta = [return_stat(_traces)[0] for _traces in traces]
 	name2compare = {}
 	for name, statistic in name2sta[0].items():
-		assert name in name2sta[1]
+		if name not in name2sta[1]:
+			continue
+		# try:
+		# 	assert 
+		# except:
+		# 	raise ValueError("Op name: %s is not in the second file" % name)
 		name2compare[name] = {
 				"avg_absolute": name2sta[1][name]["avg"] - statistic["avg"],
 				"avg_relative": (name2sta[1][name]["avg"] - statistic["avg"]) / statistic["avg"]
@@ -173,7 +205,7 @@ if args.option == "compare":
 		if (args.head and line_cnt >= args.head):
 			break	
 		print("%-60s\t %24.4f\t %24.4f" %
-				(name, compare["avg_absolute"] / 1000.0, compare["avg_relative"]))
+				(name, compare["avg_absolute"], compare["avg_relative"]))
 		line_cnt += 1
 
 
