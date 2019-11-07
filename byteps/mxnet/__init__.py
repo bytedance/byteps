@@ -90,6 +90,7 @@ class Recorder(object):
 
         profiler.set_state('run')
         self.dag = nx.DiGraph()
+        self.comm2layer = {}
 
         #! symbol/block, used to get the dependency info, at least one should be given
         self.block = None
@@ -166,6 +167,7 @@ class Recorder(object):
 
         # -- Apply dependencies in self.dag to the mxnet traces.
         rst_traces = self.add_dependency(mxnet_traces)
+        self.handle_comm_dependency()
 
         # -- Combine two kinds of trace and output them
         self.time_dict["traceEvents"] += rst_traces["traceEvents"]
@@ -177,6 +179,13 @@ class Recorder(object):
         BYTEPS_TRACE_DEBUG("Stop tracing, output trace: %s" % self.trace_path)
         # -- clear the time dict after save it
         self.time_dict = None
+
+    def handle_comm_dependency(self):
+        for event in self.time_dict["traceEvents"]:
+            if "Comm" in event["args"]["name"]:
+                para_name = event["args"]["name"].split("Comm.")[1]
+                event["args"]["input0"] = "BW." + self.comm2layer[para_name]
+
 
     def add_dependency(self, mxnet_traces):
         '''Apply dependency info to the mxnet trace results
@@ -281,7 +290,10 @@ class Recorder(object):
                 self.dag.nodes[name]["var"] = ["Comm." + e for e in var]
             else:
                 # for the first node, it has no arg, so not be defined yet
-                self.dag.add_node(name, var=["Comm." + e for e in var])           
+                self.dag.add_node(name, var=["Comm." + e for e in var]) 
+            for _v in var:
+                self.comm2layer[_v] = name
+
             index += 1
 
     def byteps_collect_comm(self, index, tensor, name):
@@ -306,7 +318,7 @@ class Recorder(object):
             if _ts == 0:
                 raise ValueError("_ts should not be 0")
             para_name = self.gradient_name_list[index]
-            op_name = "_".join(para_name.split("_")[:-1])
+            # op_name = "_".join(para_name.split("_")[:-1])
 
             BYTEPS_TRACE_DEBUG("key:%d, type:%d" %(_key, _type), True)
             if _key == -1:
@@ -320,7 +332,7 @@ class Recorder(object):
                         "tid": "total",
                         "args": {
                             "name": "Comm." + para_name,
-                            "input0": "BW." + op_name
+                            # "input0": "BW." + op_name
                             }
                         }
             else:
@@ -334,7 +346,7 @@ class Recorder(object):
                         "tid": _key,
                         "args": {
                             "name": "Comm." + para_name,
-                            "input0": "BW." + op_name
+                            # "input0": "BW." + op_name
                             }
                         }
 

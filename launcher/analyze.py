@@ -24,7 +24,6 @@ args = parser.parse_args()
 def read_traces(traces_path):
 	with open(traces_path, 'r') as fp:
 		_traces = json.load(fp)
-
 	if isinstance(_traces, dict):
 		traces = _traces.get("traceEvents")
 	elif isinstance(_traces, list):
@@ -96,6 +95,40 @@ def export2xlsx(_dict, _dir, _order=False):
 			col += 1
 			worksheet.write(row, col, statistic[key])
 	workbook.close()
+
+def gen_dag_from_traces(traces, rank=0):
+	dag = nx.DiGraph()
+	name2sta, cat2sta = return_stat(traces)
+	for event in traces:
+		name = event["name"]
+		event_args = event["args"]
+		if name != event_args["name"]:
+			# -- ignore nodes which are sub-tasks of communication nodes
+			continue
+		node_name = "rank%d_"%rank + name
+		avg_time = name2sta[name]["avg"]
+		if node_name not in dag.nodes: 
+			dag.add_node(node_name, time=avg_time)
+
+		for key, value in event_args.items():
+			if "input" not in key:
+				continue
+			value_name = "rank%d_"%rank + value
+			value_avg_time = name2sta[value]["avg"]
+			if value_name not in dag.nodes:
+				dag.add_node(value_name, time=value_avg_time)
+			
+			#! If this edge has exist, ignore it
+			if "Comm." in value and (value_name, 'Sync') not in dag.edges:
+				# -- for the edge from Comm to FW., assume there is a Sync node for all GPU cards.
+				dag.add_edge(value_name, 'Sync', weight=value_avg_time)
+				#~ Delete edges from Sync to FW. nodes or this graph will not be an directed *acyclic* graph
+				# dag.add_edge('Sync', node_name)
+			elif (value_name, node_name) not in dag.edges:
+				dag.add_edge(value_name, node_name, weight=value_avg_time)
+	return dag
+
+
 
 if args.option == "statistic":
 	""" Read traces """
@@ -207,6 +240,40 @@ if args.option == "compare":
 		print("%-60s\t %24.4f\t %24.4f" %
 				(name, compare["avg_absolute"], compare["avg_relative"]))
 		line_cnt += 1
+
+if args.option == "critical":
+	# -- args.path is the dir of a worker, 
+	# -- which contains multiple folders storing traces of GPUs of this worker
+	assert(os.path.isdir(args.path))
+	root, dirs, _ = list(os.walk(args.path))[0]
+
+	#! used to store all dags generated from GPUs
+	graphs = []
+	for _dir in dirs:
+		_, _, files = list(os.walk(os.path.join(root, _dir)))[0]
+		local_rank = int(_dir)
+		for file in files:
+			cur_path = os.path.join(root, _dir, file)
+			if "bps_trace" in file:
+				traces = read_traces(cur_path)
+				graphs.append(gen_dag_from_traces(traces, local_rank))
+			elif file == 'dag.gml':
+				# mygraph = nx.read_gml(cur_path)
+				pass
+			elif file == 'temp.json':
+				pass
+			else:
+				pass
+	graph = nx.compose_all(graphs)
+	print(graphs[0].nodes)
+	critical_path = nx.algorithms.dag.dag_longest_path(graph, weight="time", default_weight=0)
+	print(critical_path)
+
+
+
+
+
+
 
 
 
