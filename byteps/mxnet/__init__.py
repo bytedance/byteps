@@ -514,7 +514,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                           "as its optimizer. We have unwrapped it for you.")
 
         BYTEPS_TRACE_DEBUG("This is a new DistributedTrainer with auto profiling")
-        self.recorder = Recorder(profile_symbolic=False,
+        self.recorder = Recorder(profile_symbolic=True,
                     profile_imperative=True,
                     profile_memory=False,
                     profile_api=False,
