@@ -233,7 +233,7 @@ class Recorder(object):
                     name = "FW." + name
             args = {"name": name}
             for i, _n in enumerate(innodes):
-                args["arg%d"%i] = _n
+                args["input%d"%i] = _n
             trace["name"] = name
             trace["args"] = args
             trace["ph"] = "X"
