@@ -98,6 +98,9 @@ def export2xlsx(_dict, _dir, _order=False):
 
 def gen_dag_from_traces(traces, rank=0):
 	dag = nx.DiGraph()
+	#! Add a output node with avg time 0.0
+	#! \TODO, automatically generate an output/softmax node when generating traces
+	dag.add_node("OUTPUT", time=0.0)
 	name2sta, cat2sta = return_stat(traces)
 	for event in traces:
 		name = event["name"]
@@ -110,20 +113,40 @@ def gen_dag_from_traces(traces, rank=0):
 		if node_name not in dag.nodes: 
 			dag.add_node(node_name, time=avg_time)
 
+		if "BW" in name and len(event_args.items()) == 1:
+			#! this is the first BW node
+			#  add edge:(FW. --> OUTPUT) first
+			value = "FW." + name.split("BW.")[1]
+			value_name = "rank%d_"%rank + value
+			value_avg_time = name2sta[value]["avg"] if value in name2sta else 0.0
+			if value_name not in dag.nodes:
+				dag.add_node(value_name, time=value_avg_time)
+			if (value_name, "OUTPUT") not in dag.edges:
+				dag.add_edge(value_name, "OUTPUT", weight=value_avg_time)
+
+			#!  add edge:(OUTPUT, BW) then
+			if ("OUTPUT", node_name) not in dag.edges:
+				dag.add_edge("OUTPUT", node_name, weight=0.0)
+			continue
+
+		#! for other normal nodes, create edges for each `input0`
 		for key, value in event_args.items():
-			if "input" not in key:
+			#! \TODO, delete arg
+			if "input" not in key and "arg" not in key:
 				continue
 			value_name = "rank%d_"%rank + value
-			value_avg_time = name2sta[value]["avg"]
+			#! \TODO: why some vulues don't exist.
+			value_avg_time = name2sta[value]["avg"] if value in name2sta else 0.0
 			if value_name not in dag.nodes:
 				dag.add_node(value_name, time=value_avg_time)
 			
 			#! If this edge has exist, ignore it
-			if "Comm." in value and (value_name, 'Sync') not in dag.edges:
-				# -- for the edge from Comm to FW., assume there is a Sync node for all GPU cards.
-				dag.add_edge(value_name, 'Sync', weight=value_avg_time)
-				#~ Delete edges from Sync to FW. nodes or this graph will not be an directed *acyclic* graph
-				# dag.add_edge('Sync', node_name)
+			if "Comm." in value:
+				if (value_name, 'Sync') not in dag.edges:
+					# -- for the edge from Comm to FW., assume there is a Sync node for all GPU cards.
+					dag.add_edge(value_name, 'Sync', weight=value_avg_time)
+					#~ Delete edges from Sync to FW. nodes or this graph will not be an directed *acyclic* graph
+					# dag.add_edge('Sync', node_name)
 			elif (value_name, node_name) not in dag.edges:
 				dag.add_edge(value_name, node_name, weight=value_avg_time)
 	return dag
@@ -265,8 +288,7 @@ if args.option == "critical":
 			else:
 				pass
 	graph = nx.compose_all(graphs)
-	print(graphs[0].nodes)
-	critical_path = nx.algorithms.dag.dag_longest_path(graph, weight="time", default_weight=0)
+	critical_path = nx.algorithms.dag.dag_longest_path(graph, weight="weight", default_weight=0)
 	print(critical_path)
 
 
