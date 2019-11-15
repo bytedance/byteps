@@ -195,12 +195,12 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("BytePSPushPull").Device(::tensorflow::DEVICE_CPU),
                         BytePSPushPullOp);
-REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BytePSPushPull").Device(::tensorflow::DEVICE_GPU),
                         BytePSPushPullOp);
 
-REGISTER_OP("BytepsPushPull")
+REGISTER_OP("BytePSPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Input("tensor: T")
     .Output("sum: T")
