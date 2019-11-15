@@ -20,6 +20,7 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
+server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
 pytorch_lib = Extension('byteps.torch.c_lib', [])
@@ -278,6 +279,26 @@ def get_common_options(build_ext):
                 LIBRARY_DIRS=LIBRARY_DIRS,
                 LIBRARIES=LIBRARIES,
                 EXTRA_OBJECTS=EXTRA_OBJECTS)
+
+
+def build_server(build_ext, options):
+    server_lib.define_macros = options['MACROS']
+    if check_macro(options['MACROS'], 'HAVE_CUDA'):
+        server_lib.define_macros += [('MSHADOW_USE_CUDA', '1')]
+    else:
+        server_lib.define_macros += [('MSHADOW_USE_CUDA', '0')]
+    server_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
+
+    server_lib.include_dirs = options['INCLUDES']
+    server_lib.sources = options['SOURCES'] + \
+        ['byteps/server/server.cc']
+    server_lib.extra_compile_args = options['COMPILE_FLAGS']
+    server_lib.extra_link_args = options['LINK_FLAGS']
+    server_lib.extra_objects = options['EXTRA_OBJECTS']
+    server_lib.library_dirs = options['LIBRARY_DIRS']
+    server_lib.libraries = options['LIBRARIES']
+
+    build_ext.build_extension(server_lib)
 
 
 def check_tf_version():
@@ -775,6 +796,11 @@ class custom_build_ext(build_ext):
         options = get_common_options(self)
         built_plugins = []
 
+        try:
+            build_server(self, options)
+        except:
+            raise DistutilsSetupError('An ERROR occured while building the server module.')
+
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
@@ -851,7 +877,7 @@ setup(
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: Implementation :: PyPy'
     ],
-    ext_modules=[tensorflow_lib, mxnet_lib, pytorch_lib],
+    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib],
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,

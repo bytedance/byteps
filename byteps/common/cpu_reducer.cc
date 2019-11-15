@@ -25,7 +25,12 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
        i < BytePSGlobal::GetLocalSize(); i += pcie_size) {
     peers.push_back(i);
   }
-  _comm = std::make_shared<BytePSCommSocket>(comm, std::string("cpu"), peers);
+  if (comm) {
+    _comm = std::make_shared<BytePSCommSocket>(comm, std::string("cpu"), peers);
+  }
+  else {
+    _comm = nullptr;
+  }
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
@@ -35,6 +40,9 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
 }
 
 bool CpuReducer::isRoot() {
+  if (!_comm) {
+    return false;
+  }
   return (_comm->getRoot() == BytePSGlobal::GetLocalRank());
 }
 
