@@ -10,7 +10,6 @@ import time
 COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
                         "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
 WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
-SERVER_REQUIRED_ENVS = ["BYTEPS_SERVER_MXNET_PATH"]
 
 def check_env():
     assert "DMLC_ROLE" in os.environ and \
@@ -23,8 +22,6 @@ def check_env():
         if num_worker == 1:
             required_envs = []
         required_envs += WORKER_REQUIRED_ENVS
-    else:
-        required_envs += SERVER_REQUIRED_ENVS
     for env in required_envs:
         if env not in os.environ:
             print("The env " + env + " is missing")
@@ -60,5 +57,4 @@ if __name__ == "__main__":
             t[i].join()
 
     else:
-        sys.path.insert(0, os.getenv("BYTEPS_SERVER_MXNET_PATH")+"/python")
-        import mxnet
+        import byteps.server

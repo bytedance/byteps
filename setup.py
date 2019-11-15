@@ -839,8 +839,9 @@ class custom_build_ext(build_ext):
                     raise
 
         if not built_plugins:
-            raise DistutilsError(
-                'TensorFlow, MXNet, PyTorch plugins were excluded from build. Aborting.')
+            print('INFO: Only server module is built.')
+            return
+
         if not any(built_plugins):
             raise DistutilsError(
                 'None of TensorFlow, MXNet, PyTorch plugins were built. See errors above.')
