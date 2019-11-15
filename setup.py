@@ -284,13 +284,13 @@ def get_common_options(build_ext):
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
     server_lib.include_dirs = options['INCLUDES']
-    server_lib.sources = options['SOURCES'] + \
-        ['byteps/server/server.cc']
-    server_lib.extra_compile_args = options['COMPILE_FLAGS']
+    server_lib.sources = ['byteps/server/server.cc', 'byteps/common/cpu_reducer.cc']
+    server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
+        ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']
     server_lib.extra_objects = options['EXTRA_OBJECTS']
     server_lib.library_dirs = options['LIBRARY_DIRS']
-    server_lib.libraries = options['LIBRARIES']
+    server_lib.libraries = []
 
     build_ext.build_extension(server_lib)
 
@@ -793,7 +793,8 @@ class custom_build_ext(build_ext):
         try:
             build_server(self, options)
         except:
-            raise DistutilsSetupError('An ERROR occured while building the server module.')
+            raise DistutilsSetupError('An ERROR occured while building the server module.\n\n'
+                                      '%s' % traceback.format_exc())
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS

@@ -13,12 +13,18 @@
 // limitations under the License.
 // =============================================================================
 
+#ifndef BYTEPS_BUILDING_SERVER
 #include "global.h"
+#endif
+
+#include "cpu_reducer.h"
 
 namespace byteps {
 namespace common {
 
 CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
+
+#ifndef BYTEPS_BUILDING_SERVER
   std::vector<int> peers;
   auto pcie_size = BytePSGlobal::GetPcieSwitchSize();
   for (int i = BytePSGlobal::GetLocalRank() % pcie_size;
@@ -31,6 +37,8 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   else {
     _comm = nullptr;
   }
+#endif
+
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
@@ -39,12 +47,14 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   return;
 }
 
+#ifndef BYTEPS_BUILDING_SERVER
 bool CpuReducer::isRoot() {
   if (!_comm) {
     return false;
   }
   return (_comm->getRoot() == BytePSGlobal::GetLocalRank());
 }
+#endif
 
 int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype) {
   switch (dtype) {
