@@ -19,9 +19,9 @@ We get below results on machines that are based on PCIe-switch architecture -- 4
 The machines are inter-connected by 100 Gbps RoCEv2 networks.
 In this case, BytePS outperforms Horovod (NCCL) by 7% for Resnet50, and 17% for VGG16. 
 
-![perf_rdma_pcie_resnet50](https://raw.githubusercontent.com/bytedance/byteps/master/docs/images/perf_rdma_resnet50.png)
+![perf_rdma_pcie_resnet50](https://raw.githubusercontent.com/bytedance/byteps/b7615c5cf60b5994590fde19ca6b109f794ec8d5/docs/images/perf_rdma_resnet50.png)
 
-![perf_rdma_pcie_vgg16](https://raw.githubusercontent.com/bytedance/byteps/master/docs/images/perf_rdma_vgg16.png)
+![perf_rdma_pcie_vgg16](https://raw.githubusercontent.com/bytedance/byteps/b7615c5cf60b5994590fde19ca6b109f794ec8d5/docs/images/perf_rdma_vgg16.png)
 
 
 To have BytePS outperform NCCL by so little, you have to have 100Gbps RDMA network *and* no NVLinks. In this case, the communication is actually bottlenecked by internal PCI-e switches, not the network. BytePS has done some optimization so that it still outperforms NCCL. However, the performance gain is not as large as other cases where the network is the bottleneck.
