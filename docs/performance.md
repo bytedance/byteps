@@ -4,8 +4,8 @@
 
 We show our experiment on BERT-large training, which is based on GluonNLP toolkit. The model uses mixed precision.
 
-We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs with NVLink-enabled. 
-Machines are inter-connected with 100 Gbps Infiniband network. 
+We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs (32GB memory) with NVLink-enabled. 
+Machines are inter-connected with 100 Gbps RoCEv2 network. 
 
 BytePS outperforms Horovod (after carefully tuned) by 16% in this case, both with RDMA enabled.
 
