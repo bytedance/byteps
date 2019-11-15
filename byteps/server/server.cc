@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "ps/ps.h"
 #include "server.h"
 #include "../common/cpu_reducer.h"
 
@@ -21,6 +22,7 @@ namespace server {
 
 extern "C" void byteps_server() {
   byteps::common::CpuReducer reducer(nullptr);
+  auto ps = new ps::KVWorker<char>(0, 0);
   return;
 }
 

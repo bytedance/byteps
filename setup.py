@@ -283,12 +283,6 @@ def get_common_options(build_ext):
 
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
-    if check_macro(options['MACROS'], 'HAVE_CUDA'):
-        server_lib.define_macros += [('MSHADOW_USE_CUDA', '1')]
-    else:
-        server_lib.define_macros += [('MSHADOW_USE_CUDA', '0')]
-    server_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
-
     server_lib.include_dirs = options['INCLUDES']
     server_lib.sources = options['SOURCES'] + \
         ['byteps/server/server.cc']

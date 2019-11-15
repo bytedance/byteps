@@ -19,7 +19,7 @@
 namespace byteps {
 namespace server {
 
-extern "C" int byteps_server();
+extern "C" void byteps_server();
 
 
 }  // namespace server
