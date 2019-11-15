@@ -137,13 +137,13 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         Returns:
             an push-pull handle and context
         """
-        name = self._parameter_names.get(p)
+        name = self._parameter_names.get(id(p))
         tensor = p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
 
         self._locks[p].acquire()
         handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._parameter_names[p]))
+        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._parameter_names[id(p)]))
         # Add to queue to poll completion
         self._event_queue.put((p, handle, ctx))
         return handle, ctx
@@ -159,7 +159,7 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             if handle is not None and poll(handle):
                 output = synchronize(handle)
                 p.grad.set_(self._compression.decompress(output, ctx))
-                self._logger.debug("{} {} finished push-pull".format(self._desc, self._parameter_names[p]))
+                self._logger.debug("{} {} finished push-pull".format(self._desc, self._parameter_names[id(p)]))
                 self._push_pull_delay[p] = self.backward_passes_per_step
                 # So far ByteScheduler only supports SGD, Adam and RMSprop optimizers in torch
                 if isinstance(self._opt, torch.optim.SGD):
@@ -200,7 +200,7 @@ class _ScheduledOptimizer(_DistributedOptimizer):
                 if p not in self._locks:
                     continue
                 with self._locks[p]:
-                    self._logger.debug("{} {} is ready.".format(self._desc, self._parameter_names[p]))
+                    self._logger.debug("{} {} is ready.".format(self._desc, self._parameter_names[id(p)]))
 
             self._logger.debug("{} starts forward {}.".format(self._desc, mod))
 
@@ -237,9 +237,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             nesterov = group['nesterov']
 
             for gp in group['params']:
-                if self._parameter_names[p] != self._parameter_names[gp] or gp.shape != p.shape:
+                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[p]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
                 if p.grad is None:
                     continue
                 d_p = p.grad.data
@@ -267,9 +267,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         """
         for group in self.param_groups:
             for gp in group['params']:
-                if self._parameter_names[p] != self._parameter_names[gp] or gp.shape != p.shape:
+                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[p]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -328,9 +328,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         """
         for group in self.param_groups:
             for gp in group['params']:
-                if self._parameter_names[p] != self._parameter_names[gp] or gp.shape != p.shape:
+                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[p]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
