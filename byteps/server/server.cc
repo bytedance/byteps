@@ -339,8 +339,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   }
 }
 
-extern "C" void byteps_server() {
-  bps_reducer_ = new byteps::common::CpuReducer(nullptr);
+void init_global_env() {
   // enable to print key profile
   log_key_info_ = GetEnv("PS_KEY_LOG", false);
 
@@ -363,7 +362,11 @@ extern "C" void byteps_server() {
   LOG(INFO) << "BytePS server engine uses " << engine_thread_num_ << " queues"
             << ", consider increasing BYTEPS_SERVER_ENGINE_THREAD for higher performance";
   CHECK_GE(engine_thread_num_, 1);
+}
 
+extern "C" void byteps_server() {
+  init_global_env();
+  bps_reducer_ = new byteps::common::CpuReducer(nullptr);
   // init the engine
   for (size_t i = 0; i < engine_thread_num_; ++i) {
     auto q = new ThreadsafeQueue<BytePSEngineMessage>();
