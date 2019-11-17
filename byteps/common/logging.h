@@ -32,7 +32,6 @@ enum class LogLevel { TRACE, DEBUG, INFO, WARNING, ERROR, FATAL };
   if (x)          \
   common::LogMessage(__FILE__, __LINE__, LogLevel::FATAL) << "Debug:" << ' '
 
-
 // Always-on checking
 #define BPS_CHECK(x) \
   if (!(x))          \

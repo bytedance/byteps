@@ -157,8 +157,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
                    << " getTask: " << task->tensor_name << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
-
-    // Append for auto byteps_profiling
+    // Add for profiling communication traces
     recorderTs(task);
     return task;
   }
@@ -186,8 +185,7 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
                    << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
-
-    // Append for auto byteps_profiling
+    // Add for profiling communication traces
     recorderTs(task);
     return task;
   }

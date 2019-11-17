@@ -24,7 +24,6 @@ import math
 import byteps.mxnet as bps
 import mxnet as mx
 
-import sys
 
 def _get_lr_scheduler(args):
     if 'lr_factor' not in args or args.lr_factor >= 1:
@@ -300,11 +299,7 @@ def fit(args, network, data_loader, **kwargs):
     print(str(os.environ) + "=============" + str(bps.rank()))
 
     # else:
-    # !!! add network to DistributedOptimizer as a new argument
-    opt = bps.DistributedOptimizer(opt, sym=network)
-    if bps.rank() == 0:
-        print(str(opt))
-        sys.stdout.flush()
+    opt = bps.DistributedOptimizer(opt)
 
     # BytePS: better to explicitly init
 

@@ -28,6 +28,13 @@
 #include <vector>
 
 // Add for profiling communication events
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <iostream>
+#include <thread>
 #include <chrono>
 #include <queue>
 
@@ -166,11 +173,15 @@ typedef struct BytePSContext {
   size_t buff_len;
   // Used for profiling communication events
   std::queue<BPSCommTime *> comm_time;
-  bool profile_flag = true;
+  bool profile_flag = false;
+  int step_cnt = 0;
+  int local_rank = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
+  // Member methods
+  void set_profile_flag();
+  void emit_trace(std::ostream *os, const BPSCommTime *ret);
 } BPSContext;
-
-
+void output_traces(BytePSContext *ctxt);
 
 class Tensor {
  public:

@@ -59,6 +59,8 @@ ReadyTable* BytePSGlobal::_push_table;
 
 ReadyTable* BytePSGlobal::_copy_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
+std::unordered_map<std::string, int> BytePSGlobal::_name2end;
+int BytePSGlobal::_output_counter = 0;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
@@ -300,6 +302,77 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
     return false;
   }
   return true;
+}
+
+void BytePSGlobal::Who2beOutput(const std::string& name) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  if (_name2end.find(name) == _name2end.end()) {
+    _name2end[name] = 1;
+    _output_counter += 1;
+  }
+}
+
+bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  BPS_CHECK(_name2end.find(name) != _name2end.end()) << "Output tensor must been registered to recorder first";
+  //  _output_counter decreases by 1 to confirm the arrival of this tensro
+  _output_counter -= 1;
+  if (_output_counter == 0) return true;
+  else return false;
+}
+
+void BytePSGlobal::output_traces(){
+  // Asynchronously output communication traces
+  auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
+                  + "/" + std::to_string(_local_rank) + "/" ;
+  struct stat buffer;
+  if (stat(trace_dir.c_str(), &buffer) != 0) {
+    BPS_CHECK(mkdir(trace_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0);
+  }
+  auto trace_path = trace_dir + "comm.json";
+  // Output these traces
+  std::ofstream file;
+  file.open(trace_path);
+  file << "{" << std::endl;
+  file << "    \"traceEvents\": [" << std::endl;
+  auto first = true;
+  for(std::unordered_map<std::string, int>::iterator iter = _name2end.begin(); 
+    iter != _name2end.end(); iter++){
+    BPSContext *ctxt = &_name_to_cxt[iter->first];
+    while (ctxt->comm_time.size() > 0) {
+      BPSCommTime *ret = ctxt->comm_time.front();
+      if (!first) file << ",\n";
+      else first = false;
+      ctxt->emit_trace(&file, ret);
+      ctxt->comm_time.pop();
+    }
+    while (!ctxt->part_comm_time.empty()){
+      auto part_id = ctxt->part_comm_time.begin()->first;
+      auto& type2part_comm_time = ctxt->part_comm_time.begin()->second;
+      BPS_CHECK(!type2part_comm_time.empty()) << "type2part_comm_time should not be empty";
+      while (!type2part_comm_time.empty()){
+        auto type = type2part_comm_time.begin()->first;
+        auto& _part_comm_time_queue = type2part_comm_time.begin()->second;
+        BPS_CHECK(_part_comm_time_queue.size() > 0) << "_part_comm_time_queue should not be empty";
+        while (_part_comm_time_queue.size() > 0){
+          BPSCommTime *ret = _part_comm_time_queue.front();
+          if (!first) file << ",\n";
+          else first = false;
+          ctxt->emit_trace(&file, ret); 
+          _part_comm_time_queue.pop();
+        }
+        type2part_comm_time.erase(type);
+      }
+      // if the unordered_map becomes empty, all the traces of this part_id has been read, delete this part_id
+      ctxt->part_comm_time.erase(part_id);
+    }
+  }
+  file << "\n" << std::endl;
+  file << "    ]," << std::endl;
+  file << "    \"displayTimeUnit\": \"ms\"" << std::endl;
+  file << "}" << std::endl;
+  // BPS_LOG(TRACE) << "Communication traces output done!";
+  std::cout << "Local rank " << _local_rank << ": communication traces output done!" << std::endl;
 }
 
 PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {

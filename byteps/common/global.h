@@ -109,6 +109,10 @@ class BytePSGlobal {
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
+  static void output_traces();
+  static bool IsAllTensorOutput(const std::string& name);
+  static void Who2beOutput(const std::string& name);
+
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;
@@ -136,6 +140,8 @@ class BytePSGlobal {
   static ps::KVWorker<char>* _ps;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+  static std::unordered_map<std::string, int> _name2end;
+  static int _output_counter;
 
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;

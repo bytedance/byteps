@@ -39,10 +39,6 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* input, char* name,
 
 extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name);
 
-// add for profiling
-extern "C" BPSCommTime *byteps_mxnet_get_comm(NDArray* tensor, char* name);
-extern "C" void byteps_mxnet_delete_point(BPSCommTime *p);
-
 }  // namespace mxnet
 }  // namespace byteps
 

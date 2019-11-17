@@ -62,9 +62,5 @@ if __name__ == '__main__':
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
 
-    import traceback 
-    try:
-        fit.fit(args, sym, data.get_rec_iter)
-    except Exception as e:
-        traceback.print_exc()
-        print(e)
+    # train
+    fit.fit(args, sym, data.get_rec_iter)

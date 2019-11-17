@@ -6,13 +6,12 @@ import subprocess
 import threading
 import sys
 import time
-import traceback
+
 
 def worker(local_rank, local_size, command):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
-
     if os.getenv("BYTEPS_ENABLE_GDB", 0):
         if command.find("python") != 0:
             command = "python " + command
@@ -20,16 +19,16 @@ def worker(local_rank, local_size, command):
 
     if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
         print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" % (os.environ.get("DMLC_WORKER_ID"), local_rank))
-        print("BYTEPS_TRACE_END_STEP: %s\t BYTEPS_TRACE_DIR: %s" % (os.environ.get("BYTEPS_TRACE_END_STEP", ""), os.environ.get("BYTEPS_TRACE_DIR", "")))
+        print("BYTEPS_TRACE_START_STEP: %s\tBYTEPS_TRACE_END_STEP: %s\t BYTEPS_TRACE_DIR: %s" % (os.environ.get("BYTEPS_TRACE_START_STEP", ""), os.environ.get("BYTEPS_TRACE_END_STEP", ""), os.environ.get("BYTEPS_TRACE_DIR", "")))
         print("Command: %s\n" % command)
         sys.stdout.flush()
+        trace_path = os.path.join(os.environ.get("BYTEPS_TRACE_DIR", "."), str(local_rank))
+        if not os.path.exists(trace_path):
+            os.makedirs(trace_path)
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":
-    DMLC_ROLE = os.environ.get("DMLC_ROLE")
-    print("BytePS launching " + (DMLC_ROLE if DMLC_ROLE else 'None'))
-    BYTEPS_SERVER_MXNET_PATH = os.getenv("BYTEPS_SERVER_MXNET_PATH")
-    print("BYTEPS_SERVER_MXNET_PATH: " + (BYTEPS_SERVER_MXNET_PATH if BYTEPS_SERVER_MXNET_PATH else 'None'))
+    print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
 
     if os.environ["DMLC_ROLE"] == "worker":

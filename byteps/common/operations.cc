@@ -18,11 +18,10 @@
 #include <cstring>
 #include <memory>
 #include <thread>
+#include <unistd.h>
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
-
-#include <unistd.h>
 
 namespace byteps {
 namespace common {
@@ -213,73 +212,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   return Status::OK();
 }
 
-// API provided for profiling communication events
-BPSCommTime *GetComm(const std::string &name) {
-  BPSContext &context = BytePSGlobal::GetContextFromName(name);
-
-  if (context.profile_flag) context.profile_flag = false;
-
-  BPSCommTime *ret;
-  if (context.comm_time.size() > 0) {
-    ret = context.comm_time.front();
-    context.comm_time.pop();
-    ret->end = false;
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                    << "Collect communication traces of main task, "
-                    << " ret->key=" << ret->key
-                    << " ret->type=" << ret->type;
-    return ret;
-  } else {
-    if (context.part_comm_time.empty()) {
-      ret = new BPSCommTime;
-      ret->start_t = 0;
-      ret->dur = 0;
-      ret->end = true;
-      ret->key = -1;
-      ret->type = -1;
-      // *ret = {0, 0, true, -1, -1};
-      return ret;
-    }
-    auto part_id = context.part_comm_time.begin()->first;
-    auto& type2part_comm_time = context.part_comm_time.begin()->second;
-    BPS_CHECK(!type2part_comm_time.empty()) << "type2part_comm_time should not be empty";
-
-    auto type = type2part_comm_time.begin()->first;
-    auto& _part_comm_time_queue = type2part_comm_time.begin()->second;
-    BPS_CHECK(_part_comm_time_queue.size() > 0) << "_part_comm_time_queue should not be empty";
-
-    ret = _part_comm_time_queue.front();
-    _part_comm_time_queue.pop();
-    ret->end = false;
-
-    if (_part_comm_time_queue.size() == 0) {
-      // if the _part_comm_time_queue of part_id --> type is empty, delete this type for this part_id
-      type2part_comm_time.erase(type);
-      if (type2part_comm_time.empty()) {
-        // if the unordered_map becomes empty, all the traces of this part_id has been read, delete this part_id
-        context.part_comm_time.erase(part_id);
-      }
-    }
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                    << "Collect communication traces, "
-                    << " ret->key=" << ret->key
-                    << " ret->type=" << ret->type;
-
-    return ret;
-  }
-  // if (BytePSGlobal::GetRank() == 0){
-  //   std::cout << "In operations.cc, GetComm, _ts: " << ret->start_t << " dur: " << dur << " CNT: " << context.cnt << std::endl;
-  //   // std::cout << "In operations.cc, get p: " << ret << std::endl;
-  // } 
-}
-
-void delete_point(BPSCommTime *p){
-  // if (BytePSGlobal::GetRank() == 0){
-  //   std::cout << "In operations.cc, delete p: " << p << std::endl;
-  // }
-  delete p;
-}
-
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   std::lock_guard<std::mutex> lock(context.init_mutex);
   if (context.initialized) {
@@ -294,13 +226,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   context.buff_len = size;
   size_t accumulated = 0;
 
-  //Initialize the profile flag
-  auto is_trace = getenv("BYTEPS_TRACE_ON");
-  if ( is_trace && atoi(is_trace) == 1) {
-    context.profile_flag = true;
-  } else {
-    context.profile_flag = false;
-  }
+  // Add for timeline
+  context.set_profile_flag();
+  context.local_rank = BytePSGlobal::GetLocalRank();
 
   // Total key space is 0 to 2^64 - 1
   // It will be divided to N PS servers, for now we assume N <= 2^16

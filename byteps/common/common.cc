@@ -19,9 +19,55 @@
 
 #include "common.h"
 #include "logging.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
+
+void BytePSContext::set_profile_flag() {
+  // Set the profile flag
+  auto is_trace = getenv("BYTEPS_TRACE_ON");
+  auto start_step = getenv("BYTEPS_TRACE_START_STEP");
+  auto end_step = getenv("BYTEPS_TRACE_END_STEP");
+  if (is_trace && atoi(is_trace) == 1) {
+    // Enable trace, check the start and end step
+    BPS_CHECK(start_step != NULL && end_step != NULL)
+                << "BYTEPS_TRACE_START_STEP and BYTEPS_TRACE_END_STEP must be given "
+                << "if BYTEPS_TRACE_ON is set.";
+    BPS_CHECK(atoi(start_step) >= 1 && atoi(end_step) > atoi(start_step)) 
+                << "BYTEPS_TRACE_START_STEP must be larger than 1, "
+                << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
+    if(step_cnt == atoi(start_step)-1){
+      profile_flag = true;
+      BytePSGlobal::Who2beOutput(this->tensor_name);
+    } else if(step_cnt == atoi(end_step)){
+      profile_flag = false;
+      if (BytePSGlobal::IsAllTensorOutput(this->tensor_name)){
+        std::thread _t(BytePSGlobal::output_traces);
+        _t.detach();
+      }
+    } 
+  } else {
+    profile_flag = false;
+  }
+}
+
+void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
+    std::string tid = (ret->key == -1) ? "total" : std::to_string(ret->key);
+    std::string para_name = "Comm." + tensor_name;
+    std::string para_name_type = (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
+    (*os) << "        {\n"
+          << "            \"ph\": \"X\",\n"
+          << "            \"args\": {\n"
+          << "                \"name\": \"" << para_name << "\"\n"
+          << "            },\n"
+          << "            \"pid\": \"" << para_name << "\",\n"
+          << "            \"name\": \"" << para_name_type << "\",\n"
+          << "            \"ts\": " << ret->start_t << ",\n"
+          << "            \"dur\": " << ret->dur << ",\n"
+          << "            \"tid\": \"" << tid << "\"\n"
+          << "        }";
+}
 
 Status::Status() = default;
 
