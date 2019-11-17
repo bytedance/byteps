@@ -306,7 +306,7 @@ class Recorder(object):
 
             index += 1
 
-    def byteps_collect_comm(self, index, tensor, name):
+    def _byteps_collect_comm(self, index, tensor, name):
         ''' Offline collect the communication trace results of gradient `index`
 
         Parameters

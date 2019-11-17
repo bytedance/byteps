@@ -17,6 +17,7 @@
 #include <cassert>
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 
 #include "common.h"
 #include "logging.h"
@@ -65,9 +66,12 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
 }
 
 void BytePSContext::output_traces(){
-  auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR"));
-  auto trace_path = trace_dir + "/" + std::to_string(local_rank) 
-                  + "/Comm/" + tensor_name + ".json";
+  auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
+                  + "/" + std::to_string(local_rank) + "/Comm/";
+  if (!std::filesystem::exists(trace_dir)) {
+    std::filesystem::create_directory(trace_dir);
+  }
+  auto trace_path = trace_dir  + tensor_name + ".json";
   // Output these traces
   std::ofstream file;
   file.open(trace_path);
