@@ -359,7 +359,7 @@ void init_global_env() {
   // number of engine thread
   // invalid if is_engine_blocking = true
   engine_thread_num_ = GetEnv("BYTEPS_SERVER_ENGINE_THREAD", 4);
-  LOG(INFO) << "BytePS server engine uses " << engine_thread_num_ << " queues"
+  LOG(INFO) << "BytePS server engine uses " << engine_thread_num_ << " threads"
             << ", consider increasing BYTEPS_SERVER_ENGINE_THREAD for higher performance";
   CHECK_GE(engine_thread_num_, 1);
 }
@@ -385,7 +385,8 @@ extern "C" void byteps_server() {
     Postoffice::Get()->Barrier(0,
       ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
   }
-  LOG(INFO) << "byteps server runs";
+
+  // clean the server resource
   Finalize(0, true);
   if (byteps_server_) {
     delete byteps_server_;
@@ -395,8 +396,6 @@ extern "C" void byteps_server() {
     delete bps_reducer_;
     bps_reducer_ = nullptr;
   }
-
-  // join the threads
   BytePSEngineMessage msg;
   msg.ops = TERMINATE;
   for (auto q : engine_queues_) q->Push(msg);
