@@ -284,7 +284,9 @@ def get_common_options(build_ext):
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
     server_lib.include_dirs = options['INCLUDES']
-    server_lib.sources = ['byteps/server/server.cc', 'byteps/common/cpu_reducer.cc']
+    server_lib.sources = ['byteps/server/server.cc', 
+                          'byteps/common/cpu_reducer.cc',
+                          'byteps/common/logging.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']

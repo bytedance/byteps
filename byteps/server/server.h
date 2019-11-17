@@ -16,11 +16,142 @@
 #ifndef BYTEPS_SERVER_H
 #define BYTEPS_SERVER_H
 
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include "ps/ps.h"
+#include "../common/cpu_reducer.h"
+#include "ps/internal/threadsafe_queue.h"
+
 namespace byteps {
 namespace server {
 
-extern "C" void byteps_server();
+#define SERVER_KEY_TYPE uint64_t
+#define SERVER_DATA_TYPE char
+#define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
+#define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
 
+using namespace ps;
+
+enum class RequestType {
+  kDefaultPushPull, kRowSparsePushPull, kCompressedPushPull
+};
+
+enum BytePSEngineOperation {
+  COPY_RECV, SUM_RECV, COPY_MERGED, TERMINATE
+};
+
+struct PSKV {
+  SArray<Key> keys;  // n keys
+  SArray<int> lens;  // the length of the i-th value
+};
+
+struct DataHandleType {
+  RequestType requestType;
+  int dtype;
+};
+
+struct BytePSArray {
+  char* tensor;
+  size_t len;
+  int dtype;
+};
+
+struct UpdateBuf {
+  std::vector<ps::KVMeta> request;
+  BytePSArray merged;
+};
+
+struct BytePSEngineMessage {
+  DataHandleType type;
+  uint64_t key;
+  void* dst;
+  void* src;
+  size_t len;
+  BytePSEngineOperation ops;
+  ps::KVMeta req_meta;
+};
+
+static DataHandleType DepairDataHandleType(int cmd) {
+  int w = std::floor((std::sqrt(8 * cmd + 1) - 1)/2);
+  int t = ((w * w) + w) / 2;
+  int y = cmd - t;
+  int x = w - y;
+  CHECK_GE(x, 0);
+  CHECK_GE(y, 0);
+  DataHandleType type;
+  type.requestType = static_cast<RequestType>(x);
+  type.dtype = y;
+  return type;
+}
+
+
+KVServer<SERVER_DATA_TYPE>* byteps_server_;
+byteps::common::CpuReducer* bps_reducer_;
+std::unordered_map<SERVER_KEY_TYPE, KVPairs<SERVER_DATA_TYPE> > mem_map_;
+std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
+std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
+
+// push & pull flag 
+std::mutex flag_mu_; 
+std::unordered_map<uint64_t, std::atomic<bool> > is_push_finished_;
+std::unordered_map<uint64_t, std::vector<ps::KVMeta> > q_pull_reqmeta_;
+std::unordered_map<uint64_t, size_t> pull_cnt_;
+
+// address map 
+std::unordered_map<uint64_t, BytePSArray> store_; 
+std::unordered_map<uint64_t, UpdateBuf> update_buf_;
+std::mutex handle_mu_;
+
+// K: (key, sender), V: recved
+std::unordered_map<void *, SArray<char> > recv_map_; 
+std::mutex recvmap_mu_; // protect the map to avoid race condition
+
+// hash function
+std::unordered_map<uint64_t, uint64_t> hash_cache_;
+std::mutex hash_mu_;
+
+// engine related
+std::vector<ThreadsafeQueue<BytePSEngineMessage>* > engine_queues_;
+std::vector<std::thread *> engine_threads_;
+size_t engine_thread_num_ = 4;
+
+// global knob
+volatile bool is_engine_blocking_ = false;
+volatile bool log_key_info_ = false;
+volatile bool sync_mode_ = true;
+volatile bool debug_mode_ = false;
+uint64_t debug_key_;
+std::mutex debug_mu_;
+
+
+uint64_t DecodeKey(ps::Key key) {
+  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
+  return key - kr.begin();
+}
+
+uint64_t EncodeKey(ps::Key key) {
+  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
+  return key + kr.begin();
+}
+
+size_t GetThreadID(uint64_t key) {
+  std::lock_guard<std::mutex> lock(hash_mu_);
+  if (hash_cache_.find(key) != hash_cache_.end()) {
+    return hash_cache_[key];
+  }
+  auto str = std::to_string(key).c_str();
+  uint64_t hash = 5381;
+  int c;
+  while ((c = *str)) { // hash(i) = hash(i-1) * 33 ^ str[i]
+    hash = ((hash << 5) + hash) + c; 
+    str++;
+  }
+  hash_cache_[key] = hash % engine_thread_num_;
+  return hash_cache_[key];
+}
+
+extern "C" void byteps_server();
 
 }  // namespace server
 }  // namespace byteps

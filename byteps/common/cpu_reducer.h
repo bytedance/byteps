@@ -52,6 +52,11 @@ class CpuReducer {
   std::shared_ptr<BytePSComm> getComm() { return _comm; }
 #endif
 
+
+  DataType GetDataType(int dtype) {
+    return static_cast<DataType>(dtype);
+  }
+
  private:
 #if __AVX__ && __F16C__
   // Query CPUID to determine AVX and F16C runtime support.
