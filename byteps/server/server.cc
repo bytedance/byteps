@@ -111,21 +111,21 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        std::lock_guard<std::mutex> lock(flag_mu_);
-        if (is_push_finished_.find(msg.key) == is_push_finished_.end()) {
-          is_push_finished_[msg.key] = false;
-          pull_cnt_[msg.key] = 0;
+        std::lock_guard<std::mutex> lock(flag_mu_[i]);
+        if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
+          is_push_finished_[i][msg.key] = false;
+          pull_cnt_[i][msg.key] = 0;
         }
-        is_push_finished_[msg.key] = true;
-        for (auto& req_meta : q_pull_reqmeta_[msg.key]) {
+        is_push_finished_[i][msg.key] = true;
+        for (auto& req_meta : q_pull_reqmeta_[i][msg.key]) {
           SendPullResponse(msg.type, msg.key, req_meta, byteps_server_); 
-          pull_cnt_[msg.key] += 1;
-          if (pull_cnt_[msg.key] == (size_t) ps::NumWorkers()) {
-            is_push_finished_[msg.key] = false;
-            pull_cnt_[msg.key] = 0;
+          pull_cnt_[i][msg.key] += 1;
+          if (pull_cnt_[i][msg.key] == (size_t) ps::NumWorkers()) {
+            is_push_finished_[i][msg.key] = false;
+            pull_cnt_[i][msg.key] = 0;
           }
         }
-        q_pull_reqmeta_[msg.key].clear();
+        q_pull_reqmeta_[i][msg.key].clear();
         break;
       }
       case SUM_RECV: {
@@ -296,23 +296,24 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     if (is_engine_blocking_) {
       SendPullResponse(type, key, req_meta, server);
     } else {
-      std::lock_guard<std::mutex> lock(flag_mu_);
-      if (is_push_finished_.find(key) == is_push_finished_.end()) {
-        is_push_finished_[key] = false;
-        pull_cnt_[key] = 0;
+      auto tid = GetThreadID(key, 0);
+      std::lock_guard<std::mutex> lock(flag_mu_[tid]);
+      if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
+        is_push_finished_[tid][key] = false;
+        pull_cnt_[tid][key] = 0;
       }
-      if (is_push_finished_[key]) { // push already finished
+      if (is_push_finished_[tid][key]) { // push already finished
         SendPullResponse(type, key, req_meta, server); 
-        pull_cnt_[key] += 1;
-        if (pull_cnt_[key] == (size_t) ps::NumWorkers()) {
-          is_push_finished_[key] = false;
-          pull_cnt_[key] = 0;
+        pull_cnt_[tid][key] += 1;
+        if (pull_cnt_[tid][key] == (size_t) ps::NumWorkers()) {
+          is_push_finished_[tid][key] = false;
+          pull_cnt_[tid][key] = 0;
           // check: remain should be 0
-          auto remain = q_pull_reqmeta_[key].size();
+          auto remain = q_pull_reqmeta_[tid][key].size();
           CHECK_EQ(remain, 0) << remain;
         }
       } else { // push not finished, put into the queue, and wait for the engine 
-        q_pull_reqmeta_[key].push_back(req_meta);
+        q_pull_reqmeta_[tid][key].push_back(req_meta);
       }
     }
   }
@@ -345,7 +346,24 @@ void init_global_env() {
 
 extern "C" void byteps_server() {
   init_global_env();
+
+  // cpu reducer
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
+
+  // flag mu and its protected map
+  std::vector<std::mutex> tmp_flagmu(engine_thread_num_);
+  std::vector<std::unordered_map<uint64_t, bool> > tmp_ispushfinished(engine_thread_num_);
+  std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > tmp_qpullreqmeta(engine_thread_num_);
+  std::vector<std::unordered_map<uint64_t, size_t> > tmp_pullcnt(engine_thread_num_);
+  flag_mu_.swap(tmp_flagmu);
+  is_push_finished_.swap(tmp_ispushfinished);
+  q_pull_reqmeta_.swap(tmp_qpullreqmeta);
+  pull_cnt_.swap(tmp_pullcnt);
+  CHECK_EQ(flag_mu_.size(), engine_thread_num_);
+  CHECK_EQ(is_push_finished_.size(), engine_thread_num_);
+  CHECK_EQ(q_pull_reqmeta_.size(), engine_thread_num_);
+  CHECK_EQ(pull_cnt_.size(), engine_thread_num_);
+
   // init the engine
   for (size_t i = 0; i < engine_thread_num_; ++i) {
     acc_load_.push_back(0);

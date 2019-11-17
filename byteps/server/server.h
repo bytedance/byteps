@@ -94,15 +94,15 @@ std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
 
 // push & pull flag 
-std::mutex flag_mu_; 
-std::unordered_map<uint64_t, std::atomic<bool> > is_push_finished_;
-std::unordered_map<uint64_t, std::vector<ps::KVMeta> > q_pull_reqmeta_;
-std::unordered_map<uint64_t, size_t> pull_cnt_;
+std::vector<std::mutex> flag_mu_; 
+std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
+std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
+std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 
 // address map 
+std::mutex handle_mu_;
 std::unordered_map<uint64_t, BytePSArray> store_; 
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
-std::mutex handle_mu_;
 
 // hash function
 std::mutex hash_mu_;
@@ -135,6 +135,10 @@ uint64_t EncodeKey(ps::Key key) {
 
 size_t GetThreadID(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(hash_mu_);
+  if (len == 0) { // pull
+    CHECK_NE(hash_cache_.find(key), hash_cache_.end());
+    return hash_cache_[key];
+  }
   if (hash_cache_.find(key) != hash_cache_.end()) {
     return hash_cache_[key];
   }
