@@ -219,7 +219,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         updates.merged.len = len;
         updates.merged.dtype = type.dtype;
       }
-      auto tid = GetThreadID(key);
+      auto tid = GetThreadID(key, len);
       if (updates.request.empty()) { // from the first incoming worker
         if (sync_mode_) {
           if (is_engine_blocking_) {
@@ -290,7 +290,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       if (sync_mode_ && updates.request.size() == (size_t) ps::NumWorkers()) {
         auto& stored = store_[key];
         auto& update = updates.merged;
-        auto tid = GetThreadID(key);
         if (is_engine_blocking_) {
           memcpy(stored.tensor, updates.merged.tensor, len);
         } else {
@@ -368,6 +367,9 @@ extern "C" void byteps_server() {
   init_global_env();
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
   // init the engine
+  for (size_t i = 0; i < engine_thread_num_; ++i) {
+    acc_load_.push_back(0);
+  }
   for (size_t i = 0; i < engine_thread_num_; ++i) {
     auto q = new ThreadsafeQueue<BytePSEngineMessage>();
     engine_queues_.push_back(q);

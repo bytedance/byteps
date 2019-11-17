@@ -108,8 +108,9 @@ std::unordered_map<void *, SArray<char> > recv_map_;
 std::mutex recvmap_mu_; // protect the map to avoid race condition
 
 // hash function
-std::unordered_map<uint64_t, uint64_t> hash_cache_;
 std::mutex hash_mu_;
+std::unordered_map<uint64_t, size_t> hash_cache_;
+std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread 
 
 // engine related
 std::vector<ThreadsafeQueue<BytePSEngineMessage>* > engine_queues_;
@@ -135,19 +136,25 @@ uint64_t EncodeKey(ps::Key key) {
   return key + kr.begin();
 }
 
-size_t GetThreadID(uint64_t key) {
+size_t GetThreadID(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(hash_mu_);
   if (hash_cache_.find(key) != hash_cache_.end()) {
     return hash_cache_[key];
   }
-  auto str = std::to_string(key).c_str();
-  uint64_t hash = 5381;
-  int c;
-  while ((c = *str)) { // hash(i) = hash(i-1) * 33 ^ str[i]
-    hash = ((hash << 5) + hash) + c; 
-    str++;
+  CHECK_GT(len, 0);
+  CHECK_EQ(acc_load_.size(), engine_thread_num_);
+  auto min_index = -1;
+  auto min_load = std::numeric_limits<uint64_t>::max();
+  for (size_t i = 0; i < engine_thread_num_; ++i) {
+    if (acc_load_[i] < min_load) {
+      min_load = acc_load_[i];
+      min_index = i;
+    }
   }
-  hash_cache_[key] = hash % engine_thread_num_;
+  CHECK_GE(min_index, 0);
+  CHECK_LT(min_index, engine_thread_num_);
+  acc_load_[min_index] += len;
+  hash_cache_[key] = min_index;
   return hash_cache_[key];
 }
 
