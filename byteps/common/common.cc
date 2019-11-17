@@ -68,8 +68,8 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
 void BytePSContext::output_traces(){
   auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
                   + "/" + std::to_string(local_rank) + "/Comm/";
-  if (!std::filesystem::exists(trace_dir)) {
-    std::filesystem::create_directory(trace_dir);
+  if (!std::filesystem::exists(trace_dir.c_str())) {
+    std::filesystem::create_directory(trace_dir.c_str());
   }
   auto trace_path = trace_dir  + tensor_name + ".json";
   // Output these traces
