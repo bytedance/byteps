@@ -292,7 +292,10 @@ def build_server(build_ext, options):
     server_lib.extra_link_args = options['LINK_FLAGS']
     server_lib.extra_objects = options['EXTRA_OBJECTS']
     server_lib.library_dirs = options['LIBRARY_DIRS']
-    server_lib.libraries = []
+    if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+        server_lib.libraries = ['rdmacm', 'ibverbs']
+    else:
+        server_lib.libraries = []
 
     build_ext.build_extension(server_lib)
 
