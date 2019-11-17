@@ -16,6 +16,7 @@
 
 #include <cassert>
 #include <sstream>
+#include <fstream>
 
 #include "common.h"
 #include "logging.h"
@@ -47,7 +48,7 @@ void BytePSContext::set_profile_flag() {
   }
 }
 void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
-    std::string tid = (ret->key == -1) ? "total" else std::to_string(ret->key);
+    std::string tid = (ret->key == -1) ? "total" : std::to_string(ret->key);
     std::string para_name = "Comm." + tensor_name;
     std::string para_name_type = (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
     (*os) << "        {\n"
