@@ -67,10 +67,10 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
 void BytePSContext::output_traces(){
   auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR"));
   auto trace_path = trace_dir + "/" + std::to_string(local_rank) 
-                  + "/comm_" + tensor_name + ".json";
+                  + "/Comm." + tensor_name + ".json";
   // Output these traces
   std::ofstream file;
-  file.open(trace_path)
+  file.open(trace_path);
   file << "{" << std::endl;
   file << "    \"traceEvents\": [" << std::endl;
   auto first = true;
