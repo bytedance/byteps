@@ -69,6 +69,7 @@ struct BytePSEngineMessage {
   void* src;
   size_t len;
   BytePSEngineOperation ops;
+  const SArray<char>* sarray; // to temporarily hold it and auto release 
   ps::KVMeta req_meta;
 };
 
@@ -102,10 +103,6 @@ std::unordered_map<uint64_t, size_t> pull_cnt_;
 std::unordered_map<uint64_t, BytePSArray> store_; 
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
 std::mutex handle_mu_;
-
-// K: (key, sender), V: recved
-std::unordered_map<void *, SArray<char> > recv_map_; 
-std::mutex recvmap_mu_; // protect the map to avoid race condition
 
 // hash function
 std::mutex hash_mu_;

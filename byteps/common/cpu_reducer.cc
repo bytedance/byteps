@@ -216,7 +216,7 @@ int CpuReducer::copy(void* dst, void* src, size_t len) {
     out[i] = in[i];
   }
   if (len % 4) {
-    memcpy(out + len / 4, in + len / 4, len % 4);
+    std::memcpy(out + len / 4, in + len / 4, len % 4);
   }
   return 0;
 }

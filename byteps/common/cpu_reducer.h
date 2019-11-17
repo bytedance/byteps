@@ -22,6 +22,7 @@
 #endif
 
 #include <memory>
+#include <cstring>
 #include "common.h"
 #include "logging.h"
 

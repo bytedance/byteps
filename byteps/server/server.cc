@@ -91,9 +91,6 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        std::lock_guard<std::mutex> lock(recvmap_mu_);
-        CHECK_NE(recv_map_.find(msg.src), recv_map_.end());
-        recv_map_.erase(msg.src); // release the SArray
         break;
       }
       case COPY_MERGED: {
@@ -153,9 +150,6 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        std::lock_guard<std::mutex> lock(recvmap_mu_);
-        CHECK_NE(recv_map_.find(msg.src), recv_map_.end());
-        recv_map_.erase(msg.src); // release the SArray
         break;
       }
       default:
@@ -234,12 +228,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                         << "len: " << len << "\t"
                         << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
             }
-            recvmap_mu_.lock();
-            CHECK_EQ(recv_map_.find(recved), recv_map_.end());
-            recv_map_[recved] = req_data.vals;
-            recvmap_mu_.unlock();
             
-            BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, COPY_RECV};
+            BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, COPY_RECV, &req_data.vals};
             engine_queues_[tid]->Push(msg);
           }
         } else { // async mode, directly add to the buffer
@@ -249,12 +239,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                                       len, 
                                       bps_reducer_->GetDataType(stored.dtype)), 0);
           } else {
-            recvmap_mu_.lock();
-            CHECK_EQ(recv_map_.find(recved), recv_map_.end());
-            recv_map_[recved] = req_data.vals;
-            recvmap_mu_.unlock();
-
-            BytePSEngineMessage msg = {type, key, stored.tensor, recved, len, SUM_RECV};
+            BytePSEngineMessage msg = {type, key, stored.tensor, recved, len, SUM_RECV, &req_data.vals};
             engine_queues_[tid]->Push(msg);
           }
         }
@@ -275,12 +260,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
-          recvmap_mu_.lock();
-          CHECK_EQ(recv_map_.find(recved), recv_map_.end());
-          recv_map_[recved] = req_data.vals;
-          recvmap_mu_.unlock();
-
-          BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, SUM_RECV, req_meta};
+          BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, SUM_RECV, &req_data.vals, req_meta};
           engine_queues_[tid]->Push(msg);
         }
       }
