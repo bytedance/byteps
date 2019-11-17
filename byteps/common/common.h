@@ -168,9 +168,12 @@ typedef struct BytePSContext {
   std::queue<BPSCommTime *> comm_time;
   bool profile_flag = false;
   int step_cnt = 0;
+  int local_rank = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
   // Member methods
   void set_profile_flag();
+  void emit_trace(std::ostream *os, const BPSCommTime *ret);
+  void output_traces();
 } BPSContext;
 
 class Tensor {

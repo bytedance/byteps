@@ -40,10 +40,68 @@ void BytePSContext::set_profile_flag() {
       profile_flag = true;
     } else if(step_cnt == atoi(end_step)){
       profile_flag = false;
+      this->output_traces();
     } 
   } else {
     profile_flag = false;
   }
+}
+void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
+    std::string tid = (ret.key == -1) ? "total" else std::to_string(ret.key);
+    std::string para_name = "Comm." + tensor_name;
+    std::string para_name_type = (ret.key == -1) ? para_name : para_name + "." + LogStrings[ret.type];
+    (*os) << "        {\n"
+          << "            \"ph\": \"X\",\n"
+          << "            \"args\": {\n"
+          << "                \"name\": \"" << para_name << "\"\n"
+          << "            },\n"
+          << "            \"pid\": \"" << para_name << "\",\n"
+          << "            \"name\": \"" << para_name_type << "\",\n"
+          << "            \"ts\": " << ret.start_t << ",\n"
+          << "            \"dur\": " << ret.dur << ",\n"
+          << "            \"tid\": \"" << tid << "\",\n"
+          << "        }";
+}
+
+void BytePSContext::output_traces(){
+  auto trace_dir = getenv("BYTEPS_TRACE_DIR");
+  auto trace_path = trace_dir + "/" + std::to_string(local_rank) 
+                  + "/comm_" + tensor_name + ".json";
+  // Output these traces
+  std::ofstream file;
+  file.open(trace_path)
+  file << "{" << std::endl;
+  file << "    \"traceEvents\": [" << std::endl;
+  auto first = true;
+  while (comm_time.size() > 0) {
+    BPSCommTime *ret = comm_time.front();
+    if (!first) file << ",\n";
+    first = false;
+    this->emit_trace(&file, ret);
+    comm_time.pop();
+  }
+  while (!part_comm_time.empty()){
+    auto part_id = part_comm_time.begin()->first;
+    auto& type2part_comm_time = part_comm_time.begin()->second;
+    BPS_CHECK(!type2part_comm_time.empty()) << "type2part_comm_time should not be empty";
+    while (!type2part_comm_time.empty()){
+      auto type = type2part_comm_time.begin()->first;
+      auto& _part_comm_time_queue = type2part_comm_time.begin()->second;
+      BPS_CHECK(_part_comm_time_queue.size() > 0) << "_part_comm_time_queue should not be empty";
+      while (_part_comm_time_queue.size() > 0){
+        BPSCommTime *ret = _part_comm_time_queue.front();
+        _part_comm_time_queue.pop();
+        this->emit_trace(&file, ret); // todo
+      }
+      type2part_comm_time.erase(type);
+    }
+    // if the unordered_map becomes empty, all the traces of this part_id has been read, delete this part_id
+    part_comm_time.erase(part_id);
+  }
+  file << "\n" << std::endl;
+  file << "    ]," << std::endl;
+  file << "    \"displayTimeUnit\": \"ms\"" << std::endl;
+  file << "}" << std::endl;
 }
 
 Status::Status() = default;

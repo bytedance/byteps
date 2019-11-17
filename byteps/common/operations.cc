@@ -294,6 +294,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   // Add for timeline
   context.set_profile_flag();
+  context.local_rank = BytePSGlobal::GetLocalRank();
 
   // Total key space is 0 to 2^64 - 1
   // It will be divided to N PS servers, for now we assume N <= 2^16

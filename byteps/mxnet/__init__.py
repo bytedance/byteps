@@ -322,7 +322,8 @@ class Recorder(object):
             return
 
         # -- read communication traces offline
-        _ts_dur_list = get_comm_time(tensor, name) 
+        # _ts_dur_list = get_comm_time(tensor, name) 
+        _ts_dur_list = []
 
         def return_event(index, _ts, _dur, _key, _type):
             if _ts == 0:
