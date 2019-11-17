@@ -47,9 +47,9 @@ void BytePSContext::set_profile_flag() {
   }
 }
 void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
-    std::string tid = (ret.key == -1) ? "total" else std::to_string(ret.key);
+    std::string tid = (ret->key == -1) ? "total" else std::to_string(ret->key);
     std::string para_name = "Comm." + tensor_name;
-    std::string para_name_type = (ret.key == -1) ? para_name : para_name + "." + LogStrings[ret.type];
+    std::string para_name_type = (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
     (*os) << "        {\n"
           << "            \"ph\": \"X\",\n"
           << "            \"args\": {\n"
@@ -57,14 +57,14 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
           << "            },\n"
           << "            \"pid\": \"" << para_name << "\",\n"
           << "            \"name\": \"" << para_name_type << "\",\n"
-          << "            \"ts\": " << ret.start_t << ",\n"
-          << "            \"dur\": " << ret.dur << ",\n"
+          << "            \"ts\": " << ret->start_t << ",\n"
+          << "            \"dur\": " << ret->dur << ",\n"
           << "            \"tid\": \"" << tid << "\",\n"
           << "        }";
 }
 
 void BytePSContext::output_traces(){
-  auto trace_dir = getenv("BYTEPS_TRACE_DIR");
+  auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR"));
   auto trace_path = trace_dir + "/" + std::to_string(local_rank) 
                   + "/comm_" + tensor_name + ".json";
   // Output these traces
