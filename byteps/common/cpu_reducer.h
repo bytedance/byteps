@@ -46,6 +46,7 @@ class CpuReducer {
 
   int sum(void* dst, void* src, size_t len, DataType dtype);
   int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
+  int copy(void* dst, void* src, size_t len);
 
 #ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();

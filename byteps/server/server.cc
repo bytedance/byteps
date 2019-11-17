@@ -82,7 +82,7 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        memcpy(msg.dst, msg.src, msg.len);
+        bps_reducer_->copy(msg.dst, msg.src, msg.len);
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_COPY_RECV_AFTER \t" 
@@ -105,7 +105,7 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        memcpy(msg.dst, msg.src, msg.len);
+        bps_reducer_->copy(msg.dst, msg.src, msg.len);
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_COPY_MERGED_TO_STORE_AFTER \t" 
@@ -207,7 +207,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       stored.tensor = (char*) malloc(len); 
       stored.len = len;
       stored.dtype = type.dtype;
-      memcpy(stored.tensor, recved, len); // we may not need this copy
+      bps_reducer_->copy(stored.tensor, recved, len); // we may not need this copy
       for (const auto& req : updates.request) {
         SendPushResponse(key, req, server);
       }
@@ -223,7 +223,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       if (updates.request.empty()) { // from the first incoming worker
         if (sync_mode_) {
           if (is_engine_blocking_) {
-            memcpy(updates.merged.tensor, recved, len);
+            bps_reducer_->copy(updates.merged.tensor, recved, len);
           } else { // non-blocking
             if (debug_mode_ && (debug_key_ == key)) {
               std::lock_guard<std::mutex> lock(debug_mu_);  
@@ -291,7 +291,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         auto& stored = store_[key];
         auto& update = updates.merged;
         if (is_engine_blocking_) {
-          memcpy(stored.tensor, updates.merged.tensor, len);
+          bps_reducer_->copy(stored.tensor, updates.merged.tensor, len);
         } else {
           if (debug_mode_ && (debug_key_ == key)) {
             std::lock_guard<std::mutex> lock(debug_mu_);

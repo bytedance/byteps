@@ -208,5 +208,19 @@ int CpuReducer::_sum_float16(void* dst, void* src1, void* src2, size_t len) {
   return 0;
 }
 
+int CpuReducer::copy(void* dst, void* src, size_t len) {
+  auto in = (float*)src;
+  auto out = (float*)dst;
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / 4; ++i) {
+    out[i] = in[i];
+  }
+  if (len % 4) {
+    memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+  return 0;
+}
+
+
 }  // namespace common
 }  // namespace byteps
