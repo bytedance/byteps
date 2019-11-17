@@ -217,8 +217,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 BPSCommTime *GetComm(const std::string &name) {
   BPSContext &context = BytePSGlobal::GetContextFromName(name);
 
-  if (context.profile_flag) context.profile_flag = false;
-
   BPSCommTime *ret;
   if (context.comm_time.size() > 0) {
     ret = context.comm_time.front();
@@ -294,13 +292,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   context.buff_len = size;
   size_t accumulated = 0;
 
-  //Initialize the profile flag
-  auto is_trace = getenv("BYTEPS_TRACE_ON");
-  if ( is_trace && atoi(is_trace) == 1) {
-    context.profile_flag = true;
-  } else {
-    context.profile_flag = false;
-  }
+  // Add for timeline
+  context.set_profile_flag();
 
   // Total key space is 0 to 2^64 - 1
   // It will be divided to N PS servers, for now we assume N <= 2^16

@@ -112,7 +112,11 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                      << " finish processing tensor: " << task->tensor_name;
       task->callback(Status::OK());
 
-      // Add for profiling communication events
+      //* Add for profiling communication events
+      // Set the profile_flag first
+      // *step_cnt* denotes the number this gradient has been synchronized.
+      task->context->step_cnt += 1;
+      task->context->set_profile_flag();
       if (task->context->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)
                     << " tensor: " << task->tensor_name

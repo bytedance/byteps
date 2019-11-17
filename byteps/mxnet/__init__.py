@@ -72,7 +72,8 @@ class Recorder(object):
             self._end_trace = True
             return
         self._end_trace = False
-        self.end_step = int(os.environ.get("BYTEPS_TRACE_END_STEP", "10"))
+        self.end_step = int(os.environ.get("BYTEPS_TRACE_END_STEP", "30"))
+        self.start_step = int(os.environ.get("BYTEPS_TRACE_START_STEP", "20"))
         self.trace_dir = os.environ.get("BYTEPS_TRACE_DIR", ".") + "/" + os.environ.get("BYTEPS_LOCAL_RANK") + "/"
         if not os.path.exists(self.trace_dir):
             os.makedirs(self.trace_dir)
@@ -88,7 +89,13 @@ class Recorder(object):
                     aggregate_stats=aggregate_stats, 
                     filename=self.trace_dir+'temp.json')
 
-        profiler.set_state('run')
+        if not self._end_trace and self.start_step < 1:
+            raise ValueError("BYTEPS_TRACE_START_STEP must be larger than 1")
+        if not self._end_trace and self.end_step <= self.start_step:
+            raise ValueError("BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP")
+        if self.step_cnt == self.start_step - 1:
+            profiler.set_state('run')
+
         self.dag = nx.DiGraph()
         self.comm2layer = {}
 
@@ -133,6 +140,9 @@ class Recorder(object):
         """
         if _check_stop:
             self.step_cnt += 1
+
+        if self.step_cnt == self.start_step - 1:
+            profiler.set_state('run')
             
         if self.step_cnt >= self.end_step:
             if self.gradient_name_list is None:

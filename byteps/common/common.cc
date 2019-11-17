@@ -23,6 +23,29 @@
 namespace byteps {
 namespace common {
 
+void BytePSContext::set_profile_flag() {
+  // Set the profile flag
+  auto is_trace = getenv("BYTEPS_TRACE_ON");
+  auto start_step = getenv("BYTEPS_TRACE_START_STEP");
+  auto end_step = getenv("BYTEPS_TRACE_END_STEP");
+  if (is_trace && atoi(is_trace) == 1) {
+    // Enable trace, check the start and end step
+    BPS_CHECK(start_step != NULL && end_step != NULL)
+                << "BYTEPS_TRACE_START_STEP and BYTEPS_TRACE_END_STEP must be given "
+                << "if BYTEPS_TRACE_ON is set.";
+    BPS_CHECK(atoi(start_step) >= 1 && atoi(end_step) > atoi(start_step)) 
+                << "BYTEPS_TRACE_START_STEP must be larger than 1, "
+                << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
+    if(step_cnt == atoi(start_step)-1){
+      profile_flag = true;
+    } else if(step_cnt == atoi(end_step)){
+      profile_flag = false;
+    } 
+  } else {
+    profile_flag = false;
+  }
+}
+
 Status::Status() = default;
 
 Status::Status(StatusType type, std::string reason) {

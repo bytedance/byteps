@@ -166,11 +166,12 @@ typedef struct BytePSContext {
   size_t buff_len;
   // Used for profiling communication events
   std::queue<BPSCommTime *> comm_time;
-  bool profile_flag = true;
+  bool profile_flag = false;
+  int step_cnt = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
+  // Member methods
+  void set_profile_flag();
 } BPSContext;
-
-
 
 class Tensor {
  public:
