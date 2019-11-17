@@ -67,7 +67,7 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
 void BytePSContext::output_traces(){
   auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR"));
   auto trace_path = trace_dir + "/" + std::to_string(local_rank) 
-                  + "/Comm." + tensor_name + ".json";
+                  + "/Comm/" + tensor_name + ".json";
   // Output these traces
   std::ofstream file;
   file.open(trace_path);
@@ -77,7 +77,7 @@ void BytePSContext::output_traces(){
   while (comm_time.size() > 0) {
     BPSCommTime *ret = comm_time.front();
     if (!first) file << ",\n";
-    first = false;
+    else first = false;
     this->emit_trace(&file, ret);
     comm_time.pop();
   }
@@ -92,6 +92,7 @@ void BytePSContext::output_traces(){
       while (_part_comm_time_queue.size() > 0){
         BPSCommTime *ret = _part_comm_time_queue.front();
         _part_comm_time_queue.pop();
+        if (!first) file << ",\n";
         this->emit_trace(&file, ret); // todo
       }
       type2part_comm_time.erase(type);
