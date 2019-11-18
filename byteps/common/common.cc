@@ -19,6 +19,10 @@
 #include <fstream>
 #include <filesystem>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "common.h"
 #include "logging.h"
 
@@ -69,7 +73,13 @@ void BytePSContext::output_traces(){
   auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
                   + "/" + std::to_string(local_rank) + "/Comm/";
   if (!std::filesystem::exists(trace_dir.c_str())) {
-    std::filesystem::create_directory(trace_dir.c_str());
+    auto cmd = std::string("mkdir -p ") + trace_dir;
+    FILE *fp = popen(cmd.c_str(), "r");
+    if(!fp) {
+      perror("popen");
+      exit(EXIT_FAILURE);
+    }
+    pclose(fp);
   }
   auto trace_path = trace_dir  + tensor_name + ".json";
   // Output these traces

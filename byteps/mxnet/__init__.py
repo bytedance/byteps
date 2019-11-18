@@ -306,7 +306,7 @@ class Recorder(object):
 
             index += 1
 
-    def _byteps_collect_comm(self, index, tensor, name):
+    def byteps_collect_comm(self, index, tensor, name):
         ''' Offline collect the communication trace results of gradient `index`
 
         Parameters
@@ -323,46 +323,24 @@ class Recorder(object):
 
         # -- read communication traces offline
         # _ts_dur_list = get_comm_time(tensor, name) 
-        _ts_dur_list = []
+        root, dirs, files = list(os.walk(self.trace_dir + "Comm/"))[0]
+        for file in files:
+            with open(os.path.join(root, file), 'r') as f:
+                _traces = json.load(f)
+            para_index = int(file.split("_")[-1]).split(".json")[0]
+            para_name = self.gradient_name_list[para_index]
+            for trace in _traces:
+                if trace["name"] != trace["args"]["name"]:
+                    #! subtask
+                    trace["name"] = "Comm." + para_name + "." + trace["name"].split(".")[-1]
+                else:
+                    #! main task
+                    trace["name"] = "Comm." + para_name
+                trace["pid"] = "Comm." + para_name
+                trace["args"]["name"] = "Comm." + para_name
 
-        def return_event(index, _ts, _dur, _key, _type):
-            if _ts == 0:
-                raise ValueError("_ts should not be 0")
-            para_name = self.gradient_name_list[index]
-            # op_name = "_".join(para_name.split("_")[:-1])
-
-            BYTEPS_TRACE_DEBUG("key:%d, type:%d" %(_key, _type), True)
-            if _key == -1:
-                # communication traces of coarsed grain
-                return {
-                        "name": "Comm." + para_name,
-                        "ts": _ts,
-                        "dur": _dur,
-                        "ph": "X",
-                        "pid": "Comm." + para_name,
-                        "tid": "total",
-                        "args": {
-                            "name": "Comm." + para_name,
-                            # "input0": "BW." + op_name
-                            }
-                        }
-            else:
-                # communication traces of partitioned tasks
-                return {
-                        "name": "Comm." + para_name + "." + QueueType[_type],
-                        "ts": _ts,
-                        "dur": _dur,
-                        "ph": "X",
-                        "pid": "Comm." + para_name,
-                        "tid": _key,
-                        "args": {
-                            "name": "Comm." + para_name,
-                            # "input0": "BW." + op_name
-                            }
-                        }
-
-        self.time_dict["traceEvents"] += [return_event(index, _ts, _dur, _key, _type) for (_ts, _dur, _key, _type) in _ts_dur_list]
-        self.idx_dict[index] = True # avoid repeatedly read
+            self.time_dict["traceEvents"].append(trace)
+            self.idx_dict[para_index] = True # avoid repeatedly read
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
