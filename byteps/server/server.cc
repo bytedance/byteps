@@ -24,7 +24,6 @@ using namespace ps;
 // engine related
 std::vector<PriorityQueue*> engine_queues_;
 std::vector<std::thread *> engine_threads_;
-size_t engine_thread_num_ = 4;
 
 void SendPushResponse(uint64_t key, const ps::KVMeta& req, ps::KVServer<char>* server){
   auto iterator = push_response_map_.find(key);
