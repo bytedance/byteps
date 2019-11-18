@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
-#include "ps/internal/threadsafe_queue.h"
 
 namespace byteps {
 namespace server {
@@ -111,16 +110,15 @@ std::mutex hash_mu_;
 std::unordered_map<uint64_t, size_t> hash_cache_;
 std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread 
 
-// engine related
-std::vector<ThreadsafeQueue<BytePSEngineMessage>* > engine_queues_;
-std::vector<std::thread *> engine_threads_;
-size_t engine_thread_num_ = 4;
-
 // global knob
+size_t engine_thread_num_ = 4;
 volatile bool is_engine_blocking_ = false;
 volatile bool log_key_info_ = false;
 volatile bool sync_mode_ = true;
 volatile bool debug_mode_ = false;
+volatile bool enable_schedule_ = false;
+
+// debug
 uint64_t debug_key_;
 std::mutex debug_mu_;
 
