@@ -74,6 +74,7 @@ void BytePSContext::output_traces(){
                   + "/" + std::to_string(local_rank) + "/Comm/";
   if (!std::filesystem::exists(trace_dir.c_str())) {
     auto cmd = std::string("mkdir -p ") + trace_dir;
+    std::cout << "Create dir: " << cmd << std::endl;
     FILE *fp = popen(cmd.c_str(), "r");
     if(!fp) {
       perror("popen");
