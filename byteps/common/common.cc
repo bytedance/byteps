@@ -17,11 +17,11 @@
 #include <cassert>
 #include <sstream>
 #include <fstream>
-#include <experimental/filesystem>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "common.h"
 #include "logging.h"
@@ -72,7 +72,9 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
 void BytePSContext::output_traces(){
   auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
                   + "/" + std::to_string(local_rank) + "/Comm/";
-  if (!std::experimental::filesystem::exists(trace_dir.c_str())) {
+  struct stat buffer;
+  if (stat(trace_dir.c_str(), &buffer) != 0) {
+    //! dir does not exist, create it.
     auto cmd = std::string("mkdir -p ") + trace_dir;
     std::cout << "Create dir: " << cmd << std::endl;
     FILE *fp = popen(cmd.c_str(), "r");
