@@ -9,26 +9,32 @@ from torchvision import models
 import timeit
 import numpy as np
 import os
-import byteps.bytescheduler.torch.optimizer as bps
+import byteps.torch.cross_barrier as bps
 
 """
-This example shows how to enable ByteScheduler on top of BytePS in PyTorch. Note that you can use BytePS without 
-ByteScheduler at all, so the limitations of ByteScheduler do not apply to BytePS.
-ByteScheduler enables overlapping gradient push-pull with both backward computation and forward computation, while
+This example shows how to enable barrier crossing on top of BytePS in PyTorch. Note that you can use BytePS without 
+crossing barrier at all.
+
+Crossing barrier enables overlapping gradient push-pull with both backward computation and forward computation, while
 maintaining correct dependencies, e.g., the forward computation of a layer will not start until the parameter of this 
-layer is updated. Hence it can further improves training performance beyond BytePS.
+layer is updated. Hence it can further improves training performance beyond BytePS. See the paper 
+https://dl.acm.org/citation.cfm?id=3359642 for more details.
+
 To use it, just change the import statement and add two more arugments (i.e., model, num_steps) when wrapping the Torch 
 optimizer, as shown below:
 ```
-import byteps.bytescheduler.torch.optimizer as bps
-optimizer = bps.DistributedOptimizer(model, optimizer, named_parameters, compressionm, backward_passes_per_step, num_steps)
+import byteps.torch.cross_barrier as bps
+optimizer = bps.CrossBarrier(model, optimizer, named_parameters, compression, backward_passes_per_step, num_steps)
 ```
-So far ByteScheduler supports SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for 
+So far we support SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for 
 any other optimizers.
+
+To see performance gain, the system parameters should be properly set, including BYTEPS_PARTITION_BYTES and 
+BYTEPS_SCHEDULING_CREDIT.
 """
 
 # Benchmark settings
-parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
+parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark Without Barrier',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--fp16-allreduce', action='store_true', default=False,
                     help='use fp16 compression during allreduce')
@@ -73,6 +79,7 @@ if args.cuda:
     # Move model to GPU.
     model.cuda()
 
+# You may try one of the following optimizers
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 # optimizer = optim.Adam(model.parameters(), lr=0.01)
 # optimizer = optim.RMSprop(model.parameters(), lr=0.01)
@@ -80,10 +87,10 @@ optimizer = optim.SGD(model.parameters(), lr=0.01)
 # BytePS: (optional) compression algorithm.
 compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
 
-# ByteScheduler: wrap Torch optimizer with DistributedOptimizer.
+# Wrap Torch optimizer with CrossBarrier.
 # You need to specify two additional args, i.e., model and num_steps.
-# Note that ByteScheduler only supports SGD, Adam and RMSProp optimizers so far.
-optimizer = bps.DistributedOptimizer(model,
+# Note that we only support SGD, Adam and RMSProp optimizers so far.
+optimizer = bps.CrossBarrier(model,
                                      optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression=compression,

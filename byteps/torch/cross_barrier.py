@@ -25,23 +25,27 @@ broadcast_parameters = bps.broadcast_parameters
 broadcast_optimizer_state = bps.broadcast_optimizer_state
 
 
-class _ScheduledOptimizer(_DistributedOptimizer):
+class _CrossBarrier(_DistributedOptimizer):
     """An optimizer that wraps a _DistributedOptimizer, intercepting push-pull operations.
     This class enables overlapping gradient push-pull with both backward and forward propagation while maintaining
-    correct dependencies. It can achieve even higher training performance than current BytePS.
+    correct dependencies. It can achieve even higher training performance than the default BytePS with proper system
+    parameters. To understand the principles behind barrier crossing, check the paper
+    https://dl.acm.org/citation.cfm?id=3359642
     """
     def __init__(self, model, byteps_opt, num_steps=10**6):
         """Construct a new ScheduledOptimizer, which uses byteps optimizer under the hood for averaging gradients
          across all workers.
         Args:
-            model: The training model. ByteScheduler uses the model object to register hooks.
+            model: The training model. BytePS uses the model object to register hooks.
             byteps_opt: Optimizer to use for averaging gradients and applying updates.
-            num_steps: The maximum number of training steps. ByteScheduler needs to know when to stop cross-iteration
+            num_steps: The maximum number of training steps. BytePS needs to know when to stop cross-iteration
             scheduling.
         """
         self._model = model
         self._opt = byteps_opt
-        self._logger = logging.getLogger("ByteScheduler")
+        self._logger = logging.getLogger("CrossBarrier")
+
+        self._logger.info("CrossBarrier is enabled.")
         self._logger.debug("byteps size {}, rank {}".format(size(), rank()))
         self._desc = "rank {}".format(rank())
 
@@ -59,18 +63,13 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             self._register_forward_hooks()
             self._register_hooks()
 
-        # Poll whether the tensor push-pull is finished.
-        self._event_queue = queue.Queue()
-        self._poller = threading.Thread(target=self._poll, args=())
-        self._poller.start()
+            # Poll whether the tensor push-pull is finished.
+            self._event_queue = queue.Queue()
+            self._poller = threading.Thread(target=self._poll, args=())
+            self._poller.start()
 
     def __getattr__(self, item):
         return getattr(self._opt, item)
-
-    def __del__(self):
-        """Clean up"""
-        self._event_queue.put((None, None, None))
-        self._poller.join()
 
     def step(self, closure=None):
         """Override the default step function."""
@@ -84,7 +83,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
                 self._logger.debug("final step {}, waiting for push-pull completion.".format(self._final_step))
                 while not self._event_queue.empty():
                     time.sleep(0.001)
-                self._logger.debug("training finished!")
+                self._event_queue.put((None, None, None))
+                self._poller.join()
+                self._logger.info("training finished!")
             loss = None
             if closure is not None:
                 loss = closure()
@@ -104,6 +105,13 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             return
         else:
             self._opt.zero_grad()
+
+    def _get_parameter_name(self, p):
+        if self._is_tensor_instance:
+            name = self._parameter_names.get(p.__hash__())
+        else:
+            name = self._parameter_names.get(p)
+        return name
 
     def _register_hooks(self):
         for param_group in self.param_groups:
@@ -137,13 +145,13 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         Returns:
             an push-pull handle and context
         """
-        name = self._parameter_names.get(id(p))
+        name = self._get_parameter_name(p)
         tensor = p.grad
         tensor_compressed, ctx = self._compression.compress(tensor)
 
         self._locks[p].acquire()
         handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._parameter_names[id(p)]))
+        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._get_parameter_name(p)))
         # Add to queue to poll completion
         self._event_queue.put((p, handle, ctx))
         return handle, ctx
@@ -159,9 +167,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             if handle is not None and poll(handle):
                 output = synchronize(handle)
                 p.grad.set_(self._compression.decompress(output, ctx))
-                self._logger.debug("{} {} finished push-pull".format(self._desc, self._parameter_names[id(p)]))
+                self._logger.debug("{} {} finished push-pull".format(self._desc, self._get_parameter_name(p)))
                 self._push_pull_delay[p] = self.backward_passes_per_step
-                # So far ByteScheduler only supports SGD, Adam and RMSprop optimizers in torch
+                # So only support SGD, Adam and RMSprop optimizers in torch
                 if isinstance(self._opt, torch.optim.SGD):
                     self._sgd(p)
                 elif isinstance(self._opt, torch.optim.Adam):
@@ -169,7 +177,7 @@ class _ScheduledOptimizer(_DistributedOptimizer):
                 elif isinstance(self._opt, torch.optim.RMSprop):
                     self._rmsprop(p)
                 else:
-                    raise ValueError("Invalid optimizer! ByteScheduler only supports SGD, Adam and RMSprop.")
+                    raise ValueError("Invalid optimizer! Only support SGD, Adam and RMSprop.")
                 self._zero_one_grad(p)
                 # notify update completion and parameter is ready for forward propagation
                 if p in self._locks:
@@ -200,7 +208,7 @@ class _ScheduledOptimizer(_DistributedOptimizer):
                 if p not in self._locks:
                     continue
                 with self._locks[p]:
-                    self._logger.debug("{} {} is ready.".format(self._desc, self._parameter_names[id(p)]))
+                    self._logger.debug("{} {} is ready.".format(self._desc, self._get_parameter_name(p)))
 
             self._logger.debug("{} starts forward {}.".format(self._desc, mod))
 
@@ -237,9 +245,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
             nesterov = group['nesterov']
 
             for gp in group['params']:
-                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
+                if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 d_p = p.grad.data
@@ -267,9 +275,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         """
         for group in self.param_groups:
             for gp in group['params']:
-                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
+                if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -328,9 +336,9 @@ class _ScheduledOptimizer(_DistributedOptimizer):
         """
         for group in self.param_groups:
             for gp in group['params']:
-                if self._parameter_names[id(p)] != self._parameter_names[id(gp)] or gp.shape != p.shape:
+                if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._parameter_names[id(p)]))
+                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -388,15 +396,30 @@ def _init_bsc():
     hijack(_DistributedOptimizer, '_register_hooks')
 
 
-def DistributedOptimizer(model,
-                         optimizer,
-                         named_parameters=None,
-                         compression=Compression.none,
-                         backward_passes_per_step=1,
-                         num_steps=10**6):
-    """Wrap Torch optimizer using BytePS DistributedOptimizer and ByteScheduler _ScheduledOptimizer."""
+def _init_logger():
+    logger = logging.getLogger("CrossBarrier")
+    formatter = logging.Formatter('%(asctime)s.%(msecs)03d %(filename)s:%(lineno)s %(levelname)s: %(message)s',
+                                  '%H:%M:%S')
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+    fh = logging.FileHandler('cross_barrier.log', 'w')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+
+def CrossBarrier(model,
+                 optimizer,
+                 named_parameters=None,
+                 compression=Compression.none,
+                 backward_passes_per_step=1,
+                 num_steps=10**6):
+    """Wrap Torch optimizer using BytePS DistributedOptimizer and _CrossBarrier."""
     bps_opt = _bps_DistributedOptimizer(optimizer, named_parameters, compression, backward_passes_per_step)
-    return _ScheduledOptimizer(model, bps_opt, num_steps)
+    return _CrossBarrier(model, bps_opt, num_steps)
 
 
 _init_bsc()
+_init_logger()
