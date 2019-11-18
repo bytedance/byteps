@@ -68,16 +68,22 @@ class PriorityQueue {
   void WaitAndPop(BytePSEngineMessage* value) {
     std::unique_lock<std::mutex> lk(mu_);
     cond_.wait(lk, [this]{return !queue_.empty();});
-    std::pop_heap(queue_.begin(), queue_.end(), 
-      [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-        return ComparePriority(a, b);
-      }
-    );
-    *value = std::move(queue_.back());
-    queue_.pop_back();
+    if (enable_schedule_) {
+      std::pop_heap(queue_.begin(), queue_.end(), 
+        [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
+          return ComparePriority(a, b);
+        }
+      );
+      *value = std::move(queue_.back());
+      queue_.pop_back();
+    } else {
+      *value = std::move(queue_.front());
+      queue_.erase(queue_.begin());
+    }
   }
 
   void ClearCounter(uint64_t key) {
+    if (!enable_schedule_) return;
     std::unique_lock<std::mutex> lk(mu_);
     push_cnt_[key] = 0;
   }
