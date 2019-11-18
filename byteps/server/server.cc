@@ -210,7 +210,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
             }
             // zero copy
             updates.merged.tensor = recved;
-            updates.merged.tmp_sarray = &req_data.vals;
+            updates.merged.tmp_sarray = req_data;
           }
         } else { // async mode, directly add to the buffer
           if (is_engine_blocking_) {
@@ -219,7 +219,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                                       len, 
                                       bps_reducer_->GetDataType(stored.dtype)), 0);
           } else {
-            BytePSEngineMessage msg = {type, key, stored.tensor, recved, len, SUM_RECV, &req_data.vals};
+            BytePSEngineMessage msg = {type, key, stored.tensor, recved, len, SUM_RECV, req_data};
             engine_queues_[tid]->Push(msg);
           }
         }
@@ -241,7 +241,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
-          BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, SUM_RECV, &req_data.vals, req_meta};
+          BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, SUM_RECV, req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }
       }

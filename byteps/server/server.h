@@ -55,7 +55,7 @@ struct BytePSArray {
   char* tensor;
   size_t len;
   int dtype;
-  const SArray<char>* tmp_sarray;
+  ps::KVPairs<char> tmp_sarray;
 };
 
 struct UpdateBuf {
@@ -70,7 +70,7 @@ struct BytePSEngineMessage {
   void* src;
   size_t len;
   BytePSEngineOperation ops;
-  const SArray<char>* sarray; // to temporarily hold it and auto release 
+  ps::KVPairs<char> sarray; // to temporarily hold it and auto release 
   ps::KVMeta req_meta;
 };
 
