@@ -76,7 +76,6 @@ void BytePSContext::output_traces(){
   if (stat(trace_dir.c_str(), &buffer) != 0) {
     //! dir does not exist, create it.
     auto cmd = std::string("mkdir -p ") + trace_dir;
-    std::cout << "Create dir: " << cmd << std::endl;
     FILE *fp = popen(cmd.c_str(), "r");
     if(!fp) {
       perror("popen");
