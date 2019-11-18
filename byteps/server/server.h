@@ -38,7 +38,7 @@ enum class RequestType {
 };
 
 enum BytePSEngineOperation {
-  COPY_RECV, SUM_RECV, COPY_MERGED, TERMINATE
+  SUM_RECV, COPY_MERGED, TERMINATE
 };
 
 struct PSKV {
@@ -55,6 +55,7 @@ struct BytePSArray {
   char* tensor;
   size_t len;
   int dtype;
+  const SArray<char>* tmp_sarray;
 };
 
 struct UpdateBuf {
@@ -90,6 +91,7 @@ static DataHandleType DepairDataHandleType(int cmd) {
 KVServer<SERVER_DATA_TYPE>* byteps_server_;
 byteps::common::CpuReducer* bps_reducer_;
 std::unordered_map<SERVER_KEY_TYPE, KVPairs<SERVER_DATA_TYPE> > mem_map_;
+std::mutex pullresp_mu_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
 
