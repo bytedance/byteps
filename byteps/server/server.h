@@ -109,11 +109,6 @@ std::mutex hash_mu_;
 std::unordered_map<uint64_t, size_t> hash_cache_;
 std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread 
 
-// engine related
-std::vector<ThreadsafeQueue<BytePSEngineMessage>* > engine_queues_;
-std::vector<std::thread *> engine_threads_;
-size_t engine_thread_num_ = 4;
-
 // global knob
 volatile bool is_engine_blocking_ = false;
 volatile bool log_key_info_ = false;
