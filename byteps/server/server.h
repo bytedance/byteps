@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
-#include "ps/internal/threadsafe_queue.h"
 
 namespace byteps {
 namespace server {
@@ -115,6 +114,9 @@ volatile bool is_engine_blocking_ = false;
 volatile bool log_key_info_ = false;
 volatile bool sync_mode_ = true;
 volatile bool debug_mode_ = false;
+volatile bool enable_schedule_ = false;
+
+// debug
 uint64_t debug_key_;
 std::mutex debug_mu_;
 

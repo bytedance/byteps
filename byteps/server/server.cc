@@ -347,6 +347,10 @@ void init_global_env() {
   LOG(INFO) << "BytePS server engine uses " << engine_thread_num_ << " threads"
             << ", consider increasing BYTEPS_SERVER_ENGINE_THREAD for higher performance";
   CHECK_GE(engine_thread_num_, 1);
+
+  // enable scheduling for server engine
+  enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
+  if (enable_schedule_) LOG(INFO) << "Enable engine scheduling for BytePS server";
 }
 
 extern "C" void byteps_server() {
@@ -374,7 +378,7 @@ extern "C" void byteps_server() {
     acc_load_.push_back(0);
   }
   for (size_t i = 0; i < engine_thread_num_; ++i) {
-    auto q = new ThreadsafeQueue<BytePSEngineMessage>();
+    auto q = new PriorityQueue(enable_schedule_);
     engine_queues_.push_back(q);
   }
   for (size_t i = 0; i < engine_thread_num_; ++i) {

@@ -20,7 +20,6 @@
 #include <mutex>
 #include <condition_variable>
 #include <memory>
-//#include "server.h"
 
 namespace byteps {
 namespace server {
@@ -30,7 +29,9 @@ namespace server {
  */
 class PriorityQueue {
  public:
-  PriorityQueue() { }
+  PriorityQueue(bool is_schedule) { 
+    enable_schedule_ = is_schedule;
+  }
   ~PriorityQueue() { }
 
   /**
@@ -40,17 +41,19 @@ class PriorityQueue {
   void Push(BytePSEngineMessage new_value) {
     mu_.lock();
     queue_.push_back(std::move(new_value));
-    push_cnt_[new_value.key] = push_cnt_[new_value.key] % (size_t) ps::NumWorkers() + 1; 
-    std::sort(queue_.begin(), queue_.end(),
-      [push_cnt_](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-        if (push_cnt_[a.key] == push_cnt_[b.key]) {
-          // smaller key is dequeued first
-          return (a.key < b.key);
+    if (enable_schedule_) {
+      push_cnt_[new_value.key] = push_cnt_[new_value.key] % (size_t) ps::NumWorkers() + 1; 
+      std::sort(queue_.begin(), queue_.end(),
+        [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
+          if (push_cnt_[a.key] == push_cnt_[b.key]) {
+            // smaller key is dequeued first
+            return (a.key < b.key);
+          }
+          // Dequeue those with more recevied pushes
+          return (push_cnt_[a.key] > push_cnt_[b.key]);
         }
-        // Dequeue those with more recevied pushes
-        return (push_cnt_[a.key] > push_cnt_[b.key]);
-      }
-    );
+      );
+    }
     mu_.unlock();
     cond_.notify_all();
   }
@@ -71,6 +74,7 @@ class PriorityQueue {
   std::vector<BytePSEngineMessage> queue_;
   std::condition_variable cond_;
   std::unordered_map<uint64_t, uint64_t> push_cnt_;
+  volatile bool enable_schedule_ = false;
 };
 
 }  // namespace server
