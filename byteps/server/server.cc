@@ -287,11 +287,13 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           }
           BytePSEngineMessage msg = {type, key, stored.tensor, update.tensor, len, COPY_MERGED};
           engine_queues_[tid]->Push(msg);
+          engine_queues_[tid]->ClearCounter(key);
         }
         updates.request.clear();
       } else if (!sync_mode_) { 
-        // async: clean the request buffer immediatedly
+        // async: clean the request buffer 
         updates.request.clear();
+        engine_queues_[tid]->ClearCounter(key);
       }
     }
   } else { // pull request

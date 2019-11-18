@@ -20,6 +20,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <memory>
+#include <algorithm>
 
 namespace byteps {
 namespace server {
@@ -31,6 +32,13 @@ class PriorityQueue {
  public:
   PriorityQueue(bool is_schedule) { 
     enable_schedule_ = is_schedule;
+    if (enable_schedule_) {
+      std::make_heap(queue_.begin(), queue_.end(),
+        [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
+          return ComparePriority(a, b);
+        }
+      );
+    }
   }
   ~PriorityQueue() { }
 
@@ -42,15 +50,10 @@ class PriorityQueue {
     mu_.lock();
     queue_.push_back(std::move(new_value));
     if (enable_schedule_) {
-      push_cnt_[new_value.key] = push_cnt_[new_value.key] % (size_t) ps::NumWorkers() + 1; 
-      std::sort(queue_.begin(), queue_.end(),
+      ++push_cnt_[new_value.key]; 
+      std::push_heap(queue_.begin(), queue_.end(), 
         [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-          if (push_cnt_[a.key] == push_cnt_[b.key]) {
-            // smaller key is dequeued first
-            return (a.key < b.key);
-          }
-          // Dequeue those with more recevied pushes
-          return (push_cnt_[a.key] > push_cnt_[b.key]);
+          return ComparePriority(a, b);
         }
       );
     }
@@ -65,8 +68,26 @@ class PriorityQueue {
   void WaitAndPop(BytePSEngineMessage* value) {
     std::unique_lock<std::mutex> lk(mu_);
     cond_.wait(lk, [this]{return !queue_.empty();});
+    std::pop_heap(queue_.begin(), queue_.end(), 
+      [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
+        return ComparePriority(a, b);
+      }
+    );
     *value = std::move(queue_.back());
     queue_.pop_back();
+  }
+
+  void ClearCounter(uint64_t key) {
+    std::unique_lock<std::mutex> lk(mu_);
+    push_cnt_[key] = 0;
+  }
+
+  bool ComparePriority(const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
+    if (push_cnt_[a.key] == push_cnt_[b.key]) {
+      return (a.key < b.key);
+    }
+    // Dequeue those with more recevied pushes
+    return (push_cnt_[a.key] > push_cnt_[b.key]);
   }
 
  private:
