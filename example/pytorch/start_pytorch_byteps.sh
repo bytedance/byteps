@@ -11,6 +11,9 @@ elif [ "$EVAL_TYPE" == "imagenet" ]; then
 elif [ "$EVAL_TYPE" == "benchmark" ]; then
     echo "running benchmark..."
     python $path/benchmark_byteps.py $@
+elif [ "$EVAL_TYPE" == "nobarrierbenchmark" ]; then
+    echo "running benchmark without global barrier..."
+    python $path/benchmark_cross_barrier_byteps.py $@
 elif [ "$EVAL_TYPE" == "microbenchmark" ]; then
     echo "running microbenchmark"
     python $path/microbenchmark-byteps.py $@
