@@ -74,9 +74,12 @@ class PriorityQueue {
           return ComparePriority(a, b);
         }
       );
-    } 
-    *value = std::move(queue_.front());
-    queue_.erase(queue_.begin());
+      *value = queue_.back();
+      queue_.pop_back();
+    } else {
+      *value = std::move(queue_.front());	
+      queue_.erase(queue_.begin());
+    }
   }
 
   void ClearCounter(uint64_t key) {
@@ -86,7 +89,8 @@ class PriorityQueue {
   }
 
   bool ComparePriority(const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-    if (a.key == b.key) {
+    // strict requirement
+    if (a.key == b.key) { 
       return (a.id > b.id);
     }
     // deque smaller key first
