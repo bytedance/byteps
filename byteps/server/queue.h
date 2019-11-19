@@ -89,16 +89,11 @@ class PriorityQueue {
   }
 
   bool ComparePriority(const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-    // strict requirement
-    if (a.key == b.key) { 
-      return (a.id > b.id);
-    }
-    // deque smaller key first
     if (push_cnt_[a.key] == push_cnt_[b.key]) {
-      return (a.key > b.key);
+      return (a.id > b.id);
+    } else {
+      return (push_cnt_[a.key] > push_cnt_[b.key]);
     }
-    // dequeue those with more received pushes
-    return (push_cnt_[a.key] > push_cnt_[b.key]);
   }
 
  private:
