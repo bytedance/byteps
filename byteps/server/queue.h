@@ -43,7 +43,7 @@ class PriorityQueue {
   ~PriorityQueue() { }
 
   /**
-   * \brief push an value and sort. threadsafe.
+   * \brief push an value and sort using heap. threadsafe.
    * \param new_value the value
    */
   void Push(BytePSEngineMessage new_value) {
@@ -74,12 +74,9 @@ class PriorityQueue {
           return ComparePriority(a, b);
         }
       );
-      *value = std::move(queue_.back());
-      queue_.pop_back();
-    } else {
-      *value = std::move(queue_.front());
-      queue_.erase(queue_.begin());
-    }
+    } 
+    *value = std::move(queue_.front());
+    queue_.erase(queue_.begin());
   }
 
   void ClearCounter(uint64_t key) {
@@ -89,10 +86,14 @@ class PriorityQueue {
   }
 
   bool ComparePriority(const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
-    if (push_cnt_[a.key] == push_cnt_[b.key]) {
-      return (a.key < b.key);
+    if (a.key == b.key) {
+      return (a.id > b.id);
     }
-    // Dequeue those with more recevied pushes
+    // deque smaller key first
+    if (push_cnt_[a.key] == push_cnt_[b.key]) {
+      return (a.key > b.key);
+    }
+    // dequeue those with more received pushes
     return (push_cnt_[a.key] > push_cnt_[b.key]);
   }
 

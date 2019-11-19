@@ -224,7 +224,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                                       len, 
                                       bps_reducer_->GetDataType(stored.dtype)), 0);
           } else {
-            BytePSEngineMessage msg = {type, key, stored.tensor, recved, len, SUM_RECV, req_data};
+            BytePSEngineMessage msg = {timestamp_++, type, key, stored.tensor, recved, len, SUM_RECV, req_data};
             engine_queues_[tid]->Push(msg);
           }
         }
@@ -246,7 +246,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
-          BytePSEngineMessage msg = {type, key, updates.merged.tensor, recved, len, SUM_RECV, req_data, req_meta};
+          BytePSEngineMessage msg = {timestamp_++, type, key, updates.merged.tensor, recved, len, SUM_RECV, req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }
       }
@@ -266,7 +266,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                       << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
           }
-          BytePSEngineMessage msg = {type, key, stored.tensor, update.tensor, len, COPY_MERGED};
+          BytePSEngineMessage msg = {timestamp_++, type, key, stored.tensor, update.tensor, len, COPY_MERGED};
           engine_queues_[tid]->Push(msg);
           engine_queues_[tid]->ClearCounter(key);
         }

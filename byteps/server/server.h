@@ -63,6 +63,7 @@ struct UpdateBuf {
 };
 
 struct BytePSEngineMessage {
+  uint64_t id;
   DataHandleType type;
   uint64_t key;
   void* dst;
@@ -111,6 +112,7 @@ std::unordered_map<uint64_t, size_t> hash_cache_;
 std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread 
 
 // global knob
+uint64_t timestamp_ = 0;
 size_t engine_thread_num_ = 4;
 volatile bool is_engine_blocking_ = false;
 volatile bool log_key_info_ = false;
