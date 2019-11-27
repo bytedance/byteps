@@ -65,7 +65,8 @@ void BytePSContext::emit_trace(std::ostream *os, const BPSCommTime *ret){
           << "            \"name\": \"" << para_name_type << "\",\n"
           << "            \"ts\": " << ret->start_t << ",\n"
           << "            \"dur\": " << ret->dur << ",\n"
-          << "            \"tid\": \"" << tid << "\"\n"
+          << "            \"tid\": \"" << tid << "\",\n"
+          << "            \"cat\": \"Comm\"\n"
           << "        }";
 }
 
