@@ -5,10 +5,7 @@ You may need to manually build them to get the latest functionalities of BytePS,
 
 | Docker Image Name | Source Dockerfile | Description |
 | --- | --- | --- |
-| bytepsimage/mxnet            | Dockerfile.mxnet.cu90            | Image for MXNet (CUDA 9.0) |
-| bytepsimage/pytorch          | Dockerfile.pytorch.cu90          | Image for PyTorch (CUDA 9.0) |
-| bytepsimage/tensorflow       | Dockerfile.tensorflow.cu90       | Image for TensorFlow (CUDA 9.0) |
-| bytepsimage/mxnet15          | Dockerfile.mxnet15.cu100         | Image for MXNet 1.5.0 (CUDA 10.0) |
-| bytepsimage/mxnet_rdma       | Dockerfile.mxnet.cu100.rdma      | Image for MXNet with RDMA support (CUDA 10.0) |
-| bytepsimage/pytorch_rdma     | Dockerfile.pytorch.cu100.rdma    | Image for PyTorch with RDMA support (CUDA 10.0) |
-| bytepsimage/tensorflow_rdma  | Dockerfile.tensorflow.cu100.rdma | Image for TensorFlow with RDMA support (CUDA 10.0) |
+| bytepsimage/mxnet            | Dockerfile.mxnet            | Image for MXNet |
+| bytepsimage/pytorch          | Dockerfile.pytorch          | Image for PyTorch |
+| bytepsimage/tensorflow       | Dockerfile.tensorflow       | Image for TensorFlow |
+| bytepsimage/mxnet_aws        | Dockerfile.mxnet.aws        | Image for MXNet on AWS, TCP only |
