@@ -1,15 +1,19 @@
 # BytePS Performance with 100Gbps RDMA
 
-## NVLink + RDMA
+## NVLink + TCP
 
-We show our experiment on BERT-large training, which is based on GluonNLP toolkit. The model uses mixed precision.
+We test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive) on a popular public cloud. Both models are trained using fp32.
 
-We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs (32GB memory) with NVLink-enabled. 
-Machines are inter-connected with 100 Gbps RoCEv2 network. 
+We use Tesla V100 16GB GPUs and set batch size equal to 64 *per GPU*. The machines are in fact VMs on the cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
 
-BytePS outperforms Horovod (after carefully tuned) by 16% in this case, both with RDMA enabled.
+BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
 
-![perf_rdma_nvlink](https://user-images.githubusercontent.com/13852819/68922123-cb545c80-07b5-11ea-884b-7d541a848031.png)
+
+
+![vgg16_tcp](https://user-images.githubusercontent.com/13852819/69873424-41e37500-12f3-11ea-93b8-705215e3e901.png)
+![resnet50_tcp](https://user-images.githubusercontent.com/13852819/69873419-40b24800-12f3-11ea-9ff3-0f11347c089e.png)
+
+You can reproduce the results using the Dockerfiles and example scripts we provide.
 
 ## PCIe + RDMA
 
