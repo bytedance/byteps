@@ -10,13 +10,8 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 ## News
 
 - [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
-- Use [the ssh launcher](launcher/) to launch your distributed jobs  
-- Asynchronous training support for
-[PyTorch](https://github.com/bytedance/byteps/pull/121), 
-[TensorFlow](https://github.com/bytedance/byteps/pull/122), 
-[MXNet](https://github.com/bytedance/byteps/pull/114)
-- Find your training stragglers using [server timeline](docs/timeline.md)
-- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116) 
+- Use [the ssh launcher](launcher/) to launch your distributed jobs
+- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
 - [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
 
 ## Performance
