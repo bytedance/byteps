@@ -100,8 +100,9 @@ ARG BYTEPS_NCCL_LINK=shared
 ARG BYTEPS_USE_RDMA=1
 ARG BYTEPS_WITHOUT_PYTORCH=1
 ARG BYTEPS_WITHOUT_TENSORFLOW=1
+ARG BYTEPS_BRANCH=master
 RUN cd $BYTEPS_BASE_PATH &&\
-    git clone --recursive -b server $BYTEPS_GIT_LINK
+    git clone --recursive -b $BYTEPS_BRANCH $BYTEPS_GIT_LINK
 RUN cd $BYTEPS_PATH &&\
     python3 setup.py install
 
