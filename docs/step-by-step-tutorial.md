@@ -198,7 +198,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python /usr/local/byteps/launcher/launch.py
+python3 /usr/local/byteps/launcher/launch.py
 ```
 
 For the server:
@@ -222,7 +222,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python /usr/local/byteps/launcher/launch.py
+python3 /usr/local/byteps/launcher/launch.py
 ```
 
 For worker-0:
