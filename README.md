@@ -22,7 +22,8 @@ We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine
 
 BytePS achieves ~90% scaling efficiency for BERT-large. The code is available [here](https://github.com/ymjiang/gluon-nlp/tree/bert-byteps/scripts/bert). 
 
-![BERT-Large (batch size=64, seq_len=128) ](https://user-images.githubusercontent.com/13852819/69872208-c59b6280-12ef-11ea-86c9-30e18eb54d20.png)
+![BERT-Large](https://user-images.githubusercontent.com/13852819/69874496-1ca43600-12f6-11ea-997b-b023e4c93360.png)
+
 
 More evaluation in different scenarios can be found at [performance.md](docs/performance.md).
 
