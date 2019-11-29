@@ -19,14 +19,15 @@ completion of all parameters.
 Fig.1 shows the dependency graph with global barrier. Machine learning frameworks such as PyTorch and TensorFlow have 
 similar dependencies when using BytePS for push and pull.
 
-![](images/dag_barrier.png)
+![dag_barrier](https://user-images.githubusercontent.com/13852819/69863244-4b5ee400-12d7-11ea-9356-2dd41dff95ab.png)
 
 *Fig.1: Dependency Graph With Global Barrier*
 
 Fig. 2 shows the dependency graph after removing global barrier. What we do here is to change the dependency
 graph from Fig. 1 to Fig. 2 by removing the barrier, building layer-wise dependencies while guaranteeing computation correctness.
 
-![](images/dag_without_barrier.png)
+
+![dag_without_barrier](https://user-images.githubusercontent.com/13852819/69863268-5d408700-12d7-11ea-8b39-5e48e3d94c2b.png)
 *Fig.2: Dependency Graph After Removing Global Barrier*
 
 

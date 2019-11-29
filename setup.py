@@ -20,6 +20,7 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
+server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
 pytorch_lib = Extension('byteps.torch.c_lib', [])
@@ -278,6 +279,25 @@ def get_common_options(build_ext):
                 LIBRARY_DIRS=LIBRARY_DIRS,
                 LIBRARIES=LIBRARIES,
                 EXTRA_OBJECTS=EXTRA_OBJECTS)
+
+
+def build_server(build_ext, options):
+    server_lib.define_macros = options['MACROS']
+    server_lib.include_dirs = options['INCLUDES']
+    server_lib.sources = ['byteps/server/server.cc', 
+                          'byteps/common/cpu_reducer.cc',
+                          'byteps/common/logging.cc']
+    server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
+        ['-DBYTEPS_BUILDING_SERVER']
+    server_lib.extra_link_args = options['LINK_FLAGS']
+    server_lib.extra_objects = options['EXTRA_OBJECTS']
+    server_lib.library_dirs = options['LIBRARY_DIRS']
+    if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+        server_lib.libraries = ['rdmacm', 'ibverbs']
+    else:
+        server_lib.libraries = []
+
+    build_ext.build_extension(server_lib)
 
 
 def check_tf_version():
@@ -775,6 +795,12 @@ class custom_build_ext(build_ext):
         options = get_common_options(self)
         built_plugins = []
 
+        try:
+            build_server(self, options)
+        except:
+            raise DistutilsSetupError('An ERROR occured while building the server module.\n\n'
+                                      '%s' % traceback.format_exc())
+
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
@@ -818,8 +844,9 @@ class custom_build_ext(build_ext):
                     raise
 
         if not built_plugins:
-            raise DistutilsError(
-                'TensorFlow, MXNet, PyTorch plugins were excluded from build. Aborting.')
+            print('INFO: Only server module is built.')
+            return
+
         if not any(built_plugins):
             raise DistutilsError(
                 'None of TensorFlow, MXNet, PyTorch plugins were built. See errors above.')
@@ -851,7 +878,7 @@ setup(
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: Implementation :: PyPy'
     ],
-    ext_modules=[tensorflow_lib, mxnet_lib, pytorch_lib],
+    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib],
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,

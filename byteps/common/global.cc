@@ -338,7 +338,7 @@ uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 5381;
   int c;
-  while (c = *str) { // hash(i) = hash(i-1) * 33 ^ str[i]
+  while ((c = *str)) { // hash(i) = hash(i-1) * 33 ^ str[i]
     hash = ((hash << 5) + hash) + c; 
     str++;
   }
@@ -349,7 +349,7 @@ uint64_t BytePSGlobal::Hash_SDBM(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 0;
   int c;
-  while (c = *str) { // hash(i) = hash(i-1) * 65599 + str[i]
+  while ((c = *str)) { // hash(i) = hash(i-1) * 65599 + str[i]
     hash = c + (hash << 6) + (hash << 16) - hash;
     str++;
   }

@@ -5,32 +5,27 @@
 
 BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network.
 
-BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on a popular public cloud and with the same number of GPUs, BytePS can *double the training speed* (see below), compared with [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
+BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on BERT-large training, BytePS can achieve ~90% scaling efficiency with 256 GPUs (see below), which is much higher than [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
 
 ## News
 
-- Use [the ssh launcher](launcher/) to launch your distributed jobs  
-- Asynchronous training support for
-[PyTorch](https://github.com/bytedance/byteps/pull/121), 
-[TensorFlow](https://github.com/bytedance/byteps/pull/122), 
-[MXNet](https://github.com/bytedance/byteps/pull/114)
-- Find your training stragglers using [server timeline](docs/timeline.md)
-- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116) 
+- [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
+- Use [the ssh launcher](launcher/) to launch your distributed jobs
+- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
 - [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
 
 ## Performance
 
-For demonstration, we test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive). Both models are trained using fp32.
+We show our experiment on BERT-large training, which is based on GluonNLP toolkit. The model uses mixed precision.
 
-We use Tesla V100 16GB GPUs and set batch size equal to 64 *per GPU*. The machines are in fact VMs on a popular public cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
+We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs (32GB memory) with NVLink-enabled. Machines are inter-connected with 100 Gbps RoCEv2 network.
 
-BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
+BytePS achieves ~90% scaling efficiency for BERT-large. The code is available [here](https://github.com/ymjiang/gluon-nlp/tree/bert-byteps/scripts/bert). 
 
-<img src="/docs/images/perf_tcp_vgg16.png" width="360" height="220"><img src="/docs/images/perf_tcp_resnet50.png" width="360" height="220">
+![BERT-Large](https://user-images.githubusercontent.com/13852819/69874496-1ca43600-12f6-11ea-997b-b023e4c93360.png)
 
-You can reproduce the results using the Dockerfiles and example scripts we provide.
 
-Evaluation on RDMA networks can be found at [performance.md](docs/performance.md).
+More evaluation in different scenarios can be found at [performance.md](docs/performance.md).
 
 ## Goodbye MPI, Hello Cloud
 
