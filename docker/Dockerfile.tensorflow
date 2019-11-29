@@ -1,5 +1,8 @@
 FROM nvidia/cuda:10.0-devel-ubuntu18.04
 
+ARG https_proxy
+ARG http_proxy
+
 ENV USE_CUDA_PATH /usr/local/cuda:/usr/local/cudnn/lib64
 ENV PATH /usr/local/cuda/bin:/usr/local/nvidia/bin:${PATH}
 ENV LD_LIBRARY_PATH /usr/local/cudnn/lib64:/usr/local/cuda/lib64:/usr/local/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/nccl/lib:$LD_LIBRARY_PATH
@@ -9,12 +12,9 @@ ENV BYTEPS_BASE_PATH /usr/local
 ENV BYTEPS_PATH $BYTEPS_BASE_PATH/byteps
 ENV BYTEPS_GIT_LINK https://github.com/bytedance/byteps
 
-ARG CUDA_VERSION=10.0
-ARG CUDNN_VERSION=7.4.1.5-1+cuda$CUDA_VERSION
-
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq
-RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
+RUN apt-get install -y --allow-unauthenticated --allow-downgrades --allow-change-held-packages --no-install-recommends \
         build-essential \
         tzdata \
         ca-certificates \
@@ -24,17 +24,13 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         vim \
         cmake \
         lsb-release \
-        libcudnn7=${CUDNN_VERSION} \
+        libcudnn7=7.6.0.64-1+cuda10.0 \
         libnuma-dev \
         ibverbs-providers \
         librdmacm-dev \
         ibverbs-utils \
         rdmacm-utils \
         libibverbs-dev \
-        python \
-        python-dev \
-        python-pip \
-        python-setuptools \
         python3 \
         python3-dev \
         python3-pip \
@@ -51,10 +47,6 @@ RUN cd / && \
     ldconfig && rm -rf /nccl-$NCCL_VERSION
 
 WORKDIR /root/
-
-# install tensorflow
-ARG FRAMEWORK_VERSION=1.15.0
-RUN python3 -m pip --no-cache-dir install tensorflow-gpu==$FRAMEWORK_VERSION 
 
 # install gcc 4.9
 RUN mkdir -p /root/gcc/ && cd /root/gcc &&\
@@ -98,6 +90,10 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
     ln -sf /usr/local/cudnn/lib64/libcudnn* /usr/local/cuda/lib64 &&\
     ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libcuda.so && \
     ln -sf /usr/local/cuda/lib64/libcuda.so /usr/local/cuda/lib64/libcuda.so.1
+
+# install tensorflow
+ARG FRAMEWORK_VERSION=1.14.0
+RUN python3 -m pip --no-cache-dir install tensorflow-gpu==$FRAMEWORK_VERSION 
 
 # Install BytePS
 ARG BYTEPS_NCCL_LINK=shared
