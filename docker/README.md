@@ -8,4 +8,3 @@ You may need to manually build them to get the latest functionalities of BytePS,
 | bytepsimage/mxnet            | Dockerfile.mxnet            | Image for MXNet |
 | bytepsimage/pytorch          | Dockerfile.pytorch          | Image for PyTorch |
 | bytepsimage/tensorflow       | Dockerfile.tensorflow       | Image for TensorFlow |
-| bytepsimage/mxnet_aws        | Dockerfile.mxnet.aws        | Image for MXNet on AWS, TCP only |
