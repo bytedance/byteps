@@ -93,7 +93,9 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
 
 # install tensorflow
 ARG FRAMEWORK_VERSION=1.14.0
-RUN python3 -m pip --no-cache-dir install tensorflow-gpu==$FRAMEWORK_VERSION 
+RUN python3 -m pip --no-cache-dir install tensorflow-gpu==$FRAMEWORK_VERSION &&\
+    rm -rf /tmp/pip &&
+    rm -rf /root/.cache
 
 # Install BytePS
 ARG BYTEPS_NCCL_LINK=shared
