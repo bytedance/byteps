@@ -126,9 +126,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         else:
             name = self._parameter_names.get(p)
         if self._enable_async:
-            tensor = p
-            _, ctx = self._compression.compress(tensor)
-            handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+            # the real handle will be created in step()
+            handle, ctx = None, None
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
@@ -179,9 +178,20 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 old_weight_map[p] = p.data.clone().detach()
             # update
             loss = super(self.__class__, self).step(closure)
-            # get the diff for each weight (in-place)
-            for p, _ in self._handles.items():
+            
+            for p, (h, _) in self._handles.items():
+                # get the diff for each weight (in-place)
                 p.data.sub_(old_weight_map.get(p))
+                if h is None:
+                    # create the handler now
+                    if self._is_tensor_instance:
+                        name = self._parameter_names.get(p.__hash__())
+                    else:
+                        name = self._parameter_names.get(p)
+                    handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+                    _, ctx = self._compression.compress(p)
+                    self._handles[p] = (handle, ctx)
+
             self.synchronize()
             return loss
         else:

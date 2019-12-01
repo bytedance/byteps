@@ -21,6 +21,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -98,13 +99,14 @@ class BytePSCommSocket : public BytePSComm {
                    const std::vector<int>& members);
 
   ~BytePSCommSocket() {
-    if (_listen_thread->joinable()) {
+    if ((_root == _local_rank) && _listen_thread) {
       _listen_thread->join();
     }
     close(_recv_fd);
     close(_send_fd);
 
-    BPS_LOG(DEBUG) << "Clear BytePSCommSocket";
+    BPS_LOG(DEBUG) << "Clear BytePSCommSocket"
+                   << " (rank=" << _local_rank << ")";
   }
 
   void init(int* rank, int* size, int* local_rank, int* local_size,

@@ -22,9 +22,15 @@
 #endif
 
 #include <memory>
+#include <cstring>
 #include "common.h"
-#include "communicator.h"
 #include "logging.h"
+
+#ifndef BYTEPS_BUILDING_SERVER
+#include "communicator.h"
+#else
+typedef void BytePSComm;
+#endif
 
 #include <stdint.h>
 
@@ -41,8 +47,17 @@ class CpuReducer {
 
   int sum(void* dst, void* src, size_t len, DataType dtype);
   int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
+  int copy(void* dst, void* src, size_t len);
+
+#ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();
   std::shared_ptr<BytePSComm> getComm() { return _comm; }
+#endif
+
+
+  DataType GetDataType(int dtype) {
+    return static_cast<DataType>(dtype);
+  }
 
  private:
 #if __AVX__ && __F16C__

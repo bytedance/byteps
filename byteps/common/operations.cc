@@ -77,7 +77,7 @@ void byteps_init() {
 
 void byteps_shutdown() {
   BytePSGlobal::Shutdown();
-  BPS_LOG(DEBUG) << "BytePS is shutdown.";
+  BPS_LOG(DEBUG) << "BytePS has been completely shutdown now";
   return;
 }
 
@@ -138,6 +138,10 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      const int priority, const int version,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list) {
+  if (BytePSGlobal::ShouldShutdown()) {
+    return Status::OK();
+  }
+
   auto &name = context.tensor_name;
   if (input && output) {
     BPS_CHECK_EQ(input->size(), output->size())

@@ -2,13 +2,13 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
-import os
+import os, sys
 import numpy as np
 import timeit
 
-import tensorflow as tf
 import byteps.tensorflow as bps
 from tensorflow.keras import applications
+import tensorflow as tf
 
 # Benchmark settings
 parser = argparse.ArgumentParser(description='TensorFlow Synthetic Benchmark',
@@ -79,7 +79,7 @@ def log(s, nl=True):
     if bps.rank() != 0:
         return
     print(s, end='\n' if nl else '')
-
+    sys.stdout.flush()
 
 log('Model: %s' % args.model)
 log('Batch size: %d' % args.batch_size)

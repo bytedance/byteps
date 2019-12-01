@@ -27,10 +27,11 @@ from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
-
+import os, sys
+from tensorflow.python.ops import control_flow_ops
 
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
-              compression=Compression.none):
+              compression=Compression.none, enable_async=False):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
     Arguments:
         tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
@@ -52,8 +53,11 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         tensor_compressed, ctx = compression.compress(tensor)
         summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
-        new_tensor = (tf.div(summed_tensor, byteps_size)
-                      if average else summed_tensor)
+        if not enable_async:
+            new_tensor = (tf.div(summed_tensor, byteps_size)
+                          if average else summed_tensor)
+        else: # no need to average for async training
+            new_tensor = summed_tensor
     return new_tensor
 
 
@@ -154,6 +158,12 @@ class DistributedOptimizer(tf.train.Optimizer):
         self._compression = compression
         self._sparse_as_dense = sparse_as_dense
 
+        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
+        if self._enable_async:
+            assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
+                "Async is only valid for distributed training"
+            print('BytePS: enable asynchronous training')
+
         def push_pull_grads(grads):
             with tf.name_scope(self._name + "_Push_Pull") as scope:
                 if self._sparse_as_dense:
@@ -164,7 +174,8 @@ class DistributedOptimizer(tf.train.Optimizer):
                 return [push_pull(grad, scope,
                                   device_dense=self._device_dense,
                                   device_sparse=self._device_sparse,
-                                  compression=self._compression)
+                                  compression=self._compression,
+                                  enable_async=self._enable_async)
                         if grad is not None else grad
                         for grad in grads]
 
@@ -183,7 +194,7 @@ class DistributedOptimizer(tf.train.Optimizer):
         push_pull the gradients before returning them.
         """
         gradients = self._optimizer.compute_gradients(*args, **kwargs)
-        if size() > 1:
+        if size() > 1 and not self._enable_async:
             grads, vars = zip(*gradients)
             avg_grads = self._push_pull_grads(grads)
             return list(zip(avg_grads, vars))
@@ -192,7 +203,29 @@ class DistributedOptimizer(tf.train.Optimizer):
 
     def apply_gradients(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""
-        return self._optimizer.apply_gradients(*args, **kwargs)
+        if self._enable_async: # async training
+            grads_and_vars = args[0]
+            _, vars = zip(*grads_and_vars)
+            old_tensors = []
+            for var in vars:
+                old_tensors.append(tf.convert_to_tensor(var))
+            apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
+            with tf.control_dependencies([apply_ops]):
+                # get the delta
+                for i, var in enumerate(vars):
+                    old_tensors[i] = tf.subtract(var, old_tensors[i])
+
+                # reuse the _push_pul_grads(), but is transferring parameters
+                updated_tensors = self._push_pull_grads(old_tensors)
+
+                # copy the updated variable back
+                assign_op_list = []
+                for i, tensor in enumerate(updated_tensors):
+                    assign_op_list.append(tf.assign(vars[i], tensor))
+
+            return control_flow_ops.group(*assign_op_list)
+        else:
+            return self._optimizer.apply_gradients(*args, **kwargs)
 
     def get_slot(self, *args, **kwargs):
         """Calls this same method on the underlying optimizer."""

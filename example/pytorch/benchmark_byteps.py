@@ -9,7 +9,7 @@ from torchvision import models
 import byteps.torch as bps
 import timeit
 import numpy as np
-import os
+import os, sys
 
 # Benchmark settings
 parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
@@ -94,9 +94,10 @@ def benchmark_step():
 
 
 def log(s, nl=True):
-    if bps.rank() != 0:
+    if bps.local_rank() != 0:
         return
     print(s, end='\n' if nl else '')
+    sys.stdout.flush()
 
 
 log('Model: %s' % args.model)

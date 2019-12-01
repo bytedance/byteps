@@ -5,7 +5,8 @@ We highly recommend you to read [BytePS's rationale](./rationale.md) first befor
 From application views, BytePS is a communication library just like Horovod. The plugins handle framework-specific transformation (e.g., on data structure), and 
 put communication tasks into BytePS priority queues. The BytePS Core then gets the tasks (priority-aware, not FIFO) and handles the actual communication.
    
-<img src="/docs/images/byteps_architecture.png" width="600" height="320">
+![byteps_architecture](https://user-images.githubusercontent.com/13852819/69873605-c3d39e00-12f3-11ea-942d-97af2606bb40.png)
+
 
 ## General Workflow
 To demonstrate the work flow of BytePS, below we use a common data-parallel training scenario as an example. Say we have multiple worker machines (we refer them as "**workers**"), and each machine (worker) has multiple GPUs. We also have some CPU machines that serve as PS (we refer them as "**servers**").
