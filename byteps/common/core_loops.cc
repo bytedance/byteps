@@ -201,6 +201,11 @@ inline void PostNcclCalls(
 
   auto num_elem_per_gpu = len / nccl_size / unit_len;
   auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
+  if (BytePSGlobal::IsUsingReduce()) {
+    nccl_root = BytePSGlobal::GetReduceRootByKey(key);
+    num_elem_per_gpu = 0;
+    left_elem = len / unit_len;
+  }
 
   BPS_CHECK(task->tensor_name != "");
   BPS_LOG(TRACE) << task->tensor_name << " calling NCCL " << LogStrings[this_op]
@@ -395,15 +400,26 @@ bool RunCopyDevice2HostLoopOnce() {
     auto num_elem_per_gpu = len / nccl_size / unit_len;
     auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
+    auto copy_offset = nccl_rank * num_elem_per_gpu * unit_len;
     auto copy_len = num_elem_per_gpu * unit_len;
     if (left_elem && (nccl_root == nccl_rank)) {
       copy_len += left_elem * unit_len;
     }
 
+    if (BytePSGlobal::IsUsingReduce()) {
+      copy_offset = 0;
+      if (BytePSGlobal::GetReduceRootByKey(key) == BytePSGlobal::GetLocalRank()) {
+        copy_len = len;
+      }
+      else {
+        copy_len = 0;
+      }
+    }
+
     if (copy_len) {
       CUDA_CALL(cudaMemcpyAsync(
-          (void *)(cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
-          (const void *)(p + nccl_rank * num_elem_per_gpu * unit_len),
+          (void *)(cpubuff + copy_offset),
+          (const void *)(p + copy_offset),
           (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyDeviceToHost,
           (cudaStream_t)*copy_d2h_Stream));
       CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
@@ -567,15 +583,26 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
   auto num_elem_per_gpu = len / nccl_size / unit_len;
   auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
+  auto copy_offset = nccl_rank * num_elem_per_gpu * unit_len;
   auto copy_len = num_elem_per_gpu * unit_len;
   if (left_elem && (nccl_root == nccl_rank)) {
     copy_len += left_elem * unit_len;
   }
 
+  if (BytePSGlobal::IsUsingReduce()) {
+    copy_offset = 0;
+    if (BytePSGlobal::GetReduceRootByKey(key) == BytePSGlobal::GetLocalRank()) {
+      copy_len = len;
+    }
+    else {
+      copy_len = 0;
+    }
+  }
+
   if (copy_len) {
     CUDA_CALL(cudaMemcpyAsync(
-        (void *)(gpu_addr + nccl_rank * num_elem_per_gpu * unit_len),
-        (const void *)(cpubuff + nccl_rank * num_elem_per_gpu * unit_len),
+        (void *)(gpu_addr + copy_offset),
+        (const void *)(cpubuff + copy_offset),
         (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyHostToDevice,
         (cudaStream_t)*copy_h2d_stream));
     CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream));

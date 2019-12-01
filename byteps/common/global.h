@@ -99,6 +99,12 @@ class BytePSGlobal {
   static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
   static ReadyTable* GetPushTable() { return _push_table; }
 
+  // reduce strategies
+  static bool IsUsingReduce() { return _is_using_reduce; }
+  static int GetReduceRootByKey(ps::Key k) {
+    return _reduce_roots[Hash_DJB2(k) % _reduce_roots.size()];
+  }
+
   // for non-root
   static ReadyTable* GetCopyTable() { return _copy_table; }
 
@@ -165,6 +171,10 @@ class BytePSGlobal {
 
   // (key, ready_signal_count) pair, only valid for non-root device
   static ReadyTable* _copy_table;
+
+  // for reduec strategies
+  static bool _is_using_reduce;
+  static vector<int> _reduce_roots;
 
   static std::shared_ptr<NcclManager> _nccl_manager;
   static std::shared_ptr<CpuReducer> _cpu_reducer;
