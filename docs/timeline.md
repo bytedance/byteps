@@ -37,7 +37,7 @@ Use the following environment variables to enable profiling the communication op
 "BYTEPS_TRACE_START_STEP"="10"
 "BYTEPS_TRACE_DIR"= "./traces"
 ```
-First `BYTEPS_TRACE_ON` should be set to `1` to enable profiling communication traces. `BYTEPS_TRACE_START_STEP` and `BYTEPS_TRACE_END_STEP` decides the step interval we want to profile, traces from step `BYTEPS_TRACE_START_STEP` to step `BYTEPS_TRACE_END_STEP` steps will be automatically collected and the result traces will be output in the chrome trace format. `BYTEPS_TRACE_DIR` denotes the path you want to store traces. 
+First `BYTEPS_TRACE_ON` should be set to `1` to enable profiling communication traces. `BYTEPS_TRACE_START_STEP` and `BYTEPS_TRACE_END_STEP` decide the step interval we want to profile, traces from step `BYTEPS_TRACE_START_STEP` to step `BYTEPS_TRACE_END_STEP` steps will be automatically collected and the result traces will be output in the chrome trace format. `BYTEPS_TRACE_DIR` denotes the path where you want to store traces. 
 
 The result directory is organized as follows. 
 ``` 
@@ -50,7 +50,7 @@ traces/
 ```
 
 Here, `traces/` is the trace directory we defined using `BYTEPS_TRACE_DIR`. `traces/` contains several sub-directories, each of which denotes one GPU and is named with the local rank of this GPU, e.g., path `./traces/0/` stores the traces results of the GPU whose local rank is `0`. Each sub-directory contains following directories/files:
-* `comm.json`: the final trace file containing the communication traces of all gradients;
+* `comm.json`: the final trace file which contains the communication traces of all gradients;
 
 ### Trace Format
 Let's look deep into the traces.
@@ -95,11 +95,13 @@ So there are two types of events:
 1. If `tid` is `total`, the event records the entire interval to synchronize one gradient, including the queue time. In this case, `name` ends with the gradient index. 
 2. If `tid` is a number, the event records the interval for each `QueueType` of each partition of one gradient. In this case, `name` ends with the gradient index and the corresponding `QueueType`, `tid` denotes the partition id.
 
+Note that for BytePS, for multiple GPUs on one worker, only the root GPU is responsible for synchronizing with servers, and these GPUs located on one worker update parameters through all-reduce. Therefore, you can observe `PUSH` and `PULL` operations only in the traces of the root GPU. By default, the root GPU is one with the largest local rank.
+
 Below shows a visualization example of `comm.json`. 
 <img src="https://user-images.githubusercontent.com/17765864/69711658-634e3080-113c-11ea-8d70-fb75f89f2791.png" width="1916">
 
 ### Overhead
-Below shows the latency when running [`bert_12_768_12`](https://github.com/joapolarbear/gluon-nlp/tree/bert-byteprofile/scripts/bert) model with 2 workers, each containing 2 V100 GPUs with 16GB of memory. BytePS Timeline collects traces during step 10 to step 20 and after step 20, it asynchronously outputs the trace results, which may also cause extra overhead. Ignoring the warm up time (the first 10 steps), the overhead induced by BytePS Timeline is small. 
+Below shows the latency when running [`bert_12_768_12`](https://github.com/joapolarbear/gluon-nlp/tree/bert-byteprofile/scripts/bert) model with 2 workers, each containing 2 V100 GPUs with 16GB of memory. BytePS Timeline collects traces during step 10 to step 20 and after step 20, it asynchronously outputs the trace results, which may also cause extra overhead. Ignoring the warm up phase (the first 10 steps), the overhead induced by BytePS Timeline is small. 
 <img src="https://user-images.githubusercontent.com/17765864/69713426-79a9bb80-113f-11ea-9bec-b588cc051fab.png" width="1916">
 ### Others
 * Enable debug for profiling if environment variable `BYTEPS_TRACE_DEBUG` is set.
