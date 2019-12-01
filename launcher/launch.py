@@ -35,6 +35,15 @@ def worker(local_rank, local_size, command):
         if command.find("python") != 0:
             command = "python " + command
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+
+    if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
+        print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" % (os.environ.get("DMLC_WORKER_ID"), local_rank))
+        print("BYTEPS_TRACE_START_STEP: %s\tBYTEPS_TRACE_END_STEP: %s\t BYTEPS_TRACE_DIR: %s" % (os.environ.get("BYTEPS_TRACE_START_STEP", ""), os.environ.get("BYTEPS_TRACE_END_STEP", ""), os.environ.get("BYTEPS_TRACE_DIR", "")))
+        print("Command: %s\n" % command)
+        sys.stdout.flush()
+        trace_path = os.path.join(os.environ.get("BYTEPS_TRACE_DIR", "."), str(local_rank))
+        if not os.path.exists(trace_path):
+            os.makedirs(trace_path)
     subprocess.check_call(command, env=my_env, stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 if __name__ == "__main__":

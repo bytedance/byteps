@@ -18,6 +18,7 @@
 #include <cstring>
 #include <memory>
 #include <thread>
+#include <unistd.h>
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
@@ -177,6 +178,17 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     return Status::OK();
   }
 
+  // add for profiling
+  if (context.profile_flag) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+
+    BPSCommTime *ret = new BPSCommTime;
+    ret->start_t = (long long)(us.count());
+    context.comm_time.push(ret);
+  }
+
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
@@ -214,6 +226,10 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   auto &name = context.tensor_name;
   context.buff_len = size;
   size_t accumulated = 0;
+
+  // Add for timeline
+  BytePSGlobal::SetProfileFlag(&context);
+  context.local_rank = BytePSGlobal::GetLocalRank();
 
   // Total key space is 0 to 2^64 - 1
   // It will be divided to N PS servers, for now we assume N <= 2^16

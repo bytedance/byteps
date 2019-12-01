@@ -61,6 +61,30 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                      << "\t after stage: " << LogStrings[this_op];
     }
   }
+
+  if (task->context->profile_flag) {
+    BPS_CHECK(task->context->part_comm_time[task->key][this_op].back()->dur == 0)
+                    << " tensor: " << task->tensor_name
+                    << " task->key:" << task->key
+                    << " type:" << this_op
+                    << " 'dur' has already been assigned:" << task->context->part_comm_time[task->key][this_op].back()->dur;
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+    auto _ts = task->context->part_comm_time[task->key][this_op].back()->start_t;
+    BPS_CHECK(task->context->part_comm_time.find(task->key) != task->context->part_comm_time.end())
+                    << " tensor: " << task->tensor_name
+                    << " task->key:" << task->key
+                    << " type:" << this_op;
+    BPS_CHECK(task->context->part_comm_time[task->key].find(this_op) != task->context->part_comm_time[task->key].end())
+                    << " tensor: " << task->tensor_name
+                    << " task->key:" << task->key
+                    << " type:" << this_op;
+                            
+    task->context->part_comm_time[task->key][this_op].back()->dur = (long long)(us.count()) - _ts;
+  }
+
+  // finish current QueueType of this task, erase current QueueType.
   queue_list.erase(queue_list.begin());
   if (queue_list.size() > 0) {
     BPS_CHECK(task->tensor_name != "");
@@ -69,13 +93,30 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                    << ", key=" << task->key << "; Passing to the next queue.";
     BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
   } else {
+    // this is the last QueueType of this current sub-task.
     BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
     int v = task->counter_ptr.get()->fetch_add(1);
     if (v == (int)(task->total_partnum - 1)) {
+      // if meet this condition, that means all sub-tasks of this task have been done
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
       task->callback(Status::OK());
+      //* Add for profiling communication events     
+      if (task->context->profile_flag) {
+        BPS_CHECK(task->context->comm_time.back()->dur == 0)
+                    << " tensor: " << task->tensor_name
+                    << " 'dur' has already been assigned:" << task->context->comm_time.back()->dur;
+        auto now = std::chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+        auto _ts = task->context->comm_time.back()->start_t;
+        task->context->comm_time.back()->dur = (long long)(us.count()) - _ts;
+      }
+      // Set the profile_flag first
+      // *step_cnt* denotes the number this gradient has been synchronized.
+      task->context->step_cnt += 1;
+      BytePSGlobal::SetProfileFlag(task->context);
     }
   }
   return;

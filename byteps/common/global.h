@@ -107,6 +107,12 @@ class BytePSGlobal {
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
+  static void SetProfileFlag(BPSContext *ctxt);
+  static void EmitTrace(std::ostream *os, const BPSCommTime *ret, BPSContext *ctxt);
+  static void OutputTraces();
+  static bool IsAllTensorOutput(const std::string& name);
+  static void Who2beOutput(const std::string& name);
+
   static void ReportThreadFinish() { joined_thread_cnt.fetch_add(1); }
   static bool IsAllThreadFinish(int total_thread_num);
   static std::atomic_int joined_thread_cnt;
@@ -138,6 +144,13 @@ class BytePSGlobal {
   static ps::KVWorker<char>* _ps;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+
+  static std::unordered_map<std::string, int> _name2end;
+  static int _output_counter;
+  static int _is_trace;
+  static int _start_step;
+  static int _end_step;
+  static std::string _trace_dir;
 
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;

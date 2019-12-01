@@ -30,6 +30,15 @@
 #include <unordered_map>
 #include <vector>
 
+// Add for profiling communication events
+#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <queue>
+
 namespace byteps {
 namespace common {
 
@@ -138,6 +147,15 @@ class ReadyEvent {
   virtual ~ReadyEvent() = default;
 };
 
+// add for profiling
+typedef struct CommTime {
+  long long start_t;
+  long long dur = 0;
+  bool end = false;
+  int key = -1;
+  int type = -1;
+} BPSCommTime;
+
 typedef struct BytePSContext {
   bool initialized;
   std::mutex init_mutex;
@@ -154,6 +172,12 @@ typedef struct BytePSContext {
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
+  // Used for profiling communication events
+  std::queue<BPSCommTime *> comm_time;
+  bool profile_flag = false;
+  int step_cnt = 0;
+  int local_rank = 0;
+  std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
 } BPSContext;
 
 class Tensor {
