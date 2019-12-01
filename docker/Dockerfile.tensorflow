@@ -37,7 +37,7 @@ RUN apt-get install -y --allow-unauthenticated --allow-downgrades --allow-change
         python3-setuptools
 
 # Install NCCL
-ENV NCCL_VERSION=d7a58cfa5865c4f627a128c3238cc72502649881
+ENV NCCL_VERSION=7c72dee660e4d055b81721dd6b03e4e1c0a983cf
 RUN cd / && \
     wget -q -O - https://github.com/NVIDIA/nccl/archive/$NCCL_VERSION.tar.gz | tar -xzf - && \
     cd nccl-$NCCL_VERSION && make -j src.build && make pkg.txz.build && \
