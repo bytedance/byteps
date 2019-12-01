@@ -1,14 +1,12 @@
-# BytePS Performance with 100Gbps RDMA
+# BytePS Performance when training CNN
 
 ## NVLink + TCP
 
 We test two models: VGG16 (communication-intensive) and Resnet50 (computation-intensive) on a popular public cloud. Both models are trained using fp32.
 
-We use Tesla V100 16GB GPUs and set batch size equal to 64 *per GPU*. The machines are in fact VMs on the cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
+We use Tesla V100 16GB GPUs and set batch size equal to 64 *per GPU*. The machines are VMs on the cloud. Each machine has 8 V100 GPUs with NVLink-enabled. Machines are inter-connected with 20 Gbps TCP/IP network.
 
 BytePS outperforms Horovod (NCCL) by 44% for Resnet50, and 100% for VGG16.
-
-
 
 ![vgg16_tcp](https://user-images.githubusercontent.com/13852819/69873424-41e37500-12f3-11ea-93b8-705215e3e901.png)
 ![resnet50_tcp](https://user-images.githubusercontent.com/13852819/69873419-40b24800-12f3-11ea-9ff3-0f11347c089e.png)
@@ -29,5 +27,3 @@ In this case, BytePS outperforms Horovod (NCCL) by 7% for Resnet50, and 17% for 
 
 
 To have BytePS outperform NCCL by so little, you have to have 100Gbps RDMA network *and* no NVLinks. In this case, the communication is actually bottlenecked by internal PCI-e switches, not the network. BytePS has done some optimization so that it still outperforms NCCL. However, the performance gain is not as large as other cases where the network is the bottleneck.
-
-As long as you have NVLinks, or you run on slower networks, the performance gain of BytePS will be closer to [README.md](/README.md).
