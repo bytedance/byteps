@@ -99,8 +99,6 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
 
 // Record the start time of the sub-tasks for all QueueTypes of each partition.
 void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
-  BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetRank() == 0) << "start";
-
   auto context = task->context;
   // add for profiling
   if (context->profile_flag) {
@@ -117,10 +115,6 @@ void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
     ret->key = task->key;
     ret->type = this_op; 
     context->part_comm_time[task->key][this_op].push(ret);
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                  << " key=" << task->key
-                  << " type=" << this_op
-                  << " _ts=" << ret->start_t;
   }
 }
 

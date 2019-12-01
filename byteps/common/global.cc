@@ -38,6 +38,13 @@ bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
 
+int BytePSGlobal::_is_trace = 0;
+int BytePSGlobal::_start_step = 10;
+int BytePSGlobal::_end_step = 20;
+std::string BytePSGlobal::_trace_dir;
+std::unordered_map<std::string, int> BytePSGlobal::_name2end;
+int BytePSGlobal::_output_counter = 0;
+
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
@@ -58,8 +65,6 @@ ReadyTable* BytePSGlobal::_push_table;
 
 ReadyTable* BytePSGlobal::_copy_table;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
-std::unordered_map<std::string, int> BytePSGlobal::_name2end;
-int BytePSGlobal::_output_counter = 0;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream;
@@ -91,6 +96,12 @@ void BytePSGlobal::Init() {
   if (_initialized) {
     return;
   }
+
+  // Set the profiling-related variables
+  _is_trace = getenv("BYTEPS_TRACE_ON") ? atoi(getenv("BYTEPS_TRACE_ON")) : _is_trace;
+  _start_step = getenv("BYTEPS_TRACE_START_STEP") ? atoi(getenv("BYTEPS_TRACE_START_STEP")) : _start_step;
+  _end_step = getenv("BYTEPS_TRACE_END_STEP") ? atoi(getenv("BYTEPS_TRACE_END_STEP")) : _end_step;
+  _trace_dir = getenv("BYTEPS_TRACE_DIR") ? std::string(getenv("BYTEPS_TRACE_DIR")) : "./trace";
 
   _basic_comm = std::make_shared<BytePSCommSocket>();
 
@@ -328,6 +339,46 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   return true;
 }
 
+// Append for communication traces
+void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
+  if (_is_trace == 1) {
+    // Enable trace, check the start and end step
+    BPS_CHECK(_start_step >= 1 && _end_step > _start_step) 
+                << "BYTEPS_TRACE_START_STEP must be larger than 1, "
+                << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
+    if(ctxt->step_cnt == _start_step-1){
+      ctxt->profile_flag = true;
+      BytePSGlobal::Who2beOutput(ctxt->tensor_name);
+    } else if(ctxt->step_cnt == _end_step){
+      ctxt->profile_flag = false;
+      if (BytePSGlobal::IsAllTensorOutput(ctxt->tensor_name)){
+        std::thread _t(BytePSGlobal::OutputTraces);
+        _t.detach();
+      }
+    } 
+  } else {
+    ctxt->profile_flag = false;
+  }
+}
+
+void BytePSGlobal::EmitTrace(std::ostream *os, const BPSCommTime *ret, BytePSContext *ctxt){
+    std::string tid = (ret->key == -1) ? "total" : std::to_string(ret->key);
+    std::string para_name = "Comm." + ctxt->tensor_name;
+    std::string para_name_type = (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
+    (*os) << "        {\n"
+          << "            \"ph\": \"X\",\n"
+          << "            \"args\": {\n"
+          << "                \"name\": \"" << para_name << "\"\n"
+          << "            },\n"
+          << "            \"pid\": \"" << para_name << "\",\n"
+          << "            \"name\": \"" << para_name_type << "\",\n"
+          << "            \"ts\": " << ret->start_t << ",\n"
+          << "            \"dur\": " << ret->dur << ",\n"
+          << "            \"tid\": \"" << tid << "\",\n"
+          << "            \"cat\": \"Comm\"\n"
+          << "        }";
+}
+
 void BytePSGlobal::Who2beOutput(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name2end.find(name) == _name2end.end()) {
@@ -345,15 +396,9 @@ bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
   else return false;
 }
 
-void BytePSGlobal::output_traces(){
+void BytePSGlobal::OutputTraces(){
   // Asynchronously output communication traces
-  auto trace_dir = std::string(getenv("BYTEPS_TRACE_DIR")) 
-                  + "/" + std::to_string(_local_rank) + "/" ;
-  struct stat buffer;
-  if (stat(trace_dir.c_str(), &buffer) != 0) {
-    BPS_CHECK(mkdir(trace_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0);
-  }
-  auto trace_path = trace_dir + "comm.json";
+  auto trace_path = _trace_dir + "/" + std::to_string(_local_rank) + "/comm.json";
   // Output these traces
   std::ofstream file;
   file.open(trace_path);
@@ -367,7 +412,7 @@ void BytePSGlobal::output_traces(){
       BPSCommTime *ret = ctxt->comm_time.front();
       if (!first) file << ",\n";
       else first = false;
-      ctxt->emit_trace(&file, ret);
+      BytePSGlobal::EmitTrace(&file, ret, ctxt);
       ctxt->comm_time.pop();
     }
     while (!ctxt->part_comm_time.empty()){
@@ -382,7 +427,7 @@ void BytePSGlobal::output_traces(){
           BPSCommTime *ret = _part_comm_time_queue.front();
           if (!first) file << ",\n";
           else first = false;
-          ctxt->emit_trace(&file, ret); 
+          BytePSGlobal::EmitTrace(&file, ret, ctxt); 
           _part_comm_time_queue.pop();
         }
         type2part_comm_time.erase(type);
@@ -406,6 +451,7 @@ uint64_t BytePSGlobal::Hash_BuiltIn(uint64_t key) {
   auto str = std::to_string(key).c_str();
   return _built_in_hash_fn(str) * _built_in_hash_coefficient;
 }
+
 uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 5381;
@@ -416,6 +462,7 @@ uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   }
   return hash;
 }
+
 uint64_t BytePSGlobal::Hash_SDBM(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 0;

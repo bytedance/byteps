@@ -63,8 +63,6 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
   }
 
   if (task->context->profile_flag) {
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0) << "start";
-
     BPS_CHECK(task->context->part_comm_time[task->key][this_op].back()->dur == 0)
                     << " tensor: " << task->tensor_name
                     << " task->key:" << task->key
@@ -84,12 +82,6 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                     << " type:" << this_op;
                             
     task->context->part_comm_time[task->key][this_op].back()->dur = (long long)(us.count()) - _ts;
-
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                << " partition of:" << task->tensor_name
-                << " key:" << task->key
-                << " type:" << this_op
-                << " dur: " << (long long)(us.count()) - _ts;
   }
 
   // finish current QueueType of this task, erase current QueueType.
@@ -120,15 +112,11 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
         auto _ts = task->context->comm_time.back()->start_t;
         task->context->comm_time.back()->dur = (long long)(us.count()) - _ts;
-
-        BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                << " main task, name:" << task->tensor_name
-                << " dur: " << (long long)(us.count()) - _ts;
       }
       // Set the profile_flag first
       // *step_cnt* denotes the number this gradient has been synchronized.
       task->context->step_cnt += 1;
-      task->context->set_profile_flag();
+      BytePSGlobal::SetProfileFlag(task->context);
     }
   }
   return;

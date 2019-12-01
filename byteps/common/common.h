@@ -34,8 +34,6 @@
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -180,11 +178,7 @@ typedef struct BytePSContext {
   int step_cnt = 0;
   int local_rank = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
-  // Member methods
-  void set_profile_flag();
-  void emit_trace(std::ostream *os, const BPSCommTime *ret);
 } BPSContext;
-void output_traces(BytePSContext *ctxt);
 
 class Tensor {
  public:

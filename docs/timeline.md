@@ -103,5 +103,4 @@ Below shows a visualization example of `comm.json`.
 ### Overhead
 Below shows the latency when running [`bert_12_768_12`](https://github.com/joapolarbear/gluon-nlp/tree/bert-byteprofile/scripts/bert) model with 2 workers, each containing 2 V100 GPUs with 16GB of memory. BytePS Timeline collects traces during step 10 to step 20 and after step 20, it asynchronously outputs the trace results, which may also cause extra overhead. Ignoring the warm up phase (the first 10 steps), the overhead induced by BytePS Timeline is small. 
 <img src="https://user-images.githubusercontent.com/17765864/69713426-79a9bb80-113f-11ea-9bec-b588cc051fab.png" width="1916">
-### Others
-* Enable debug for profiling if environment variable `BYTEPS_TRACE_DEBUG` is set.
+

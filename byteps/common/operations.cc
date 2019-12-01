@@ -187,9 +187,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     BPSCommTime *ret = new BPSCommTime;
     ret->start_t = (long long)(us.count());
     context.comm_time.push(ret);
-    BYTEPS_TRACE_DEBUG(getenv("BYTEPS_TRACE_DEBUG") && BytePSGlobal::GetLocalRank() == 0)
-                  << "record main task start time,"
-                  << " _ts=" << ret->start_t;
   }
 
   unsigned int accumulated = 0;
@@ -231,7 +228,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   size_t accumulated = 0;
 
   // Add for timeline
-  context.set_profile_flag();
+  BytePSGlobal::SetProfileFlag(&context);
   context.local_rank = BytePSGlobal::GetLocalRank();
 
   // Total key space is 0 to 2^64 - 1
