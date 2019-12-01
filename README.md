@@ -5,7 +5,7 @@
 
 BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network.
 
-BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on BERT-large training, BytePS can achieve ~90% scaling efficiency with 256 GPUs (see below), which is much higher than [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl).
+BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on BERT-large training, BytePS can achieve ~90% scaling efficiency with 256 GPUs (see below), which is much higher than [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl). In certain scenarios, BytePS can double the training speed compared with Horovod+NCCL.
 
 ## News
 
@@ -18,14 +18,14 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 We show our experiment on BERT-large training, which is based on GluonNLP toolkit. The model uses mixed precision.
 
-We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs (32GB memory) with NVLink-enabled. Machines are inter-connected with 100 Gbps RoCEv2 network.
+We use Tesla V100 32GB GPUs and set batch size equal to 64 per GPU. Each machine has 8 V100 GPUs (32GB memory) with NVLink-enabled. Machines are inter-connected with 100 Gbps RDMA network. This is the same the hardware setup you can get on [AWS](https://aws.amazon.com/about-aws/whats-new/2018/12/introducing-amazon-ec2-p3dn-instances-our-most-powerful-gpu-instance-yet/).
 
-BytePS achieves ~90% scaling efficiency for BERT-large. The code is available [here](https://github.com/ymjiang/gluon-nlp/tree/bert-byteps/scripts/bert). 
+BytePS achieves ~90% scaling efficiency for BERT-large with 256 GPUs. The code is available [here](https://github.com/ymjiang/gluon-nlp/tree/bert-byteps/scripts/bert). As a comparison, Horovod+NCCL has only ~70% scaling efficiency even after expert parameter tunning.
 
 ![BERT-Large](https://user-images.githubusercontent.com/13852819/69874496-1ca43600-12f6-11ea-997b-b023e4c93360.png)
 
 
-More evaluation in different scenarios can be found at [performance.md](docs/performance.md).
+With slower network, BytePS offers even more performance advantages -- up to 2x of Horovod+NCCL. You can find more evaluation results at [performance.md](docs/performance.md).
 
 ## Goodbye MPI, Hello Cloud
 
@@ -39,14 +39,9 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 ## Quick Start
 
-We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks. After you can start BytePS, read [best practice](docs/best-practice.md) to get the best performance.
+We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks. The simplest way to start is to use our [docker images](docker). Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md). After you can start BytePS, read [best practice](docs/best-practice.md) to get the best performance.
 
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
-
-
-### Build from wheel 
-
-You can download our wheels and install. Please refer to [pip-list.md](docs/pip-list.md) for more instructions.
 
 ### Build from source code
 
@@ -59,13 +54,8 @@ python setup.py install
 ```
 
 Notes:
-- Please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.worker.pytorch.cu100#L123-L131) is an example.
+- For best compatibility, please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.pytorch#L72-L80) is an example.
 - You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
-
-
-For your server and scheduler node, we highly recommend you to just use our prebuilt docker image `bytepsimage/byteps_server` (TCP) or `bytepsimage/byteps_server_rdma` (RDMA). Otherwise, you have to manually compile our modified [MXNet](https://github.com/bytedance/incubator-mxnet) as in our dockerfiles: [Dockerfile.server](docker/Dockerfile.server) and [Dockerfile.server.rdma](docker/Dockerfile.server.rdma). 
-
-Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md).
 
 ## Use BytePS in Your Code
 
@@ -78,7 +68,7 @@ Many of our examples were copied from Horovod and modified in this way. For inst
 ## Limitations and Future Plans
 BytePS does not support pure CPU training for now. One reason is that the [cheap PS assumption](docs/rationale.md) of BytePS do not hold for CPU training. Consequently, you need CUDA and NCCL to build and run BytePS.
 
-We would like to have below features, and it is not hard to implement them in BytePS architecture. However, they are not implemented yet:
+We would like to have below features, and there is no fundamental difficulty to implement them in BytePS architecture. However, they are not implemented yet:
 * Sparse model training
 * Fault-tolerance
 * Straggler-mitigation
