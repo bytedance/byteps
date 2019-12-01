@@ -64,8 +64,8 @@ ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
 ReadyTable* BytePSGlobal::_copy_table;
-static bool _is_using_reduce;
-static vector<int> _reduce_roots;
+bool BytePSGlobal::_is_using_reduce;
+std::vector<int> BytePSGlobal::_reduce_roots;
 
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;

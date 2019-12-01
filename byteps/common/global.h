@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 #include "common.h"
 #include "communicator.h"
 #include "cpu_reducer.h"
@@ -174,7 +175,7 @@ class BytePSGlobal {
 
   // for reduec strategies
   static bool _is_using_reduce;
-  static vector<int> _reduce_roots;
+  static std::vector<int> _reduce_roots;
 
   static std::shared_ptr<NcclManager> _nccl_manager;
   static std::shared_ptr<CpuReducer> _cpu_reducer;
