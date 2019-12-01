@@ -43,11 +43,6 @@ We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to r
 
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
-
-### Build from wheel 
-
-You can download our wheels and install. Please refer to [pip-list.md](docs/pip-list.md) for more instructions.
-
 ### Build from source code
 
 If the above does not contain your desired wheel resource, or you want to try building from source code: 
