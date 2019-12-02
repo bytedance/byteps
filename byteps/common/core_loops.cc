@@ -205,6 +205,9 @@ inline void PostNcclCalls(
     nccl_root = BytePSGlobal::GetReduceRootByKey(key);
     num_elem_per_gpu = 0;
     left_elem = len / unit_len;
+    BPS_LOG(TRACE) << "Reduce key=" << key
+                   << " to root=" << nccl_root
+                   << " rank=" << BytePSGlobal::GetLocalRank();
   }
 
   BPS_CHECK(task->tensor_name != "");
@@ -408,12 +411,7 @@ bool RunCopyDevice2HostLoopOnce() {
 
     if (BytePSGlobal::IsUsingReduce()) {
       copy_offset = 0;
-      if (BytePSGlobal::GetReduceRootByKey(key) == BytePSGlobal::GetLocalRank()) {
-        copy_len = len;
-      }
-      else {
-        copy_len = 0;
-      }
+      copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ? len : 0;
     }
 
     if (copy_len) {
@@ -591,12 +589,7 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
 
   if (BytePSGlobal::IsUsingReduce()) {
     copy_offset = 0;
-    if (BytePSGlobal::GetReduceRootByKey(key) == BytePSGlobal::GetLocalRank()) {
-      copy_len = len;
-    }
-    else {
-      copy_len = 0;
-    }
+    copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ? len : 0;
   }
 
   if (copy_len) {

@@ -64,7 +64,7 @@ ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
 ReadyTable* BytePSGlobal::_copy_table;
-bool BytePSGlobal::_is_using_reduce;
+bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
@@ -203,13 +203,11 @@ void BytePSGlobal::Init() {
     BPS_LOG(DEBUG) << "Setting roots for reduce:" << roots_str;
     std::stringstream roots_ss(roots_str);
     for (int i; roots_ss >> i;) {
-        _reduce_roots.push_back(i);
-        if (roots_ss.peek() == ',')
-            roots_ss.ignore();
+      _reduce_roots.push_back(i);
+      if (roots_ss.peek() == ',') {
+        roots_ss.ignore();
+      }
     }
-  }
-  else {
-    _is_using_reduce = false;
   }
 
   // Create CUDA streams for GPU-CPU copies

@@ -173,7 +173,7 @@ class BytePSGlobal {
   // (key, ready_signal_count) pair, only valid for non-root device
   static ReadyTable* _copy_table;
 
-  // for reduec strategies
+  // for reduce strategies
   static bool _is_using_reduce;
   static std::vector<int> _reduce_roots;
 
