@@ -5,15 +5,13 @@ ENV BYTESCHEDULER_WITH_MXNET=1
 ENV BYTESCHEDULER_WITHOUT_PYTORCH=1
 ENV MXNET_ROOT=/root/incubator-mxnet
 
-ARG MXNET_VERSION=c6516cc133106f44e247f9ed45165226e3682b62
-
 WORKDIR /root/
 
 # Clone MXNet as ByteScheduler compilation requires header files
-RUN git clone --recursive https://github.com/apache/incubator-mxnet.git && \
-    cd incubator-mxnet && git reset --hard ${MXNET_VERSION}
+RUN git clone --recursive --branch v1.5.x https://github.com/apache/incubator-mxnet.git
 
 # Install ByteScheduler
+RUN pip install bayesian-optimization
 RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/byteps.git && \
     cd byteps/bytescheduler && python setup.py install
 
