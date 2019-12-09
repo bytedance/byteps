@@ -195,10 +195,10 @@ class ByteCore(object):
             def _start_callback(task, self):
                 with self._pending_lock:
                     self._pending.remove(task)
+                self._profiler.put(task.name, task.op + 'QUEUE', 'B')
                 with self._condition:
                     self._queue.put((task.priority, self._commands['DATA'], task))
                     self._condition.notify_all()
-                self._profiler.put(task.name, task.op + 'QUEUE', 'B')
                 self._logger.debug(
                     "{} has been posted into Core with priority {}".format(task.desc, task.priority))
 
