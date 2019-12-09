@@ -16,4 +16,4 @@ RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/by
     cd byteps/bytescheduler && python setup.py install
 
 # Examples
-WORKDIR /root/bytescheduler/examples/mxnet-image-classification
+WORKDIR /root/byteps/bytescheduler/examples/mxnet-image-classification
