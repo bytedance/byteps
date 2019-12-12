@@ -17,6 +17,7 @@
 #include <malloc.h>
 #include <numa.h>
 #include <unistd.h>
+#include <sstream>
 
 namespace byteps {
 namespace common {
@@ -62,8 +63,10 @@ ReadyTable* BytePSGlobal::_reduce_table;
 ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
-
 ReadyTable* BytePSGlobal::_copy_table;
+bool BytePSGlobal::_is_using_reduce = false;
+std::vector<int> BytePSGlobal::_reduce_roots;
+
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
@@ -189,6 +192,22 @@ void BytePSGlobal::Init() {
     _reduce_table = new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_REDUCE");
     _broadcast_table =
         new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_BROADCAST");
+  }
+
+  // Configure the reduce strategy
+  if (getenv("BYTEPS_REDUCE_ROOTS")) {
+    BPS_CHECK(!_is_cross_pcie_switch) <<
+      "BYTEPS_REDUCE_ROOTS cannot be used with BYTEPS_PCIE_SWITCH_SIZE.";
+    _is_using_reduce = true;
+    auto roots_str = std::string(getenv("BYTEPS_REDUCE_ROOTS"));
+    BPS_LOG(DEBUG) << "Setting roots for reduce:" << roots_str;
+    std::stringstream roots_ss(roots_str);
+    for (int i; roots_ss >> i;) {
+      _reduce_roots.push_back(i);
+      if (roots_ss.peek() == ',') {
+        roots_ss.ignore();
+      }
+    }
   }
 
   // Create CUDA streams for GPU-CPU copies
