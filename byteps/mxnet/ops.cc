@@ -28,7 +28,7 @@ namespace mxnet {
 namespace {
 
 std::atomic_int op_count;
-const auto MX_EXEC_CTX = Context::CPU();
+const auto MX_EXEC_CTX = Context();
 const auto MX_FUNC_PROP = FnProperty::kCPUPrioritized;
 
 // struct to hold parameters for pushpull with MXNet Engine

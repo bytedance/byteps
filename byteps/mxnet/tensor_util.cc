@@ -122,14 +122,14 @@ int TensorUtil::GetDevice(NDArray* tensor) {
 // If dev_id equal to CPU_DEVICE_ID, construct Tensor on CPU
 // Otherwise construct on GPU
 NDArray* TensorUtil::New(int device, int dtype) {
+  NDArrayHandle array;
+  int dev_type = gpu::kDevMask;
   if (device == CPU_DEVICE_ID) {
-    NDArray* my_array = new NDArray(TShape(), Context::CPU(0), false, dtype);
-    return my_array;
-  } else {
-    NDArray* my_array =
-        new NDArray(TShape(), Context::GPU(device), false, dtype);
-    return my_array;
+    dev_type = cpu::kDevMask;
+    device = 0;
   }
+  MXNDArrayCreateEx(nullptr, 0, dev_type, device, true, dtype, &array);
+  return static_cast<NDArray*>(array);
 }
 
 void TensorUtil::Free(NDArray* tensor) { delete tensor; }
