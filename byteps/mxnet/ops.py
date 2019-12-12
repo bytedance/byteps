@@ -76,5 +76,5 @@ def byteps_push_pull(tensor, version=0, priority=0, name=None, is_average=True):
     return
 
 
-def byteps_declare_tensor(tensor, name):
-    check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(tensor.handle, c_str(name)))
+def byteps_declare_tensor(name):
+    check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(c_str(name)))

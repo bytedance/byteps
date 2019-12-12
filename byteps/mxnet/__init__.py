@@ -48,22 +48,22 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor(grad[i], "gradient_" + str(index[i]))
+                byteps_declare_tensor("gradient_" + str(index[i]))
                 byteps_push_pull(grad[i], version=0, priority=-index[i],
                                  name="gradient_" + str(index[i]), is_average=True)
         else:
-            byteps_declare_tensor(grad, "gradient_" + str(index))
+            byteps_declare_tensor("gradient_" + str(index))
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
 
     def _do_push_pull_param(self, index, delta_weight):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor(delta_weight[i], "weight_" + str(index[i]))
+                byteps_declare_tensor("weight_" + str(index[i]))
                 byteps_push_pull(delta_weight[i], version=0, priority=-index[i],
                                  name="weight_" + str(index[i]), is_average=False)
         else:
-            byteps_declare_tensor(delta_weight, "weight_" + str(index))
+            byteps_declare_tensor("weight_" + str(index))
             byteps_push_pull(delta_weight, version=0, priority=-index,
                              name="weight_" + str(index), is_average=False)
 
@@ -116,7 +116,7 @@ def broadcast_parameters(params, root_rank=0):
 
         # Run tensor initilization
         for i in range(len(tensors)):
-            byteps_declare_tensor(tensors[i], "parameter_" + str(parameter_index))
+            byteps_declare_tensor("parameter_" + str(parameter_index))
             # Broadcast is implemented as push + pull in BytePS
             # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
             if rank() != root_rank:
@@ -169,19 +169,28 @@ class DistributedTrainer(mx.gluon.Trainer):
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
 
+        param_list = []
+        if isinstance(params, mx.gluon.ParameterDict):
+            for key in sorted(list(params.keys())):
+                param_list.append(params[key])
+
         super(DistributedTrainer, self).__init__(
-            params, optimizer, optimizer_params=optimizer_params, kvstore=None)
+            param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
         # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
         # function. Normalizing it by BytePS size, which is equivalent to performing
         # average in push_pull, has better performance.
         self._scale /= size()
         self.root_rank = root_rank
+        for i, param in enumerate(self._params):
+            byteps_declare_tensor("parameter_" + str(i))
+            if param.grad_req != 'null':
+                byteps_declare_tensor("gradient_" + str(i))
+
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
-                byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(i), priority=-i)
 
@@ -193,7 +202,6 @@ class DistributedTrainer(mx.gluon.Trainer):
             else:
                 param_arrays = param._check_and_get(param._data, list)
                 idx = self._param2idx[param.name]
-                byteps_declare_tensor(param_arrays[0], "parameter_" + str(idx))
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)

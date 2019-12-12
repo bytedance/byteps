@@ -21,10 +21,10 @@ import byteps.mxnet as bps
 import itertools
 import mxnet as mx
 import os
+import numpy as np
 import unittest
 from mxnet.base import MXNetError
 from mxnet.test_utils import same
-
 
 has_gpu = mx.context.num_gpus() > 0
 
@@ -47,6 +47,27 @@ class MXTest:
            types = [t for t in types if t in mlsl_supported_types]
         return types
 
+    def test_byteps_trainer_param_order(self):
+        bps.init()
+        size = bps.size()
+        dtypes = self.filter_supported_types(['float32'])
+        dims = [1]
+        ctx = self._current_context()
+        net = mx.gluon.nn.Sequential()
+        # layers may be added in a random order for all workers
+        layers = {'ones_': 1, 'zeros_': 0}
+        for name, init in layers.items():
+            net.add(mx.gluon.nn.Dense(10, in_units=10, weight_initializer=mx.init.Constant(init),
+                                      use_bias=False, prefix=name))
+        params = net.collect_params()
+        net.initialize()
+        trainer = bps.DistributedTrainer(params, 'sgd')
+        trainer._init_params()
+        # check the result of bps_broadcast
+        for name, init in layers.items():
+            weight = params[name + 'weight'].data()[0].asnumpy()
+            assert np.array_equal(weight, np.full(init, shape=weight.shape, dtype=weight.dtype))
+
     def test_byteps_push_pull(self):
         """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
         bps.init()
@@ -65,7 +86,7 @@ class MXTest:
             tensor = tensor.astype(dtype)
 
             print("tensor before push_pull:", tensor)
-            bps.byteps_declare_tensor(tensor, "tensor_" + str(count))
+            bps.byteps_declare_tensor("tensor_" + str(count))
             bps.byteps_push_pull(tensor, name="tensor_"+str(count))
             tensor.wait_to_read()
             print("tensor after push_pull:", tensor)
@@ -89,7 +110,7 @@ class MXTest:
                                           ctx=ctx)
             tensor = tensor.astype(dtype)
             multiplied = tensor * size
-            bps.byteps_declare_tensor(tensor, "tensor_" + str(count))
+            bps.byteps_declare_tensor("tensor_" + str(count))
             bps.byteps_push_pull(tensor, name= "tensor_" + str(count))
             max_difference = mx.nd.max(mx.nd.subtract(tensor, multiplied))
             count += 1
@@ -160,4 +181,6 @@ class MXTest:
 
 if __name__ == '__main__':
     mxtest = MXTest()
-    mxtest.test_byteps_push_pull()
+    #mxtest.test_byteps_push_pull()
+    #mxtest.test_byteps_broadcast()
+    mxtest.test_byteps_trainer_param_order()
