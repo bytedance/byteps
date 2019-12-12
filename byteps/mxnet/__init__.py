@@ -187,7 +187,11 @@ class DistributedTrainer(mx.gluon.Trainer):
 
     def _init_params(self):
         tensors = []
+        named_params = {}
         for param in self._params_to_init:
+            named_params[param.name] = param
+        for param_name in sorted(named_params.keys()):
+            param = named_params[param_name]
             if param._deferred_init:
                 tensors.append(param)
             else:
