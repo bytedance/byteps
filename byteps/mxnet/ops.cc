@@ -126,7 +126,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
   MX_API_END();
 }
 
-extern "C" void byteps_mxnet_declare_tensor(NDArray* tensor, char* name) {
+extern "C" void byteps_mxnet_declare_tensor(char* name) {
   std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
   return;

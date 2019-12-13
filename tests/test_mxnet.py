@@ -21,10 +21,10 @@ import byteps.mxnet as bps
 import itertools
 import mxnet as mx
 import os
+import numpy as np
 import unittest
 from mxnet.base import MXNetError
 from mxnet.test_utils import same
-
 
 has_gpu = mx.context.num_gpus() > 0
 
@@ -47,14 +47,36 @@ class MXTest:
            types = [t for t in types if t in mlsl_supported_types]
         return types
 
-    def test_byteps_push_pull(self):
-        """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
-        bps.init()
+    def test_byteps_trainer_param_order(self):
         size = bps.size()
         dtypes = self.filter_supported_types(['float32'])
         dims = [1]
         ctx = self._current_context()
-        count = 0
+        net = mx.gluon.nn.Sequential()
+        # layers may be added in a random order for all workers
+        layers = {'ones_': 1, 'zeros_': 0}
+        for name, init in layers.items():
+            net.add(mx.gluon.nn.Dense(10, in_units=10, weight_initializer=mx.init.Constant(init),
+                                      use_bias=False, prefix=name))
+        params = net.collect_params()
+        net.initialize()
+        trainer = bps.DistributedTrainer(params, 'sgd')
+        trainer._init_params()
+        # check the result of bps_broadcast
+        for name, init in layers.items():
+            weight = params[name + 'weight'].data()[0].asnumpy()
+            expected = np.full(shape=weight.shape, fill_value=init, dtype=weight.dtype)
+            assert np.array_equal(weight, expected), (weight, expected)
+
+        print('test_byteps_trainer_param_order passed')
+
+    def test_byteps_push_pull(self):
+        """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
+        size = bps.size()
+        dtypes = self.filter_supported_types(['float32'])
+        dims = [1]
+        ctx = self._current_context()
+        count = 100
         shapes = [(), (17)]
         for dtype, dim in itertools.product(dtypes, dims):
             # MXNet uses gpu_id as part of the seed, so to get identical seeds
@@ -65,23 +87,22 @@ class MXTest:
             tensor = tensor.astype(dtype)
 
             print("tensor before push_pull:", tensor)
-            bps.byteps_declare_tensor(tensor, "tensor_" + str(count))
+            bps.byteps_declare_tensor("tensor_" + str(count))
             bps.byteps_push_pull(tensor, name="tensor_"+str(count))
             tensor.wait_to_read()
             print("tensor after push_pull:", tensor)
 
-        bps.shutdown()
+        print('test_byteps_push_pull passed')
 
 
     def test_byteps_push_pull_inplace(self):
         """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
-        bps.init()
         size = bps.size()
         dtypes = self.filter_supported_types(['int32',   'int64',
                                               'float32', 'float64'])
         dims = [1, 2, 3]
         ctx = self._current_context()
-        count = 0
+        count = 200
         shapes = [(), (17), (17, 17), (17, 17, 17)]
         for dtype, dim in itertools.product(dtypes, dims):
             mx.random.seed(1234, ctx=ctx)
@@ -89,7 +110,7 @@ class MXTest:
                                           ctx=ctx)
             tensor = tensor.astype(dtype)
             multiplied = tensor * size
-            bps.byteps_declare_tensor(tensor, "tensor_" + str(count))
+            bps.byteps_declare_tensor("tensor_" + str(count))
             bps.byteps_push_pull(tensor, name= "tensor_" + str(count))
             max_difference = mx.nd.max(mx.nd.subtract(tensor, multiplied))
             count += 1
@@ -112,10 +133,11 @@ class MXTest:
             assert max_difference <= threshold, 'bps.byteps_push_pull produces \
                                                  incorrect results for self'
 
+        print('test_byteps_push_pull_inplace passed')
+
 
     def test_byteps_broadcast(self):
         """Test that the broadcast correctly broadcasts 1D, 2D, 3D tensors."""
-        bps.init()
         rank = bps.rank()
         size = bps.size()
 
@@ -127,7 +149,7 @@ class MXTest:
                   'float32', 'float64']
         dims = [1, 2, 3]
         ctx = self._current_context()
-        count = 0
+        count = 300
         shapes = [(), (17), (17, 17), (17, 17, 17)]
         root_ranks = list(range(size))
         for dtype, dim, root_rank in itertools.product(dtypes, dims,
@@ -160,4 +182,10 @@ class MXTest:
 
 if __name__ == '__main__':
     mxtest = MXTest()
+    bps.init()
     mxtest.test_byteps_push_pull()
+    mxtest.test_byteps_trainer_param_order()
+    #mxtest.test_byteps_broadcast()
+    #mxtest.test_byteps_push_pull_inplace()
+    # TODO: fix shutdown issue https://github.com/bytedance/byteps/issues/177
+    # bps.shutdown()
