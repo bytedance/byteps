@@ -188,10 +188,11 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << ", init the store buffer size=" << (size_t) req_data.lens[0];
       }
       // initialization
-      stored.tensor = (char*) malloc(len); 
+      PageAlignedMalloc((void**) &stored.tensor, len);
       stored.len = len;
       stored.dtype = type.dtype;
       CHECK(stored.tensor);
+
       bps_reducer_->copy(stored.tensor, recved, len); // we may not need this copy
       for (const auto& req : updates.request) {
         SendPushResponse(key, req, server);

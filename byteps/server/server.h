@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
+#include "../common/global.h"
 
 namespace byteps {
 namespace server {

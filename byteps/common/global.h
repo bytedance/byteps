@@ -24,6 +24,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <unistd.h>
 #include "common.h"
 #include "communicator.h"
 #include "cpu_reducer.h"
@@ -183,10 +184,12 @@ class BytePSGlobal {
   // for debug sampling
   static uint64_t _sample_key;
 
-  static int AlignTo(int input, int alignment) {
-    return input / alignment * alignment;
-  }
+  static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
   
+  static int _pagesize;
+  static int DivUp(int x, int y) { return (x + y - 1) / y; }
+  static int RoundUp(int x, int y) { return DivUp(x, y) * y; }
+
   // hash functions
   static std::string _hash_knob;
   static std::hash<std::string> _built_in_hash_fn;
@@ -195,6 +198,8 @@ class BytePSGlobal {
   static uint64_t Hash_BuiltIn(uint64_t key);
   static uint64_t Hash_DJB2(uint64_t key);
   static uint64_t Hash_SDBM(uint64_t key);
+
+  static void PageAlignedMalloc(void** ptr, size_t size);
 };
 
 }  // namespace common

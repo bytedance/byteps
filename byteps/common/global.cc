@@ -16,7 +16,6 @@
 #include "global.h"
 #include <malloc.h>
 #include <numa.h>
-#include <unistd.h>
 #include <sstream>
 
 namespace byteps {
@@ -45,6 +44,8 @@ int BytePSGlobal::_end_step = 20;
 std::string BytePSGlobal::_trace_dir;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
+
+int BytePSGlobal::_pagesize = 4096;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
@@ -112,17 +113,15 @@ void BytePSGlobal::Init() {
                     &_my_role);
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+  
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
   }
-  BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
-                 << ", aligned to "
-                 << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
-  // alignment for Reduce-Scatter/All-Gather
-  _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
+  _pagesize = sysconf(_SC_PAGESIZE);
+  _partition_bytes = RoundUp(_partition_bytes, _local_size * _pagesize);
+  BPS_LOG(DEBUG) << "Partition size round up to " << _partition_bytes << " (bytes)";
 
   BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-
   _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
   if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
@@ -522,6 +521,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
                    << _server_accumulated_len[server];
+
     ps::Key ps_key = krs[server].begin() + key;
     BPS_CHECK_LT(ps_key, krs[server].end());
     pskv.keys.push_back(ps_key);
@@ -530,6 +530,17 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   }
   BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0];
   return pskv;
+}
+
+void BytePSGlobal::PageAlignedMalloc(void** ptr, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p;
+  int size_aligned = ROUNDUP(size, page_size);
+  int ret = posix_memalign(&p, page_size, size_aligned);
+  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
+  CHECK(p);
+  memset(p, 0, size);
+  *ptr = p;
 }
 
 uint32_t BytePSGlobal::GetTensorCount() {
