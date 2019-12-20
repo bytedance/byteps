@@ -125,6 +125,8 @@ volatile bool enable_schedule_ = false;
 uint64_t debug_key_;
 std::mutex debug_mu_;
 
+int DivUp(int x, int y) { return (x + y - 1) / y; }
+int RoundUp(int x, int y) { return DivUp(x, y) * y; }
 
 uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
@@ -172,9 +174,6 @@ void PageAlignedMalloc(void** ptr, size_t size) {
   memset(p, 0, size);
   *ptr = p;
 }
-
-int DivUp(int x, int y) { return (x + y - 1) / y; }
-int RoundUp(int x, int y) { return DivUp(x, y) * y; }
 
 extern "C" void byteps_server();
 
