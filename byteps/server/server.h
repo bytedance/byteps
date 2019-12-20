@@ -172,6 +172,10 @@ void PageAlignedMalloc(void** ptr, size_t size) {
   memset(p, 0, size);
   *ptr = p;
 }
+
+int DivUp(int x, int y) { return (x + y - 1) / y; }
+int RoundUp(int x, int y) { return DivUp(x, y) * y; }
+
 extern "C" void byteps_server();
 
 }  // namespace server
