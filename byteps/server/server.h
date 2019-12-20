@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
-#include "../common/global.h"
 
 namespace byteps {
 namespace server {
@@ -162,6 +161,16 @@ size_t GetThreadID(uint64_t key, size_t len) {
   return hash_cache_[key];
 }
 
+void PageAlignedMalloc(void** ptr, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p;
+  int size_aligned = ROUNDUP(size, page_size);
+  int ret = posix_memalign(&p, page_size, size_aligned);
+  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
+  CHECK(p);
+  memset(p, 0, size);
+  *ptr = p;
+}
 extern "C" void byteps_server();
 
 }  // namespace server

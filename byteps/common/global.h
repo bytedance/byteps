@@ -199,7 +199,6 @@ class BytePSGlobal {
   static uint64_t Hash_DJB2(uint64_t key);
   static uint64_t Hash_SDBM(uint64_t key);
 
-  static void PageAlignedMalloc(void** ptr, size_t size);
 };
 
 }  // namespace common

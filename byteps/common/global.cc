@@ -532,17 +532,6 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   return pskv;
 }
 
-void BytePSGlobal::PageAlignedMalloc(void** ptr, size_t size) {
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  void* p;
-  int size_aligned = ROUNDUP(size, page_size);
-  int ret = posix_memalign(&p, page_size, size_aligned);
-  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
-  CHECK(p);
-  memset(p, 0, size);
-  *ptr = p;
-}
-
 uint32_t BytePSGlobal::GetTensorCount() {
   std::lock_guard<std::mutex> lock(_context_mutex);
   return BytePSGlobal::_name_to_cxt.size();
