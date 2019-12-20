@@ -167,7 +167,7 @@ size_t GetThreadID(uint64_t key, size_t len) {
 void PageAlignedMalloc(void** ptr, size_t size) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   void* p;
-  int size_aligned = ROUNDUP(size, page_size);
+  int size_aligned = RoundUp(size, page_size);
   int ret = posix_memalign(&p, page_size, size_aligned);
   CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
   CHECK(p);
