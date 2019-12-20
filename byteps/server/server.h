@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <unistd.h>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
 
