@@ -29,12 +29,10 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req, ps::KVServer<char>* s
   auto iterator = push_response_map_.find(key);
   if (iterator == push_response_map_.end()) { // new key
     ps::KVPairs<char> response;
-    response.keys.push_back(key);
     push_response_map_[key] = response; // add to the map
     server->Response(req, response);
   } else { // not new key, then reuse the memory address to avoid ibv_reg_mr on RDMA data path
     ps::KVPairs<char> *response = &iterator->second;
-    response->keys[0] = key;
     server->Response(req, *response);
   }
 }
