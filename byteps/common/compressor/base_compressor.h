@@ -21,6 +21,8 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "common.h"
+
 namespace byteps {
 namespace common {
 namespace compressor {
