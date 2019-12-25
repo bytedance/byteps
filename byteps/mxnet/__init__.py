@@ -203,7 +203,11 @@ class DistributedTrainer(mx.gluon.Trainer):
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
             if param.grad_req != 'null':
-                byteps_declare_tensor("gradient_" + str(i))
+                byteps_params = dict(
+                    filter(lambda attr: attr[0].startswith(
+                        "byteps_",), param.__dict__.items())
+                )
+                byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
 
     def _allreduce_grads(self):
