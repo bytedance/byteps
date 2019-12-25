@@ -49,7 +49,15 @@ void SendPullResponse(const DataHandleType type,
   std::lock_guard<std::mutex> lock(pullresp_mu_);
   auto stored = GetStore(key);
   CHECK(stored->tensor) << "init " << key << " first";
+  char* data = stored->tensor;
   auto len = stored->len;
+
+  auto& compressor = compressor_map_[key];
+  if (compressor) {
+    auto tensor = compressor->Compress({data, len, type.dtype});
+    data = tensor.data;
+    len = tensor.len;
+  }
 
   // send pull response
   auto iterator = pull_response_map_.find(key);
@@ -57,15 +65,16 @@ void SendPullResponse(const DataHandleType type,
     ps::KVPairs<char> response;
     response.keys = {EncodeKey(key)};
     response.lens = {len};
-    response.vals = ps::SArray<char>(stored->tensor, len, false); // zero copy
+    response.vals = ps::SArray<char>(data, len, false); // zero copy
     pull_response_map_[key] = response; // add to the map
     server->Response(req_meta, response);
   } else { // not new key, then reuse the memory address to avoid ibv_reg_mr on RDMA data path
     ps::KVPairs<char> *response = &iterator->second;
-    // keys and lens remain unchanged, just update vals
-    auto p = static_cast<char*>(stored->tensor);
+    
+    auto p = static_cast<char*>(data);
     CHECK(p);
-    response->vals = ps::SArray<char>(p, len, false);
+    response->lens = {len};
+    response->vals = ps::SArray<char>(p, len, false); 
     server->Response(req_meta, *response);
   }
 }
@@ -185,6 +194,15 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto stored = GetStore(key);
     auto len = (size_t) req_data.lens[0];
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
+
+    // do decompression
+    auto& compressor = compressor_map_[key];
+    if (compressor) {
+      auto tensor = compressor->Decompress({recved, len, type.dtype});
+      recved = tensor.data;
+      len = tensor.len;
+    }
+
     if (!stored->tensor) {
       if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
         update_buf_[key].merged.len = len;
