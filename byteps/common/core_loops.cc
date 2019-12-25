@@ -503,6 +503,13 @@ bool RunPushLoopOnce() {
       // get metadata
       const int dtype = task->tensor->dtype();
 
+      // do compression
+      if (task->compressor) {
+        auto tensor = task->compressor->Compress({data, len, dtype});
+        data = tensor.data;
+        len = tensor.len;
+      }
+
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals(data, len, false);
 
