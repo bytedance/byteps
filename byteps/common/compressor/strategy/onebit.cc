@@ -20,7 +20,7 @@ namespace common {
 namespace compress {
 
 CompressorRegistry::Register reg("onebit", [](const CompressorParam& param) {
-  return std::make_shared<BaseCompressor>(new OnebitCompressor());
+  return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
 });
 
 OnebitCompressor::OnebitCompressor() = default;

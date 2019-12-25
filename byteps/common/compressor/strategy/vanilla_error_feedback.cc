@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/multibit.h"
+#include "compressor/strategy/vanilla_error_feeback.h"
 
 #include "logging.h"
 
@@ -22,25 +22,30 @@ namespace common {
 namespace compress {
 
 CompressorRegistry::Register reg(
-    "multibit", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("k");
+    "vanilla_error_feedback",
+    [](const CompressorParam& param) -> CompressorPtr {
+      auto iter = param.find("compressor_type");
       if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Multibit Compressor needs parameter \"k\"";
+        BPS_LOG(FATAL) << "Vanilla Error-feedback Compressor needs parameter "
+                          "\"compressor_type\"";
         return nullptr;
       }
-      int k = std::stoi(iter->second);
-      return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
+      auto& registry = CompressorRegistry::instance();
+      auto compressor_ptr = registry.create(iter->second, param);
+      return std::unique_ptr<VanillaErrorFeedbackCompressor>(
+          new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
     });
 
-MultibitCompressor::MultibitCompressor(int k) : _k(k){};
+VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
+    std::unique_ptr<BaseCompressor> compressor_ptr)
+    : ErrorFeedback(std::move(compressor_ptr)) {}
 
-MultibitCompressor::~MultibitCompressor() = default;
-
-TensorType MultibitCompressor::Compress(const TensorType& grad) {
+TensorType VanillaErrorFeedbackCompressor::UpdateGradient(
+    const TensorType& grad) {
   // TODO
 }
 
-TensorType MultibitCompressor::Decompress(const TensorType& compressed_grad) {
+void VanillaErrorFeedbackCompressor::UpdateError(const TensorType& grad) {
   // TODO
 }
 }
