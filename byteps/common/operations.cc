@@ -324,10 +324,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   // Init Compressor buffer
   if (context.compressor) {
-    context.compressor->AllocateBuffer(size);
-    BPS_LOG(INFO) << "context.compressor is NOT nullptr. name=" << context.tensor_name;
-  } else {
-    BPS_LOG(INFO) << "context.compressor is nullptr. name=" << context.tensor_name;
+    context.compressor->InitBuff(size);
   }
 
   // Init tensors with BytePS server
