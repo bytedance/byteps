@@ -320,6 +320,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
+  // Init Compressor buffer
+  if (context.compressor) {
+    context.compressor->InitBuff(size);
+  }
+
   // Init tensors with BytePS server
   char *data = const_cast<char *>(static_cast<const char *>(context.cpubuff));
   accumulated = 0;
