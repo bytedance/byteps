@@ -20,7 +20,7 @@
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 /**
  *  \brief Error feedback Decorator

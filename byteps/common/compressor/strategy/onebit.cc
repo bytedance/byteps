@@ -17,7 +17,7 @@
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 CompressorRegistry::Register reg("onebit", [](const CompressorParam& param) {
   return std::unique_ptr<BaseCompressor>(new OnebitCompressor());

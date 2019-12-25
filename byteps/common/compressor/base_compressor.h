@@ -22,7 +22,7 @@
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 struct TensorType {
   char* data;

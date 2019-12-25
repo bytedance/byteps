@@ -19,13 +19,13 @@
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 CompressorRegistry::Register reg(
     "topk", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("k");
+      auto iter = param.find("compressor_k");
       if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Topk Compressor needs parameter \"k\"";
+        BPS_LOG(FATAL) << "Topk Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
       int k = std::stoi(iter->second);
