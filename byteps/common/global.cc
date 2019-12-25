@@ -404,6 +404,32 @@ void BytePSGlobal::ReDeclareTensor() {
   }
 }
 
+void BytePSGlobal::RegisterCompressor(const std::string& name,
+                                      CompressorParam& param_dict) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
+      << name << " is not initialized";
+  
+  auto& registry = compressor::CompressorRegistry::instance();
+  compressor::CompressorPtr compressor_ptr;
+
+  auto iter = param_dict.find("error_feedback_type");
+  if (iter != param_dict.end()) {
+    compressor_ptr =
+        registry.create(iter->second + "_error_feedback", param_dict);
+  } else {
+    iter = param_dict.find("compressor_type");
+    if (iter != param_dict.end()) {
+      compressor_ptr = registry.create(iter->second, param_dict);
+    } else {
+      BPS_LOG(WARNING)
+          << "You may pass wrong parameters for gradient compression";
+    }
+  }
+
+  _name_to_cxt[name].compressor = std::move(compressor_ptr);
+}
+
 // Append for communication traces
 void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
   if (_is_trace == 1) {

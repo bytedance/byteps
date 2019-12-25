@@ -352,6 +352,10 @@ bool IsTensorDeclared(const std::string &name) {
   return BytePSGlobal::IsTensorDeclared(name);
 }
 
+void RegisterCompressor(const std::string &name, CompressorParam& param_dict) {
+  return BytePSGlobal::RegisterCompressor(name, param_dict);
+}
+
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 

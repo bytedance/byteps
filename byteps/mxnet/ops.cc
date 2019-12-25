@@ -130,9 +130,25 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
   MX_API_END();
 }
 
-extern "C" void byteps_mxnet_declare_tensor(char* name) {
+extern "C" void byteps_mxnet_declare_tensor(char* name, int num_params,
+                                            char** param_keys,
+                                            char** param_vals) {
   std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
+
+  std::unordered_map<std::string, std::string> param_dict;
+  std::string key, val;
+  std::string::size_type pos;
+  for (int i = 0; i < num_params; ++i) {
+    key = param_keys[i];
+    val = param_vals[i];
+    param_dict[key] = val;
+  }
+
+  if (num_params > 0) {
+    common::RegisterCompressor(tensor_name, param_dict);
+  } 
+  
   return;
 }
 

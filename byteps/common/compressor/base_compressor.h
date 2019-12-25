@@ -20,6 +20,8 @@
 #include <memory>
 #include <unordered_map>
 
+#include "common.h"
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -29,8 +31,6 @@ struct TensorType {
   size_t len;
   int dtype;
 };
-
-using CompressorParam = std::unordered_map<std::string, std::string>;
 
 /**
  *  \brief Compressor interface used in BytePS core.

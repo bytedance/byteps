@@ -101,6 +101,8 @@ const std::vector<std::string> LogStrings = {
     "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
     "COORDINATE_BROADCAST", "BROADCAST"};
 
+using CompressorParam = std::unordered_map<std::string, std::string>;
+
 class Status {
  public:
   Status();
@@ -237,6 +239,8 @@ struct TensorTableEntry {
   std::shared_ptr<std::atomic_int> counter_ptr;
   // How many partitions
   unsigned int total_partnum = 0;
+  // Compressor
+  std::shared_ptr<compressor::BaseCompressor> compressor;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 
