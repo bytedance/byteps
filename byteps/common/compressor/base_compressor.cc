@@ -54,8 +54,6 @@ CompressorPtr CompressorRegistry::create(std::string name,
 
 BaseCompressor::BaseCompressor() = default;
 
-BaseCompressor::BaseCompressor(const CompressorParam& param) {}
-
 BaseCompressor::~BaseCompressor() {
   if (_compress_buff) delete[] _compress_buff;
 }

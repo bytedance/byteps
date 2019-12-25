@@ -38,7 +38,6 @@ using CompressorParam = std::unordered_map<std::string, std::string>;
 class BaseCompressor {
  public:
   BaseCompressor();
-  explicit BaseCompressor(const CompressorParam& param);
   virtual ~BaseCompressor();
 
   /**
