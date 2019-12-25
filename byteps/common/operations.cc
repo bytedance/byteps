@@ -152,6 +152,7 @@ void PartitionTensor(
     e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
+    e->compressor = entry->compressor;
 
     accumulated += e->len;
     ++i;
@@ -201,6 +202,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->queue_list = *queue_list;
   e->counter_ptr = std::make_shared<std::atomic_int>(0);
   e->total_partnum = context.key_list.size();
+  e->compressor = context.compressor;
 
   std::vector<std::shared_ptr<TensorTableEntry>> partitions;
   PartitionTensor(e, partitions);
