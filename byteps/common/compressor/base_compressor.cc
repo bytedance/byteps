@@ -19,7 +19,7 @@
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 CompressorRegistry& CompressorRegistry::instance() {
   static CompressorRegistry registry;

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-ß
+
 #include "compressor/error_feedback.h"
 
 namespace byteps {
 namespace common {
-namespace compress {
+namespace compressor {
 
 ErrorFeedback::ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr)
     : _compressor_ptr(std::move(compressor_ptr)) {}
