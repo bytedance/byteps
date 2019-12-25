@@ -13,36 +13,31 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/multibit.h"
+#ifndef BYTEPS_COMPRESS_VANILLA_EF_H
+#define BYTEPS_COMPRESS_VANILLA_EF_H
 
-#include "logging.h"
+#include "compressor/error_feedback.h"
 
 namespace byteps {
 namespace common {
 namespace compress {
 
-CompressorRegistry::Register reg(
-    "multibit", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("k");
-      if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Multibit Compressor needs parameter \"k\"";
-        return nullptr;
-      }
-      int k = std::stoi(iter->second);
-      return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
-    });
+/**
+ * \brief TODO
+ */
+class VanillaErrorFeedbackCompressor : public ErrorFeedback {
+ public:
+  explicit VanillaErrorFeedbackCompressor(
+      std::unique_ptr<BaseCompressor> compressor_ptr);
+  ~VanillaErrorFeedbackCompressor();
 
-MultibitCompressor::MultibitCompressor(int k) : _k(k){};
+ protected:
+  TensorType UpdateGradient(const TensorType& grad) override;
 
-MultibitCompressor::~MultibitCompressor() = default;
+  void UpdateError(const TensorType& grad) override;
+};
+}
+}
+}
 
-TensorType MultibitCompressor::Compress(const TensorType& grad) {
-  // TODO
-}
-
-TensorType MultibitCompressor::Decompress(const TensorType& compressed_grad) {
-  // TODO
-}
-}
-}
-}
+#endif  // BYTEPS_COMPRESS_VANILLA_EF_H

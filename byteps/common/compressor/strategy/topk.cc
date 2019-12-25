@@ -29,7 +29,7 @@ CompressorRegistry::Register reg(
         return nullptr;
       }
       int k = std::stoi(iter->second);
-      return std::make_shared<BaseCompressor>(new TopkCompressor(k));
+      return std::unique_ptr<BaseCompressor>(new TopkCompressor(k));
     });
 
 TopkCompressor::TopkCompressor(int k) : _k(k){};

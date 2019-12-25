@@ -39,7 +39,7 @@ class ErrorFeedback : public BaseCompressor {
 
   /**
    * \brief compress with error feedback
-   * 
+   *
    *  invoke `UpdateGradient` and `UpdateError` before and after
    *  `_compressor_ptr->Compress(*)`
    */

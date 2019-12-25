@@ -67,7 +67,7 @@ class BaseCompressor {
   char* _compress_buff;
 };
 
-using CompressorPtr = std::shared_ptr<BaseCompressor>;
+using CompressorPtr = std::unique_ptr<BaseCompressor>;
 
 class CompressorRegistry {
  public:
