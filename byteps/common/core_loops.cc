@@ -522,7 +522,7 @@ bool RunPushLoopOnce() {
       BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
       FinishOrProceed(task);
     }
-  } else {
+  } else { 
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
   return true;
@@ -620,6 +620,15 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     auto key = task->key;
     int local_rank = BytePSGlobal::GetLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
+
+    // do decompression
+    if (task->compressor) {
+      char* data =
+        const_cast<char *>(static_cast<const char *>(task->cpubuff) + task->offset);
+      auto tensor = task->compressor->Decompress({data, task->len, task->tensor->dtype()});
+      task->cpubuff = tensor.data;
+      task->len = tensor.len;
+    }
 
     if (local_size > 1) {
       // notify non-root devices
