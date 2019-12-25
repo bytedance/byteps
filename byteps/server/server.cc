@@ -25,6 +25,11 @@ using namespace ps;
 std::vector<PriorityQueue*> engine_queues_;
 std::vector<std::thread *> engine_threads_;
 
+BytePSArray* GetStore(uint64_t key) {
+  std::lock_guard<std::mutex> lock(store_mu_);
+  return &store_[key];
+}
+
 void SendPushResponse(uint64_t key, const ps::KVMeta& req, ps::KVServer<char>* server){
   auto iterator = push_response_map_.find(key);
   if (iterator == push_response_map_.end()) { // new key
@@ -42,23 +47,23 @@ void SendPullResponse(const DataHandleType type,
                       const ps::KVMeta& req_meta,
                       ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
-  auto& stored = store_[key];
-  CHECK(stored.tensor) << "init " << key << " first";
-  // as server returns when store_realt is ready in this case
-  auto len = stored.len;
+  auto stored = GetStore(key);
+  CHECK(stored->tensor) << "init " << key << " first";
+  auto len = stored->len;
+
   // send pull response
   auto iterator = pull_response_map_.find(key);
   if (iterator == pull_response_map_.end()) { // new key
     ps::KVPairs<char> response;
     response.keys = {EncodeKey(key)};
     response.lens = {len};
-    response.vals = ps::SArray<char>(stored.tensor, len, false); // zero copy
+    response.vals = ps::SArray<char>(stored->tensor, len, false); // zero copy
     pull_response_map_[key] = response; // add to the map
     server->Response(req_meta, response);
   } else { // not new key, then reuse the memory address to avoid ibv_reg_mr on RDMA data path
     ps::KVPairs<char> *response = &iterator->second;
     // keys and lens remain unchanged, just update vals
-    auto p = static_cast<char*>(stored.tensor);
+    auto p = static_cast<char*>(stored->tensor);
     CHECK(p);
     response->vals = ps::SArray<char>(p, len, false); 
     server->Response(req_meta, *response);
@@ -167,10 +172,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   if (req_meta.push) { // push request
     CHECK_EQ(req_data.lens.size(), (size_t)1);
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
-    auto& stored = store_[key];
+    auto stored = GetStore(key);
     auto len = (size_t) req_data.lens[0];
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
-    if (!stored.tensor) {
+    if (!stored->tensor) {
       if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
         update_buf_[key].merged.len = len;
         update_buf_[key].merged.dtype = type.dtype;
@@ -186,12 +191,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << ", init the store buffer size=" << (size_t) req_data.lens[0];
       }
       // initialization
-      PageAlignedMalloc((void**) &stored.tensor, len);
-      stored.len = len;
-      stored.dtype = type.dtype;
-      CHECK(stored.tensor);
+      PageAlignedMalloc((void**) &stored->tensor, len);
+      stored->len = len;
+      stored->dtype = type.dtype;
+      CHECK(stored->tensor);
 
-      bps_reducer_->copy(stored.tensor, recved, len); // we may not need this copy
+      bps_reducer_->copy(stored->tensor, recved, len); // we may not need this copy
       for (const auto& req : updates.request) {
         SendPushResponse(key, req, server);
       }
@@ -207,7 +212,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
             if (debug_mode_ && (debug_key_ == key)) {
               std::lock_guard<std::mutex> lock(debug_mu_);  
               LOG(INFO) << "stage: FIRST_WORKER_RECV \t" 
-                        << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored.tensor) << "\t"
+                        << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
                         << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
                         << "len: " << len << "\t"
                         << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
@@ -218,12 +223,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           }
         } else { // async mode, directly add to the buffer
           if (is_engine_blocking_) {
-            CHECK_GE(bps_reducer_->sum((void *) stored.tensor, 
+            CHECK_GE(bps_reducer_->sum((void *) stored->tensor, 
                                       (void *) recved, 
                                       len, 
-                                      bps_reducer_->GetDataType(stored.dtype)), 0);
+                                      bps_reducer_->GetDataType(stored->dtype)), 0);
           } else {
-            BytePSEngineMessage msg = {timestamp_++, type, key, stored.tensor, recved, len, SUM_RECV, req_data};
+            BytePSEngineMessage msg = {timestamp_++, type, key, stored->tensor, recved, len, SUM_RECV, req_data};
             engine_queues_[tid]->Push(msg);
           }
         }
@@ -239,7 +244,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           if (debug_mode_ && (debug_key_ == key)) {
             std::lock_guard<std::mutex> lock(debug_mu_);
             LOG(INFO) << "stage: OTHER_WORKER_SUM \t" 
-                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored.tensor) << "\t"
+                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
                       << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                       << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
                       << "len: " << len << "\t"
@@ -253,19 +258,19 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       updates.request.push_back(req_meta);
       SendPushResponse(key, req_meta, server);
       if (sync_mode_ && updates.request.size() == (size_t) ps::NumWorkers()) {
-        auto& stored = store_[key];
+        auto stored = GetStore(key);
         auto& update = updates.merged;
         if (is_engine_blocking_) {
-          bps_reducer_->copy(stored.tensor, updates.merged.tensor, len);
+          bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
         } else {
           if (debug_mode_ && (debug_key_ == key)) {
             std::lock_guard<std::mutex> lock(debug_mu_);
             LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t" 
-                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored.tensor) << "\t"
+                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
                       << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                       << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
           }
-          BytePSEngineMessage msg = {timestamp_++, type, key, stored.tensor, update.tensor, len, COPY_MERGED};
+          BytePSEngineMessage msg = {timestamp_++, type, key, stored->tensor, update.tensor, len, COPY_MERGED};
           engine_queues_[tid]->Push(msg);
           engine_queues_[tid]->ClearCounter(key);
         }
@@ -277,9 +282,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       }
     }
   } else { // pull request
-    auto& stored = store_[key];
-    CHECK(stored.tensor) << "Processing pull request when the NDArray of key " 
-               << key << " has not been inited yet, which is not expected.";
+    auto stored = GetStore(key);
+    CHECK(stored->tensor) << "Should init the buffer for key=" << key << " first";
     if (is_engine_blocking_) {
       SendPullResponse(type, key, req_meta, server);
     } else {

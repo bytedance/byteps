@@ -91,7 +91,7 @@ static DataHandleType DepairDataHandleType(int cmd) {
 
 KVServer<SERVER_DATA_TYPE>* byteps_server_;
 byteps::common::CpuReducer* bps_reducer_;
-std::unordered_map<SERVER_KEY_TYPE, KVPairs<SERVER_DATA_TYPE> > mem_map_;
+
 std::mutex pullresp_mu_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
@@ -102,10 +102,13 @@ std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
 std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
 std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 
-// address map 
+// byteps handler
 std::mutex handle_mu_;
-std::unordered_map<uint64_t, BytePSArray> store_; 
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
+
+// address map 
+std::mutex store_mu_;
+std::unordered_map<uint64_t, BytePSArray> store_; 
 
 // hash function
 std::mutex hash_mu_;
