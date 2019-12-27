@@ -206,21 +206,17 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       auto tid = GetThreadID(key, len);
       if (updates.request.empty()) { // from the first incoming worker
         if (sync_mode_) {
-          if (is_engine_blocking_) {
-            bps_reducer_->copy(updates.merged.tensor, recved, len);
-          } else { // non-blocking
-            if (debug_mode_ && (debug_key_ == key)) {
-              std::lock_guard<std::mutex> lock(debug_mu_);  
-              LOG(INFO) << "stage: FIRST_WORKER_RECV \t" 
-                        << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
-                        << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
-                        << "len: " << len << "\t"
-                        << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
-            }
-            // zero copy
-            updates.merged.tensor = recved;
-            updates.merged.tmp_sarray = req_data;
+          if (debug_mode_ && (debug_key_ == key)) {
+            std::lock_guard<std::mutex> lock(debug_mu_);  
+            LOG(INFO) << "stage: FIRST_WORKER_RECV \t" 
+                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
+                      << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
+                      << "len: " << len << "\t"
+                      << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
+          // zero copy
+          updates.merged.tensor = recved;
+          updates.merged.tmp_sarray = req_data;
         } else { // async mode, directly add to the buffer
           if (is_engine_blocking_) {
             CHECK_GE(bps_reducer_->sum((void *) stored->tensor, 
@@ -235,21 +231,21 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       } else { // from other workers
         CHECK(sync_mode_); 
         CHECK(updates.merged.tensor);
+        if (debug_mode_ && (debug_key_ == key)) {
+          std::lock_guard<std::mutex> lock(debug_mu_);
+          LOG(INFO) << "stage: OTHER_WORKER_SUM \t" 
+                    << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
+                    << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
+                    << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
+                    << "len: " << len << "\t"
+                    << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
+        }
         if (is_engine_blocking_) {
           CHECK_GE(bps_reducer_->sum((void *) updates.merged.tensor, 
                                     (void *) recved, 
                                     len, 
                                     bps_reducer_->GetDataType(updates.merged.dtype)), 0);
         } else { // non-blocking
-          if (debug_mode_ && (debug_key_ == key)) {
-            std::lock_guard<std::mutex> lock(debug_mu_);
-            LOG(INFO) << "stage: OTHER_WORKER_SUM \t" 
-                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
-                      << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
-                      << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
-                      << "len: " << len << "\t"
-                      << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
-          }
           BytePSEngineMessage msg = {timestamp_++, type, key, updates.merged.tensor, recved, len, SUM_RECV, req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }
@@ -260,16 +256,16 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       if (sync_mode_ && updates.request.size() == (size_t) ps::NumWorkers()) {
         auto stored = GetStore(key);
         auto& update = updates.merged;
+        if (debug_mode_ && (debug_key_ == key)) {
+          std::lock_guard<std::mutex> lock(debug_mu_);
+          LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t" 
+                    << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
+                    << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
+                    << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
+        }
         if (is_engine_blocking_) {
           bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
         } else {
-          if (debug_mode_ && (debug_key_ == key)) {
-            std::lock_guard<std::mutex> lock(debug_mu_);
-            LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t" 
-                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor) << "\t"
-                      << "merged: " << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
-                      << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
-          }
           BytePSEngineMessage msg = {timestamp_++, type, key, stored->tensor, update.tensor, len, COPY_MERGED};
           engine_queues_[tid]->Push(msg);
           engine_queues_[tid]->ClearCounter(key);
