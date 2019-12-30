@@ -35,7 +35,7 @@ class ErrorFeedback : public BaseCompressor {
   /*!
    * \brief initiaze `_compressor_ptr` buffer first
    */
-  void InitBuff(size_t len) override;
+  void InitBuff(size_t len) final;
 
   /*!
    * \brief compress with error feedback
@@ -43,12 +43,12 @@ class ErrorFeedback : public BaseCompressor {
    *  invoke `UpdateGradient` and `UpdateError` before and after
    *  `_compressor_ptr->Compress(*)`
    */
-  TensorType Compress(const TensorType& grad);
+  TensorType Compress(const TensorType& grad) final;
 
   /*!
    * \brief directly forward to `_compressor_ptr->Decompress(*)`
    */
-  TensorType Decompress(const TensorType& compressed_grad);
+  TensorType Decompress(const TensorType& compressed_grad) final;
 
  protected:
   /*!
