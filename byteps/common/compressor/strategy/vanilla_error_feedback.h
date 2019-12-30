@@ -29,7 +29,7 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  public:
   explicit VanillaErrorFeedbackCompressor(
       std::unique_ptr<BaseCompressor> compressor_ptr);
-  virtual ~VanillaErrorFeedbackCompressor();
+  ~VanillaErrorFeedbackCompressor();
 
  protected:
   ByteBuf UpdateGradient(const ByteBuf& grad) override;
