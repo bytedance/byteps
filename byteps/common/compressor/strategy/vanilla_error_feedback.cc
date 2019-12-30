@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/vanilla_error_feeback.h"
+#include "compressor/strategy/vanilla_error_feedback.h"
 
 #include "logging.h"
 

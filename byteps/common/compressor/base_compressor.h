@@ -32,7 +32,7 @@ struct TensorType {
   int dtype;
 };
 
-/**
+/*!
  *  \brief Compressor interface used in BytePS core.
  */
 class BaseCompressor {
@@ -40,20 +40,20 @@ class BaseCompressor {
   BaseCompressor();
   virtual ~BaseCompressor();
 
-  /**
+  /*!
    * \brief allocate buffer for compression process.
    * \param len the size of buffer (bytes)
    */
   virtual void InitBuff(size_t len);
 
-  /**
+  /*!
    * \brief Compress function, which must be overrided by children
    * \param grad the original gradient to be compressed
    * \return compressed gradient
    */
   virtual TensorType Compress(const TensorType& grad) = 0;
 
-  /**
+  /*!
    * \brief Decompress funciton, which must be overrided by children
    * \param compressed_grad compressed gradient to be decompressed
    * \return decompressed gradient
@@ -61,7 +61,7 @@ class BaseCompressor {
   virtual TensorType Decompress(const TensorType& compressed_grad) = 0;
 
  private:
-  /**
+  /*!
    * \brief buffer for compression process
    */
   char* _compress_buff;
