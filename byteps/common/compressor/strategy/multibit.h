@@ -22,7 +22,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-/**
+/*!
  * \brief TODO
  */
 class MultibitCompressor : public BaseCompressor {

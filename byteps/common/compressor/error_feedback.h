@@ -22,7 +22,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-/**
+/*!
  *  \brief Error feedback Decorator
  *
  *  extend error feedback behavior to any compressor at run-time
@@ -32,12 +32,12 @@ class ErrorFeedback : public BaseCompressor {
   explicit ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr);
   ~ErrorFeedback();
 
-  /**
+  /*!
    * \brief initiaze `_compressor_ptr` buffer first
    */
   void InitBuff(size_t len) override;
 
-  /**
+  /*!
    * \brief compress with error feedback
    *
    *  invoke `UpdateGradient` and `UpdateError` before and after
@@ -45,13 +45,13 @@ class ErrorFeedback : public BaseCompressor {
    */
   TensorType Compress(const TensorType& grad);
 
-  /**
+  /*!
    * \brief directly forward to `_compressor_ptr->Decompress(*)`
    */
   TensorType Decompress(const TensorType& compressed_grad);
 
  protected:
-  /**
+  /*!
    * \brief correct gradient with error
    *
    * grad += error
@@ -61,7 +61,7 @@ class ErrorFeedback : public BaseCompressor {
    */
   virtual TensorType UpdateGradient(const TensorType& grad) = 0;
 
-  /**
+  /*!
    * \brief update error
    *
    * error = grad - decompress(compressed_corrected_grad)
@@ -71,7 +71,7 @@ class ErrorFeedback : public BaseCompressor {
   virtual void UpdateError(const TensorType& grad) = 0;
 
  private:
-  /**
+  /*!
    * \brief compressor to be extended
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
