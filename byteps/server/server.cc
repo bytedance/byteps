@@ -104,19 +104,29 @@ void BytePSServerEngineThread(int i) {
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
           is_push_finished_[i][msg.key] = false;
           pull_cnt_[i][msg.key] = 0;
+          seen_sender_[i][msg.key].clear();
         }
         is_push_finished_[i][msg.key] = true;
-        for (auto& req_meta : q_pull_reqmeta_[i][msg.key]) {
-          SendPullResponse(msg.type, msg.key, req_meta, byteps_server_); 
-          pull_cnt_[i][msg.key] += 1;
+        
+        auto it = q_pull_reqmeta_[i][msg.key].begin();
+        while (it != q_pull_reqmeta_[i][msg.key].end()) {
+          if (seen_sender_[i][msg.key].find(it->sender) == seen_sender_[i][msg.key].end()) {
+            SendPullResponse(msg.type, msg.key, *it, byteps_server_); 
+            pull_cnt_[i][msg.key] += 1;
+            seen_sender_[i][msg.key].insert(it->sender);
+            it = q_pull_reqmeta_[i][msg.key].erase(it);
+          } else {
+            ++it;
+          }
           if (pull_cnt_[i][msg.key] == (size_t) ps::NumWorkers()) {
             is_push_finished_[i][msg.key] = false;
             pull_cnt_[i][msg.key] = 0;
+            seen_sender_[i][msg.key].clear();
+            break;
           }
         }
-        q_pull_reqmeta_[i][msg.key].clear();
-        break;
-      }
+      } break;
+
       case SUM_RECV: {
         auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
         if (is_debug) {
@@ -139,9 +149,9 @@ void BytePSServerEngineThread(int i) {
                     << "dst_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.dst) << "\t"
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src) << "\t";
         }
-        break;
-      }
-      default:
+      } break;
+
+      default: 
         CHECK(0);
     }
   }
@@ -288,20 +298,26 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
         is_push_finished_[tid][key] = false;
         pull_cnt_[tid][key] = 0;
+        seen_sender_[tid][key].clear();
       }
-      if (is_push_finished_[tid][key]) { // push already finished
+
+      auto it = seen_sender_[tid][key].find(req_meta.sender);
+      if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) { 
+        // push already finished && not send the associated pull response yet
         SendPullResponse(type, key, req_meta, server); 
         pull_cnt_[tid][key] += 1;
+        seen_sender_[tid][key].insert(req_meta.sender);
+
         if (pull_cnt_[tid][key] == (size_t) ps::NumWorkers()) {
           is_push_finished_[tid][key] = false;
           pull_cnt_[tid][key] = 0;
-          // check: remain should be 0
-          auto remain = q_pull_reqmeta_[tid][key].size();
-          CHECK_EQ(remain, 0) << remain;
+          seen_sender_[tid][key].clear();
         }
-      } else { // push not finished, put into the queue, and wait for the engine 
+      } else { 
+        // push not finished, put into the queue, and wait for the engine 
         q_pull_reqmeta_[tid][key].push_back(req_meta);
       }
+
     }
   }
 }
@@ -345,10 +361,12 @@ extern "C" void byteps_server() {
   std::vector<std::mutex> tmp_flagmu(engine_thread_num_);
   std::vector<std::unordered_map<uint64_t, bool> > tmp_ispushfinished(engine_thread_num_);
   std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > tmp_qpullreqmeta(engine_thread_num_);
+  std::vector<std::unordered_map<uint64_t, std::set<int> > > tmp_seensender(engine_thread_num_);
   std::vector<std::unordered_map<uint64_t, size_t> > tmp_pullcnt(engine_thread_num_);
   flag_mu_.swap(tmp_flagmu);
   is_push_finished_.swap(tmp_ispushfinished);
   q_pull_reqmeta_.swap(tmp_qpullreqmeta);
+  seen_sender_.swap(tmp_seensender);
   pull_cnt_.swap(tmp_pullcnt);
   CHECK_EQ(flag_mu_.size(), engine_thread_num_);
   CHECK_EQ(is_push_finished_.size(), engine_thread_num_);

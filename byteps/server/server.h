@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <set>
 #include <unistd.h>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
@@ -100,6 +101,7 @@ std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
 std::vector<std::mutex> flag_mu_; 
 std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
 std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
+std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
 std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 
 // byteps handler
