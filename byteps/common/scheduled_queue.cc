@@ -29,10 +29,10 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
   }
 
   size_t credit_in_partition = BytePSGlobal::GetNccl()->GetGroupSize() + 1;
-  if (getenv("BYTEPS_SCHEDULING_CREDIT")) {
-    credit_in_partition = atoi(getenv("BYTEPS_SCHEDULING_CREDIT"));
-  }
-  if (!credit_in_partition) {
+
+  auto byteps_scheduling_credit = getenv("BYTEPS_SCHEDULING_CREDIT");
+  credit_in_partition = byteps_scheduling_credit ? atoi(byteps_scheduling_credit) : 0;
+  if (!credit_in_partition) { // disable scheduling by default
     _is_scheduled = false;
   }
 
