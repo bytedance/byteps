@@ -69,25 +69,25 @@ class BaseCompressor {
 
 using CompressorPtr = std::unique_ptr<BaseCompressor>;
 
-class CompressorRegistry {
+class CompressorFactory {
  public:
-  CompressorRegistry();
-  ~CompressorRegistry();
+  CompressorFactory();
+  ~CompressorFactory();
 
-  using CompressorFactory =
+  using CreateFunc =
       std::function<CompressorPtr(const CompressorParam& param)>;
-  using map_t = std::unordered_map<std::string, CompressorFactory>;
+  using map_t = std::unordered_map<std::string, CreateFunc>;
 
   struct Register {
-    explicit Register(std::string name, CompressorFactory factory);
+    explicit Register(std::string name, CreateFunc create_func);
   };
 
   CompressorPtr create(std::string name, const CompressorParam& param) const;
 
-  static CompressorRegistry& instance();
+  static CompressorFactory& instance();
 
  private:
-  map_t _compressors;
+  map_t _create_funcs;
 };
 }
 }

@@ -21,7 +21,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-CompressorRegistry::Register reg(
+CompressorFactory::Register reg(
     "randomk", [](const CompressorParam& param) -> CompressorPtr {
       auto iter = param.find("compressor_k");
       if (iter == param.end()) {

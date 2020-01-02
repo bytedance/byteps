@@ -21,7 +21,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-CompressorRegistry::Register reg(
+CompressorFactory::Register reg(
     "vanilla_error_feedback",
     [](const CompressorParam& param) -> CompressorPtr {
       auto iter = param.find("compressor_type");
@@ -30,7 +30,7 @@ CompressorRegistry::Register reg(
                           "\"compressor_type\"";
         return nullptr;
       }
-      auto& registry = CompressorRegistry::instance();
+      auto& registry = CompressorFactory::instance();
       auto compressor_ptr = registry.create(iter->second, param);
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
