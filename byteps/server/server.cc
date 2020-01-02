@@ -200,7 +200,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << " requests for key=" << key
                   << ", init the store buffer size=" << (size_t) req_data.lens[0];
       }
-      // initialization
+      // init stored buffer, use page aligned memory
       PageAlignedMalloc((void**) &stored->tensor, len);
       stored->len = len;
       stored->dtype = type.dtype;
@@ -228,15 +228,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           updates.merged.tensor = recved;
           updates.merged.tmp_sarray = req_data;
         } else { // async mode, directly add to the buffer
-          if (is_engine_blocking_) {
-            CHECK_GE(bps_reducer_->sum((void *) stored->tensor, 
-                                      (void *) recved, 
-                                      len, 
-                                      bps_reducer_->GetDataType(stored->dtype)), 0);
-          } else {
-            BytePSEngineMessage msg = {timestamp_++, type, key, stored->tensor, recved, len, SUM_RECV, req_data};
-            engine_queues_[tid]->Push(msg);
-          }
+          CHECK_GE(bps_reducer_->sum((void *) stored->tensor, 
+                                    (void *) recved, 
+                                    len, 
+                                    bps_reducer_->GetDataType(stored->dtype)), 0);
         }
       } else { // from other workers
         CHECK(sync_mode_); 
@@ -284,13 +279,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       } else if (!sync_mode_) { 
         // async: clean the request buffer 
         updates.request.clear();
-        engine_queues_[tid]->ClearCounter(key);
       }
     }
   } else { // pull request
     auto stored = GetStore(key);
     CHECK(stored->tensor) << "Should init the buffer for key=" << key << " first";
-    if (is_engine_blocking_) {
+    if (is_engine_blocking_ || !sync_mode_) {
       SendPullResponse(type, key, req_meta, server);
     } else {
       auto tid = GetThreadID(key, 0);
@@ -303,7 +297,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
 
       auto it = seen_sender_[tid][key].find(req_meta.sender);
       if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) { 
-        // push already finished && not send the associated pull response yet
+        // push already finished && not received the associated pull response yet
         SendPullResponse(type, key, req_meta, server); 
         pull_cnt_[tid][key] += 1;
         seen_sender_[tid][key].insert(req_meta.sender);
@@ -326,18 +320,18 @@ void init_global_env() {
   // enable to print key profile
   log_key_info_ = GetEnv("PS_KEY_LOG", false);
 
+  // enable engine block mode (default disabled)
+  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
+  if (is_engine_blocking_) LOG(INFO) << "Enable blocking mode of the server engine";
+
   // sync or async training
-  sync_mode_ = GetEnv("BYTEPS_ENABLE_ASYNC", true);
+  sync_mode_ = !GetEnv("BYTEPS_ENABLE_ASYNC", false);
   if (!sync_mode_) LOG(INFO) << "BytePS server is enabled asynchronous training";
 
   // debug mode
   debug_mode_ = GetEnv("BYTEPS_SERVER_DEBUG", false);
   debug_key_ = GetEnv("BYTEPS_SERVER_DEBUG_KEY", 0);
   if (debug_mode_) LOG(INFO) << "Debug mode enabled! Printing key " << debug_key_;
-
-  // enable engine block mode (default disabled)
-  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
-  if (is_engine_blocking_) LOG(INFO) << "Enable blocking mode of the server engine";
 
   // number of engine thread
   // invalid if is_engine_blocking = true
@@ -377,13 +371,15 @@ extern "C" void byteps_server() {
   for (size_t i = 0; i < engine_thread_num_; ++i) {
     acc_load_.push_back(0);
   }
-  for (size_t i = 0; i < engine_thread_num_; ++i) {
-    auto q = new PriorityQueue(enable_schedule_);
-    engine_queues_.push_back(q);
-  }
-  for (size_t i = 0; i < engine_thread_num_; ++i) {
-    auto t = new std::thread(&BytePSServerEngineThread, i);
-    engine_threads_.push_back(t);
+  if (sync_mode_) {
+    for (size_t i = 0; i < engine_thread_num_; ++i) {
+      auto q = new PriorityQueue(enable_schedule_);
+      engine_queues_.push_back(q);
+    }
+    for (size_t i = 0; i < engine_thread_num_; ++i) {
+      auto t = new std::thread(&BytePSServerEngineThread, i);
+      engine_threads_.push_back(t);
+    }
   }
 
   // init server instance
