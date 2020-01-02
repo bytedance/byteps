@@ -21,31 +21,31 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-CompressorRegistry& CompressorRegistry::instance() {
-  static CompressorRegistry registry;
-  return registry;
+CompressorFactory& CompressorFactory::instance() {
+  static CompressorFactory factory;
+  return factory;
 }
 
-CompressorRegistry::CompressorRegistry() = default;
+CompressorFactory::CompressorFactory() = default;
 
-CompressorRegistry::~CompressorRegistry() = default;
+CompressorFactory::~CompressorFactory() = default;
 
-CompressorRegistry::Register::Register(std::string name,
-                                       CompressorFactory factory) {
-  auto& registry = CompressorRegistry::instance();
-  auto iter = registry._compressors.find(name);
-  if (iter == registry._compressors.end()) {
-    registry._compressors.emplace(name, factory);
+CompressorFactory::Register::Register(std::string name,
+                                       CreateFunc create_func) {
+  auto& factory = CompressorFactory::instance();
+  auto iter = factory._create_funcs.find(name);
+  if (iter == factory._create_funcs.end()) {
+    factory._create_funcs.emplace(name, create_func);
   } else {
     BPS_LOG(FATAL) << "Duplicate registration of compressor under name "
                    << name;
   }
 }
 
-CompressorPtr CompressorRegistry::create(std::string name,
+CompressorPtr CompressorFactory::create(std::string name,
                                          const CompressorParam& param) const {
-  auto iter = _compressors.find(name);
-  if (iter == _compressors.end()) {
+  auto iter = _create_funcs.find(name);
+  if (iter == _create_funcs.end()) {
     BPS_LOG(ERROR) << "No compressor registered under name:" << name;
     return nullptr;
   }

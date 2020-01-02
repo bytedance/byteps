@@ -52,11 +52,14 @@ void SendPullResponse(const DataHandleType type,
   char* data = stored->tensor;
   auto len = stored->len;
 
-  auto& compressor = compressor_map_[key];
-  if (compressor) {
-    auto tensor = compressor->Compress({data, len, type.dtype});
-    data = tensor.data;
-    len = tensor.len;
+  auto iter = compressor_map_.find(key);
+  if (iter != compressor_map_.end()) {
+    auto& compressor = iter->second;
+    if (compressor) {
+      auto tensor = compressor->Compress({data, len, type.dtype});
+      data = tensor.data;
+      len = tensor.len;
+    }
   }
 
   // send pull response
