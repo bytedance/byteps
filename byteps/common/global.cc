@@ -45,8 +45,6 @@ std::string BytePSGlobal::_trace_dir;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
 
-int BytePSGlobal::_pagesize = 4096;
-
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
@@ -114,6 +112,7 @@ void BytePSGlobal::Init() {
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
   
+  // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
   }
