@@ -45,6 +45,8 @@ std::string BytePSGlobal::_trace_dir;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
 
+int BytePSGlobal::_pagesize = 0;
+
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
@@ -117,6 +119,7 @@ void BytePSGlobal::Init() {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
   }
   _pagesize = sysconf(_SC_PAGESIZE);
+  BPS_CHECK_GT(_pagesize, 0);
   _partition_bytes = RoundUp(_partition_bytes, _local_size * _pagesize);
   BPS_LOG(DEBUG) << "Partition size round up to " << _partition_bytes << " (bytes)";
 
