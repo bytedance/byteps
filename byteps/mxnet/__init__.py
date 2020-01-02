@@ -69,22 +69,40 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
 
     def update(self, index, weight, grad, state):
         if self._enable_async:
-            temp_weight = weight.copy()
+            # create a tmp list for storing the original weight
+            temp_weight_list = [w.copy() for w in weight]
+            assert len(temp_weight_list) == len(weight)
+
+            # update parameter locally
             self._optimizer.update(index, weight, grad, state)
+
+            # get delta weight
+            for i, temp_weight in enumerate(temp_weight_list):
+                weight[i].__isub__(temp_weight)
+
             # push delta weight, and pull weight back to the same tensor
-            weight.__isub__(temp_weight)
             self._do_push_pull_param(index, weight)
+
         else:
             self._do_push_pull(index, grad)
             self._optimizer.update(index, weight, grad, state)
 
     def update_multi_precision(self, index, weight, grad, state):
         if self._enable_async:
-            temp_weight = weight.copy()
+            # create a tmp list for storing the original weight
+            temp_weight_list = [w.copy() for w in weight]
+            assert len(temp_weight_list) == len(weight)
+
+            # update parameter locally
             self._optimizer.update_multi_precision(index, weight, grad, state)
+
+            # get delta weight
+            for i, temp_weight in enumerate(temp_weight_list):
+                weight[i].__isub__(temp_weight)
+
             # push delta weight, and pull weight back to the same tensor
-            weight.__isub__(temp_weight)
             self._do_push_pull_param(index, weight)
+            
         else:
             self._do_push_pull(index, grad)
             self._optimizer.update_multi_precision(index, weight, grad, state)
