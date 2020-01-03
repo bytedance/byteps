@@ -42,14 +42,31 @@ CompressorFactory::Register::Register(std::string name,
   }
 }
 
-CompressorPtr CompressorFactory::create(std::string name,
-                                         const CompressorParam& param) const {
-  auto iter = _create_funcs.find(name);
-  if (iter == _create_funcs.end()) {
+CompressorPtr CompressorFactory::create(const CompressorParam& param_dict) const {
+  auto param_iter = param_dict.find("compressor_type");
+  if (param_iter == param_dict.end()) {
+    return nullptr;
+  }
+
+  auto& name = *param_iter;
+  auto func_iter = _create_funcs.find(name);
+  if (func_iter == _create_funcs.end()) {
     BPS_LOG(ERROR) << "No compressor registered under name:" << name;
     return nullptr;
   }
-  return iter->second(param);
+
+  param_iter = param_dict.find("error_feedback_type");
+  if (param_iter == param_dict.end()) {
+    return func_iter->second(param_dict);
+  }
+
+  func_iter = _create_funcs.find(param_iter->second + "_error_feedback");
+  if (func_iter == _create_funcs.end()) {
+    BPS_LOG(ERROR) << "No compressor with error feedback registered under name:" << name;
+    return nullptr;
+  }
+
+  return func_iter->second(param_dict);
 }
 
 BaseCompressor::BaseCompressor() = default;
