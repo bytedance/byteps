@@ -82,7 +82,7 @@ class CompressorFactory {
     explicit Register(std::string name, CreateFunc create_func);
   };
 
-  CompressorPtr create(std::string name, const CompressorParam& param) const;
+  CompressorPtr create(const CompressorParam& param_dict) const;
 
   static CompressorFactory& instance();
 
