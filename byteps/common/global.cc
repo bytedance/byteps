@@ -16,7 +16,6 @@
 #include "global.h"
 #include <malloc.h>
 #include <numa.h>
-#include <unistd.h>
 #include <sstream>
 
 namespace byteps {
@@ -45,6 +44,8 @@ int BytePSGlobal::_end_step = 20;
 std::string BytePSGlobal::_trace_dir;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
+
+int BytePSGlobal::_pagesize = 0;
 
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
@@ -112,17 +113,17 @@ void BytePSGlobal::Init() {
                     &_my_role);
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+  
+  // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
   }
-  BPS_LOG(DEBUG) << "Partition bound set to " << _partition_bytes << " bytes"
-                 << ", aligned to "
-                 << AlignTo(_partition_bytes, (8 * _local_size)) << " bytes";
-  // alignment for Reduce-Scatter/All-Gather
-  _partition_bytes = AlignTo(_partition_bytes, (8 * _local_size));
+  _pagesize = sysconf(_SC_PAGESIZE);
+  BPS_CHECK_GT(_pagesize, 0);
+  _partition_bytes = RoundUp(_partition_bytes, _local_size * _pagesize);
+  BPS_LOG(DEBUG) << "Partition size round up to " << _partition_bytes << " (bytes)";
 
   BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
-
   _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
 
   if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
@@ -522,6 +523,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
                    << _server_accumulated_len[server];
+
     ps::Key ps_key = krs[server].begin() + key;
     BPS_CHECK_LT(ps_key, krs[server].end());
     pskv.keys.push_back(ps_key);

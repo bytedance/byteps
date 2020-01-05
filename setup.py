@@ -264,11 +264,10 @@ def get_common_options(build_ext):
     # RDMA and NUMA libs
     LIBRARIES += ['numa']
     if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
-        LIBRARIES += ['rdmacm', 'ibverbs']
+        LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
 
     # ps-lite
     EXTRA_OBJECTS = ['3rdparty/ps-lite/build/libps.a',
-                     '3rdparty/ps-lite/deps/lib/libprotobuf-lite.a',
                      '3rdparty/ps-lite/deps/lib/libzmq.a']
 
     return dict(MACROS=MACROS,
@@ -293,7 +292,7 @@ def build_server(build_ext, options):
     server_lib.extra_objects = options['EXTRA_OBJECTS']
     server_lib.library_dirs = options['LIBRARY_DIRS']
     if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
-        server_lib.libraries = ['rdmacm', 'ibverbs']
+        server_lib.libraries = ['rdmacm', 'ibverbs', 'rt']
     else:
         server_lib.libraries = []
 
