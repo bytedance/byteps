@@ -13,24 +13,25 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/topk.h"
+#include "topk.h"
 
-#include "logging.h"
+#include "../../logging.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
+namespace {
 CompressorFactory::Register reg(
     "topk", [](const CompressorParam& param) -> CompressorPtr {
       auto iter = param.find("compressor_k");
       if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Topk Compressor needs parameter \"compressor_k\"";
+        BPS_LOG(DEBUG) << "Topk Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
       int k = std::stoi(iter->second);
       return std::unique_ptr<BaseCompressor>(new TopkCompressor(k));
     });
+}
 
 TopkCompressor::TopkCompressor(int k) : _k(k){};
 

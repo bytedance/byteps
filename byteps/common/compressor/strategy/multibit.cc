@@ -13,24 +13,25 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/multibit.h"
+#include "multibit.h"
 
-#include "logging.h"
+#include "../../logging.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
-CompressorFactory::Register reg(
-    "multibit", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("compressor_k");
-      if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Multibit Compressor needs parameter \"compressor_k\"";
-        return nullptr;
-      }
-      int k = std::stoi(iter->second);
-      return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
-    });
+namespace {
+CompressorFactory::Register reg("multibit", [](const CompressorParam&
+                                                   param) -> CompressorPtr {
+  auto iter = param.find("compressor_k");
+  if (iter == param.end()) {
+    BPS_LOG(DEBUG) << "Multibit Compressor needs parameter \"compressor_k\"";
+    return nullptr;
+  }
+  int k = std::stoi(iter->second);
+  return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
+});
+}
 
 MultibitCompressor::MultibitCompressor(int k) : _k(k){};
 

@@ -13,28 +13,25 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/vanilla_error_feedback.h"
+#include "vanilla_error_feedback.h"
 
-#include "logging.h"
+#include "../../logging.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
+namespace {
 CompressorFactory::Register reg(
     "vanilla_error_feedback",
     [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("compressor_type");
-      if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Vanilla Error-feedback Compressor needs parameter "
-                          "\"compressor_type\"";
-        return nullptr;
-      }
-      auto& registry = CompressorFactory::instance();
-      auto compressor_ptr = registry.create(iter->second, param);
+      auto param_copy = param;
+      param_copy.erase("error_feedback_type");
+      auto& factory = CompressorFactory::instance();
+      auto compressor_ptr = factory.create(param_copy);
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
     });
+}
 
 VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
     std::unique_ptr<BaseCompressor> compressor_ptr)

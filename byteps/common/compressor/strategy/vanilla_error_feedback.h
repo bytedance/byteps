@@ -16,7 +16,7 @@
 #ifndef BYTEPS_COMPRESS_VANILLA_EF_H
 #define BYTEPS_COMPRESS_VANILLA_EF_H
 
-#include "compressor/error_feedback.h"
+#include "../error_feedback.h"
 
 namespace byteps {
 namespace common {

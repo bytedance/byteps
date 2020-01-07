@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/error_feedback.h"
+#include "error_feedback.h"
 
 namespace byteps {
 namespace common {

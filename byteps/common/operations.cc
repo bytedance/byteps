@@ -368,7 +368,7 @@ bool IsTensorDeclared(const std::string &name) {
   return BytePSGlobal::IsTensorDeclared(name);
 }
 
-void RegisterCompressor(const std::string &name, CompressorParam& param_dict) {
+void RegisterCompressor(const std::string &name, compressor::CompressorParam& param_dict) {
   return BytePSGlobal::RegisterCompressor(name, param_dict);
 }
 
