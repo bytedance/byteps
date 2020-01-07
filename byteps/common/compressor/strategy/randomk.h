@@ -16,7 +16,7 @@
 #ifndef BYTEPS_COMPRESS_STRAT_RANDOMK_H
 #define BYTEPS_COMPRESS_STRAT_RANDOMK_H
 
-#include "compressor/base_compressor.h"
+#include "../base_compressor.h"
 
 namespace byteps {
 namespace common {

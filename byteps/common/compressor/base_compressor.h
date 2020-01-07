@@ -20,11 +20,11 @@
 #include <memory>
 #include <unordered_map>
 
-#include "common.h"
-
 namespace byteps {
 namespace common {
 namespace compressor {
+
+using CompressorParam = std::unordered_map<std::string, std::string>;
 
 struct TensorType {
   char* data;
@@ -74,8 +74,7 @@ class CompressorFactory {
   CompressorFactory();
   ~CompressorFactory();
 
-  using CreateFunc =
-      std::function<CompressorPtr(const CompressorParam& param)>;
+  using CreateFunc = std::function<CompressorPtr(const CompressorParam& param)>;
   using map_t = std::unordered_map<std::string, CreateFunc>;
 
   struct Register {

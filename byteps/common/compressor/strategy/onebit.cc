@@ -13,15 +13,16 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/onebit.h"
+#include "onebit.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
+namespace {
 CompressorFactory::Register reg("onebit", [](const CompressorParam& param) {
   return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
 });
+}
 
 OnebitCompressor::OnebitCompressor() = default;
 

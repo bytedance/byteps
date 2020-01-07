@@ -254,7 +254,14 @@ def get_common_options(build_ext):
                'byteps/common/ready_table.cc',
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
-               'byteps/common/cpu_reducer.cc']
+               'byteps/common/cpu_reducer.cc'] + [
+               'byteps/common/compressor/base_compressor.cc',
+               'byteps/common/compressor/error_feedback.cc',
+               'byteps/common/compressor/strategy/multibit.cc',
+               'byteps/common/compressor/strategy/onebit.cc',
+               'byteps/common/compressor/strategy/randomk.cc',
+               'byteps/common/compressor/strategy/topk.cc',
+               'byteps/common/compressor/strategy/vanilla_error_feedback.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + \

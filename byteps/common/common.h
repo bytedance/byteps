@@ -101,7 +101,6 @@ const std::vector<std::string> LogStrings = {
     "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
     "COORDINATE_BROADCAST", "BROADCAST"};
 
-using CompressorParam = std::unordered_map<std::string, std::string>;
 
 class Status {
  public:

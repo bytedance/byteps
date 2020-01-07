@@ -13,24 +13,25 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/strategy/randomk.h"
+#include "randomk.h"
 
-#include "logging.h"
+#include "../../logging.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
+namespace {
 CompressorFactory::Register reg(
     "randomk", [](const CompressorParam& param) -> CompressorPtr {
       auto iter = param.find("compressor_k");
       if (iter == param.end()) {
-        BPS_LOG(FATAL) << "Randomk Compressor needs parameter \"compressor_k\"";
+        BPS_LOG(DEBUG) << "Randomk Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
       int k = std::stoi(iter->second);
       return std::unique_ptr<BaseCompressor>(new RandomkCompressor(k));
     });
+}
 
 RandomkCompressor::RandomkCompressor(int k) : _k(k){};
 

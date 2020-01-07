@@ -13,9 +13,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "compressor/base_compressor.h"
+#include "base_compressor.h"
 
-#include "logging.h"
+#include "../logging.h"
 
 namespace byteps {
 namespace common {
@@ -31,27 +31,28 @@ CompressorFactory::CompressorFactory() = default;
 CompressorFactory::~CompressorFactory() = default;
 
 CompressorFactory::Register::Register(std::string name,
-                                       CreateFunc create_func) {
+                                      CreateFunc create_func) {
   auto& factory = CompressorFactory::instance();
   auto iter = factory._create_funcs.find(name);
   if (iter == factory._create_funcs.end()) {
     factory._create_funcs.emplace(name, create_func);
   } else {
-    BPS_LOG(FATAL) << "Duplicate registration of compressor under name "
+    BPS_LOG(DEBUG) << "Duplicate registration of compressor under name "
                    << name;
   }
 }
 
-CompressorPtr CompressorFactory::create(const CompressorParam& param_dict) const {
+CompressorPtr CompressorFactory::create(
+    const CompressorParam& param_dict) const {
   auto param_iter = param_dict.find("compressor_type");
   if (param_iter == param_dict.end()) {
     return nullptr;
   }
 
-  auto& name = *param_iter;
+  auto& name = param_iter->second;
   auto func_iter = _create_funcs.find(name);
   if (func_iter == _create_funcs.end()) {
-    BPS_LOG(ERROR) << "No compressor registered under name:" << name;
+    BPS_LOG(DEBUG) << "No compressor registered under name:" << name;
     return nullptr;
   }
 
@@ -62,7 +63,8 @@ CompressorPtr CompressorFactory::create(const CompressorParam& param_dict) const
 
   func_iter = _create_funcs.find(param_iter->second + "_error_feedback");
   if (func_iter == _create_funcs.end()) {
-    BPS_LOG(ERROR) << "No compressor with error feedback registered under name:" << name;
+    BPS_LOG(DEBUG) << "No compressor with error feedback registered under name:"
+                   << name;
     return nullptr;
   }
 

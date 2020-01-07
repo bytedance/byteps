@@ -72,7 +72,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 // Only call these in Framework plugins for the best performance
 bool IsTensorDeclared(const std::string &name);
 
-void RegisterCompressor(const std::string &name, CompressorParam& param_dict);
+void RegisterCompressor(const std::string &name, compressor::CompressorParam& param_dict);
 
 BPSContext &GetContextFromName(const std::string &name);
 
