@@ -345,6 +345,15 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+
+      // register
+      if (BytePSGlobal::GetRank() == 0 && context.compressor) {
+        int len = sizeof(compressor::BaseCompressor);
+        char* data = reinterpret_cast<char*>(context.compressor.get());
+        ps::SArray<char> vals(data, len, false);
+        int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+        ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      }
     }
 
     accumulated += len;
