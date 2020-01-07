@@ -173,7 +173,16 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                    const ps::KVPairs<char> &req_data, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
-  CHECK_EQ(type.requestType, RequestType::kDefaultPushPull);
+  // CHECK_EQ(type.requestType, RequestType::kDefaultPushPull); 
+  if (type.requestType == RequestType::kCompressedPushPull) {
+    auto data = reinterpret_cast<char*>(req_data.vals.data());
+    auto compressor = reinterpret_cast<common::compressor::BaseCompressor*>(data);
+    uint64_t key = DecodeKey(req_data.keys[0]);
+    compressor_map_[key].reset(compressor);
+    LOG(INFO) << "register compressor sucessfully for key="
+              << key;
+    return;
+  }
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   if (log_key_info_) {
