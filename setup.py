@@ -304,7 +304,14 @@ def build_server(build_ext, options):
     server_lib.include_dirs = options['INCLUDES']
     server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
-                          'byteps/common/logging.cc']
+                          'byteps/common/logging.cc'] + [
+                          'byteps/common/compressor/base_compressor.cc',
+                          'byteps/common/compressor/error_feedback.cc',
+                          'byteps/common/compressor/strategy/multibit.cc',
+                          'byteps/common/compressor/strategy/onebit.cc',
+                          'byteps/common/compressor/strategy/randomk.cc',
+                          'byteps/common/compressor/strategy/topk.cc',
+                          'byteps/common/compressor/strategy/vanilla_error_feedback.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']
