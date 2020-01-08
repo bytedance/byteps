@@ -28,7 +28,7 @@ namespace compressor {
 class OnebitCompressor : public BaseCompressor {
  public:
   OnebitCompressor();
-  ~OnebitCompressor();
+  virtual ~OnebitCompressor();
 
   TensorType Compress(const TensorType& grad) override;
 
