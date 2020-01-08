@@ -28,7 +28,7 @@ namespace compressor {
 class TopkCompressor : public BaseCompressor {
  public:
   explicit TopkCompressor(int k);
-  ~TopkCompressor();
+  virtual ~TopkCompressor();
 
   TensorType Compress(const TensorType& grad) override;
 

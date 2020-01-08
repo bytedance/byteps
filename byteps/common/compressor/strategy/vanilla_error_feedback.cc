@@ -37,6 +37,8 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
     std::unique_ptr<BaseCompressor> compressor_ptr)
     : ErrorFeedback(std::move(compressor_ptr)) {}
 
+VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
+
 TensorType VanillaErrorFeedbackCompressor::UpdateGradient(
     const TensorType& grad) {
   // TODO

@@ -29,7 +29,7 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  public:
   explicit VanillaErrorFeedbackCompressor(
       std::unique_ptr<BaseCompressor> compressor_ptr);
-  ~VanillaErrorFeedbackCompressor();
+  virtual ~VanillaErrorFeedbackCompressor();
 
  protected:
   TensorType UpdateGradient(const TensorType& grad) override;

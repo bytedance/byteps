@@ -28,7 +28,7 @@ namespace compressor {
 class RandomkCompressor : public BaseCompressor {
  public:
   explicit RandomkCompressor(int k);
-  ~RandomkCompressor();
+  virtual ~RandomkCompressor();
 
   TensorType Compress(const TensorType& grad) override;
 

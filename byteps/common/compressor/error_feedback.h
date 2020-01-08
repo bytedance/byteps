@@ -30,7 +30,7 @@ namespace compressor {
 class ErrorFeedback : public BaseCompressor {
  public:
   explicit ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr);
-  ~ErrorFeedback();
+  virtual ~ErrorFeedback();
 
   /*!
    * \brief initiaze `_compressor_ptr` buffer first

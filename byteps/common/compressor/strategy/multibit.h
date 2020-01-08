@@ -28,7 +28,7 @@ namespace compressor {
 class MultibitCompressor : public BaseCompressor {
  public:
   explicit MultibitCompressor(int k);
-  ~MultibitCompressor();
+  virtual ~MultibitCompressor();
 
   TensorType Compress(const TensorType& grad) override;
 
