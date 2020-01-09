@@ -187,8 +187,8 @@ class ByteCore(object):
                 for t in subtasks:
                     with self._condition:
                         self._running.add(t)
-                    t.immediate_do(callback=_end_callback, callback_context=self)
                     self._profiler.put(t.name, t.op + 'COMMUNICATION', 'B')
+                    t.immediate_do(callback=_end_callback, callback_context=self)
                 return True
 
             # The callback runs when a non-immediate task is ready.
