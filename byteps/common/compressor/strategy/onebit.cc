@@ -19,7 +19,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorFactory::Register reg("onebit", [](const CompressorParam& param) {
+CompressorRegistry::Register reg("onebit", [](const kwargs_t& kwargs) {
   return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
 });
 }
@@ -28,11 +28,11 @@ OnebitCompressor::OnebitCompressor() = default;
 
 OnebitCompressor::~OnebitCompressor() = default;
 
-TensorType OnebitCompressor::Compress(const TensorType& grad) {
+ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   // TODO
 }
 
-TensorType OnebitCompressor::Decompress(const TensorType& compressed_grad) {
+ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   // TODO
 }
 }

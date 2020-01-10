@@ -87,7 +87,7 @@ class BytePSGlobal {
   static void SetResumingFlag(bool flag) {_is_resuming = flag; }
 
   static void RegisterCompressor(const std::string& name, 
-                                 compressor::CompressorParam& param_dict);
+                                 std::unordered_map<std::string, std::string>& kwargs);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();

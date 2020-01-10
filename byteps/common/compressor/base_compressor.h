@@ -24,9 +24,10 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-using CompressorParam = std::unordered_map<std::string, std::string>;
-
-struct TensorType {
+/*!
+ * \brief Byte buffer
+ */
+struct ByteBuf {
   char* data;
   size_t len;
   int dtype;
@@ -41,53 +42,81 @@ class BaseCompressor {
   virtual ~BaseCompressor();
 
   /*!
-   * \brief allocate buffer for compression process.
-   * \param len the size of buffer (bytes)
+   * \brief Allocate encoding buffer for compression.
+   * \param size the size of buffer (bytes)
    */
-  virtual void InitBuff(size_t len);
+  virtual void AllocateBuffer(size_t size);
 
   /*!
-   * \brief Compress function, which must be overrided by children
-   * \param grad the original gradient to be compressed
-   * \return compressed gradient
+   * \brief Compress function
+   *
+   * \param grad uncompressed gradient
+   * \return ByteBuf compressed gradient
    */
-  virtual TensorType Compress(const TensorType& grad) = 0;
+  virtual ByteBuf Compress(const ByteBuf& grad) = 0;
 
   /*!
-   * \brief Decompress funciton, which must be overrided by children
-   * \param compressed_grad compressed gradient to be decompressed
-   * \return decompressed gradient
+   * \brief Decompress function
+   *
+   * \param compressed compressed gradient
+   * \return ByteBuf decompressed gradient
    */
-  virtual TensorType Decompress(const TensorType& compressed_grad) = 0;
+  virtual ByteBuf Decompress(const ByteBuf& compressed) = 0;
 
  private:
   /*!
-   * \brief buffer for compression process
+   * \brief encoding buffer
    */
-  char* _compress_buff;
+  std::unique_ptr<char[]> _encode_buf;
 };
 
-using CompressorPtr = std::unique_ptr<BaseCompressor>;
+using kwargs_t = std::unordered_map<std::string, std::string>;
 
-class CompressorFactory {
+class CompressorRegistry {
  public:
-  CompressorFactory();
-  ~CompressorFactory();
+  using ctor_t =
+      std::function<std::unique_ptr<BaseCompressor>(const kwargs_t& kwargs)>;
 
-  using CreateFunc = std::function<CompressorPtr(const CompressorParam& param)>;
-  using map_t = std::unordered_map<std::string, CreateFunc>;
+  using map_t = std::unordered_map<std::string, ctor_t>;
 
   struct Register {
-    explicit Register(std::string name, CreateFunc create_func);
+    explicit Register(std::string name, ctor_t ctor);
   };
 
-  CompressorPtr create(const CompressorParam& param_dict) const;
+  static ctor_t Find(const std::string& name);
 
-  static CompressorFactory& instance();
-
+  static std::unique_ptr<BaseCompressor> Create(const kwargs_t& kwargs);
+  
  private:
-  map_t _create_funcs;
+  static map_t _ctor_map;
+
+  CompressorRegistry() = delete;
+  ~CompressorRegistry() = delete;
 };
+
+inline std::string Serialize(const kwargs_t& kwargs) {
+  std::ostringstream os;
+  os << kwargs.size();
+  for (auto const& kwarg : kwargs) {
+    os << kwarg.first << kwarg.second;
+  }
+  return os.str();
+}
+
+inline kwargs_t Deserialize(const std::string& content) {
+  kwargs_t kwargs;
+  std::istringstream is;
+  size_t size = 0;
+  is >> size;
+  for (size_t i = 0; i < size; ++i) {
+    kwargs_t::key_type key;
+    kwargs_t::mapped_type val;
+    is >> key >> val;
+    kwargs[key] = val;
+  }
+
+  return kwargs;
+}
 }
 }
 }

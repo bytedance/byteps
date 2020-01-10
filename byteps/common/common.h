@@ -183,6 +183,8 @@ typedef struct BytePSContext {
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
   // Compressor 
   std::shared_ptr<compressor::BaseCompressor> compressor;
+  // kwargs
+  std::unordered_map<std::string, std::string> kwargs;
 } BPSContext;
 
 class Tensor {
