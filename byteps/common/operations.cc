@@ -315,7 +315,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   // Init Compressor buffer
   if (context.compressor) {
-    context.compressor->InitBuff(size);
+    context.compressor->AllocateBuffer(size);
   }
 
   // Init tensors with BytePS server
