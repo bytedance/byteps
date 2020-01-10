@@ -21,63 +21,47 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-CompressorFactory& CompressorFactory::instance() {
-  static CompressorFactory factory;
-  return factory;
+CompressorRegistry::map_t CompressorRegistry::_ctor_map;
+
+CompressorRegistry::Register::Register(std::string name, ctor_t ctor) {
+  BPS_CHECK_EQ(_ctor_map.count(name), 0)
+      << "Duplicate registration of compressor under name " << name;
+  _ctor_map.emplace(name, std::move(ctor));
 }
 
-CompressorFactory::CompressorFactory() = default;
-
-CompressorFactory::~CompressorFactory() = default;
-
-CompressorFactory::Register::Register(std::string name,
-                                      CreateFunc create_func) {
-  auto& factory = CompressorFactory::instance();
-  auto iter = factory._create_funcs.find(name);
-  if (iter == factory._create_funcs.end()) {
-    factory._create_funcs.emplace(name, create_func);
-  } else {
-    BPS_LOG(DEBUG) << "Duplicate registration of compressor under name "
-                   << name;
-  }
-}
-
-CompressorPtr CompressorFactory::create(
-    const CompressorParam& param_dict) const {
-  auto param_iter = param_dict.find("compressor_type");
-  if (param_iter == param_dict.end()) {
-    return nullptr;
-  }
-
-  auto& name = param_iter->second;
-  auto func_iter = _create_funcs.find(name);
-  if (func_iter == _create_funcs.end()) {
+CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
+  auto it = _ctor_map.find(name);
+  if (it == _ctor_map.end()) {
     BPS_LOG(DEBUG) << "No compressor registered under name:" << name;
     return nullptr;
   }
+  return it->second;
+}
 
-  param_iter = param_dict.find("error_feedback_type");
-  if (param_iter == param_dict.end()) {
-    return func_iter->second(param_dict);
-  }
-
-  func_iter = _create_funcs.find(param_iter->second + "_error_feedback");
-  if (func_iter == _create_funcs.end()) {
-    BPS_LOG(DEBUG) << "No compressor with error feedback registered under name:"
-                   << name;
+std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
+    const kwargs_t& kwargs) {
+  auto iter = kwargs.find("compressor_type");
+  if (iter == kwargs.end()) {
     return nullptr;
   }
 
-  return func_iter->second(param_dict);
+  auto name = iter->second;
+  iter = kwargs.find("error_feedback_type");
+  if (iter != kwargs.end()) {
+    name = iter->second + "_error_feedback";
+  }
+
+  auto ctor = CompressorRegistry::Find(name);
+  return ctor(kwargs);
 }
 
 BaseCompressor::BaseCompressor() = default;
 
-BaseCompressor::~BaseCompressor() {
-  if (_compress_buff) delete[] _compress_buff;
-}
+BaseCompressor::~BaseCompressor() = default;
 
-void BaseCompressor::InitBuff(size_t len) { _compress_buff = new char[len]; }
+void BaseCompressor::AllocateBuffer(size_t size) {
+  _encode_buf.reset(new char[size]);
+}
 }
 }
 }

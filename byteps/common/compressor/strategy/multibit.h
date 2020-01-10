@@ -30,9 +30,9 @@ class MultibitCompressor : public BaseCompressor {
   explicit MultibitCompressor(int k);
   virtual ~MultibitCompressor();
 
-  TensorType Compress(const TensorType& grad) override;
+  ByteBuf Compress(const ByteBuf& grad) override;
 
-  TensorType Decompress(const TensorType& compressed_grad) override;
+  ByteBuf Decompress(const ByteBuf& compressed) override;
 
  private:
   int _k;

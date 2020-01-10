@@ -21,10 +21,10 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorFactory::Register reg(
-    "topk", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("compressor_k");
-      if (iter == param.end()) {
+CompressorRegistry::Register reg(
+    "topk", [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+      auto iter = kwargs.find("compressor_k");
+      if (iter == kwargs.end()) {
         BPS_LOG(DEBUG) << "Topk Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
@@ -37,11 +37,11 @@ TopkCompressor::TopkCompressor(int k) : _k(k){};
 
 TopkCompressor::~TopkCompressor() = default;
 
-TensorType TopkCompressor::Compress(const TensorType& grad) {
+ByteBuf TopkCompressor::Compress(const ByteBuf& grad) {
   // TODO
 }
 
-TensorType TopkCompressor::Decompress(const TensorType& compressed_grad) {
+ByteBuf TopkCompressor::Decompress(const ByteBuf& compressed_grad) {
   // TODO
 }
 }

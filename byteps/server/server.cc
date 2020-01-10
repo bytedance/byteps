@@ -174,15 +174,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   // CHECK_EQ(type.requestType, RequestType::kDefaultPushPull); 
-  if (type.requestType == RequestType::kCompressedPushPull) {
-    auto data = reinterpret_cast<char*>(req_data.vals.data());
-    auto compressor = reinterpret_cast<common::compressor::BaseCompressor*>(data);
-    uint64_t key = DecodeKey(req_data.keys[0]);
-    compressor_map_[key].reset(compressor);
-    LOG(INFO) << "register compressor sucessfully for key="
-              << key;
-    return;
-  }
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   if (log_key_info_) {
@@ -200,6 +191,18 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     }
   }
   uint64_t key = DecodeKey(req_data.keys[0]);
+
+  // register compressor 
+  if (type.requestType == RequestType::kCompressedPushPull) {
+    auto content = reinterpret_cast<char*>(req_data.vals.data());
+    auto kwargs = byteps::common::compressor::Deserialize(content);
+    auto compressor_ptr = byteps::common::compressor::CompressorRegistry::Create(kwargs);
+    compressor_map_[key].reset(compressor_ptr);
+    LOG(INFO) << "register compressor sucessfully for key="
+              << key;
+    return;
+  }
+
   if (req_meta.push) { // push request
     CHECK_EQ(req_data.lens.size(), (size_t)1);
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
@@ -208,11 +211,14 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
 
     // do decompression
-    auto& compressor = compressor_map_[key];
-    if (compressor) {
-      auto tensor = compressor->Decompress({recved, len, type.dtype});
-      recved = tensor.data;
-      len = tensor.len;
+    auto iter = compressor_map_.find(key);
+    if (iter != compressor_map_.end()) {
+      auto& compressor = iter->second;
+        if (compressor) {
+        auto tensor = compressor->Decompress({recved, len, type.dtype});
+        recved = tensor.data;
+        len = tensor.len;
+      } 
     }
 
     if (!stored->tensor) {

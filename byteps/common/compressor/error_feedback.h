@@ -25,7 +25,7 @@ namespace compressor {
 /*!
  *  \brief Error feedback Decorator
  *
- *  extend error feedback behavior to any compressor at run-time
+ *  add error feedback behavior to any compressor at run-time
  */
 class ErrorFeedback : public BaseCompressor {
  public:
@@ -33,51 +33,54 @@ class ErrorFeedback : public BaseCompressor {
   virtual ~ErrorFeedback();
 
   /*!
-   * \brief initiaze `_compressor_ptr` buffer first
+   * \brief Allocate all buffers for compression.
+   * \param size the size of buffer (bytes)
    */
-  void InitBuff(size_t len) final;
+  void AllocateBuffer(size_t size) final;
 
   /*!
-   * \brief compress with error feedback
+   * \brief Compress with error feedback
    *
    *  invoke `UpdateGradient` and `UpdateError` before and after
    *  `_compressor_ptr->Compress(*)`
    */
-  TensorType Compress(const TensorType& grad) final;
+  ByteBuf Compress(const ByteBuf& grad) final;
 
   /*!
-   * \brief directly forward to `_compressor_ptr->Decompress(*)`
+   * \brief Decompress
+   * 
+   *  directly forward to `_compressor_ptr->Decompress(*)`
    */
-  TensorType Decompress(const TensorType& compressed_grad) final;
+  ByteBuf Decompress(const ByteBuf& compressed) final;
 
  protected:
   /*!
-   * \brief correct gradient with error
+   * \brief Correct gradient with error
    *
    * grad += error
    *
    * \param grad input gradient to be updated
    * \return corrected gradient
    */
-  virtual TensorType UpdateGradient(const TensorType& grad) = 0;
+  virtual ByteBuf UpdateGradient(const ByteBuf& grad) = 0;
 
   /*!
-   * \brief update error
+   * \brief Update error
    *
    * error = grad - decompress(compressed_corrected_grad)
    *
    * \param grad original gradient (uncompressed)
    */
-  virtual void UpdateError(const TensorType& grad) = 0;
+  virtual void UpdateError(const ByteBuf& grad) = 0;
 
  private:
   /*!
-   * \brief compressor to be extended
+   * \brief compressor 
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
 
-  char* _decompress_buff;
-  char* _error_buff;
+  std::unique_ptr<char[]> _decode_buf;
+  std::unique_ptr<char[]> _error_buf;
 };
 }
 }

@@ -405,14 +405,14 @@ void BytePSGlobal::ReDeclareTensor() {
 }
 
 void BytePSGlobal::RegisterCompressor(const std::string& name,
-                                      compressor::CompressorParam& param_dict) {
+                                      std::unordered_map<std::string, std::string>& kwargs) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
       << name << " is not initialized";
   
-  auto& factory = compressor::CompressorFactory::instance();
-  compressor::CompressorPtr compressor_ptr = factory.create(param_dict);
+  auto compressor_ptr = compressor::CompressorRegistry::Create(kwargs);
   _name_to_cxt[name].compressor = std::move(compressor_ptr);
+  _name_to_cxt[name].kwargs = std::move(kwargs);
 }
 
 // Append for communication traces

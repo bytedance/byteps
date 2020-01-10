@@ -22,18 +22,15 @@ namespace compressor {
 ErrorFeedback::ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr)
     : _compressor_ptr(std::move(compressor_ptr)) {}
 
-ErrorFeedback::~ErrorFeedback() {
-  if (_decompress_buff) delete[] _decompress_buff;
-  if (_error_buff) delete[] _error_buff;
+ErrorFeedback::~ErrorFeedback() = default;
+
+void ErrorFeedback::AllocateBuffer(size_t len) {
+  _compressor_ptr->AllocateBuffer(len);
+  _decode_buf.reset(new char[len]);
+  _error_buf.reset(new char[len]);
 }
 
-void ErrorFeedback::InitBuff(size_t len) {
-  _compressor_ptr->InitBuff(len);
-  _decompress_buff = new char[len];
-  _error_buff = new char[len];
-}
-
-TensorType ErrorFeedback::Compress(const TensorType& grad) {
+ByteBuf ErrorFeedback::Compress(const ByteBuf& grad) {
   // before: grad += error
   auto corrected_grad = UpdateGradient(grad);
   // compress
@@ -44,7 +41,7 @@ TensorType ErrorFeedback::Compress(const TensorType& grad) {
   return compressed_grad;
 }
 
-TensorType ErrorFeedback::Decompress(const TensorType& compressed_grad) {
+ByteBuf ErrorFeedback::Decompress(const ByteBuf& compressed_grad) {
   return _compressor_ptr->Decompress(compressed_grad);
 }
 }

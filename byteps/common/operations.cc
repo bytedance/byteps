@@ -324,7 +324,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   // Init Compressor buffer
   if (context.compressor) {
-    context.compressor->InitBuff(size);
+    context.compressor->AllocateBuffer(size);
   }
 
   // Init tensors with BytePS server
@@ -348,8 +348,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
       // register
       if (BytePSGlobal::GetRank() == 0 && context.compressor) {
-        int len = sizeof(compressor::BaseCompressor);
-        char* data = reinterpret_cast<char*>(context.compressor.get());
+        auto content = compressor::Serialize(context.kwargs);
+        int len = content.size();
+        char* data = const_cast<char*>(content.c_str());
         ps::SArray<char> vals(data, len, false);
         int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
         ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
@@ -377,8 +378,9 @@ bool IsTensorDeclared(const std::string &name) {
   return BytePSGlobal::IsTensorDeclared(name);
 }
 
-void RegisterCompressor(const std::string &name, compressor::CompressorParam& param_dict) {
-  return BytePSGlobal::RegisterCompressor(name, param_dict);
+void RegisterCompressor(const std::string &name,
+                        std::unordered_map<std::string, std::string> &kwargs) {
+  return BytePSGlobal::RegisterCompressor(name, kwargs);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {

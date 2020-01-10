@@ -32,9 +32,9 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
   virtual ~VanillaErrorFeedbackCompressor();
 
  protected:
-  TensorType UpdateGradient(const TensorType& grad) override;
+  ByteBuf UpdateGradient(const ByteBuf& grad) override;
 
-  void UpdateError(const TensorType& grad) override;
+  void UpdateError(const ByteBuf& grad) override;
 };
 }
 }

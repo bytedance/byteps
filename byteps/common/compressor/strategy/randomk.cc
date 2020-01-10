@@ -21,10 +21,10 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorFactory::Register reg(
-    "randomk", [](const CompressorParam& param) -> CompressorPtr {
-      auto iter = param.find("compressor_k");
-      if (iter == param.end()) {
+CompressorRegistry::Register reg(
+    "randomk", [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+      auto iter = kwargs.find("compressor_k");
+      if (iter == kwargs.end()) {
         BPS_LOG(DEBUG) << "Randomk Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
@@ -37,11 +37,11 @@ RandomkCompressor::RandomkCompressor(int k) : _k(k){};
 
 RandomkCompressor::~RandomkCompressor() = default;
 
-TensorType RandomkCompressor::Compress(const TensorType& grad) {
+ByteBuf RandomkCompressor::Compress(const ByteBuf& grad) {
   // TODO
 }
 
-TensorType RandomkCompressor::Decompress(const TensorType& compressed_grad) {
+ByteBuf RandomkCompressor::Decompress(const ByteBuf& compressed) {
   // TODO
 }
 }

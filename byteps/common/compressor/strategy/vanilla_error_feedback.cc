@@ -21,13 +21,12 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorFactory::Register reg(
+CompressorRegistry::Register reg(
     "vanilla_error_feedback",
-    [](const CompressorParam& param) -> CompressorPtr {
-      auto param_copy = param;
-      param_copy.erase("error_feedback_type");
-      auto& factory = CompressorFactory::instance();
-      auto compressor_ptr = factory.create(param_copy);
+    [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+      auto kwargs_clone = kwargs;
+      kwargs_clone.erase("error_feedback_type");
+      auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
     });
@@ -39,12 +38,11 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
 
 VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 
-TensorType VanillaErrorFeedbackCompressor::UpdateGradient(
-    const TensorType& grad) {
+ByteBuf VanillaErrorFeedbackCompressor::UpdateGradient(const ByteBuf& grad) {
   // TODO
 }
 
-void VanillaErrorFeedbackCompressor::UpdateError(const TensorType& grad) {
+void VanillaErrorFeedbackCompressor::UpdateError(const ByteBuf& grad) {
   // TODO
 }
 }

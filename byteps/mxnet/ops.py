@@ -97,7 +97,7 @@ def byteps_declare_tensor(name, **kwargs):
         addresses = map(ctypes.addressof, string_buffers)
         return (ctypes.c_char_p*len(strings))(*addresses)
 
-    param_dict = {}
+    args = {}
     for k, v in kwargs.items():
         splits = k.split('_')
         if len(splits) < 2 and not all(splits):
@@ -107,18 +107,18 @@ def byteps_declare_tensor(name, **kwargs):
         # remove first prefix "byteps"
         k = '_'.join(splits[1:])
         if isinstance(v, str):
-            param_dict[k] = v
+            args[k] = v
         elif isinstance(v, (int, float,)):
-            param_dict[k] = str(v)
+            args[k] = str(v)
         elif isinstance(v, bool):
-            param_dict[k] = str(int(v))
+            args[k] = str(int(v))
         else:
             raise ValueError("Invalid %s of type %s of %s" %
                              (v, type(v), name))
 
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(
         c_str(name),
-        ctypes.c_int(len(param_dict)),
-        _create_c_style_string_array(list(param_dict.keys())),
-        _create_c_style_string_array(list(param_dict.values()))
+        ctypes.c_int(len(args)),
+        _create_c_style_string_array(list(args.keys())),
+        _create_c_style_string_array(list(args.values()))
     ))
