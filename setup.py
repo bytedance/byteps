@@ -263,7 +263,11 @@ def get_common_options(build_ext):
 
     # RDMA and NUMA libs
     LIBRARIES += ['numa']
-    if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+    
+    # auto-detect rdma
+    ret_code = subprocess.call(
+        "echo '#include <rdma/rdma_cma.h>' | cpp -H -o /dev/null 2>&1", shell=True)
+    if ret_code == 0:
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
 
     # ps-lite
@@ -291,7 +295,12 @@ def build_server(build_ext, options):
     server_lib.extra_link_args = options['LINK_FLAGS']
     server_lib.extra_objects = options['EXTRA_OBJECTS']
     server_lib.library_dirs = options['LIBRARY_DIRS']
-    if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+
+    # auto-detect rdma
+    ret_code = subprocess.call(
+        "echo '#include <rdma/rdma_cma.h>' | cpp -H -o /dev/null 2>&1", shell=True)
+
+    if ret_code == 0:
         server_lib.libraries = ['rdmacm', 'ibverbs', 'rt']
     else:
         server_lib.libraries = []
@@ -549,6 +558,12 @@ def is_mx_cuda():
 def get_cuda_dirs(build_ext, cpp_flags):
     cuda_include_dirs = []
     cuda_lib_dirs = []
+
+    sys.path.append('/usr/local/cudnn/lib64')
+    sys.path.append('/usr/local/cuda/lib64')
+    sys.path.append('/usr/local/nvidia/lib')
+    sys.path.append('/usr/local/nvidia/lib64')
+    sys.path.append('/usr/local/nccl/lib')
 
     cuda_home = os.environ.get('BYTEPS_CUDA_HOME')
     if cuda_home:
