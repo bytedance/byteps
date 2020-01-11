@@ -8,6 +8,7 @@ import io
 import os
 import sys
 import re
+import shutil
 from shutil import rmtree
 import textwrap
 import shlex
@@ -867,6 +868,12 @@ class custom_build_ext(build_ext):
 
 
 # Where the magic happens:
+
+if os.path.exists('launcher/launch.py'):
+    if not os.path.exists('bin'):
+        os.mkdir('bin')
+    shutil.copyfile('launcher/launch.py', 'bin/bpslaunch')
+
 setup(
     name=NAME,
     version=about['__version__'],
@@ -903,4 +910,5 @@ setup(
     # which is undesirable.  Luckily, `install` action will install cffi before executing build,
     # so it's only necessary for `build*` or `bdist*` actions.
     setup_requires=[],
+    scripts=['bin/bpslaunch']
 )
