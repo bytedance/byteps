@@ -109,7 +109,7 @@ class MXTest:
             tensor = mx.nd.random.uniform(-100, 100, shape=shapes[dim],
                                           ctx=ctx)
             tensor = tensor.astype(dtype)
-            multiplied = tensor * size
+            multiplied = tensor.copy()
             bps.byteps_declare_tensor("tensor_" + str(count))
             bps.byteps_push_pull(tensor, name= "tensor_" + str(count))
             max_difference = mx.nd.max(mx.nd.subtract(tensor, multiplied))
@@ -186,6 +186,4 @@ if __name__ == '__main__':
     mxtest.test_byteps_push_pull()
     mxtest.test_byteps_trainer_param_order()
     #mxtest.test_byteps_broadcast()
-    #mxtest.test_byteps_push_pull_inplace()
-    # TODO: fix shutdown issue https://github.com/bytedance/byteps/issues/177
-    # bps.shutdown()
+    mxtest.test_byteps_push_pull_inplace()
