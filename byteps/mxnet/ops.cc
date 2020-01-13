@@ -133,8 +133,7 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
 extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
                                             char** args_keys,
                                             char** args_vals) {
-  std::string tensor_name 
-  if (num_args > 0) {= GetOpName("byteps", name);
+  std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
 
   std::unordered_map<std::string, std::string> kwargs;
@@ -146,6 +145,7 @@ extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
     kwargs[key] = val;
   }
 
+  if (num_args > 0) {
     common::RegisterCompressor(tensor_name, kwargs);
   } 
   
