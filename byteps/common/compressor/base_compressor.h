@@ -18,6 +18,7 @@
 
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <unordered_map>
 
 namespace byteps {
