@@ -98,14 +98,14 @@ inline std::string Serialize(const kwargs_t& kwargs) {
   std::ostringstream os;
   os << kwargs.size();
   for (auto const& kwarg : kwargs) {
-    os << kwarg.first << kwarg.second;
+    os << " " << kwarg.first << " " << kwarg.second;
   }
   return os.str();
 }
 
 inline kwargs_t Deserialize(const std::string& content) {
   kwargs_t kwargs;
-  std::istringstream is;
+  std::istringstream is(content);
   size_t size = 0;
   is >> size;
   for (size_t i = 0; i < size; ++i) {

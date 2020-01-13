@@ -197,7 +197,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto content = reinterpret_cast<char*>(req_data.vals.data());
     auto kwargs = byteps::common::compressor::Deserialize(content);
     auto compressor_ptr = byteps::common::compressor::CompressorRegistry::Create(kwargs);
-    compressor_map_[key].reset(compressor_ptr);
+    compressor_map_[key] = std::move(compressor_ptr);
     LOG(INFO) << "register compressor sucessfully for key="
               << key;
     return;
