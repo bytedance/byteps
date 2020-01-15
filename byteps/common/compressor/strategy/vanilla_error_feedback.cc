@@ -27,7 +27,7 @@ CompressorRegistry::Register reg(
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("error_feedback_type");
       auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
-      BPS_LOG(DEBUG) << "Register Error feedback " 
+      BPS_LOG(INFO) << "Register Error feedback " 
                      << "compressor_type=" << kwargs_clone["compressor_type"];
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));

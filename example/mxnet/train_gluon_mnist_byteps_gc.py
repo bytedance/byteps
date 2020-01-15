@@ -119,7 +119,7 @@ model.hybridize()
 
 params = model.collect_params()
 
-for param in params:
+for name, param in params.items():
   assert isinstance(param, mx.gluon.Parameter)
   setattr(param, "byteps_compressor_type", "multibit")
   setattr(param, "byteps_compressor_k", "4")
