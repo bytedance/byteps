@@ -30,6 +30,8 @@ CompressorRegistry::Register reg(
         return nullptr;
       }
       int k = std::stoi(iter->second);
+      BPS_LOG(DEBUG) << "Register Multibit Compressor " 
+                     << "k=" << k;
       return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
     });
 }
@@ -40,10 +42,12 @@ MultibitCompressor::~MultibitCompressor() = default;
 
 ByteBuf MultibitCompressor::Compress(const ByteBuf& grad) {
   // TODO
+  return grad;
 }
 
 ByteBuf MultibitCompressor::Decompress(const ByteBuf& compressed) {
   // TODO
+  return compressed;
 }
 }
 }
