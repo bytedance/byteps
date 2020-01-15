@@ -124,6 +124,7 @@ class BytePSGlobal {
   static void ReportThreadFinish() { joined_thread_cnt.fetch_add(1); }
   static bool IsAllThreadFinish(int total_thread_num);
   static std::atomic_int joined_thread_cnt;
+  static int RoundUpToPageSize(int x) { return RoundUp(x, _pagesize); }
 
  private:
   static std::mutex _init_mutex;
