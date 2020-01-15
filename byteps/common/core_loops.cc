@@ -508,7 +508,7 @@ bool RunPushLoopOnce() {
         auto tensor = task->compressor->Compress({data, len, dtype});
         data = tensor.data;
         len = tensor.len;
-        BPS_LOG(INFO) << "PUSH  with gradient compression. key=" << task->key;
+        BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
       }
 
       // false means not to delete data when SArray is deleted
@@ -629,7 +629,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
       auto tensor = task->compressor->Decompress({data, task->len, task->tensor->dtype()});
       task->cpubuff = tensor.data;
       task->len = tensor.len;
-      BPS_LOG(INFO) << "PULL  with gradient compression. key=" << task->key;
+      BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
     }
 
     if (local_size > 1) {
