@@ -92,8 +92,9 @@ def byteps_declare_tensor(name, **kwargs):
         None
     """
     def _create_c_style_string_array(strings):
-        arr = (ctypes.c_char_p*len(strings))()
-        arr[:] = strings
+        byte_arr = [bytes(string, 'utf-8') for string in strings]
+        arr = (ctypes.c_char_p*len(byte_arr))()
+        arr[:] = byte_arr
         return arr
 
     args = {}
