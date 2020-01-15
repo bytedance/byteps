@@ -30,7 +30,7 @@ CompressorRegistry::Register reg(
         return nullptr;
       }
       int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Multibit Compressor " 
+      BPS_LOG(INFO) << "Register Multibit Compressor " 
                      << "k=" << k;
       return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
     });
