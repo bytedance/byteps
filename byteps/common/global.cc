@@ -411,6 +411,7 @@ void BytePSGlobal::RegisterCompressor(const std::string& name,
       << name << " is not initialized";
   
   auto compressor_ptr = compressor::CompressorRegistry::Create(kwargs);
+  BPS_CHECK(compressor_ptr != nullptr) << "WARN: compressor_ptr is nullptr.";
   _name_to_cxt[name].compressor = std::move(compressor_ptr);
   _name_to_cxt[name].kwargs = std::move(kwargs);
 }
