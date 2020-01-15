@@ -42,6 +42,8 @@ std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
     const kwargs_t& kwargs) {
   auto iter = kwargs.find("compressor_type");
   if (iter == kwargs.end()) {
+    BPS_LOG(WARNING) << "User has registered gradient compression"
+                     << "but \"compressor_type\" not defined";
     return nullptr;
   }
 
