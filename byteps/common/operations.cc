@@ -353,6 +353,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         char* data = const_cast<char*>(content.c_str());
         ps::SArray<char> vals(data, len, false);
         int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+        BPS_LOG(INFO) << "Register for Server  key=" << key 
+                      << " content=" << content;
         ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
       }
     }
