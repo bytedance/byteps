@@ -786,7 +786,7 @@ class custom_build_ext(build_ext):
             make_option = ""
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
-            if int(os.environ.get('BYTEPS_USE_RDMA', 0)):
+            if has_rdma_header():
                 make_option += "USE_RDMA=1 "
 
             make_process = subprocess.Popen('make ' + make_option,
