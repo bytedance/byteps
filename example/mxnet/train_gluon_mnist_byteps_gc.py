@@ -88,11 +88,9 @@ def conv_nets():
 # Function to evaluate accuracy for a model
 def evaluate(model, data_iter, context):
     metric = mx.metric.Accuracy()
-    print(context)
     for _, batch in enumerate(data_iter):
         data = batch[0].as_in_context(context)
         label = batch[1].as_in_context(context)
-        print(data, label)
         output = model(data)
         metric.update([label], [output])
 
