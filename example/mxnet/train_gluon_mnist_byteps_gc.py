@@ -66,7 +66,7 @@ def get_mnist_iterator():
     train_set = MNIST(train=True, transform=dummy_transform)
     train_iter = gluon.data.DataLoader(train_set, args.batch_size, True, num_workers=args.j, last_batch='discard')
     val_set = MNIST(train=False, transform=dummy_transform)
-    val_iter = gluon.data.DataLoader(val_set, args.batch_size, False, num_workers=0)
+    val_iter = gluon.data.DataLoader(val_set, args.batch_size, False, num_workers=args.j)
 
     return train_iter, val_iter, len(train_set)
 
@@ -88,10 +88,12 @@ def conv_nets():
 # Function to evaluate accuracy for a model
 def evaluate(model, data_iter, context):
     metric = mx.metric.Accuracy()
+    print(context)
     for _, batch in enumerate(data_iter):
         data = batch[0].as_in_context(context)
         label = batch[1].as_in_context(context)
-        output = model(data.astype(args.dtype, copy=False))
+        print(data, label)
+        output = model(data)
         metric.update([label], [output])
 
     return metric.get()
