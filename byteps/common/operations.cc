@@ -325,11 +325,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   char *data = const_cast<char *>(static_cast<const char *>(context.cpubuff));
   accumulated = 0;
   size_t i = 0;
+  BPS_LOG(INFO) << "tensor size=" << size;
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-
+    
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
+      BPS_LOG(INFO) << "***Root*** should be in this logic.";
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
@@ -341,6 +343,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
 
       // register
+      BPS_LOG(INFO) << "Root Rank=" << BytePSGlobal::GetRank();
       if (BytePSGlobal::GetRank() == 0 && context.compressor) {
         auto content = compressor::Serialize(context.kwargs);
         int len = content.size();
