@@ -353,7 +353,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
       // register
       BPS_LOG(INFO) << "Root Rank=" << BytePSGlobal::GetRank();
-      if (BytePSGlobal::GetRank() == 0 && context.compressor) {
+      if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
         auto content = compressor::Serialize(context.kwargs);
         int len = content.size();
         char* data = const_cast<char*>(content.c_str());
