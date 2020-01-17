@@ -230,7 +230,10 @@ def get_link_flags(build_ext):
 
 def has_rdma_header():
     ret_code = subprocess.call(
-        "echo '#include <rdma/rdma_cma.h>' | cpp -H -o /dev/null 2>&1", shell=True)
+        "echo '#include <rdma/rdma_cma.h>' | cpp -H -o /dev/null 2>/dev/null", shell=True)
+    if ret_code != 0:
+        import warnings
+        warnings.warn("\n\n No RDMA header file detected. Will disable RDMA for compilation! \n\n")
     return ret_code==0
 
 def get_common_options(build_ext):
