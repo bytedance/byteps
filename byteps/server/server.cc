@@ -198,9 +198,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto kwargs = byteps::common::compressor::Deserialize(content);
     auto compressor_ptr = byteps::common::compressor::CompressorRegistry::Create(kwargs);
     compressor_map_[key] = std::move(compressor_ptr);
-    std::lock_guard<std::mutex> lock(debug_mu_); 
-    LOG(INFO) << "register compressor sucessfully for key="
-              << key;
     SendPushResponse(key, req_meta, server);
     return;
   }
@@ -216,7 +213,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto iter = compressor_map_.find(key);
     if (iter != compressor_map_.end()) {
       auto& compressor = iter->second;
-        if (compressor) {
+      if (compressor) {
         auto tensor = compressor->Decompress({recved, len, type.dtype});
         recved = tensor.data;
         len = tensor.len;
