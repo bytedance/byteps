@@ -77,6 +77,7 @@ std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
 unsigned int BytePSGlobal::_built_in_hash_coefficient;
+volatile bool BytePSGlobal::_mixed_mode = false;
 
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 std::atomic_int BytePSGlobal::joined_thread_cnt;
@@ -137,6 +138,10 @@ void BytePSGlobal::Init() {
     
     // set hash function
     _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
+    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_PS_ALLREDUCE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_PS_ALLREDUCE")) : false;
+    if (_mixed_mode) {
+      _hash_knob = std::string("mixed");
+    }
     BPS_LOG(DEBUG) << "Using key hash function type: " << _hash_knob;
     if (!_hash_knob.compare(std::string("built_in"))) {
       _built_in_hash_coefficient = getenv("BYTEPS_BUILT_IN_HASH_COEF") ? atoi(getenv("BYTEPS_BUILT_IN_HASH_COEF")) : 1;
@@ -464,6 +469,28 @@ void BytePSGlobal::OutputTraces(){
   std::cout << "Local rank " << _local_rank << ": communication traces output done!" << std::endl;
 }
 
+uint64_t BytePSGlobal::Hash_Mixed_PS_Allreduce(uint64_t key) {
+  const int num_server_total = ps::Postoffice::Get()->GetServerKeyRanges().size();
+  const int num_worker_total = GetNumWorker();
+  size_t num_server_noncolocate = num_server_total-num_worker_total;
+  size_t num_server_colocate = num_worker_total;
+
+  auto bound = getenv("BYTEPS_MAGIC_PRIME_NUMBER") ? atoi(getenv("BYTEPS_MAGIC_PRIME_NUMBER")) : 997;
+  BPS_CHECK_GE(bound, 100); // simple check to make sure the bound is sufficiently large
+  auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
+                  ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
+  BPS_CHECK_LE(ratio, 1);
+  BPS_CHECK_GE(ratio, 0);
+  auto threshold = ratio * bound;
+
+  auto hash_res = Hash_DJB2(key) % bound;
+  if (hash_res < threshold) { // assign for ps
+    return Hash_DJB2(hash_res) % num_server_noncolocate;
+  } else { // assign for allreduce
+    return num_server_noncolocate + (Hash_DJB2(hash_res) % num_server_colocate);
+  }
+}
+
 uint64_t BytePSGlobal::Hash_Naive(uint64_t key) {
   return ((key >> 16) + (key % 65536)) * 9973;
 }
@@ -514,6 +541,11 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       server = Hash_DJB2(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("sdbm"))) {
       server = Hash_SDBM(key) % num_servers;
+    } else if (!_hash_knob.compare(std::string("mixed"))) {
+      BPS_CHECK(_mixed_mode) 
+          << "mixed mode should set BYTEPS_ENABLE_MIXED_PS_ALLREDUCE";
+      server = Hash_Mixed_PS_Allreduce(key);
+      CHECK_LT(server, num_servers);
     } else {
       BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
                    << "must be one of [naive, built_in, djb2, sdbm]";
