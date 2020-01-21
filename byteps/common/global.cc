@@ -475,7 +475,7 @@ uint64_t BytePSGlobal::Hash_Mixed_PS_Allreduce(uint64_t key) {
   size_t num_server_noncolocate = num_server_total-num_worker_total;
   size_t num_server_colocate = num_worker_total;
 
-  auto bound = getenv("BYTEPS_MAGIC_PRIME_NUMBER") ? atoi(getenv("BYTEPS_MAGIC_PRIME_NUMBER")) : 997;
+  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 9973;
   BPS_CHECK_GE(bound, 100); // simple check to make sure the bound is sufficiently large
   auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
                   ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
@@ -543,7 +543,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       server = Hash_SDBM(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("mixed"))) {
       BPS_CHECK(_mixed_mode) 
-          << "mixed mode should set BYTEPS_ENABLE_MIXED_PS_ALLREDUCE";
+          << "mixed mode should also set: BYTEPS_ENABLE_MIXED_PS_ALLREDUCE";
       server = Hash_Mixed_PS_Allreduce(key);
       CHECK_LT(server, num_servers);
     } else {
