@@ -138,7 +138,7 @@ void BytePSGlobal::Init() {
     
     // set hash function
     _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
-    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_PS_ALLREDUCE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_PS_ALLREDUCE")) : false;
+    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE")) : false;
     if (_mixed_mode) {
       _hash_knob = std::string("mixed");
     }
@@ -469,7 +469,7 @@ void BytePSGlobal::OutputTraces(){
   std::cout << "Local rank " << _local_rank << ": communication traces output done!" << std::endl;
 }
 
-uint64_t BytePSGlobal::Hash_Mixed_PS_Allreduce(uint64_t key) {
+uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   const int num_server_total = ps::Postoffice::Get()->GetServerKeyRanges().size();
   const int num_worker_total = GetNumWorker();
   size_t num_server_noncolocate = num_server_total-num_worker_total;
@@ -484,9 +484,9 @@ uint64_t BytePSGlobal::Hash_Mixed_PS_Allreduce(uint64_t key) {
   auto threshold = ratio * bound;
 
   auto hash_res = Hash_DJB2(key) % bound;
-  if (hash_res < threshold) { // assign for ps
+  if (hash_res < threshold) { // assign for non-colocate servers
     return Hash_DJB2(hash_res) % num_server_noncolocate;
-  } else { // assign for allreduce
+  } else { // assign for colocate servers
     return num_server_noncolocate + (Hash_DJB2(hash_res) % num_server_colocate);
   }
 }
@@ -543,8 +543,8 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       server = Hash_SDBM(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("mixed"))) {
       BPS_CHECK(_mixed_mode) 
-          << "mixed mode should also set: BYTEPS_ENABLE_MIXED_PS_ALLREDUCE";
-      server = Hash_Mixed_PS_Allreduce(key);
+          << "mixed mode should also set: BYTEPS_ENABLE_MIXED_MODE";
+      server = Hash_Mixed_Mode(key);
       CHECK_LT(server, num_servers);
     } else {
       BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "

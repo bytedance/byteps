@@ -200,7 +200,7 @@ class BytePSGlobal {
   static uint64_t Hash_BuiltIn(uint64_t key);
   static uint64_t Hash_DJB2(uint64_t key);
   static uint64_t Hash_SDBM(uint64_t key);
-  static uint64_t Hash_Mixed_PS_Allreduce(uint64_t key);
+  static uint64_t Hash_Mixed_Mode(uint64_t key);
 };
 
 }  // namespace common
