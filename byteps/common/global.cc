@@ -476,8 +476,11 @@ uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   size_t num_server_noncolocate = num_server_total-num_worker_total;
   size_t num_server_colocate = num_worker_total;
 
-  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 9973;
-  BPS_CHECK_GE(bound, num_server_total); // simple check to make sure the bound is sufficiently large
+  // The bound should be larger than num_server_total 
+  // in order to cover each server, but it also 
+  // cannot be too large because it might cause unbalance
+  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 101;
+  BPS_CHECK_GE(bound, num_server_total); 
   auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
                   ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
   BPS_CHECK_LE(ratio, 1) 
