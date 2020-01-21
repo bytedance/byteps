@@ -479,7 +479,9 @@ uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   BPS_CHECK_GE(bound, 100); // simple check to make sure the bound is sufficiently large
   auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
                   ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
-  BPS_CHECK_LE(ratio, 1);
+  BPS_CHECK_LE(ratio, 1) 
+      << "number of (non-colocate servers) > number of (worker)" 
+      << ", which is not permitted in the mixed mode";
   BPS_CHECK_GE(ratio, 0);
   auto threshold = ratio * bound;
 
