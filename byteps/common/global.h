@@ -87,6 +87,7 @@ class BytePSGlobal {
   static uint32_t GetTensorCount();
 
   static std::vector<unsigned long> _server_accumulated_len;
+  static unsigned long _total_accumulated_len;
   static std::unordered_map<uint64_t, PSKV> ps_kv_;
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 

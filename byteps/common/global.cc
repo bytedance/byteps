@@ -51,6 +51,7 @@ std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
 std::vector<unsigned long> BytePSGlobal::_server_accumulated_len;
+unsigned long BytePSGlobal::_total_accumulated_len = 0;
 std::string BytePSGlobal::_hash_knob;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
@@ -476,7 +477,7 @@ uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   size_t num_server_colocate = num_worker_total;
 
   auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 9973;
-  BPS_CHECK_GE(bound, 100); // simple check to make sure the bound is sufficiently large
+  BPS_CHECK_GE(bound, num_server_total); // simple check to make sure the bound is sufficiently large
   auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
                   ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
   BPS_CHECK_LE(ratio, 1) 
@@ -554,9 +555,12 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     }
     
     _server_accumulated_len[server] += len;
+    _total_accumulated_len += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
-                   << _server_accumulated_len[server];
+                   << _server_accumulated_len[server] 
+                   << " (" << (100.0 * _server_accumulated_len[server] / _total_accumulated_len)
+                   << "%)";
 
     ps::Key ps_key = krs[server].begin() + key;
     BPS_CHECK_LT(ps_key, krs[server].end());
