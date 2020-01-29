@@ -171,7 +171,7 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
+    default_flags = ['-std=c++11', '-fPIC', '-g', '-Wall', '-fopenmp']
     avx_flags = ['-mf16c', '-mavx']
     flags_to_try = []
     if sys.platform == 'darwin':
