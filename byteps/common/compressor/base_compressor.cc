@@ -32,7 +32,7 @@ CompressorRegistry::Register::Register(std::string name, ctor_t ctor) {
 CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
   auto it = _ctor_map.find(name);
   if (it == _ctor_map.end()) {
-    BPS_LOG(DEBUG) << "No compressor registered under name:" << name;
+    BPS_LOG(INFO) << "No compressor registered under name:" << name;
     return nullptr;
   }
   return it->second;
@@ -54,6 +54,9 @@ std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
   }
 
   auto ctor = CompressorRegistry::Find(name);
+  if (ctor == nullptr)
+    return nullptr;
+
   return ctor(kwargs);
 }
 
