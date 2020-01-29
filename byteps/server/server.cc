@@ -194,7 +194,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
 
   // register compressor 
   if (type.requestType == RequestType::kCompressedPushPull) {
-    auto content = reinterpret_cast<char*>(req_data.vals.data());
+    std::string content{reinterpret_cast<char*>(req_data.vals.data()), req_data.lens[0]};
     auto kwargs = byteps::common::compressor::Deserialize(content);
     auto compressor_ptr = byteps::common::compressor::CompressorRegistry::Create(kwargs);
     compressor_map_[key] = std::move(compressor_ptr);
