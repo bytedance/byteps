@@ -342,18 +342,18 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // register
       BPS_LOG(INFO) << "Root Rank=" << BytePSGlobal::GetRank();
       if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
+        PSKV kv;
+        kv.keys.append(pskv.keys[0]);
         auto content = compressor::Serialize(context.kwargs);
         int len = content.size();
-        auto pskv_tmp = pskv;
-        pskv_tmp.lens[0] = len;
-        pskv_tmp.size = len;
+        kv.lens.append(len);
         char* data = const_cast<char*>(content.c_str());
         ps::SArray<char> vals(data, len, false);
         int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
         BPS_LOG(INFO) << "Register for Server  key=" << key 
                       << " content=" << content;
         
-        ps->Wait(ps->ZPush(pskv_tmp.keys, vals, pskv_tmp.lens, cmd));
+        ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
       }
     }
 
