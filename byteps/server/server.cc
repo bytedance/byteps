@@ -55,7 +55,7 @@ void SendPullResponse(const DataHandleType type,
   auto iter = compressor_map_.find(key);
   if (iter != compressor_map_.end()) {
     CHECK_NE(iter->second, nullptr);
-    auto tensor = compresiter->secondsor->Compress({data, len, type.dtype});
+    auto tensor = iter->second->Compress({data, len, type.dtype});
     data = tensor.data;
     len = tensor.len;
   }
