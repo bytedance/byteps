@@ -54,12 +54,10 @@ void SendPullResponse(const DataHandleType type,
 
   auto iter = compressor_map_.find(key);
   if (iter != compressor_map_.end()) {
-    auto& compressor = iter->second;
-    if (compressor) {
-      auto tensor = compressor->Compress({data, len, type.dtype});
-      data = tensor.data;
-      len = tensor.len;
-    }
+    CHECK_NE(iter->second, nullptr);
+    auto tensor = compresiter->secondsor->Compress({data, len, type.dtype});
+    data = tensor.data;
+    len = tensor.len;
   }
 
   // send pull response
@@ -197,7 +195,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     std::string content{reinterpret_cast<char*>(req_data.vals.data()), req_data.lens[0]};
     auto kwargs = byteps::common::compressor::Deserialize(content);
     auto compressor_ptr = byteps::common::compressor::CompressorRegistry::Create(kwargs);
-    compressor_map_[key] = std::move(compressor_ptr);
+    if (compressor_ptr) {
+      compressor_map_[key] = std::move(compressor_ptr);
+      if (log_key_info_) {
+        LOG(INFO) << "register compressor for key=" << key; 
+      }
+    }
     SendPushResponse(key, req_meta, server);
     LOG(INFO) << "register compressor sucessfully for key="
               << key;
@@ -214,12 +217,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     // do decompression
     auto iter = compressor_map_.find(key);
     if (iter != compressor_map_.end()) {
-      auto& compressor = iter->second;
-      if (compressor) {
-        auto tensor = compressor->Decompress({recved, len, type.dtype});
-        recved = tensor.data;
-        len = tensor.len;
-      } 
+      CHECK_NE(iter->second, nullptr);
+      auto tensor = iter->second->Decompress({recved, len, type.dtype});
+      recved = tensor.data;
+      len = tensor.len;
     }
 
     if (!stored->tensor) {

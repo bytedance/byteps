@@ -44,6 +44,6 @@ ByteBuf ErrorFeedback::Compress(const ByteBuf& grad) {
 ByteBuf ErrorFeedback::Decompress(const ByteBuf& compressed_grad) {
   return _compressor_ptr->Decompress(compressed_grad);
 }
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps

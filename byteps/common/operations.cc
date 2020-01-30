@@ -328,7 +328,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
-      BPS_LOG(INFO) << "***Root*** should be in this logic.";
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
@@ -340,7 +339,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
 
       // register
-      BPS_LOG(INFO) << "Root Rank=" << BytePSGlobal::GetRank();
       if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
         PSKV kv;
         kv.keys.push_back(pskv.keys[0]);
@@ -350,7 +348,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         char* data = const_cast<char*>(content.c_str());
         ps::SArray<char> vals(data, len, false);
         int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
-        BPS_LOG(INFO) << "Register for Server  key=" << key 
+        BPS_LOG(DEBUG) << "Register for Server  key=" << key 
                       << " content=" << content;
         
         ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));

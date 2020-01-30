@@ -116,7 +116,6 @@ def byteps_declare_tensor(name, **kwargs):
             raise ValueError("Invalid %s of type %s of %s" %
                              (v, type(v), name))
 
-    print(name, args)
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(
         c_str(name),
         ctypes.c_int(len(args)),

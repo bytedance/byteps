@@ -10,7 +10,7 @@ ENV LIBRARY_PATH /usr/local/cudnn/lib64:/usr/local/cuda/lib64:$LIBRARY_PATH
 
 ENV BYTEPS_BASE_PATH /usr/local
 ENV BYTEPS_PATH $BYTEPS_BASE_PATH/byteps
-ENV BYTEPS_GIT_LINK https://github.com/zhongyuchen/byteps
+ENV BYTEPS_GIT_LINK https://github.com/bytedance/byteps
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq

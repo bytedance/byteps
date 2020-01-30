@@ -37,8 +37,8 @@ class RandomkCompressor : public BaseCompressor {
  private:
   int _k;
 };
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps
 
 #endif  // BYTEPS_COMPRESS_STRAT_RANDOMK_H
