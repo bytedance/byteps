@@ -36,8 +36,8 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
 
   void UpdateError(const ByteBuf& grad) override;
 };
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps
 
 #endif  // BYTEPS_COMPRESS_VANILLA_EF_H

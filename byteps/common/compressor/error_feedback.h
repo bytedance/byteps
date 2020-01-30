@@ -48,7 +48,7 @@ class ErrorFeedback : public BaseCompressor {
 
   /*!
    * \brief Decompress
-   * 
+   *
    *  directly forward to `_compressor_ptr->Decompress(*)`
    */
   ByteBuf Decompress(const ByteBuf& compressed) final;
@@ -75,15 +75,15 @@ class ErrorFeedback : public BaseCompressor {
 
  private:
   /*!
-   * \brief compressor 
+   * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
 
   std::unique_ptr<char[]> _decode_buf;
   std::unique_ptr<char[]> _error_buf;
 };
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps
 
 #endif  // BYTEPS_COMPRESS_ERROR_FEEDBACK_H

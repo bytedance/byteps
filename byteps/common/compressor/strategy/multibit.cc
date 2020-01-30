@@ -25,12 +25,12 @@ CompressorRegistry::Register reg(
     "multibit", [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
       auto iter = kwargs.find("compressor_k");
       if (iter == kwargs.end()) {
-        BPS_LOG(DEBUG)
+        BPS_LOG(WARNING)
             << "Multibit Compressor needs parameter \"compressor_k\"";
         return nullptr;
       }
       int k = std::stoi(iter->second);
-      BPS_LOG(INFO) << "Register Multibit Compressor " 
+      BPS_LOG(DEBUG) << "Register Multibit Compressor "
                      << "k=" << k;
       return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
     });
@@ -41,14 +41,12 @@ MultibitCompressor::MultibitCompressor(int k) : _k(k){};
 MultibitCompressor::~MultibitCompressor() = default;
 
 ByteBuf MultibitCompressor::Compress(const ByteBuf& grad) {
-  // TODO
-  return grad;
+  // TOOD
 }
 
 ByteBuf MultibitCompressor::Decompress(const ByteBuf& compressed) {
   // TODO
-  return compressed;
 }
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps

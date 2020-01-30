@@ -34,8 +34,8 @@ class OnebitCompressor : public BaseCompressor {
 
   ByteBuf Decompress(const ByteBuf& compressed) override;
 };
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps
 
 #endif  // BYTEPS_COMPRESS_STRAT_ONEBIT_H

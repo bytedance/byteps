@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESS_BASE_COMPRESSOR_H
 
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -87,7 +88,7 @@ class CompressorRegistry {
   static ctor_t Find(const std::string& name);
 
   static std::unique_ptr<BaseCompressor> Create(const kwargs_t& kwargs);
-  
+
  private:
   static map_t _ctor_map;
 
@@ -118,8 +119,8 @@ inline kwargs_t Deserialize(const std::string& content) {
 
   return kwargs;
 }
-}
-}
-}
+}  // namespace compressor
+}  // namespace common
+}  // namespace byteps
 
 #endif  // BYTEPS_COMPRESS_BASE_COMPRESSOR_H
