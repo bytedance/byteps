@@ -23,15 +23,43 @@ namespace common {
 namespace compressor {
 
 /*!
- * \brief TODO
+ * \brief Onebit Compressor
+ * 
+ * paper: SIGNSGD: Compressed Optimisation for Non-Convex Problems
+ * https://arxiv.org/pdf/1802.04434.pdf
+ * 
+ * each worker i: 
+ *    c_i <- sign(grad)
+ * 
+ * server:
+ *    sign(\sum_i c_i) 
+ * 
+ * \note this is a deterministic algorithm. 
  */
 class OnebitCompressor : public BaseCompressor {
  public:
   OnebitCompressor();
   virtual ~OnebitCompressor();
-
+  
+  /*!
+   * \brief Compress
+   * 
+   * compress and pack into byte array.
+   * each bit represents a sign.
+   * 
+   * \param grad 
+   * \return ByteBuf: byte array
+   */
   ByteBuf Compress(const ByteBuf& grad) override;
 
+  /*!
+   * \brief Decompress
+   * 
+   * unpack from byte array to FP tensor
+   * 
+   * \param compressed 
+   * \return ByteBuf: tensor
+   */
   ByteBuf Decompress(const ByteBuf& compressed) override;
 };
 }  // namespace compressor
