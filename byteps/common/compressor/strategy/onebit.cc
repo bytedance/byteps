@@ -32,7 +32,7 @@ OnebitCompressor::OnebitCompressor() = default;
 OnebitCompressor::~OnebitCompressor() = default;
 
 ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
-  // TODO
+  // TODO 
 }
 
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
