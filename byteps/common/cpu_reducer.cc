@@ -221,15 +221,12 @@ int CpuReducer::copy(void* dst, void* src, size_t len) {
   return 0;
 }
 
-
 int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _sign(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src),
-                   len);
+      return _sign(dst, reinterpret_cast<float*>(src), len);
     case BYTEPS_FLOAT64:
-      return _sign(reinterpret_cast<double*>(dst),
-                   reinterpret_cast<double*>(src), len);
+      return _sign(dst, reinterpret_cast<double*>(src), len);
     case BYTEPS_FLOAT16:
       return _sign_float16(dst, src, len);
     default:
@@ -238,9 +235,9 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_sign(T* dst, T* src, size_t len) {}
+int CpuReducer::_sign(void* dst, T* src, size_t len) {}
 
-int _sign_float16(void* dst, void* src, size_t len) {}
+int CpuReducer::_sign_float16(void* dst, void* src, size_t len) {}
 
 }  // namespace common
 }  // namespace byteps
