@@ -73,14 +73,15 @@ class ErrorFeedback : public BaseCompressor {
    */
   virtual void UpdateError(const ByteBuf& grad) = 0;
 
+ protected:
+  std::unique_ptr<char[]> _decode_buf;
+  std::unique_ptr<char[]> _error_buf;
+
  private:
   /*!
    * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
-
-  std::unique_ptr<char[]> _decode_buf;
-  std::unique_ptr<char[]> _error_buf;
 };
 }  // namespace compressor
 }  // namespace common
