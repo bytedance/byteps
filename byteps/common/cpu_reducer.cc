@@ -228,16 +228,45 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
     case BYTEPS_FLOAT64:
       return _sign(dst, reinterpret_cast<double*>(src), len);
     case BYTEPS_FLOAT16:
-      return _sign_float16(dst, src, len);
+      return _sign(dst, reinterpret_cast<short*>(src), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
 }
 
 template <typename T>
-int CpuReducer::_sign(void* dst, T* src, size_t len) {}
+size_t CpuReducer::_sign(void* dst, T* src, size_t len) {
+  auto dst = reinterpret_cast<char*>(dst);
+  const int end = sizeof(T) - 1, size = len / sizeof(T);
+  char* psrc;
+// extract sign bit
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < size; ++i) {
+    psrc = reinterpret_cast<char*>(src[i])
 
-int CpuReducer::_sign_float16(void* dst, void* src, size_t len) {}
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
+    defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
+    defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) ||       \
+    defined(__MIBSEB__)
+        // big-endian target architecture
+        dst[i] = psrc[0] & 0x80;
+
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN ||         \
+    defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) ||                   \
+    defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || \
+    defined(__MIPSEL) || defined(__MIPSEL__)
+        // little-endian target architecture
+        dst[i] = psrc[end] & 0x80;
+#else
+#error "Unknown endian"
+#endif
+  }
+
+  // pack
+
+  return size;
+}
+
 
 }  // namespace common
 }  // namespace byteps
