@@ -65,7 +65,7 @@ class BaseCompressor {
    */
   virtual ByteBuf Decompress(const ByteBuf& compressed) = 0;
 
- private:
+ protected:
   /*!
    * \brief encoding buffer
    */
