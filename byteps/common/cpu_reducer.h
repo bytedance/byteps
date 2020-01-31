@@ -48,6 +48,7 @@ class CpuReducer {
   int sum(void* dst, void* src, size_t len, DataType dtype);
   int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
   int copy(void* dst, void* src, size_t len);
+  int sign(void* dst, void* src, size_t len, DataType dtype);
 
 #ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();
@@ -182,6 +183,11 @@ class CpuReducer {
 
   int _sum_float16(void* dst, void* src, size_t len);
   int _sum_float16(void* dst, void* src1, void* src2, size_t len);
+
+  template <typename T>
+  int _sign(T* dst, T* src, size_t len);
+
+  int _sign_float16(void* dst, void* src, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
