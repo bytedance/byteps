@@ -101,6 +101,7 @@ const std::vector<std::string> LogStrings = {
     "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
     "COORDINATE_BROADCAST", "BROADCAST"};
 
+constexpr int BYTE_SIZE = 8;
 
 class Status {
  public:

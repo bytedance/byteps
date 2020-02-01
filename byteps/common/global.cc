@@ -177,9 +177,9 @@ void BytePSGlobal::Init() {
   }
 
   // Init CPU Reducer
-  if (_is_cross_pcie_switch) {
-    _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
-  }
+  // if (_is_cross_pcie_switch) {
+  _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
+  // }
 
   // ReadyTable for Push & Pull
   if (_is_root_device) {

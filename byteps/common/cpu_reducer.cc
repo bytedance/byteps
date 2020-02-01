@@ -262,8 +262,6 @@ size_t CpuReducer::_sign(void* dst, T* src, size_t len) {
 #endif
   }
 
-  // pack
-
   return size;
 }
 

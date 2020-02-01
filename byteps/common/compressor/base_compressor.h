@@ -70,6 +70,11 @@ class BaseCompressor {
    * \brief encoding buffer
    */
   std::unique_ptr<char[]> _encode_buf;
+
+  /*!
+   * \brief tensor's length before compression
+   */
+  size_t _src_len;
 };
 
 using kwargs_t = std::unordered_map<std::string, std::string>;
