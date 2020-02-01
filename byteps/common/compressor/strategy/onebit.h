@@ -31,10 +31,11 @@ namespace compressor {
  * each worker i: 
  *    c_i <- sign(grad)
  * 
- * server:
+ * server: majority vote
  *    sign(\sum_i c_i) 
  * 
  * \note this is a deterministic algorithm. 
+ * \note 0 represents positive and 1 represents negative.
  */
 class OnebitCompressor : public BaseCompressor {
  public:
@@ -61,6 +62,20 @@ class OnebitCompressor : public BaseCompressor {
    * \return ByteBuf: tensor
    */
   ByteBuf Decompress(const ByteBuf& compressed) override;
+
+ private:
+  /*!
+   * \brief Pack byte array into bits in place
+   * 
+   * \return bytes
+   */
+  size_t Packing(char* data, size_t len);
+
+
+  /*!
+   * \brief Unpack bits into byte array 
+   */
+  void Unpacking(void* dst, void* src, size_t len, size_t src_len);
 };
 }  // namespace compressor
 }  // namespace common
