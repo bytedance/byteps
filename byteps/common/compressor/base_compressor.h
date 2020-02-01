@@ -45,9 +45,9 @@ class BaseCompressor {
 
   /*!
    * \brief Allocate encoding buffer for compression.
-   * \param size the size of buffer (bytes)
+   * \param len the size of buffer (bytes)
    */
-  virtual void AllocateBuffer(size_t size);
+  virtual void AllocateBuffer(size_t len);
 
   /*!
    * \brief Compress function

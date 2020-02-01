@@ -63,9 +63,9 @@ BaseCompressor::BaseCompressor() = default;
 
 BaseCompressor::~BaseCompressor() = default;
 
-void BaseCompressor::AllocateBuffer(size_t size) {
-  this->_src_len = size;
-  _encode_buf.reset(new char[size]);
+void BaseCompressor::AllocateBuffer(size_t len) {
+  this->_src_len = len;
+  _encode_buf.reset(new char[len]);
 }
 }  // namespace compressor
 }  // namespace common

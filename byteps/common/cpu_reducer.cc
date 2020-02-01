@@ -237,11 +237,11 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 template <typename T>
 size_t CpuReducer::_sign(void* dst, T* src, size_t len) {
   auto dst = reinterpret_cast<char*>(dst);
-  const int end = sizeof(T) - 1, size = len / sizeof(T);
+  const int end = sizeof(T) - 1, reduced_len = len / sizeof(T);
   char* psrc;
 // extract sign bit
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < size; ++i) {
+  for (size_t i = 0; i < reduced_len; ++i) {
     psrc = reinterpret_cast<char*>(src[i])
 
 #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
@@ -262,7 +262,7 @@ size_t CpuReducer::_sign(void* dst, T* src, size_t len) {
 #endif
   }
 
-  return size;
+  return reduced_len;
 }
 
 
