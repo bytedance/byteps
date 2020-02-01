@@ -38,10 +38,10 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
   auto reducer = BytePSGlobal::GetCpuReducer();
-  auto reduced_size =
+  auto reduced_len =
       reducer->sign(_encode_buf.get(), grad.data, grad.len, grad.dtype);
-  auto compressed_size = Packing(_encode_buf.get(), reduced_size);
-  return {_encode_buf.get(), compressed_size, grad.dtype};
+  auto compressed_len = Packing(_encode_buf.get(), reduced_len);
+  return {_encode_buf.get(), compressed_len, grad.dtype};
 }
 
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
@@ -51,9 +51,9 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
 size_t OnebitCompressor::Packing(char* data, size_t len) {
   size_t padding_len = (BYTE_SIZE - (len % BYTE_SIZE)) % BYTE_SIZE;
   size_t total_len = len + padding_len;
-  size_t total_bytes = total_len / BYTE_SIZE;
+  size_t compressed_len = total_len / BYTE_SIZE;
   const char mask = 1;
-  for (int i = 0, base = 0; i < total_bytes; ++i, base += BYTE_SIZE) {
+  for (int i = 0, base = 0; i < compressed_len; ++i, base += BYTE_SIZE) {
     data[i] |= (data[base] & mask);
     for (int j = 1; j < BYTE_SIZE; ++j) {
       data[i] <<= 1;
@@ -63,7 +63,7 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
     }
   }
 
-  return total_bytes;
+  return compressed_len;
 }
 }  // namespace compressor
 }  // namespace common
