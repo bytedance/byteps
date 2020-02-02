@@ -582,8 +582,10 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(_encode_mutex);
   PSKV& pskv = ps_kv_[key];
   if (!pskv.keys.empty()) {
-    // BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
-    //     << "The value size cannot be changed " << len << ". Key is " << key;
+    if (pskv.size != len) {
+      pskv.size = len;
+      pskv.lens[0] = len;
+    }
   } else {
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
     const int num_servers = krs.size();
