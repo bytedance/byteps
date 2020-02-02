@@ -582,7 +582,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(_encode_mutex);
   PSKV& pskv = ps_kv_[key];
   if (!pskv.keys.empty()) {
-    if (pskv.size != len) {
+    if (len > 0 && pskv.size != len) {
       pskv.size = len;
       pskv.lens[0] = len;
     }
