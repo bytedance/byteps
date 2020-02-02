@@ -45,7 +45,14 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
 }
 
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
-  // TODO
+  CHECK(compressed.data); 
+  CHECK(compressed.len);
+
+  Unpacking(_encode_buf.get(), compressed.data, compressed.len, _src_len);
+  
+  
+
+  return {compressed.data, _src_len, compressed.dtype};
 }
 
 size_t OnebitCompressor::Packing(char* data, size_t len) {
@@ -65,6 +72,11 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
 
   return compressed_len;
 }
+
+void OnebitCompressor::Unpacking(void* dst, void* src, size_t len, size_t src_len) {
+  
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
