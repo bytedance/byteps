@@ -185,7 +185,7 @@ class CpuReducer {
   int _sum_float16(void* dst, void* src1, void* src2, size_t len);
 
   template <typename T>
-  size_t _sign(void* dst, T* src, size_t len);
+  size_t _sign(char* dst, T* src, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
