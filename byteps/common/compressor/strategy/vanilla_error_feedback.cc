@@ -44,7 +44,8 @@ ByteBuf VanillaErrorFeedbackCompressor::UpdateGradient(const ByteBuf& grad) {
   // TODO
 }
 
-void VanillaErrorFeedbackCompressor::UpdateError(const ByteBuf& grad) {
+void VanillaErrorFeedbackCompressor::UpdateError(const ByteBuf& corrected,
+                                                 const ByteBuf& compressed) {
   // TODO
 }
 }  // namespace compressor

@@ -34,7 +34,8 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  protected:
   ByteBuf UpdateGradient(const ByteBuf& grad) override;
 
-  void UpdateError(const ByteBuf& grad) override;
+  void UpdateError(const ByteBuf& corrected,
+                   const ByteBuf& compressed) override;
 };
 }  // namespace compressor
 }  // namespace common
