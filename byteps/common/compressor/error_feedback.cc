@@ -35,8 +35,8 @@ ByteBuf ErrorFeedback::Compress(const ByteBuf& grad) {
   auto corrected_grad = UpdateGradient(grad);
   // compress
   auto compressed_grad = _compressor_ptr->Compress(corrected_grad);
-  // after: error = grad - decompress(compressed_corrected_grad)
-  UpdateError(grad);
+  // after: error = corrected_grad - decompress(compressed_corrected_grad)
+  UpdateError(corrected_grad, compressed_grad);
 
   return compressed_grad;
 }

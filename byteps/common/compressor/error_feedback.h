@@ -67,11 +67,12 @@ class ErrorFeedback : public BaseCompressor {
   /*!
    * \brief Update error
    *
-   * error = grad - decompress(compressed_corrected_grad)
+   * error = corrected_grad - decompress(compressed_corrected_grad)
    *
-   * \param grad original gradient (uncompressed)
+   * \param corrected refers to gradient + error
    */
-  virtual void UpdateError(const ByteBuf& grad) = 0;
+  virtual void UpdateError(const ByteBuf& corrected,
+                           const ByteBuf& compressed) = 0;
 
  protected:
   std::unique_ptr<char[]> _decode_buf;
