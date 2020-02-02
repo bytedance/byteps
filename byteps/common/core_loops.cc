@@ -626,7 +626,9 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     if (task->compressor) {
       char* data =
         const_cast<char *>(static_cast<const char *>(task->cpubuff) + task->offset);
-      auto tensor = task->compressor->Decompress({data, task->len, task->tensor->dtype()});
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
+      auto len = pskv.lens[0];
+      auto tensor = task->compressor->Decompress({data, len, task->tensor->dtype()});
       CHECK_EQ(tensor.len, task->len);
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
     }
