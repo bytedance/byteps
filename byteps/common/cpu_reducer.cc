@@ -267,6 +267,33 @@ size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
   return reduced_len;
 }
 
+int CpuReducer::byte2float(void* dst, void* src, size_t len, DataType dtype) {
+  switch (dtype)
+  {
+  case BYTEPS_FLOAT32:
+    return _byte2float(reinterpret_cast<float*>(dst), reinterpret_cast<char*>(src), len);
+  case BYTEPS_FLOAT64:
+    return _byte2float(reinterpret_cast<double*>(dst), reinterpret_cast<char*>(src), len);
+  case BYTEPS_FLOAT16:
+    return _byte2float16(dst, src, len);
+  default:
+    break;
+  }
+}
+
+template <typename T>
+int CpuReducer::_byte2float(T* dst, char* src, size_t len) {
+  #pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len; ++i) {
+    dst[i] = static_cast<T>(src1[i]);
+  }
+  return 0;
+}
+
+int CpuReducer::_byte2float16(void* dst, void* src, size_t len) {
+  
+}
+
 
 }  // namespace common
 }  // namespace byteps
