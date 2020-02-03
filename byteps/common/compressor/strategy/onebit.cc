@@ -45,13 +45,13 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
 }
 
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
-  CHECK(compressed.data); 
-  CHECK(compressed.len);
+  BPS_CHECK(compressed.data);
+  BPS_CHECK(compressed.len);
 
   Unpacking(_encode_buf.get(), compressed.data, compressed.len, _src_len);
-  
-  
-
+  auto reducer = BytePSGlobal::GetCpuReducer();
+  reducer->byte2float(compressed.data, _encode_buf.get(), _src_len,
+                      compressed.dtype);
   return {compressed.data, _src_len, compressed.dtype};
 }
 
@@ -59,13 +59,13 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
   size_t padding_len = (BYTE_SIZE - (len % BYTE_SIZE)) % BYTE_SIZE;
   size_t total_len = len + padding_len;
   size_t compressed_len = total_len / BYTE_SIZE;
-  const char mask = 1;
+  constexpr char MASK = 0x01;
   for (int i = 0, base = 0; i < compressed_len; ++i, base += BYTE_SIZE) {
-    data[i] |= (data[base] & mask);
+    data[i] |= (data[base] & MASK);
     for (int j = 1; j < BYTE_SIZE; ++j) {
       data[i] <<= 1;
       if (base + j < len) {
-        data[i] |= (data[base + j] & mask);
+        data[i] |= (data[base + j] & MASK);
       }
     }
   }
@@ -73,8 +73,18 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
   return compressed_len;
 }
 
-void OnebitCompressor::Unpacking(void* dst, void* src, size_t len, size_t src_len) {
-  
+void OnebitCompressor::Unpacking(char* dst, char* src, size_t len,
+                                 size_t src_len) {
+  constexpr char MASK = 0x80;
+  for (int i = 0; i < len; ++i) {
+    for (int j = 0; j < BYTE_SIZE; ++j) {
+      if (i * BYTE_SIZE + j >= src_len) {
+        break;
+      }
+      dst[i] = (src[i] & MASK) >> 7;
+      src[i] <<= 1;
+    }
+  }
 }
 
 }  // namespace compressor
