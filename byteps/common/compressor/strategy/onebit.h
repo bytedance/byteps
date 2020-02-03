@@ -75,7 +75,7 @@ class OnebitCompressor : public BaseCompressor {
   /*!
    * \brief Unpack bits into byte array 
    */
-  void Unpacking(void* dst, void* src, size_t len, size_t src_len);
+  void Unpacking(char* dst, char* src, size_t len, size_t src_len);
 };
 }  // namespace compressor
 }  // namespace common
