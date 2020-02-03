@@ -22,6 +22,8 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "../cpu_reducer.h"
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -47,7 +49,7 @@ class BaseCompressor {
    * \brief Allocate encoding buffer for compression.
    * \param len the size of buffer (bytes)
    */
-  virtual void AllocateBuffer(size_t len);
+  virtual void Init(size_t len);
 
   /*!
    * \brief Compress function
@@ -75,6 +77,11 @@ class BaseCompressor {
    * \brief tensor's length before compression
    */
   size_t _src_len;
+
+  /*!
+   * \brief CPU reducer
+   */
+  std::unique_ptr<CpuReducer> _cpu_reducer;
 };
 
 using kwargs_t = std::unordered_map<std::string, std::string>;

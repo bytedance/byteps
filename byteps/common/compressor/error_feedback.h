@@ -36,7 +36,7 @@ class ErrorFeedback : public BaseCompressor {
    * \brief Allocate all buffers for compression.
    * \param size the size of buffer (bytes)
    */
-  void AllocateBuffer(size_t size) final;
+  void Init(size_t size) final;
 
   /*!
    * \brief Compress with error feedback
