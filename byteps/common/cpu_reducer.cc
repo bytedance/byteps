@@ -239,7 +239,7 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 
 template <typename T>
 size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
-  const int end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
   unsigned char* psrc;
 // extract sign bit
 #pragma omp parallel for simd num_threads(_num_threads)
@@ -282,19 +282,18 @@ int CpuReducer::byte2float(void* dst, void* src, size_t len, DataType dtype) {
 
 template <typename T>
 int CpuReducer::_byte2float(T* dst, char* src, size_t len) {
-  #pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len; ++i) {
-    dst[i] = static_cast<T>(src1[i]);
+    dst[i] = static_cast<T>(src[i]);
   }
   return 0;
 }
 
 int CpuReducer::_byte2float16(void* dst, void* src, size_t len) {
-  src = reinterpret_cast<unsigned short*>(src);
-  dst = reinterpret_cast<float*>(dst);
-  #pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len; ++i) {
-    HalfBits2Float(src+i, dst+i);
+    HalfBits2Float(reinterpret_cast<unsigned short*>(src) + i,
+                   reinterpret_cast<float*>(dst) + i);
   }
   return 0;
 }
