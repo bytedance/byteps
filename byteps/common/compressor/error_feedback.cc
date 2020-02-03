@@ -24,8 +24,8 @@ ErrorFeedback::ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr)
 
 ErrorFeedback::~ErrorFeedback() = default;
 
-void ErrorFeedback::AllocateBuffer(size_t len) {
-  _compressor_ptr->AllocateBuffer(len);
+void ErrorFeedback::Init(size_t len) {
+  _compressor_ptr->Init(len);
   _decode_buf.reset(new char[len]);
   _error_buf.reset(new char[len]);
 }

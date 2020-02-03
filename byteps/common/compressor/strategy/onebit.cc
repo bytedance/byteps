@@ -15,7 +15,6 @@
 
 #include "onebit.h"
 
-#include "../../global.h"
 #include "../../logging.h"
 
 namespace byteps {
@@ -37,9 +36,8 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
-  auto reducer = BytePSGlobal::GetCpuReducer();
   auto reduced_len =
-      reducer->sign(_encode_buf.get(), grad.data, grad.len, grad.dtype);
+      _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len, grad.dtype);
   auto compressed_len = Packing(_encode_buf.get(), reduced_len);
   return {_encode_buf.get(), compressed_len, grad.dtype};
 }
@@ -49,9 +47,8 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.len);
 
   Unpacking(_encode_buf.get(), compressed.data, compressed.len, _src_len);
-  auto reducer = BytePSGlobal::GetCpuReducer();
-  reducer->byte2float(compressed.data, _encode_buf.get(), _src_len,
-                      compressed.dtype);
+  _cpu_reducer->byte2float(compressed.data, _encode_buf.get(), _src_len,
+                           compressed.dtype);
   return {compressed.data, _src_len, compressed.dtype};
 }
 
@@ -76,7 +73,7 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
 void OnebitCompressor::Unpacking(char* dst, char* src, size_t len,
                                  size_t src_len) {
   constexpr unsigned char MASK = 0x80;
-  for (int i = 0, base = 0; i < len; ++i, base+=BYTE_SIZE) {
+  for (int i = 0, base = 0; i < len; ++i, base += BYTE_SIZE) {
     for (int j = 0; j < BYTE_SIZE; ++j) {
       if (base + j >= src_len) {
         break;
