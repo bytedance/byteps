@@ -59,7 +59,7 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
   size_t padding_len = (BYTE_SIZE - (len % BYTE_SIZE)) % BYTE_SIZE;
   size_t total_len = len + padding_len;
   size_t compressed_len = total_len / BYTE_SIZE;
-  constexpr char MASK = 0x01;
+  constexpr unsigned char MASK = 0x01;
   for (int i = 0, base = 0; i < compressed_len; ++i, base += BYTE_SIZE) {
     data[i] |= (data[base] & MASK);
     for (int j = 1; j < BYTE_SIZE; ++j) {
@@ -75,13 +75,13 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
 
 void OnebitCompressor::Unpacking(char* dst, char* src, size_t len,
                                  size_t src_len) {
-  constexpr char MASK = 0x80;
-  for (int i = 0; i < len; ++i) {
+  constexpr unsigned char MASK = 0x80;
+  for (int i = 0, base = 0; i < len; ++i, base+=BYTE_SIZE) {
     for (int j = 0; j < BYTE_SIZE; ++j) {
-      if (i * BYTE_SIZE + j >= src_len) {
+      if (base + j >= src_len) {
         break;
       }
-      dst[i] = (src[i] & MASK) >> 7;
+      dst[base + j] = (src[i] & MASK) >> 7;
       src[i] <<= 1;
     }
   }
