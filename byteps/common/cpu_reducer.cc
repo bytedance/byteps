@@ -268,8 +268,7 @@ size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
 }
 
 int CpuReducer::byte2float(void* dst, void* src, size_t len, DataType dtype) {
-  switch (dtype)
-  {
+  switch (dtype) {
   case BYTEPS_FLOAT32:
     return _byte2float(reinterpret_cast<float*>(dst), reinterpret_cast<char*>(src), len);
   case BYTEPS_FLOAT64:
@@ -291,9 +290,13 @@ int CpuReducer::_byte2float(T* dst, char* src, size_t len) {
 }
 
 int CpuReducer::_byte2float16(void* dst, void* src, size_t len) {
-  
+  src = reinterpret_cast<unsigned short*>(src);
+  dst = reinterpret_cast<float*>(dst);
+  #pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len; ++i) {
+    HalfBits2Float(src+i, dst+i);
+  }
+  return 0;
 }
-
-
 }  // namespace common
 }  // namespace byteps
