@@ -39,10 +39,11 @@
 #include <chrono>
 #include <queue>
 
-#include "compressor/base_compressor.h"
-
 namespace byteps {
 namespace common {
+namespace compressor {
+class BaseCompressor;
+}
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
