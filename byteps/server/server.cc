@@ -220,6 +220,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto iter = compressor_map_.find(key);
     if (iter != compressor_map_.end()) {
       CHECK_NE(iter->second, nullptr);
+      if (!stored->tensor) {
+        iter->second->Init(len);
+      }
       auto tensor = iter->second->Decompress({recved, len, type.dtype});
       recved = tensor.data;
       len = tensor.len;
