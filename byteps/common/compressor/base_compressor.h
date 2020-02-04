@@ -22,7 +22,6 @@
 #include <sstream>
 #include <unordered_map>
 
-#include "../cpu_reducer.h"
 
 namespace byteps {
 namespace common {
@@ -36,6 +35,8 @@ struct ByteBuf {
   size_t len;
   int dtype;
 };
+
+class CpuReducer;
 
 /*!
  *  \brief Compressor interface used in BytePS core.
