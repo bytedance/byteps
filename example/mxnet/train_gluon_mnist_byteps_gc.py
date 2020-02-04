@@ -121,9 +121,7 @@ params = model.collect_params()
 
 for name, param in params.items():
   assert isinstance(param, mx.gluon.Parameter)
-  setattr(param, "byteps_compressor_type", "multibit")
-  setattr(param, "byteps_compressor_k", "4")
-  setattr(param, "byteps_error_feedback_type", "vanilla")
+  setattr(param, "byteps_compressor_type", "onebit")
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
