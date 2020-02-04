@@ -35,6 +35,7 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
+  BPS_CHECK(_encode_buf);
   auto reduced_len = _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len,
                                         static_cast<DataType>(grad.dtype));
   auto compressed_len = Packing(_encode_buf.get(), reduced_len);
