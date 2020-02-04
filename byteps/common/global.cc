@@ -18,6 +18,8 @@
 #include <numa.h>
 #include <sstream>
 
+#include "compressor/base_compressor.h"
+
 namespace byteps {
 namespace common {
 

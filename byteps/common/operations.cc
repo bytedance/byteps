@@ -23,6 +23,8 @@
 #include "global.h"
 #include "logging.h"
 
+#include "compressor/base_compressor.h"
+
 namespace byteps {
 namespace common {
 
