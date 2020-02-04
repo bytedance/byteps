@@ -36,8 +36,8 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
-  auto reduced_len =
-      _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len, grad.dtype);
+  auto reduced_len = _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len,
+                                        static_cast<DataType>(grad.dtype));
   auto compressed_len = Packing(_encode_buf.get(), reduced_len);
   return {_encode_buf.get(), compressed_len, grad.dtype};
 }
@@ -48,7 +48,7 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
 
   Unpacking(_encode_buf.get(), compressed.data, compressed.len, _src_len);
   _cpu_reducer->byte2float(compressed.data, _encode_buf.get(), _src_len,
-                           compressed.dtype);
+                           static_cast<DataType>(compressed.dtype));
   return {compressed.data, _src_len, compressed.dtype};
 }
 
