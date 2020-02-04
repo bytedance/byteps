@@ -22,6 +22,7 @@
 #include <set>
 #include <unistd.h>
 #include "ps/ps.h"
+#include "../common/cpu_reducer.h"
 #include "../common/compressor/base_compressor.h"
 
 namespace byteps {
