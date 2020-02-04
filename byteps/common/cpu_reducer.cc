@@ -235,6 +235,7 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
+  return 0;
 }
 
 template <typename T>
@@ -276,8 +277,9 @@ int CpuReducer::byte2float(void* dst, void* src, size_t len, DataType dtype) {
   case BYTEPS_FLOAT16:
     return _byte2float16(dst, src, len);
   default:
-    break;
+    BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
+  return 0;
 }
 
 template <typename T>

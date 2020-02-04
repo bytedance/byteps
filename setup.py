@@ -304,8 +304,7 @@ def build_server(build_ext, options):
     server_lib.include_dirs = options['INCLUDES']
     server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
-                          'byteps/common/logging.cc',
-                          "byteps/common/common.cc"] + [
+                          'byteps/common/logging.cc']+ [
                           'byteps/common/compressor/base_compressor.cc',
                           'byteps/common/compressor/error_feedback.cc',
                           'byteps/common/compressor/strategy/multibit.cc',
