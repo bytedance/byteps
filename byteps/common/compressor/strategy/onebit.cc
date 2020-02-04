@@ -32,7 +32,6 @@ OnebitCompressor::OnebitCompressor() = default;
 OnebitCompressor::~OnebitCompressor() = default;
 
 ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
-  BPS_CHECK(_encode_buf);
   BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
