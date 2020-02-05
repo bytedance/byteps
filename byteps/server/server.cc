@@ -224,6 +224,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       auto tensor = iter->second->Decompress({recved, len, type.dtype});
       recved = tensor.data;
       len = tensor.len;
+      if (log_key_info_) {
+        LOG(INFO) << "decompress for key=" << key << " src_len=" << len;
+      }
     }
 
     if (!stored->tensor) {
