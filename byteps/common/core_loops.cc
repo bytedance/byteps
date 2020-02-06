@@ -509,6 +509,10 @@ bool RunPushLoopOnce() {
       if (task->compressor) {
         auto tensor = task->compressor->Compress({data, len, dtype});
         data = tensor.data;
+        BPS_CHECK_LE(tensor.len, len)
+            << "Compressor Implementation Error "
+            << ", key=" << task->key << ", src_len=" << len
+            << ", compressed_len=" << tensor.len;
         len = tensor.len;
         BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
       }
@@ -631,7 +635,10 @@ bool RunRootCopyHost2DeviceLoopOnce() {
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
       auto tensor = task->compressor->Decompress({data, len, task->tensor->dtype()});
-      CHECK_EQ(tensor.len, task->len);
+      CHECK_EQ(tensor.len, task->len) 
+          << "Compressor Implementation Error "
+          << ", key=" << task->key << ", src_len=" << task->len
+          << ", decompressed_len=" << tensor.len;
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
     }
 
