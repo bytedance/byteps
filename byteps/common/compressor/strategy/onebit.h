@@ -24,41 +24,41 @@ namespace compressor {
 
 /*!
  * \brief Onebit Compressor
- * 
+ *
  * paper: SIGNSGD: Compressed Optimisation for Non-Convex Problems
  * https://arxiv.org/pdf/1802.04434.pdf
- * 
- * each worker i: 
+ *
+ * each worker i:
  *    c_i <- sign(grad)
- * 
+ *
  * server: majority vote
- *    sign(\sum_i c_i) 
- * 
- * \note this is a deterministic algorithm. 
+ *    sign(\sum_i c_i)
+ *
+ * \note this is a deterministic algorithm.
  * \note 0 represents positive and 1 represents negative.
  */
 class OnebitCompressor : public BaseCompressor {
  public:
   OnebitCompressor();
   virtual ~OnebitCompressor();
-  
+
   /*!
    * \brief Compress
-   * 
+   *
    * compress and pack into byte array.
    * each bit represents a sign.
-   * 
-   * \param grad 
+   *
+   * \param grad
    * \return ByteBuf: byte array
    */
   ByteBuf Compress(const ByteBuf& grad) override;
 
   /*!
    * \brief Decompress
-   * 
+   *
    * unpack from byte array to FP tensor
-   * 
-   * \param compressed 
+   *
+   * \param compressed
    * \return ByteBuf: tensor
    */
   ByteBuf Decompress(const ByteBuf& compressed) override;
@@ -66,16 +66,16 @@ class OnebitCompressor : public BaseCompressor {
  private:
   /*!
    * \brief Pack byte array into bits in place
-   * 
+   *
    * \return bytes
    */
   size_t Packing(char* data, size_t len);
 
-
   /*!
-   * \brief Unpack bits into byte array 
+   * \brief Unpack bits into byte array
    */
-  void Unpacking(char* dst, char* src, size_t len, size_t src_len);
+  void Unpacking(char* dst, char* src, size_t len, size_t src_len,
+                 size_t stride);
 };
 }  // namespace compressor
 }  // namespace common
