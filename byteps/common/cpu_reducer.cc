@@ -268,36 +268,37 @@ size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
   return reduced_len;
 }
 
-int CpuReducer::byte2float(void* dst, void* src, size_t len, DataType dtype) {
+int CpuReducer::byte2float(void* data, size_t len, DataType dtype) {
   switch (dtype) {
-  case BYTEPS_FLOAT32:
-    return _byte2float(reinterpret_cast<float*>(dst), reinterpret_cast<char*>(src), len);
-  case BYTEPS_FLOAT64:
-    return _byte2float(reinterpret_cast<double*>(dst), reinterpret_cast<char*>(src), len);
-  case BYTEPS_FLOAT16:
-    return _byte2float16(dst, src, len);
-  default:
-    BPS_CHECK(0) << "Unsupported data type: " << dtype;
+    case BYTEPS_FLOAT32:
+      return _byte2float(reinterpret_cast<float*>(data), len, 1.0f, -1.0f);
+    case BYTEPS_FLOAT64:
+      return _byte2float(reinterpret_cast<double*>(data), len, 1.0, -1.0);
+    case BYTEPS_FLOAT16: {
+      unsigned short pos, neg; 
+      float fpos = 1.0f, fneg = -1.0f;
+      Float2HalfBits(&fpos, &pos); 
+      Float2HalfBits(&fneg, &neg); 
+      return _byte2float(reinterpret_cast<unsigned short*>(data), len, pos, neg);
+    }
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
   return 0;
 }
 
 template <typename T>
-int CpuReducer::_byte2float(T* dst, char* src, size_t len) {
+int CpuReducer::_byte2float(T* data, size_t len, const T pos, const T neg) {
+  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+  char* psrc;
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len; ++i) {
-    dst[i] = static_cast<T>(src[i]);
+  for (size_t i = 0; i < reduced_len; ++i) {
+    psrc = reinterpret_cast<char*>(data + i);
+    data[i] = psrc[0]? neg:pos; 
   }
   return 0;
 }
 
-int CpuReducer::_byte2float16(void* dst, void* src, size_t len) {
-#pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len; ++i) {
-    HalfBits2Float(reinterpret_cast<unsigned short*>(src) + i,
-                   reinterpret_cast<float*>(dst) + i);
-  }
-  return 0;
-}
+
 }  // namespace common
 }  // namespace byteps
