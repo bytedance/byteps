@@ -59,7 +59,7 @@ size_t OnebitCompressor::Packing(char* data, size_t len) {
   size_t compressed_len = total_len / BYTE_SIZE;
   constexpr unsigned char MASK = 0x01;
   for (size_t i = 0, base = 0; i < compressed_len; ++i, base += BYTE_SIZE) {
-    data[i] |= (data[base] & MASK);
+    data[i] = (data[base] & MASK);
 #pragma unroll
     for (size_t j = 1; j < BYTE_SIZE; ++j) {
       data[i] <<= 1;
