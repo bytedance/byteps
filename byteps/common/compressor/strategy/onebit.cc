@@ -83,7 +83,7 @@ void OnebitCompressor::Unpacking(char* dst, char* src, size_t len,
       if (pos >= src_len) {
         break;
       }
-      dst[pos] = (src[i] & MASK) >> 7;
+      dst[pos] = (src[i] & MASK);
       src[i] <<= 1;
     }
   }
