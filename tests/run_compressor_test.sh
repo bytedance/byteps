@@ -1,6 +1,5 @@
 #!/bin/bash 
 
-export CUDA_VISIBLE_DEVICES=0
 IMAGE_NAME="bps-mxnet"
 URI="DMLC_PS_ROOT_URI=127.0.0.1"
 PORT="DMLC_PS_ROOT_PORT=1234"
