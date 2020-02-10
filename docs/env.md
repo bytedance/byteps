@@ -1,6 +1,6 @@
 # BytePS Environment Variables
 
-Regardless of your framework, TensorFlow, PyTorch or MXNet, you must set the required envrionment variables below, including DMLC_* variables. This is because we leverage the [DMLC/MXNet bootstrapping process](https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html#manually-launching-jobs). 
+Regardless of your framework, TensorFlow, PyTorch or MXNet, you must set the required envrionment variables below, including DMLC_* variables. This is because we leverage the [DMLC/MXNet bootstrapping process](https://mxnet.apache.org/api/faq/distributed_training#manually-launching-jobs). 
 
 To run distributed training, you must start one scheduler, at least one server, and at least two workers. If you only have one worker, you won't need scheduler or server.
 
@@ -38,7 +38,7 @@ Otherwise, set it to 0.
 ## Required for servers and scheduler
 
 BytePS uses the same environment variables as MXNet for server and scheduler:
-https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html#manually-launching-jobs
+https://mxnet.apache.org/api/faq/distributed_training#manually-launching-jobs
 
 In short, you should configure the same DMLC_* variables as the worker, except that DMLC_ROLE should be either server or scheduler.
 
