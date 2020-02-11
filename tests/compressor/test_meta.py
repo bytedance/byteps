@@ -20,7 +20,7 @@ class TestMeta(type):
         # test_dtypes = ['float32', 'float16', 'float64'] 
 
         def gen_test(dtype):
-            def test(self, dtype):
+            def test(self):
                 return self._run(dtype)
             return test
 
