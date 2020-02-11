@@ -96,10 +96,11 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
         }
 
     def _run(self, dtype):
+        config = self._config()
         expected = worker(self._model, fake_data, dtype,
-                          self._config, compress=False, cpr_config=self._cpr_config)
+                          config, compress=False, cpr_config=self._cpr_config)
         actual = worker(self._model, fake_data, dtype,
-                        self._config, compress=True, cpr_config=self._cpr_config)
+                        config, compress=True, cpr_config=self._cpr_config)
 
         self.assertAlmostEqual(expected, actual)
 
