@@ -50,7 +50,7 @@ for ((i=0; i<$2; i++)); do
     eval "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} bash -c '${WORKER_CMD}' >>test.log 2>&1 &"
 done
 
-wait
+wait ${!}
 
 echo "=====test end====="
 echo "test.log:"
