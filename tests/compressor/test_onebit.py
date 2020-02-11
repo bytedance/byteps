@@ -45,12 +45,12 @@ def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
 
     if compress and not cpr_config:
         for name, param in params.items():
-            for name, value in cpr_config.items()
-            setattr(param, name, value)
+            for name, value in cpr_config.items():
+                setattr(param, name, value)
 
     optimizer_params = {'momentum': config.momentum,
                         'learning_rate': config.lr * num_workers}
-    trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
+    trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)∞
 
     loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
     metric = mx.metric.Accuracy()
@@ -99,16 +99,19 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
                           self._config, compress=False, self._cpr_config)
         actual = worker(self._model, fake_data, dtype,
                         self._config, compress=True, self._cpr_config)
-        
+
         self.assertAlmostEqual(expected, actual)
+
 
 class OnebitAlexnet(OnebitCaseBase):
     def _model(self):
         return vision.alexnet()
 
+
 class OnebitVGG11(OnebitCaseBase):
     def _model(self):
         return vision.vgg11()
+
 
 class OnebitResnet18(OnebitCaseBase):
     def _model(self):
