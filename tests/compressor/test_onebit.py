@@ -50,7 +50,7 @@ def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
 
     optimizer_params = {'momentum': config.momentum,
                         'learning_rate': config.lr * num_workers}
-    trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)∞
+    trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
 
     loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
     metric = mx.metric.Accuracy()
