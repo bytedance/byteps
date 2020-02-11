@@ -94,7 +94,8 @@ RUN ln -sf /usr/local/cudnn/include/cudnn.h /usr/local/cuda/include/ && \
 # install pytorch
 ARG FRAMEWORK_VERSION=1.1.0
 ARG TORCHVISION_VERSION=0.2.2
-RUN python3 -m pip --no-cache-dir install torch==$FRAMEWORK_VERSION torchvision==$TORCHVISION_VERSION
+ARG PILLOW_VERSION=6.1
+RUN python3 -m pip --no-cache-dir install torch==$FRAMEWORK_VERSION torchvision==$TORCHVISION_VERSION Pillow==$PILLOW_VERSION
 
 # Install BytePS
 ARG BYTEPS_NCCL_LINK=shared
