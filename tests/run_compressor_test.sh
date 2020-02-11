@@ -44,10 +44,10 @@ eval "docker run --rm --net=host --cap-add=SYS_PTRACE --security-opt seccomp=unc
 
 echo "=====test begin====="
 
-WORKER_CMD="python3 -m unittest /usr/local/byteps/tests/compressor/test_$1.py"
+WORKER_CMD="cd /usr/local/byteps/tests ; python3 /usr/local/byteps/launcher/launch.py python3 -m unittest compressor/test_$1.py"
 for ((i=0; i<$2; i++)); do 
-    echo "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} bash -c '${WORKER_CMD}' >test.log 2>&1 &"
-    eval "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} bash -c '${WORKER_CMD}' >test.log 2>&1 &"
+    echo "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} bash -c '${WORKER_CMD}' >>test.log 2>&1 &"
+    eval "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} bash -c '${WORKER_CMD}' >>test.log 2>&1 &"
 done
 
 wait
