@@ -23,6 +23,7 @@ import byteps.mxnet as bps
 
 from .datasets import fake_data
 from .test_meta import TestMeta
+from .utils import Config
 
 
 def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
@@ -78,7 +79,7 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
         return None
 
     def _config(self):
-        return {
+        return Config({
             "seed": 2020,
             "batch_size": 64,
             "data_size": 512,
@@ -87,11 +88,11 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
             "lr": 0.01,
             "momentum": 0.9,
             "no_cuda": True
-        }
+        })
 
     def _cpr_config(self):
         return {
-            "byteps_compressor_type", "onebit"
+            "byteps_compressor_type": "onebit"
         }
 
     def _run(self, dtype):
