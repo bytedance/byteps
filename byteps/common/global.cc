@@ -51,6 +51,7 @@ std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
 std::vector<unsigned long> BytePSGlobal::_server_accumulated_len;
+unsigned long BytePSGlobal::_total_accumulated_len = 0;
 std::string BytePSGlobal::_hash_knob;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
@@ -77,6 +78,7 @@ std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
 unsigned int BytePSGlobal::_built_in_hash_coefficient;
+volatile bool BytePSGlobal::_mixed_mode = false;
 
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 std::atomic_int BytePSGlobal::joined_thread_cnt;
@@ -137,6 +139,10 @@ void BytePSGlobal::Init() {
     
     // set hash function
     _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
+    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE")) : false;
+    if (_mixed_mode) {
+      _hash_knob = std::string("mixed");
+    }
     BPS_LOG(DEBUG) << "Using key hash function type: " << _hash_knob;
     if (!_hash_knob.compare(std::string("built_in"))) {
       _built_in_hash_coefficient = getenv("BYTEPS_BUILT_IN_HASH_COEF") ? atoi(getenv("BYTEPS_BUILT_IN_HASH_COEF")) : 1;
@@ -464,6 +470,33 @@ void BytePSGlobal::OutputTraces(){
   std::cout << "Local rank " << _local_rank << ": communication traces output done!" << std::endl;
 }
 
+uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
+  const int num_server_total = ps::Postoffice::Get()->GetServerKeyRanges().size();
+  const int num_worker_total = GetNumWorker();
+  size_t num_server_noncolocate = num_server_total-num_worker_total;
+  size_t num_server_colocate = num_worker_total;
+
+  // The bound should be larger than num_server_total 
+  // in order to cover each server, but it also 
+  // cannot be too large because it might cause unbalance
+  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 101;
+  BPS_CHECK_GE(bound, num_server_total); 
+  auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
+                  ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
+  BPS_CHECK_LE(ratio, 1) 
+      << "number of (non-colocate servers) > number of (worker)" 
+      << ", which is not permitted in the mixed mode";
+  BPS_CHECK_GE(ratio, 0);
+  auto threshold = ratio * bound;
+
+  auto hash_res = Hash_DJB2(key) % bound;
+  if (hash_res < threshold) { // assign for non-colocate servers
+    return Hash_DJB2(hash_res) % num_server_noncolocate;
+  } else { // assign for colocate servers
+    return num_server_noncolocate + (Hash_DJB2(hash_res) % num_server_colocate);
+  }
+}
+
 uint64_t BytePSGlobal::Hash_Naive(uint64_t key) {
   return ((key >> 16) + (key % 65536)) * 9973;
 }
@@ -514,15 +547,23 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       server = Hash_DJB2(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("sdbm"))) {
       server = Hash_SDBM(key) % num_servers;
+    } else if (!_hash_knob.compare(std::string("mixed"))) {
+      BPS_CHECK(_mixed_mode) 
+          << "mixed mode should also set: BYTEPS_ENABLE_MIXED_MODE";
+      server = Hash_Mixed_Mode(key);
+      CHECK_LT(server, num_servers);
     } else {
       BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
                    << "must be one of [naive, built_in, djb2, sdbm]";
     }
     
     _server_accumulated_len[server] += len;
+    _total_accumulated_len += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
-                   << _server_accumulated_len[server];
+                   << _server_accumulated_len[server] 
+                   << " (" << (100.0 * _server_accumulated_len[server] / _total_accumulated_len)
+                   << "%)";
 
     ps::Key ps_key = krs[server].begin() + key;
     BPS_CHECK_LT(ps_key, krs[server].end());
