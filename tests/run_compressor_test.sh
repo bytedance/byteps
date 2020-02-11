@@ -25,6 +25,12 @@ if [ $ok -eq 0 ]; then
     exit 
 fi
 
+function cleanup {
+    docker stop scheduler server
+    rm -r test.log
+}
+
+trap cleanup EXIT 
 
 # launch scheduler
 eval "docker run --rm --net=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name scheduler -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=scheduler -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} ${IMAGE_NAME} ${CMD} >>/dev/null 2>&1 &" 
@@ -36,13 +42,13 @@ echo "=====test begin====="
 
 WORKER_CMD="python3 -m unittest /usr/local/byteps/tests/compressor/test_$1.py"
 for ((i=0; i<$2; i++)); do 
+    echo "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URL} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} ${WORKER_CMD} >test.log 2>&1 &"
     eval "nvidia-docker run --rm --net=host --shm-size=32768m --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name worker${i} -e NVIDIA_VISIBLE_DEVICES=${i} -e DMLC_WORKER_ID=${i} -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=worker -e DMLC_NUM_SERVER=1 -e ${URL} -e ${PORT} -e BYTEPS_FORCE_DISTRIBUTED=1 ${IMAGE_NAME} ${WORKER_CMD} >test.log 2>&1 &"
 done
 
 wait
 
 echo "=====test end====="
-echo "test.log:""
+echo "test.log:"
 cat test.log
 
-docker stop scheduler server
