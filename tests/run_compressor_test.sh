@@ -33,6 +33,8 @@ function cleanup {
 trap cleanup EXIT 
 
 rm -f test.log
+touch test.log 
+echo `date` >> test.log
 
 # launch scheduler
 eval "docker run --rm --net=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --name scheduler -e DMLC_NUM_WORKER=$2 -e DMLC_ROLE=scheduler -e DMLC_NUM_SERVER=1 -e ${URI} -e ${PORT} ${IMAGE_NAME} ${CMD} >>/dev/null 2>&1 &" 
