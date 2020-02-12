@@ -19,7 +19,7 @@ import mxnet as mx
 def fake_data(config, ctx, dtype, height=224, width=224, depth=3, num_classes=1000):
     mx.random.seed(config.seed)
     image = mx.ndarray.random.normal(-1, 1,
-                                     shape=[1, height, width, depth], ctx=ctx, dtype=dtype)
+                                     shape=[1, depth, height, width], ctx=ctx, dtype=dtype)
     label = mx.ndarray.random.randint(0, num_classes, [1, 1], ctx=ctx)
 
     images = mx.ndarray.repeat(image, config.data_size, axis=0)
