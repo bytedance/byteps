@@ -30,16 +30,15 @@ def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
     if model is None:
         raise ValueError("model is None")
 
-    bps.init()
+    train_data = input_data(config, dtype)
 
     ctx = mx.cpu(bps.local_rank()) if config.no_cuda else mx.gpu(
         bps.local_rank())
     num_workers = bps.size()
 
-    train_data = input_data(config, ctx, dtype)
-
     model.cast(dtype)
     model.initialize(mx.init.MSRAPrelu(), ctx=ctx)
+    model.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
     model.hybridize()
 
     params = model.collect_params()
@@ -125,4 +124,5 @@ del OnebitCaseBase
 
 
 if __name__ == "__main__":
+    bps.init()
     unittest.main()
