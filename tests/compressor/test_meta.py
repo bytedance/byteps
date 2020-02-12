@@ -16,7 +16,7 @@
 
 class TestMeta(type):
     def __new__(mcls, name, bases, dct):
-        test_dtypes = ['float32', 'float16']
+        test_dtypes = ['float32']
         # test_dtypes = ['float32', 'float16', 'float64'] 
 
         def gen_test(dtype):
