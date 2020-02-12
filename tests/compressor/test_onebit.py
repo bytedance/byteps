@@ -87,7 +87,7 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
             "num_workers": 2,
             "lr": 0.01,
             "momentum": 0.9,
-            "no_cuda": True
+            "no_cuda": False
         })
 
     def _cpr_config(self):
