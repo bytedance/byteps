@@ -29,6 +29,7 @@ from .utils import Config
 def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
     if model is None:
         raise ValueError("model is None")
+    bps.init()
 
     train_data = input_data(config, dtype)
 
@@ -95,14 +96,16 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
         }
 
     def _run(self, dtype):
+        self.assertAlmostEqual(
+            self._run_impl(compress=False),
+            self._run_impl(compress=True))
+
+    def _run_impl(self, compress):
         model = self._model()
         config = self._config()
-        expected = worker(model, fake_data, dtype,
-                          config, compress=False, cpr_config=self._cpr_config)
-        actual = worker(model, fake_data, dtype,
-                        config, compress=True, cpr_config=self._cpr_config)
-
-        self.assertAlmostEqual(expected, actual)
+        return worker(model, fake_data, dtype,
+                      config, compress=compress,
+                      cpr_config=self._cpr_config)
 
 
 class OnebitAlexnet(OnebitCaseBase):
@@ -124,5 +127,4 @@ del OnebitCaseBase
 
 
 if __name__ == "__main__":
-    bps.init()
     unittest.main()
