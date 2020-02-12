@@ -97,15 +97,16 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
 
     def _run(self, dtype):
         self.assertAlmostEqual(
-            self._run_impl(compress=False),
-            self._run_impl(compress=True))
+            self._run_impl(dtype=dtype, compress=False),
+            self._run_impl(dtype=dtype, compress=True))
 
-    def _run_impl(self, compress):
+    def _run_impl(self, dtype, compress):
         model = self._model()
         config = self._config()
+        cpr_config = self._cpr_config()
         return worker(model, fake_data, dtype,
                       config, compress=compress,
-                      cpr_config=self._cpr_config)
+                      cpr_config=cpr_config)
 
 
 class OnebitAlexnet(OnebitCaseBase):
