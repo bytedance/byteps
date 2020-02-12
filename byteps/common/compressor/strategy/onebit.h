@@ -62,20 +62,6 @@ class OnebitCompressor : public BaseCompressor {
    * \return ByteBuf: tensor
    */
   ByteBuf Decompress(const ByteBuf& compressed) override;
-
- private:
-  /*!
-   * \brief Pack byte array into bits in place
-   *
-   * \return bytes
-   */
-  size_t Packing(char* data, size_t len);
-
-  /*!
-   * \brief Unpack bits into byte array
-   */
-  void Unpacking(char* dst, char* src, size_t len, size_t src_len,
-                 size_t stride);
 };
 }  // namespace compressor
 }  // namespace common
