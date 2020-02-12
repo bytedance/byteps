@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import unittest
+import logging
 
 import mxnet as mx
 from mxnet import autograd, gluon, nd
@@ -25,6 +26,7 @@ from .datasets import fake_data
 from .test_meta import TestMeta
 from .utils import Config
 
+logging.basicConfig(level=logging.INFO)
 
 def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
     if model is None:
@@ -71,6 +73,8 @@ def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
             metric.update([label], [output])
 
     _, acc = metric.get()
+    ctx.empty_cache()
+    logging.info("acc=%f" % acc)
     return acc
 
 
