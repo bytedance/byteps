@@ -271,15 +271,11 @@ size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
 int CpuReducer::byte2float(void* data, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _byte2float(reinterpret_cast<float*>(data), len, 1.0f, -1.0f);
+      return _byte2float(reinterpret_cast<float*>(data), len);
     case BYTEPS_FLOAT64:
-      return _byte2float(reinterpret_cast<double*>(data), len, 1.0, -1.0);
+      return _byte2float(reinterpret_cast<double*>(data), len);
     case BYTEPS_FLOAT16: {
-      unsigned short pos, neg; 
-      float fpos = 1.0f, fneg = -1.0f;
-      Float2HalfBits(&fpos, &pos); 
-      Float2HalfBits(&fneg, &neg); 
-      return _byte2float(reinterpret_cast<unsigned short*>(data), len, pos, neg);
+      // TODO
     }
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
@@ -288,13 +284,13 @@ int CpuReducer::byte2float(void* data, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_byte2float(T* data, size_t len, const T pos, const T neg) {
-  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+int CpuReducer::_byte2float(T* data, size_t len) {
+  const size_t reduced_len = len / sizeof(T);
   char* psrc;
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < reduced_len; ++i) {
     psrc = reinterpret_cast<char*>(data + i);
-    data[i] = psrc[0]? neg:pos; 
+    data[i] = static_cast<T>(~psrc[0] + 1);
   }
   return 0;
 }
