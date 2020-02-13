@@ -1,5 +1,6 @@
 import mxnet as mx
 
+
 import byteps.mxnet as bps
 
 bps.init()
@@ -9,8 +10,9 @@ shapes = [2<<x for x in range(24)]
 
 ctx = mx.gpu(0)
 for i, shape in enumerate(shapes):
-    tensor = mx.nd.random.uniform(-100, 100, shape=shape, ctx=ctx)
-    setattr(tensor, "byteps_compressor_type", "onebit")
+    w = mx.gluon.Parameter('test', shape=shape, init=mx.init.Xavier())
+    w.initialize(ctx=ctx)
+    setattr(w, "byteps_compressor_type", "onebit")
     byteps_params = dict(
         filter(lambda attr: attr[0].startswith(
             "byteps_",), param.__dict__.items())
