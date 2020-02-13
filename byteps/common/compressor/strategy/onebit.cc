@@ -15,6 +15,8 @@
 
 #include "onebit.h"
 
+#include <chrono>
+
 #include "../../logging.h"
 
 namespace byteps {
@@ -55,9 +57,28 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
   BPS_CHECK(_encode_buf);
+
+  auto pos_0 = std::chrono::steady_clock::now();
   auto reduced_len = _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len,
                                         static_cast<DataType>(grad.dtype));
+  
+  auto pos_1 = std::chrono::steady_clock::now();
+  
   auto compressed_len = Packing(_encode_buf.get(), reduced_len);
+  
+  auto pos_2 = std::chrono::steady_clock::now();
+
+
+  auto duration_0 = std::chrono::duration_cast<std::chrono::microseconds>(pos_1-pos_0);
+  auto duration_1 = std::chrono::duration_cast<std::chrono::microseconds>(pos_2-pos_1);
+  
+  double elapsed_0 = double(duration_0.count());
+  double elapsed_1 = double(duration_1.count());
+
+  BPS_LOG(INFO) << "Time elapsed for compress size=" << grad.len 
+                << ", sign=" << elapsed_0 << "ms" 
+                << ", packing=" << elapsed_1 << "ms";
+
   return {_encode_buf.get(), compressed_len, grad.dtype};
 }
 
@@ -83,10 +104,28 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK(compressed.len);
 
+  auto pos_0 = std::chrono::system_clock::now();
+
   Unpacking(compressed.data, compressed.len, _src_len,
             getDataTypeLength(compressed.dtype));
+
+  auto pos_1 = std::chrono::system_clock::now();
+
   _cpu_reducer->byte2float(compressed.data, _src_len,
                            static_cast<DataType>(compressed.dtype));
+  
+  auto pos_2 = std::chrono::system_clock::now();
+  
+  auto duration_0 = std::chrono::duration_cast<std::chrono::microseconds>(pos_1-pos_0);
+  auto duration_1 = std::chrono::duration_cast<std::chrono::microseconds>(pos_2-pos_1);
+  
+  double elapsed_0 = double(duration_0.count());
+  double elapsed_1 = double(duration_1.count());
+
+  BPS_LOG(INFO) << "Time elapsed for decompress src_size=" << _src_len 
+                << ", unpacking=" << elapsed_0 << "ms"
+                << ", byte2float=" << elapsed_1 << "ms"; 
+  
   return {nullptr, _src_len, 0};
 }
 
