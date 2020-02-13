@@ -189,7 +189,7 @@ class CpuReducer {
   size_t _sign(char* dst, T* src, size_t len);
 
   template <typename T>
-  int _byte2float(T* data, size_t len, const T pos, const T neg);
+  int _byte2float(T* data, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
