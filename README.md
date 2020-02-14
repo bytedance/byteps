@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/bytedance/byteps.svg?branch=master)](https://travis-ci.org/bytedance/byteps)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+![Pypi](https://img.shields.io/pypi/v/byteps.svg)
 
 BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network.
 
@@ -9,7 +10,10 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 ## News
 
-- BytePS-0.2.0 has been released.
+- [BytePS-0.2.0](CHANGELOG.rst) has been released.
+- Now pip install is available, refer to the [install tutorial](https://github.com/bytedance/byteps#quick-start).
+- [Largely improve RDMA performance](https://github.com/bytedance/byteps/pull/184). Now support colocating servers and workers with high performance.
+- Fix [RDMA fork problem](https://github.com/bytedance/byteps/pull/192) caused by multi-processing.
 - [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
 - Use [the ssh launcher](launcher/) to launch your distributed jobs
 - [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
