@@ -42,9 +42,12 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks. The simplest way to start is to use our [docker images](docker). Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md). After you can start BytePS, read [best practice](docs/best-practice.md) to get the best performance.
 
-Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL. By default NCCL is in `/usr/local/nccl`, but you can also specify it with `export BYTEPS_NCCL_HOME=/path/to/nccl`.
+Below, we explain how to build and run BytePS by yourself. 
+- BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. 
+- BytePS depends on CUDA and NCCL. You should specify the NCCL path with `export BYTEPS_NCCL_HOME=/path/to/nccl`. By default it points to `/usr/local/nccl`.
+- The installation requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else. In general, we recommend using gcc 4.9 for best compatibility ([example](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.pytorch#L72-L80)).
+- RDMA support: During setup, the script will automatically detect the RDMA header file. If you want to use RDMA, make sure your RDMA environment has been properly installed and tested before install.
 
-The installation requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else. In general, we recommend using gcc 4.9 for best compatibility.
 
 ### Build from pip
 
@@ -61,11 +64,6 @@ git clone --recursive https://github.com/bytedance/byteps
 cd byteps
 python3 setup.py install
 ```
-
-Notes:
-- For best compatibility, please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.pytorch#L72-L80) is an example.
-- RDMA support: The setup script will automatically detect the RDMA header file. Before installing BytePS, make sure your RDMA environment has been properly installed and tested.
-
 
 
 ## Use BytePS in Your Code
