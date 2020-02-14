@@ -9,6 +9,7 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 ## News
 
+- BytePS-0.2.0 has been released.
 - [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
 - Use [the ssh launcher](launcher/) to launch your distributed jobs
 - [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
@@ -43,19 +44,28 @@ We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to r
 
 Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
 
-### Build from source code
 
-If the above does not contain your desired wheel resource, or you want to try building from source code: 
+### Build from pip
 
 ```
-git clone --recurse-submodules https://github.com/bytedance/byteps
+pip3 install byteps
+```
+
+### Build from source code
+
+You can try out the latest features by directly installing from master branch:
+
+```
+git clone --recursive https://github.com/bytedance/byteps
 cd byteps
-python setup.py install
+python3 setup.py install
 ```
 
 Notes:
 - For best compatibility, please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.pytorch#L72-L80) is an example.
-- You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
+- RDMA support: The setup script will automatically detect the RDMA header file. Before installing BytePS, make sure your RDMA environment has been properly installed and tested.
+
+
 
 ## Use BytePS in Your Code
 
