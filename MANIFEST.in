@@ -1,3 +1,4 @@
-include */*
+include */* LICENSE byteps.lds byteps.exp
+exclude .git/*
 recursive-include * *.cc *.h
 graft 3rdparty/ps-lite
