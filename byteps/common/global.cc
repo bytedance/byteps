@@ -295,6 +295,7 @@ void BytePSGlobal::Shutdown() {
     if (_threads[i]->joinable()) {
       _threads[i]->join();
       delete _threads[i];
+      _threads[i] = NULL;
     }
   }
 
@@ -306,12 +307,14 @@ void BytePSGlobal::Shutdown() {
   for (size_t i = 0; i < QueueNum; i++) {
     if (_queues[i]) {
       delete _queues[i];
+      _queues[i] = NULL;
     }
   }
 
   if (_ps) {
     ps::Finalize(0, false);
     delete _ps;
+    _ps = NULL;
   }
 
   CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
@@ -319,19 +322,24 @@ void BytePSGlobal::Shutdown() {
 
   if (_reduce_table) {
     delete _reduce_table;
+    _reduce_table = NULL;
   }
   if (_pcie_reduce_table) {
     delete _pcie_reduce_table;
+    _pcie_reduce_table = NULL;
   }
   if (_broadcast_table) {
     delete _broadcast_table;
+    _broadcast_table = NULL;
   }
   if (_push_table) {
     delete _push_table;
+    _push_table = NULL;
   }
 
   if (_copy_table) {
     delete _copy_table;
+    _copy_table = NULL;
   }
 
   _basic_comm.reset();
@@ -339,8 +347,9 @@ void BytePSGlobal::Shutdown() {
   _cpu_reducer.reset();
   _nccl_manager.reset();
 
-  // clear state, ignore profiling state
+  // reset state, ignore profiling state
   BPS_LOG(INFO) << "Clear BytePS state";
+  _threads.clear();
   _name_to_cxt.clear();
   _server_accumulated_len.clear();
   _total_accumulated_len = 0;
