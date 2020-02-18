@@ -242,7 +242,7 @@ template <typename T>
 size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
 // extract sign bit
 int num_threads = len > (2<<14) ? _num_threads:1;
-#pragma omp parallel for simd num_threads(num_threads) schedule(static, 1024)
+#pragma omp parallel for simd num_threads(num_threads) 
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     dst[i] = src[i] < 0;
   }
@@ -268,7 +268,7 @@ template <typename T>
 int CpuReducer::_byte2float(T* data, size_t len, const T pos, const T neg) {
   int num_threads = len > (2<<14) ? _num_threads:1;
   char* psrc;
-#pragma omp parallel for simd num_threads(num_threads) schedule(static, 1024) private(psrc)
+#pragma omp parallel for simd num_threads(num_threads) private(psrc)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     psrc = reinterpret_cast<char*>(data + i);
     data[i] = static_cast<T>(~psrc[0] + 1);
