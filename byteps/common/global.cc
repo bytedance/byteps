@@ -69,6 +69,7 @@ ReadyTable* BytePSGlobal::_copy_table;
 bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 
+std::vector<std::string> BytePSGlobal::_declared_tensors;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
@@ -338,6 +339,16 @@ void BytePSGlobal::Shutdown() {
   _cpu_reducer.reset();
   _nccl_manager.reset();
 
+  // clear state, ignore profiling state
+  BPS_LOG(INFO) << "Clear BytePS state";
+  _name_to_cxt.clear();
+  _server_accumulated_len.clear();
+  _total_accumulated_len = 0;
+  ps_kv_.clear();
+  next_key_ = 0;
+  _initialized = false;
+  _should_shutdown = false;
+
   BPS_LOG(DEBUG) << "Shutdown BytePS: all BytePS resources has been cleaned"
                  << " (rank=" << _local_rank << ")";
   return;
@@ -353,6 +364,9 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
 bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+      _declared_tensors.push_back(name);
+    }
     _name_to_cxt[name].initialized = false;
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
     _name_to_cxt[name].declared_key = (ps::Key)next_key_++;
@@ -363,6 +377,13 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
     return false;
   }
   return true;
+}
+
+void BytePSGlobal::ReDeclareTensor() {
+  for (auto name: _declared_tensors) {
+    BPS_LOG(INFO) << "Redeclare tensor " << name;
+    BytePSGlobal::IsTensorDeclared(name);
+  }
 }
 
 // Append for communication traces
@@ -416,7 +437,7 @@ void BytePSGlobal::Who2beOutput(const std::string& name) {
 bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name2end.find(name) != _name2end.end()) << "Output tensor must been registered to recorder first";
-  //  _output_counter decreases by 1 to confirm the arrival of this tensro
+  //  _output_counter decreases by 1 to confirm the arrival of this tensor
   _output_counter -= 1;
   if (_output_counter == 0) return true;
   else return false;

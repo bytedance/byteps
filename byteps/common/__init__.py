@@ -65,6 +65,18 @@ class BytePSBasics(object):
         """A function that shuts BytePS down."""
         return self.C_LIB_CTYPES.byteps_shutdown()
 
+    def suspend(self):
+        """A function that suspends BytePS for elastic training."""
+        return self.C_LIB_CTYPES.byteps_suspend()
+
+    def resume(self, num_workers, num_servers, worker_id, context=None):
+        """A function that restarts BytePS after being suspended, for elastic training."""
+        # may need to change other DMLC environment variables, e.g., DMLC_WORKER_ID
+        os.environ['DMLC_NUM_WORKER'] = str(num_workers)
+        os.environ['DMLC_NUM_SERVER'] = str(num_servers)
+        os.environ['DMLC_WORKER_ID'] = str(worker_id)
+        return self.C_LIB_CTYPES.byteps_resume(num_workers, num_servers)
+
     def size(self):
         """A function that returns the number of BytePS processes.
         Returns:
