@@ -9,6 +9,7 @@ mx.random.seed(2020)
 shapes = [2<<x for x in range(18)]
 extra = list(map(lambda x:3*x, shapes))
 shapes.extend(extra)
+shapes.append(1024000)
 shapes *= 10 # test 10 times
 print(shapes)
 
