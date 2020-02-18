@@ -240,32 +240,12 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 
 template <typename T>
 size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
-  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
-  unsigned char* psrc;
 // extract sign bit
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < reduced_len; ++i) {
-    psrc = reinterpret_cast<unsigned char*>(src+i);
-
-#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
-    defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
-    defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) ||       \
-    defined(__MIBSEB__)
-    // big-endian target architecture
-    dst[i] = (psrc[0] & 0x80) >> 7;
-
-#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN ||         \
-    defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) ||                   \
-    defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || \
-    defined(__MIPSEL) || defined(__MIPSEL__)
-    // little-endian target architecture
-    dst[i] = (psrc[end] & 0x80) >> 7;
-#else
-#error "Unknown endian"
-#endif
+  for (size_t i = 0; i < len / sizeof(T); ++i) {
+    dst[i] = src[i] < 0;
   }
-
-  return reduced_len;
+  return len / sizeof(T);
 }
 
 int CpuReducer::byte2float(void* data, size_t len, DataType dtype) {
