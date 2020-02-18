@@ -241,7 +241,8 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 template <typename T>
 size_t CpuReducer::_sign(char* dst, T* src, size_t len) {
 // extract sign bit
-#pragma omp parallel for simd num_threads(_num_threads)
+int num_threads = len > (2<<14) ? 4:1;
+#pragma omp parallel for simd num_threads(num_threads) shedule(static, 1024)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     dst[i] = src[i] < 0;
   }
