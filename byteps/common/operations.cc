@@ -81,6 +81,23 @@ void byteps_shutdown() {
   return;
 }
 
+void byteps_resume(int num_workers, int num_servers) {
+  // set ps, worker numbers
+  BPS_LOG(INFO) << "New worker number: " << num_workers << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
+  BPS_LOG(INFO) << "New server number: " << num_workers << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
+  byteps_init();
+  // redeclare tensor with original order
+  BytePSGlobal::ReDeclareTensor();
+  BPS_LOG(INFO) << "BytePS has been resumed now";
+}
+
+void byteps_suspend() {
+  BPS_LOG(INFO) << "Start suspending BytePS";
+  BytePSGlobal::Shutdown();
+  BPS_LOG(INFO) << "BytePS has been suspended now";
+  return;
+}
+
 int byteps_rank() { return BytePSGlobal::GetRank(); }
 
 int byteps_local_rank() { return BytePSGlobal::GetLocalRank(); }

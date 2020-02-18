@@ -32,6 +32,8 @@ _basics = _BytePSBasics(__file__, 'c_lib')
 # import basic methods
 init = _basics.init
 shutdown = _basics.shutdown
+suspend = _basics.suspend
+resume = _basics.resume
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank
