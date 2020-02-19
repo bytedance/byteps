@@ -15,8 +15,6 @@
 
 #include "onebit.h"
 
-#include <cpuid.h>
-#include <immintrin.h>
 #include <chrono>
 
 #include "../../logging.h"
@@ -41,7 +39,7 @@ size_t Packing(void* src, size_t len) {
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
   auto ptr_src = reinterpret_cast<int*>(src);
-  int num_threads = len > (2 << 15) ? 4 : 1;
+  // int num_threads = len > (2 << 15) ? 4 : 1;
 // #pragma omp parallel for simd num_threads(num_threads) collapse(2)
   for (int i = 1; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
@@ -91,7 +89,7 @@ void Unpacking(void* dst, void* src, size_t len) {
 
   auto ptr_dst = reinterpret_cast<int*>(dst);
   auto ptr_src = reinterpret_cast<int*>(src);
-  int num_threads = len > (2<<15) ? 4 : 1;
+  // int num_threads = len > (2<<15) ? 4 : 1;
 // #pragma omp parallel for simd num_threads(num_threads) collapse(2)
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < chunk_size; ++j) {
