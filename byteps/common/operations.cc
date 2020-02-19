@@ -337,9 +337,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   accumulated = 0;
   size_t i = 0;
   BPS_LOG(INFO) << "tensor size=" << size;
-  while (accumulated < aligned_size) {
+  while (accumulated < size) {
     auto key = key_list[i];
-    int len = ((aligned_size - accumulated) > bound) ? bound : (aligned_size - accumulated);
+    int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     size_t aligned_len = len + (min_size - len % min_size) % min_size;
     
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
@@ -371,11 +371,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       }
     }
 
-    accumulated += aligned_len;
+    accumulated += size;
     ++i;
   }
 
-  BPS_CHECK_EQ(accumulated, aligned_size);
+  BPS_CHECK_EQ(accumulated, size);
   BPS_CHECK_EQ(i, key_list.size());
 
   context.initialized = true;
