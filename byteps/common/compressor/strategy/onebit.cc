@@ -89,7 +89,7 @@ void Unpacking(void* dst, void* src, size_t len) {
 #pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < len; ++j) {
-      ptr_dst[i * len + j] = -(((ptr_src[j] & MASK)<<1) - 1);
+      ptr_dst[i * len + j] = -(((ptr_src[j] & MASK) << 1) - 1);
       ptr_src[j] >>= 1;
     }
   }

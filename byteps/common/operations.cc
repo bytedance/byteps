@@ -331,14 +331,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    size_t aligned_len = len + (min_size - len % min_size) % min_size;
     
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, aligned_len);
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
       // false means not to delete data when SArray is deleted
-      ps::SArray<char> vals(data + accumulated, aligned_len, false);
+      ps::SArray<char> vals(data + accumulated, len, false);
       // cmd type
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
