@@ -65,7 +65,9 @@ BaseCompressor::~BaseCompressor() = default;
 
 void BaseCompressor::Init(size_t len) {
   this->_src_len = len;
-  _encode_buf.reset(new char[len]);
+  constexpr size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
+  size_t aligned_size = len + (min_size - len % min_size) % min_size;
+  _encode_buf.reset(new char[aligned_size]);
   _cpu_reducer.reset(new CpuReducer(nullptr));
 }
 }  // namespace compressor
