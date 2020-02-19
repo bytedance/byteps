@@ -58,6 +58,9 @@ void SendPullResponse(const DataHandleType type,
     auto tensor = iter->second->Compress({data, len, type.dtype});
     data = tensor.data;
     len = tensor.len;
+    if (log_key_info_) {
+      LOG(INFO) << "compress for key=" << key << " compressed_len=" << len;
+    }
   }
 
   // send pull response
