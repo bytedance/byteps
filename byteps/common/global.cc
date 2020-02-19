@@ -70,6 +70,7 @@ bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 
 std::vector<std::string> BytePSGlobal::_declared_tensors;
+bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream;
@@ -257,7 +258,7 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
       // init low-level ps implementation
       _ps = new ps::KVWorker<char>(0, 0);
       ps::StartAsync(0, "byteps\0");
-      if (!ps::Postoffice::Get()->is_recovery()) {
+      if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
         ps::Postoffice::Get()->Barrier(
             0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
@@ -312,6 +313,7 @@ void BytePSGlobal::Shutdown() {
   }
 
   if (_ps) {
+    // shutdown _ps without waiting for the completion acks of other workers/servers
     ps::Finalize(0, false);
     delete _ps;
     _ps = NULL;
