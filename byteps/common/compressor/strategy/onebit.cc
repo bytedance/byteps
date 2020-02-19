@@ -15,6 +15,8 @@
 
 #include "onebit.h"
 
+#include <cpuid.h>
+#include <immintrin.h>
 #include <chrono>
 
 #include "../../logging.h"
@@ -33,23 +35,22 @@ OnebitCompressor::OnebitCompressor() = default;
 
 OnebitCompressor::~OnebitCompressor() = default;
 
-size_t Packing(char* data, size_t len) {
-  size_t padding_len = (BYTE_SIZE - (len % BYTE_SIZE)) % BYTE_SIZE;
-  size_t total_len = len + padding_len;
-  size_t compressed_len = total_len / BYTE_SIZE;
-  constexpr unsigned char MASK = 0x01;
-  for (size_t i = 0, base = 0; i < compressed_len; ++i, base += BYTE_SIZE) {
-    data[i] = (data[base] & MASK);
-#pragma unroll
-    for (size_t j = 1; j < BYTE_SIZE; ++j) {
-      data[i] <<= 1;
-      if (base + j < len) {
-        data[i] |= (data[base + j] & MASK);
-      }
+size_t Packing(void* src, size_t len) {
+  constexpr int MASK = 1;
+  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
+  size_t chunk_size = (len + padding_len) / PACKING_SIZE;
+
+  auto ptr_src = reinterpret_cast<int*>(src);
+  int num_threads = len > (2 << 15) ? 4 : 1;
+// #pragma omp parallel for simd num_threads(num_threads) collapse(2)
+  for (int i = 1; i < PACKING_SIZE; ++i) {
+    for (int j = 0; j < chunk_size; ++j) {
+      ptr_src[j] <<= 1;
+      ptr_src[j] |= ptr_src[i * chunk_size + j] & MASK;
     }
   }
 
-  return compressed_len;
+  return chunk_size;
 }
 
 ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
@@ -61,101 +62,88 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   auto pos_0 = std::chrono::steady_clock::now();
   auto reduced_len = _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len,
                                         static_cast<DataType>(grad.dtype));
-  
+
   auto pos_1 = std::chrono::steady_clock::now();
-  
+
   auto compressed_len = Packing(_encode_buf.get(), reduced_len);
-  
+
   auto pos_2 = std::chrono::steady_clock::now();
 
+  auto duration_0 =
+      std::chrono::duration_cast<std::chrono::microseconds>(pos_1 - pos_0);
+  auto duration_1 =
+      std::chrono::duration_cast<std::chrono::microseconds>(pos_2 - pos_1);
 
-  auto duration_0 = std::chrono::duration_cast<std::chrono::microseconds>(pos_1-pos_0);
-  auto duration_1 = std::chrono::duration_cast<std::chrono::microseconds>(pos_2-pos_1);
-  
   double elapsed_0 = double(duration_0.count());
   double elapsed_1 = double(duration_1.count());
 
-  BPS_LOG(INFO) << "Time elapsed for compress size=" << grad.len 
-                << ", sign=" << elapsed_0 << "ms" 
+  BPS_LOG(INFO) << "Time elapsed for compress size=" << grad.len
+                << ", sign=" << elapsed_0 << "ms"
                 << ", packing=" << elapsed_1 << "ms";
 
   return {_encode_buf.get(), compressed_len, grad.dtype};
 }
 
-#ifndef BYTEPS_BUILDING_SERVER
-// worker version decompressor
-void Unpacking(char* data, size_t len, size_t src_len, size_t stride) {
-  constexpr unsigned char MASK = 0x01;
-  size_t pos;
-  for (int i = len - 1, base = BYTE_SIZE * i; i >= 0; --i, base -= BYTE_SIZE) {
-#pragma unroll
-    for (int j = BYTE_SIZE - 1; j >= 1; --j) {
-      pos = (base + j) * stride;
-      if (pos < src_len) {
-        data[pos] = (data[i] & MASK);
-      }
-      data[i] >>= 1;
+void Unpacking(void* dst, void* src, size_t len) {
+  constexpr int MASK = 1;
+  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
+  size_t chunk_size = (len + padding_len) / PACKING_SIZE;
+
+  auto ptr_dst = reinterpret_cast<int*>(dst);
+  auto ptr_src = reinterpret_cast<int*>(src);
+  int num_threads = len > (2<<15) ? 4 : 1;
+// #pragma omp parallel for simd num_threads(num_threads) collapse(2)
+  for (int i = PACKING_SIZE - 1; i >= 0; --i) {
+    for (int j = 0; j < chunk_size; ++j) {
+      ptr_dst[i * chunk_size + j] = ~(ptr_src[j] & MASK) + 1;
+      ptr_src[j] >>= 1;
     }
-    data[base * stride] = (data[i] & MASK);
   }
 }
 
+#ifndef BYTEPS_BUILDING_SERVER
+// worker version decompressor
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK(compressed.len);
 
   auto pos_0 = std::chrono::system_clock::now();
 
-  Unpacking(compressed.data, compressed.len, _src_len,
-            getDataTypeLength(compressed.dtype));
+  Unpacking(_encode_buf.get(), compressed.data,
+            _src_len / getDataTypeLength(compressed.dtype));
 
   auto pos_1 = std::chrono::system_clock::now();
 
-  _cpu_reducer->byte2float(compressed.data, _src_len,
-                           static_cast<DataType>(compressed.dtype));
-  
+  _cpu_reducer->int2fp(compressed.data, _encode_buf.get(), _src_len,
+                       static_cast<DataType>(compressed.dtype));
+
   auto pos_2 = std::chrono::system_clock::now();
-  
-  auto duration_0 = std::chrono::duration_cast<std::chrono::microseconds>(pos_1-pos_0);
-  auto duration_1 = std::chrono::duration_cast<std::chrono::microseconds>(pos_2-pos_1);
-  
+
+  auto duration_0 =
+      std::chrono::duration_cast<std::chrono::microseconds>(pos_1 - pos_0);
+  auto duration_1 =
+      std::chrono::duration_cast<std::chrono::microseconds>(pos_2 - pos_1);
+
   double elapsed_0 = double(duration_0.count());
   double elapsed_1 = double(duration_1.count());
 
-  BPS_LOG(INFO) << "Time elapsed for decompress src_size=" << _src_len 
+  BPS_LOG(INFO) << "Time elapsed for decompress src_size=" << _src_len
                 << ", unpacking=" << elapsed_0 << "ms"
-                << ", byte2float=" << elapsed_1 << "ms"; 
-  
+                << ", byte2float=" << elapsed_1 << "ms";
+
   return {nullptr, _src_len, 0};
 }
 
 #else
-// server version decompressor
-void Unpacking(char* dst, char* src, size_t len, size_t src_len,
-               size_t stride) {
-  constexpr unsigned char MASK = 0x80;
-  size_t pos;
-  for (size_t i = 0, base = 0; i < len; ++i, base += BYTE_SIZE) {
-#pragma unroll
-    for (size_t j = 0; j < BYTE_SIZE; ++j) {
-      pos = (base + j) * stride;
-      if (pos >= src_len) {
-        break;
-      }
-      dst[pos] = (src[i] & MASK);
-      src[i] <<= 1;
-    }
-  }
-}
 
 ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK(compressed.len);
 
-  Unpacking(_encode_buf.get(), compressed.data, compressed.len, _src_len,
-            getDataTypeLength(compressed.dtype));
-  _cpu_reducer->byte2float(_encode_buf.get(), _src_len,
-                           static_cast<DataType>(compressed.dtype));
+  Unpacking(_encode_buf.get(), compressed.data,
+            _src_len / getDataTypeLength(compressed.dtype));
+  _cpu_reducer->int2fp(_encode_buf.get(), _encode_buf.get(), _src_len,
+                       static_cast<DataType>(compressed.dtype));
   return {_encode_buf.get(), _src_len, compressed.dtype};
 }
 #endif
