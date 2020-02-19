@@ -356,7 +356,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
         PSKV kv;
         kv.keys.push_back(pskv.keys[0]);
-        context.kwargs["src_len"] = std::to_string(len);
+        size_t align_len = len + (min_size - len % min_size) % min_size;
+        context.kwargs["src_len"] = std::to_string(align_len);
         auto content = compressor::Serialize(context.kwargs);
         int len = content.size();
         kv.lens.push_back(len);
