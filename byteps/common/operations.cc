@@ -315,18 +315,21 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // We always allocate our own cpu buffer
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+
+  size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
+  size_t aligned_size = size +  (size - size % min_size) % min_size;
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
+    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
-                                                key_list[0], size);
+                                                key_list[0], aligned_size);
   }
-  BPS_LOG(TRACE) << name << ": open shared memory size " << size;
+  BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
 
   // Init Compressor buffer
   if (context.compressor) {
-    context.compressor->Init(size);
+    context.compressor->Init(aligned_size);
   }
 
   // Init tensors with BytePS server
