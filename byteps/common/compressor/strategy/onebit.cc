@@ -75,23 +75,21 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   double elapsed_1 = double(duration_1.count());
 
   BPS_LOG(INFO) << "Time elapsed for compress size=" << grad.len
-                << ", sign=" << elapsed_0 << "ms"
-                << ", packing=" << elapsed_1 << "ms";
+                << ", sign=" << elapsed_0 << "us"
+                << ", packing=" << elapsed_1 << "us";
 
   return {_encode_buf.get(), compressed_len, grad.dtype};
 }
 
 void Unpacking(void* dst, void* src, size_t len) {
   constexpr int MASK = 1;
-  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
-  size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
   auto ptr_dst = reinterpret_cast<int*>(dst);
   auto ptr_src = reinterpret_cast<int*>(src);
 #pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
-    for (int j = 0; j < chunk_size; ++j) {
-      ptr_dst[i * chunk_size + j] = ~(ptr_src[j] & MASK) + 1;
+    for (int j = 0; j < len; ++j) {
+      ptr_dst[i * len + j] = -(((ptr_src[j] & MASK)<<1) - 1);
       ptr_src[j] >>= 1;
     }
   }
@@ -105,8 +103,7 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
 
   auto pos_0 = std::chrono::system_clock::now();
 
-  Unpacking(_encode_buf.get(), compressed.data,
-            _src_len / getDataTypeLength(compressed.dtype));
+  Unpacking(_encode_buf.get(), compressed.data, compressed.len);
 
   auto pos_1 = std::chrono::system_clock::now();
 
@@ -124,8 +121,8 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   double elapsed_1 = double(duration_1.count());
 
   BPS_LOG(INFO) << "Time elapsed for decompress src_size=" << _src_len
-                << ", unpacking=" << elapsed_0 << "ms"
-                << ", byte2float=" << elapsed_1 << "ms";
+                << ", unpacking=" << elapsed_0 << "us"
+                << ", byte2float=" << elapsed_1 << "us";
 
   return {nullptr, _src_len, 0};
 }
@@ -136,8 +133,7 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK(compressed.len);
 
-  Unpacking(_encode_buf.get(), compressed.data,
-            _src_len / getDataTypeLength(compressed.dtype));
+  Unpacking(_encode_buf.get(), compressed.data, compressed.len);
   _cpu_reducer->int2fp(_encode_buf.get(), _encode_buf.get(), _src_len,
                        static_cast<DataType>(compressed.dtype));
   return {_encode_buf.get(), _src_len, compressed.dtype};
