@@ -26,8 +26,10 @@ ErrorFeedback::~ErrorFeedback() = default;
 
 void ErrorFeedback::Init(size_t len) {
   _compressor_ptr->Init(len);
-  _decode_buf.reset(new char[len]);
-  _error_buf.reset(new char[len]);
+  constexpr size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
+  size_t aligned_size = len + (min_size - len % min_size) % min_size;
+  _decode_buf.reset(new char[aligned_size]);
+  _error_buf.reset(new char[aligned_size]);
 }
 
 ByteBuf ErrorFeedback::Compress(const ByteBuf& grad) {
