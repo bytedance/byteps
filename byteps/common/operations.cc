@@ -366,7 +366,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     ++i;
   }
 
-  BPS_CHECK_EQ(accumulated, size);
+  BPS_CHECK_EQ(accumulated, aligned_size);
   BPS_CHECK_EQ(i, key_list.size());
 
   context.initialized = true;
