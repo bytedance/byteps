@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/bytedance/byteps.svg?branch=master)](https://travis-ci.org/bytedance/byteps)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+![Pypi](https://img.shields.io/pypi/v/byteps.svg)
 
 BytePS is a high performance and general distributed training framework. It supports TensorFlow, Keras, PyTorch, and MXNet, and can run on either TCP or RDMA network.
 
@@ -9,6 +10,10 @@ BytePS outperforms existing open-sourced distributed training frameworks by a la
 
 ## News
 
+- [BytePS-0.2.0](CHANGELOG.rst) has been released.
+- Now pip install is available, refer to the [install tutorial](https://github.com/bytedance/byteps#quick-start).
+- [Largely improve RDMA performance](https://github.com/bytedance/byteps/pull/184). Now support colocating servers and workers with high performance.
+- Fix [RDMA fork problem](https://github.com/bytedance/byteps/pull/192) caused by multi-processing.
 - [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
 - Use [the ssh launcher](launcher/) to launch your distributed jobs
 - [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
@@ -41,21 +46,30 @@ BytePS also incorporates many acceleration techniques such as hierarchical strat
 
 We provide a [step-by-step tutorial](docs/step-by-step-tutorial.md) for you to run benchmark training tasks. The simplest way to start is to use our [docker images](docker). Refer to [Documentations](docs) for how to [launch distributed jobs](docs/running.md) and more [detailed configurations](docs/env.md). After you can start BytePS, read [best practice](docs/best-practice.md) to get the best performance.
 
-Below, we explain how to build and run BytePS by yourself. BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. BytePS depends on CUDA and NCCL, and requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else.
+Below, we explain how to install BytePS by yourself. There are two options.
+
+### Install by pip
+
+```
+pip3 install byteps
+```
 
 ### Build from source code
 
-If the above does not contain your desired wheel resource, or you want to try building from source code: 
+You can try out the latest features by directly installing from master branch:
 
 ```
-git clone --recurse-submodules https://github.com/bytedance/byteps
+git clone --recursive https://github.com/bytedance/byteps
 cd byteps
-python setup.py install
+python3 setup.py install
 ```
 
-Notes:
-- For best compatibility, please pin your gcc to 4.9 before building, [here](https://github.com/bytedance/byteps/blob/master/docker/Dockerfile.pytorch#L72-L80) is an example.
-- You may set `BYTEPS_USE_RDMA=1` to install with RDMA support. Before this, make sure your RDMA drivers have been properly installed and tested.
+Notes for above two options:
+- BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. 
+- BytePS depends on CUDA and NCCL. You should specify the NCCL path with `export BYTEPS_NCCL_HOME=/path/to/nccl`. By default it points to `/usr/local/nccl`.
+- The installation requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else. In general, we recommend using gcc 4.9 for best compatibility ([an example](https://github.com/bytedance/byteps/blob/3fba75def0d81c1d3225f8f397cc985200f57de7/docker/Dockerfile.mxnet#L72-L80) to pin gcc).
+- RDMA support: During setup, the script will automatically detect the RDMA header file. If you want to use RDMA, make sure your RDMA environment has been properly installed and tested before install ([an example](https://github.com/bytedance/byteps/blob/3fba75def0d81c1d3225f8f397cc985200f57de7/docker/Dockerfile.mxnet#L29-L33) for Ubuntu-18.04). 
+
 
 ## Use BytePS in Your Code
 

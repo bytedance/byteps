@@ -107,16 +107,16 @@ export BYTEPS_NCCL_GROUP_SIZE=w
 ```
 
 Servers can also be the performance bottleneck, e.g., when there are only one server but multiple workers. 
-You can try to increase the number of push threads on the servers (default is 1):
+You can try to increase the number of processing threads on the servers (default is 4):
  
 ```
-export SERVER_PUSH_NTHREADS=v
+export BYTEPS_SERVER_ENGINE_THREAD=v
 ```
 
-Increasing the number of engine CPU threads may also improves server performance:
+Or enable scheduling at the server side to prioritize tensors with higher priority:
 
 ```
-export MXNET_CPU_WORKER_NTHREADS=p
+export BYTEPS_SERVER_ENABLE_SCHEDULE=1
 ```
 
 ## Asynchronous training

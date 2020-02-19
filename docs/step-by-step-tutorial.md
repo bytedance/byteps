@@ -23,9 +23,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 
 export DMLC_PS_ROOT_PORT=1234 
 
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py \
-    --model ResNet50 --num-iters 1000000 
+bpslaunch python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py --model ResNet50 --num-iters 1000000 
 ```
 
 ### PyTorch
@@ -47,9 +45,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 
 export DMLC_PS_ROOT_PORT=1234 
 
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py \
-    --model resnet50 --num-iters 1000000      
+bpslaunch python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py --model resnet50 --num-iters 1000000      
 ```
 
 ### MXNet
@@ -70,9 +66,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 
 export DMLC_PS_ROOT_PORT=1234 
 
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py \
-    --benchmark 1 --batch-size=32  
+bpslaunch python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py --benchmark 1 --batch-size=32  
 ```
 
 ## Distributed Training (TCP)
@@ -95,7 +89,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 # the scheduler IP 
 export DMLC_PS_ROOT_PORT=1234  # the scheduler port
 
-python3 /usr/local/byteps/launcher/launch.py
+bpslaunch
 ```
 
 For the server:
@@ -111,7 +105,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 # the scheduler IP 
 export DMLC_PS_ROOT_PORT=1234  # the scheduler port
 
-python3 /usr/local/byteps/launcher/launch.py
+bpslaunch
 ```
 
 
@@ -129,9 +123,7 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 # the scheduler IP 
 export DMLC_PS_ROOT_PORT=1234 # the scheduler port
 
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py \
-    --model ResNet50 --num-iters 1000000 
+bpslaunch python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py --model ResNet50 --num-iters 1000000 
 ```
 
 For worker-1:
@@ -149,26 +141,20 @@ export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=10.0.0.1 # the scheduler IP 
 export DMLC_PS_ROOT_PORT=1234 # the scheduler port
 
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py \
-    --model ResNet50 --num-iters 1000000 
+bpslaunch python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py --model ResNet50 --num-iters 1000000 
 ```
 
 
 If your workers use PyTorch, you need to change the image name to `bytepsimage/pytorch`, and replace the python script of the workers with
 
 ```
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py \
-    --model resnet50 --num-iters 1000000      
+bpslaunch python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py --model resnet50 --num-iters 1000000      
 ```
 
 
 If your workers use MXNet, you need to change the image name to `bytepsimage/mxnet`, and replace the python script of the workers with
 ```
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py \
-    --benchmark 1 --batch-size=32    
+bpslaunch python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py --benchmark 1 --batch-size=32    
 ```
 
 ## Distributed Training with RDMA
@@ -198,7 +184,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python3 /usr/local/byteps/launcher/launch.py
+bpslaunch
 ```
 
 For the server:
@@ -222,7 +208,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python3 /usr/local/byteps/launcher/launch.py
+bpslaunch
 ```
 
 For worker-0:
@@ -250,9 +236,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py \
-    --model ResNet50 --num-iters 1000000 
+bpslaunch python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py --model ResNet50 --num-iters 1000000 
 ```
 
 For worker-1:
@@ -281,9 +265,7 @@ export DMLC_PS_ROOT_URI=10.0.0.100
 export DMLC_PS_ROOT_PORT=9000
 
 # launch the job
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py \
-    --model ResNet50 --num-iters 1000000 
+bpslaunch python3 /usr/local/byteps/example/tensorflow/synthetic_benchmark.py --model ResNet50 --num-iters 1000000 
 ```
 
 
@@ -291,15 +273,11 @@ python3 /usr/local/byteps/launcher/launch.py \
 If your workers use PyTorch, you need to change the image name to `bytepsimage/pytorch`, and replace the python script of the workers with
 
 ```
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py \
-    --model resnet50 --num-iters 1000000      
+bpslaunch python3 /usr/local/byteps/example/pytorch/benchmark_byteps.py --model resnet50 --num-iters 1000000      
 ```
 
 
 If your workers use MXNet, you need to change the image name to `bytepsimage/mxnet`, and replace the python script of the workers with
 ```
-python3 /usr/local/byteps/launcher/launch.py \
-    python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py \
-    --benchmark 1 --batch-size=32    
+bpslaunch python3 /usr/local/byteps/example/mxnet/train_imagenet_byteps.py --benchmark 1 --batch-size=32    
 ```
