@@ -51,7 +51,7 @@ size_t Packing(void* src, size_t len) {
 }
 
 ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
-  BPS_CHECK_EQ(grad.len, _src_len);
+  // BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
   BPS_CHECK(_encode_buf);
