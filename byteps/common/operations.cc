@@ -308,37 +308,36 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
 
   size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
-  size_t aligned_size = size +  (size - size % min_size) % min_size;
+  size += (size - size % min_size) % min_size;
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
+    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
-                                                key_list[0], aligned_size);
+                                                key_list[0], size);
   }
-  BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
+  BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
   // Init Compressor buffer
   if (context.compressor) {
-    context.compressor->Init(aligned_size);
+    context.compressor->Init(size);
   }
 
   // Init tensors with BytePS server
   char *data = const_cast<char *>(static_cast<const char *>(context.cpubuff));
   accumulated = 0;
   size_t i = 0;
-  BPS_LOG(INFO) << "tensor size=" << size;
+  BPS_LOG(INFO) << "tensor aligned size=" << size;
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    size_t align_len = len + (min_size - len % min_size) % min_size;
     
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, align_len);
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
       // false means not to delete data when SArray is deleted
-      ps::SArray<char> vals(data + accumulated, align_len, false);
+      ps::SArray<char> vals(data + accumulated, len, false);
       // cmd type
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
@@ -348,7 +347,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
         PSKV kv;
         kv.keys.push_back(pskv.keys[0]);
-        context.kwargs["src_len"] = std::to_string(align_len);
+        context.kwargs["src_len"] = std::to_string(len);
         auto content = compressor::Serialize(context.kwargs);
         int len = content.size();
         kv.lens.push_back(len);
@@ -362,11 +361,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       }
     }
 
-    accumulated += align_len;
+    accumulated += len;
     ++i;
   }
 
-  BPS_CHECK_EQ(accumulated, aligned_size);
+  BPS_CHECK_EQ(accumulated, size);
   BPS_CHECK_EQ(i, key_list.size());
 
   context.initialized = true;
