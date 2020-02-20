@@ -78,18 +78,19 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
                 << ", sign=" << elapsed_0 << "us"
                 << ", packing=" << elapsed_1 << "us";
 
-  return {_encode_buf.get(), compressed_len, grad.dtype};
+  return {_encode_buf.get(), compressed_len * sizeof(int), grad.dtype};
 }
 
-void Unpacking(void* dst, void* src, size_t len) {
+void Unpacking(void* dst, void* src, size_t size) {
   constexpr int MASK = 1;
+  auto chunk_size = size / sizeof(int);
 
   auto ptr_dst = reinterpret_cast<int*>(dst);
   auto ptr_src = reinterpret_cast<int*>(src);
 #pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
-    for (int j = 0; j < len; ++j) {
-      ptr_dst[i * len + j] = -(((ptr_src[j] & MASK) << 1) - 1);
+    for (int j = 0; j < chunk_size; ++j) {
+      ptr_dst[i * chunk_size + j] = -(((ptr_src[j] & MASK) << 1) - 1);
       ptr_src[j] >>= 1;
     }
   }
