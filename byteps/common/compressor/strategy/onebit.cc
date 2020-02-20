@@ -33,17 +33,18 @@ OnebitCompressor::OnebitCompressor() = default;
 
 OnebitCompressor::~OnebitCompressor() = default;
 
-size_t Packing(void* src, size_t len) {
+size_t Packing(void* dst, void* src, size_t len) {
   constexpr int MASK = 1;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
+  auto ptr_dst = reinterpret_cast<int*>(dst);
   auto ptr_src = reinterpret_cast<int*>(src);
 #pragma unroll
   for (int i = 1; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
-      ptr_src[j] <<= 1;
-      ptr_src[j] |= ptr_src[i * chunk_size + j] & MASK;
+      ptr_dst[j] <<= 1;
+      ptr_dst[j] |= ptr_src[i * chunk_size + j] & MASK;
     }
   }
 
@@ -57,12 +58,12 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   BPS_CHECK(_encode_buf);
 
   auto pos_0 = std::chrono::steady_clock::now();
-  auto reduced_len = _cpu_reducer->sign(_encode_buf.get(), grad.data, grad.len,
+  auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.len,
                                         static_cast<DataType>(grad.dtype));
 
   auto pos_1 = std::chrono::steady_clock::now();
 
-  auto compressed_len = Packing(_encode_buf.get(), reduced_len);
+  auto compressed_len = Packing(_encode_buf.get(), grad.data, reduced_len);
 
   auto pos_2 = std::chrono::steady_clock::now();
 
