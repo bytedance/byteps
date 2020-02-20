@@ -169,19 +169,14 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
-    avx_flags = ['-mf16c', '-mavx']
+    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-match=native']
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
-        flags_to_try = [default_flags + ['-stdlib=libc++'] + avx_flags,
-                        default_flags + avx_flags,
-                        default_flags + ['-stdlib=libc++'],
+        flags_to_try = [default_flags + ['-stdlib=libc++'],
                         default_flags]
     else:
-        flags_to_try = [default_flags + avx_flags,
-                        default_flags + ['-stdlib=libc++'] + avx_flags,
-                        default_flags,
+        flags_to_try = [default_flags,
                         default_flags + ['-stdlib=libc++']]
     for cpp_flags in flags_to_try:
         try:
@@ -271,7 +266,7 @@ def get_common_options(build_ext):
 
     # RDMA and NUMA libs
     LIBRARIES += ['numa']
-    
+
     # auto-detect rdma
     if has_rdma_header():
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
@@ -293,7 +288,7 @@ def get_common_options(build_ext):
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
     server_lib.include_dirs = options['INCLUDES']
-    server_lib.sources = ['byteps/server/server.cc', 
+    server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
                           'byteps/common/logging.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
