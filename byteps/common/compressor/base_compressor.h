@@ -71,7 +71,7 @@ class BaseCompressor {
   /*!
    * \brief encoding buffer
    */
-  std::unique_ptr<char[]> _encode_buf;
+  std::unique_ptr<char[]> _buf;
 
   /*!
    * \brief tensor's length before compression

@@ -208,8 +208,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       }
     }
     SendPushResponse(key, req_meta, server);
-    LOG(INFO) << "register compressor sucessfully for key="
-              << key;
     return;
   }
 

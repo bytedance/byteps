@@ -55,14 +55,14 @@ ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
   // BPS_CHECK_EQ(grad.len, _src_len);
   BPS_CHECK(grad.data);
   BPS_CHECK(grad.len);
-  BPS_CHECK(_encode_buf);
+  BPS_CHECK(_buf);
 
   auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.len,
                                         static_cast<DataType>(grad.dtype));
 
-  auto compressed_len = Packing(_encode_buf.get(), grad.data, reduced_len);
+  auto compressed_len = Packing(_buf.get(), grad.data, reduced_len);
 
-  return {_encode_buf.get(), compressed_len * sizeof(int), grad.dtype};
+  return {_buf.get(), compressed_len * sizeof(int), grad.dtype};
 }
 
 void Unpacking(void* dst, void* src, size_t size) {
@@ -86,8 +86,8 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK(compressed.len);
 
-  Unpacking(_encode_buf.get(), compressed.data, compressed.len);
-  _cpu_reducer->int2fp(compressed.data, _encode_buf.get(), _src_len,
+  Unpacking(_buf.get(), compressed.data, compressed.len);
+  _cpu_reducer->int2fp(compressed.data, _buf.get(), _src_len,
                        static_cast<DataType>(compressed.dtype));
 
   return {nullptr, _src_len, 0};
