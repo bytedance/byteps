@@ -41,7 +41,7 @@ size_t Packing(void* dst, void* src, size_t len) {
   auto ptr_dst = reinterpret_cast<int*>(dst);
   auto ptr_src = reinterpret_cast<int*>(src);
 #pragma unroll
-  for (int i = 1; i < PACKING_SIZE; ++i) {
+  for (int i = 0; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
       ptr_dst[j] <<= 1;
       ptr_dst[j] |= ptr_src[i * chunk_size + j] & MASK;
