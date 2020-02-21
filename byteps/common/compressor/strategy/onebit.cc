@@ -99,10 +99,10 @@ ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
   BPS_CHECK(compressed.data);
   BPS_CHECK_GE(_src_len, compressed.len);
 
-  Unpacking(_encode_buf.get(), compressed.data, compressed.len);
-  _cpu_reducer->int2fp(_encode_buf.get(), _encode_buf.get(), _src_len,
+  Unpacking(_buf.get(), compressed.data, compressed.len);
+  _cpu_reducer->int2fp(_buf.get(), _buf.get(), _src_len,
                        static_cast<DataType>(compressed.dtype));
-  return {_encode_buf.get(), _src_len, compressed.dtype};
+  return {_buf.get(), _src_len, compressed.dtype};
 }
 #endif
 
