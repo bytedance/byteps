@@ -350,7 +350,7 @@ void BytePSGlobal::Shutdown() {
   _nccl_manager.reset();
 
   // reset state, ignore profiling state
-  BPS_LOG(INFO) << "Clear BytePS state";
+  BPS_LOG(DEBUG) << "Clear BytePS state";
   _threads.clear();
   _name_to_cxt.clear();
   _server_accumulated_len.clear();
@@ -392,7 +392,7 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
 
 void BytePSGlobal::ReDeclareTensor() {
   for (auto name: _declared_tensors) {
-    BPS_LOG(INFO) << "Redeclare tensor " << name;
+    BPS_LOG(DEBUG) << "Redeclare tensor " << name;
     BytePSGlobal::IsTensorDeclared(name);
   }
 }

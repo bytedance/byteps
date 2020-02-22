@@ -83,18 +83,22 @@ void byteps_shutdown() {
 
 void byteps_resume(int num_workers, int num_servers) {
   // set ps, worker numbers
-  BPS_LOG(INFO) << "New worker number: " << num_workers << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
-  BPS_LOG(INFO) << "New server number: " << num_workers << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
+  BPS_LOG(DEBUG) << "Resume worker number: " << num_workers << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
+  BPS_LOG(DEBUG) << "Resume server number: " << num_workers << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
+  BPS_LOG(DEBUG) << "Start resuming BytePS";
+
   BytePSGlobal::SetResumingFlag(true);
   byteps_init();
+
   // redeclare tensor with original order
   BytePSGlobal::ReDeclareTensor();
   BytePSGlobal::SetResumingFlag(false);
+
   BPS_LOG(INFO) << "BytePS has been resumed now";
 }
 
 void byteps_suspend() {
-  BPS_LOG(INFO) << "Start suspending BytePS";
+  BPS_LOG(DEBUG) << "Start suspending BytePS";
   BytePSGlobal::Shutdown();
   BPS_LOG(INFO) << "BytePS has been suspended now";
   return;
