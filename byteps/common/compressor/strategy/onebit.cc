@@ -56,10 +56,10 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.size,
                                         static_cast<DataType>(dtype));
 
-  auto compressed_size = Packing(_buf.get(), grad.data, reduced_len);
+  auto compressed_len = Packing(_buf.get(), grad.data, reduced_len);
 
   compressed->data = _buf.get();
-  compressed->size = compressed_size;
+  compressed->size = compressed_len*sizeof(int);
 }
 
 void Unpacking(void* dst, void* src, size_t size) {
