@@ -39,11 +39,12 @@ TopkCompressor::TopkCompressor(int k) : _k(k){};
 
 TopkCompressor::~TopkCompressor() = default;
 
-ByteBuf TopkCompressor::Compress(const ByteBuf& grad) {
+void TopkCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   // TODO
 }
 
-ByteBuf TopkCompressor::Decompress(const ByteBuf& compressed_grad) {
+void TopkCompressor::Decompress(ByteBuf compressed, int dtype,
+                                ByteBuf* decompressed) {
   // TODO
 }
 }  // namespace compressor

@@ -30,9 +30,10 @@ class TopkCompressor : public BaseCompressor {
   explicit TopkCompressor(int k);
   virtual ~TopkCompressor();
 
-  ByteBuf Compress(const ByteBuf& grad) override;
+  void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) override;
 
-  ByteBuf Decompress(const ByteBuf& compressed) override;
+  void Decompress(ByteBuf compressed, int dtype,
+                  ByteBuf* decompressed) override;
 
  private:
   int _k;

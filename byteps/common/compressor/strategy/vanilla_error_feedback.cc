@@ -40,12 +40,13 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
 
 VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 
-ByteBuf VanillaErrorFeedbackCompressor::UpdateGradient(const ByteBuf& grad) {
+void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad,
+                                                    ByteBuf* corrected) {
   // TODO
 }
 
-void VanillaErrorFeedbackCompressor::UpdateError(const ByteBuf& corrected,
-                                                 const ByteBuf& compressed) {
+void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected,
+                                                 ByteBuf* compressed) {
   // TODO
 }
 }  // namespace compressor
