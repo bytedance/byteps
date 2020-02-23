@@ -93,7 +93,7 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf* decompressed) {
   BPS_CHECK(decompressed);
   Unpacking(_buf.get(), compressed.data, compressed.size);
-  _cpu_reducer->int2fp(compressed.data, _buf.get(), decompressed->size,
+  _cpu_reducer->int2fp(_buf.get(), _buf.get(), decompressed->size,
                        static_cast<DataType>(dtype));
   decompressed->data = _buf.get();
 }
