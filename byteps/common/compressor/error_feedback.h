@@ -33,25 +33,29 @@ class ErrorFeedback : public BaseCompressor {
   virtual ~ErrorFeedback();
 
   /*!
-   * \brief Allocate all buffers for compression.
-   * \param size the size of buffer (bytes)
+   * \brief Allocate encoding buffer for compression.
+   * \param aligned_size aligned size
    */
-  void Init(size_t size) final;
+  virtual void Init(size_t aligned_size) final;
 
   /*!
-   * \brief Compress with error feedback
+   * \brief Compress function
    *
-   *  invoke `UpdateGradient` and `UpdateError` before and after
-   *  `_compressor_ptr->Compress(*)`
+   * \param grad gradient tensor
+   * \param dtype data type
+   * \param compressed compressed tensor
    */
-  ByteBuf Compress(const ByteBuf& grad) final;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) final;
 
   /*!
-   * \brief Decompress
+   * \brief Decompress function
    *
-   *  directly forward to `_compressor_ptr->Decompress(*)`
+   * \param compressed compressed tensor
+   * \param dtype data type
+   * \param decompressed decompressed tensor
    */
-  ByteBuf Decompress(const ByteBuf& compressed) final;
+  virtual void Decompress(ByteBuf compressed, int dtype,
+                          ByteBuf* decompressed) final;
 
  protected:
   /*!
@@ -60,9 +64,9 @@ class ErrorFeedback : public BaseCompressor {
    * grad += error
    *
    * \param grad input gradient to be updated
-   * \return corrected gradient
+   * \param corrected corrected gradient
    */
-  virtual ByteBuf UpdateGradient(const ByteBuf& grad) = 0;
+  virtual void UpdateGradient(ByteBuf grad, ByteBuf* corrected) = 0;
 
   /*!
    * \brief Update error
@@ -70,9 +74,9 @@ class ErrorFeedback : public BaseCompressor {
    * error = corrected_grad - decompress(compressed_corrected_grad)
    *
    * \param corrected refers to gradient + error
+   * \param compressed compressed tensor
    */
-  virtual void UpdateError(const ByteBuf& corrected,
-                           const ByteBuf& compressed) = 0;
+  virtual void UpdateError(ByteBuf corrected, ByteBuf* compressed) = 0;
 
  protected:
   std::unique_ptr<char[]> _decode_buf;
