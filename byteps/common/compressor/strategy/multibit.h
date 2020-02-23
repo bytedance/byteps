@@ -30,9 +30,10 @@ class MultibitCompressor : public BaseCompressor {
   explicit MultibitCompressor(int k);
   virtual ~MultibitCompressor();
 
-  ByteBuf Compress(const ByteBuf& grad) override;
+  void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) override;
 
-  ByteBuf Decompress(const ByteBuf& compressed) override;
+  void Decompress(ByteBuf compressed, int dtype,
+                  ByteBuf* decompressed) override;
 
  private:
   int _k;
