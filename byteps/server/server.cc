@@ -55,9 +55,10 @@ void SendPullResponse(const DataHandleType type,
   auto iter = compressor_map_.find(key);
   if (iter != compressor_map_.end()) {
     CHECK_NE(iter->second, nullptr);
-    auto tensor = iter->second->Compress({data, len, type.dtype});
-    data = tensor.data;
-    len = tensor.len;
+    common::compressor::ByteBuf grad{data, len}, compressed;
+    iter->second->Compress(grad, type.dtype, &compressed);
+    data = compressed.data;
+    len = compressed.size;
     if (log_key_info_) {
       LOG(INFO) << "compress for key=" << key << " compressed_len=" << len;
     }
@@ -222,10 +223,11 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto iter = compressor_map_.find(key);
     if (iter != compressor_map_.end()) {
       CHECK_NE(iter->second, nullptr);
-      auto tensor = iter->second->Decompress({recved, len, type.dtype});
-      recved = tensor.data;
-      len = tensor.len;
-      CHECK_EQ(len, stored->len);
+      common::compressor::ByteBuf compressed{recved, len}, decompressed;
+      decompressed.size = stored->len;
+      iter->second->Decompress(compressed, type.dtype, &decompressed);
+      recved = decompressed.data;
+      len = stored->len;
       if (log_key_info_) {
         LOG(INFO) << "decompress for key=" << key << " src_len=" << len;
       }

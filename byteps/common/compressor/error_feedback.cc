@@ -24,27 +24,26 @@ ErrorFeedback::ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr)
 
 ErrorFeedback::~ErrorFeedback() = default;
 
-void ErrorFeedback::Init(size_t len) {
-  _compressor_ptr->Init(len);
-  constexpr size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
-  size_t aligned_size = len + (min_size - len % min_size) % min_size;
+void ErrorFeedback::Init(size_t aligned_size) {
+  _compressor_ptr->Init(aligned_size);
   _decode_buf.reset(new char[aligned_size]);
   _error_buf.reset(new char[aligned_size]);
 }
 
-ByteBuf ErrorFeedback::Compress(const ByteBuf& grad) {
+void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   // before: grad += error
-  auto corrected_grad = UpdateGradient(grad);
+  ByteBuf corrected;
+  UpdateGradient(grad, &corrected);
   // compress
-  auto compressed_grad = _compressor_ptr->Compress(corrected_grad);
-  // after: error = corrected_grad - decompress(compressed_corrected_grad)
-  UpdateError(corrected_grad, compressed_grad);
+  _compressor_ptr->Compress(corrected, dtype, compressed);
 
-  return compressed_grad;
+  // after: error = corrected_grad - decompress(compressed_corrected_grad)
+  UpdateError(corrected, compressed);
 }
 
-ByteBuf ErrorFeedback::Decompress(const ByteBuf& compressed_grad) {
-  return _compressor_ptr->Decompress(compressed_grad);
+void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,
+                               ByteBuf* decompressed) {
+  _compressor_ptr->Decompress(compressed, dtype, decompressed);
 }
 }  // namespace compressor
 }  // namespace common

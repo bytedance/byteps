@@ -33,8 +33,7 @@ namespace compressor {
  */
 struct ByteBuf {
   char* data;
-  size_t len;
-  int dtype;
+  size_t size;
 };
 
 /*!
@@ -47,36 +46,34 @@ class BaseCompressor {
 
   /*!
    * \brief Allocate encoding buffer for compression.
-   * \param len the size of buffer (bytes)
+   * \param aligned_size aligned size
    */
-  virtual void Init(size_t len);
+  virtual void Init(size_t aligned_size);
 
   /*!
    * \brief Compress function
    *
-   * \param grad uncompressed gradient
-   * \return ByteBuf compressed gradient
+   * \param grad gradient tensor
+   * \param dtype data type
+   * \param compressed compressed tensor
    */
-  virtual ByteBuf Compress(const ByteBuf& grad) = 0;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) = 0;
 
   /*!
    * \brief Decompress function
    *
-   * \param compressed compressed gradient
-   * \return ByteBuf decompressed gradient
+   * \param compressed compressed tensor
+   * \param dtype data type
+   * \param decompressed decompressed tensor
    */
-  virtual ByteBuf Decompress(const ByteBuf& compressed) = 0;
+  virtual void Decompress(ByteBuf compressed, int dtype,
+                          ByteBuf* decompressed) = 0;
 
  protected:
   /*!
-   * \brief encoding buffer
+   * \brief buffer
    */
   std::unique_ptr<char[]> _buf;
-
-  /*!
-   * \brief tensor's length before compression
-   */
-  size_t _src_len;
 
   /*!
    * \brief CPU reducer

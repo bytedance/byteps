@@ -51,18 +51,15 @@ size_t Packing(void* dst, void* src, size_t len) {
   return chunk_size;
 }
 
-ByteBuf OnebitCompressor::Compress(const ByteBuf& grad) {
-  // BPS_CHECK_EQ(grad.len, _src_len);
-  BPS_CHECK(grad.data);
-  BPS_CHECK(grad.len);
-  BPS_CHECK(_buf);
+void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
+  BPS_CHECK(compressed);
+  auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.size,
+                                        static_cast<DataType>(dtype));
 
-  auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.len,
-                                        static_cast<DataType>(grad.dtype));
+  auto compressed_size = Packing(_buf.get(), grad.data, reduced_len);
 
-  auto compressed_len = Packing(_buf.get(), grad.data, reduced_len);
-
-  return {_buf.get(), compressed_len * sizeof(int), grad.dtype};
+  compressed->data = _buf.get();
+  compressed->size = compressed_size;
 }
 
 void Unpacking(void* dst, void* src, size_t size) {
@@ -82,27 +79,23 @@ void Unpacking(void* dst, void* src, size_t size) {
 
 #ifndef BYTEPS_BUILDING_SERVER
 // worker version decompressor
-ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
-  BPS_CHECK(compressed.data);
-  BPS_CHECK(compressed.len);
-
-  Unpacking(_buf.get(), compressed.data, compressed.len);
-  _cpu_reducer->int2fp(compressed.data, _buf.get(), _src_len,
-                       static_cast<DataType>(compressed.dtype));
-
-  return {nullptr, _src_len, 0};
+void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
+                                  ByteBuf* decompressed) {
+  BPS_CHECK(decompressed);
+  Unpacking(_buf.get(), compressed.data, compressed.size);
+  _cpu_reducer->int2fp(compressed.data, _buf.get(), decompressed->size,
+                       static_cast<DataType>(dtype));
 }
 
 #else
 
-ByteBuf OnebitCompressor::Decompress(const ByteBuf& compressed) {
-  BPS_CHECK(compressed.data);
-  BPS_CHECK_GE(_src_len, compressed.len);
-
-  Unpacking(_buf.get(), compressed.data, compressed.len);
-  _cpu_reducer->int2fp(_buf.get(), _buf.get(), _src_len,
-                       static_cast<DataType>(compressed.dtype));
-  return {_buf.get(), _src_len, compressed.dtype};
+void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
+                                  ByteBuf* decompressed) {
+  BPS_CHECK(decompressed);
+  Unpacking(_buf.get(), compressed.data, compressed.size);
+  _cpu_reducer->int2fp(compressed.data, _buf.get(), decompressed->size,
+                       static_cast<DataType>(dtype));
+  decompressed.data = _buf.get();
 }
 #endif
 

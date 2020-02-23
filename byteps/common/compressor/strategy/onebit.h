@@ -43,25 +43,29 @@ class OnebitCompressor : public BaseCompressor {
   virtual ~OnebitCompressor();
 
   /*!
-   * \brief Compress
+   * \brief Compress function
    *
    * compress and pack into byte array.
    * each bit represents a sign.
    *
-   * \param grad
-   * \return ByteBuf: byte array
+   * \param grad gradient tensor
+   * \param dtype data type
+   * \param compressed compressed tensor
    */
-  ByteBuf Compress(const ByteBuf& grad) override;
+  void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) override;
 
   /*!
    * \brief Decompress
    *
    * unpack from byte array to FP tensor
    *
-   * \param compressed
-   * \return ByteBuf: tensor
+   * \param compressed compressed tensor
+   * \param dtype data type
+   * \param src_size uncompressed tensor size
+   * \param decompressed decompressed tensor
    */
-  ByteBuf Decompress(const ByteBuf& compressed) override;
+  void Decompress(ByteBuf compressed, int dtype,
+                  ByteBuf* decompressed) override;
 };
 }  // namespace compressor
 }  // namespace common

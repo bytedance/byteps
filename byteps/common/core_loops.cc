@@ -507,13 +507,14 @@ bool RunPushLoopOnce() {
 
       // do compression
       if (task->compressor) {
-        auto tensor = task->compressor->Compress({data, len, dtype});
-        data = tensor.data;
-        BPS_CHECK_LE(tensor.len, len)
+        compressor::ByteBuf grad{data, len}, compressed;
+        task->compressor->Compress(grad, dtype, &compressed);
+        data = compressed.data;
+        BPS_CHECK_LE(compressed.size, len)
             << "Compressor Implementation Error "
             << ", key=" << task->key << ", src_len=" << len
-            << ", compressed_len=" << tensor.len;
-        len = tensor.len;
+            << ", compressed_len=" << compressed.size;
+        len = compressed.size;
         BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
       }
 
@@ -628,17 +629,16 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     int local_rank = BytePSGlobal::GetLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
 
-    // do decompression
+     // do decompression
     if (task->compressor) {
-      char* data =
-        const_cast<char *>(static_cast<const char *>(task->cpubuff) + task->offset);
+      char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
+                                      task->offset);
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
-      auto tensor = task->compressor->Decompress({data, len, task->tensor->dtype()});
-      CHECK_EQ(tensor.len, task->len) 
-          << "Compressor Implementation Error "
-          << ", key=" << task->key << ", src_len=" << task->len
-          << ", decompressed_len=" << tensor.len;
+      compressor::ByteBuf compressed{data, len}, decompressed;
+      decompressed.size = task->len;
+      int dtype = task->tensor->dtype();
+      task->compressor->Decompress(compressed, dtype, &decompressed);
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
     }
 
