@@ -369,7 +369,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       }
     }
 
-    accumulated += size;
+    accumulated += len;
     ++i;
   }
 
