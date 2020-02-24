@@ -31,7 +31,6 @@ logging.basicConfig(level=logging.INFO)
 def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
     if model is None:
         raise ValueError("model is None")
-    bps.init()
 
     train_data = input_data(config, dtype)
 
@@ -100,9 +99,11 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
         }
 
     def _run(self, dtype):
+        bps.init()
         self.assertAlmostEqual(
             self._run_impl(dtype=dtype, compress=False),
             self._run_impl(dtype=dtype, compress=True))
+        bps.shutdown()
 
     def _run_impl(self, dtype, compress):
         model = self._model()
