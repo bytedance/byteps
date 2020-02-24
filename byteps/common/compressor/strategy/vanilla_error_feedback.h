@@ -32,9 +32,9 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
   virtual ~VanillaErrorFeedbackCompressor();
 
  protected:
-  void UpdateGradient(ByteBuf grad, ByteBuf* corrected) override;
+  void UpdateGradient(ByteBuf grad, int dtype) override;
 
-  void UpdateError(ByteBuf corrected, ByteBuf* compressed) override;
+  void UpdateError(ByteBuf corrected, int dtype, ByteBuf* compressed) override;
 };
 }  // namespace compressor
 }  // namespace common

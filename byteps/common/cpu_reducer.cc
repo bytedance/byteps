@@ -23,7 +23,6 @@ namespace byteps {
 namespace common {
 
 CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
-
 #ifndef BYTEPS_BUILDING_SERVER
   std::vector<int> peers;
   auto pcie_size = BytePSGlobal::GetPcieSwitchSize();
@@ -33,8 +32,7 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   }
   if (comm) {
     _comm = std::make_shared<BytePSCommSocket>(comm, std::string("cpu"), peers);
-  }
-  else {
+  } else {
     _comm = nullptr;
   }
 #endif
@@ -56,28 +54,34 @@ bool CpuReducer::isRoot() {
 }
 #endif
 
-int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype) {
+int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype,
+                    float alpha = 1.0) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src),
-                  len);
+                  len, static_cast<float>(alpha));
     case BYTEPS_FLOAT64:
       return _sum(reinterpret_cast<double*>(dst),
-                  reinterpret_cast<double*>(src), len);
+                  reinterpret_cast<double*>(src), len,
+                  static_cast<double>(alpha));
     case BYTEPS_FLOAT16:
       return _sum_float16(dst, src, len);
     case BYTEPS_UINT8:
       return _sum(reinterpret_cast<uint8_t*>(dst),
-                  reinterpret_cast<uint8_t*>(src), len);
+                  reinterpret_cast<uint8_t*>(src), len,
+                  static_cast<uint8_t>(alpha));
     case BYTEPS_INT32:
       return _sum(reinterpret_cast<int32_t*>(dst),
-                  reinterpret_cast<int32_t*>(src), len);
+                  reinterpret_cast<int32_t*>(src), len,
+                  static_cast<int32_t>(alpha));
     case BYTEPS_INT8:
       return _sum(reinterpret_cast<int8_t*>(dst),
-                  reinterpret_cast<int8_t*>(src), len);
+                  reinterpret_cast<int8_t*>(src), len,
+                  static_cast<int8_t>(alpha));
     case BYTEPS_INT64:
       return _sum(reinterpret_cast<int64_t*>(dst),
-                  reinterpret_cast<int64_t*>(src), len);
+                  reinterpret_cast<int64_t*>(src), len,
+                  static_cast<int64_t>(alpha));
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -85,10 +89,10 @@ int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, T* src, size_t len) {
+int CpuReducer::_sum(T* dst, T* src, size_t len, T alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
-    dst[i] = dst[i] + src[i];
+    dst[i] = dst[i] + alpha * src[i];
   }
   return 0;
 }
@@ -130,33 +134,34 @@ int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
 }
 
 int CpuReducer::sum(void* dst, void* src1, void* src2, size_t len,
-                    DataType dtype) {
+                    DataType dtype, float alpha = 1.0) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src1),
-                  reinterpret_cast<float*>(src2), len);
+                  reinterpret_cast<float*>(src2), len,
+                  static_cast<float>(alpha));
     case BYTEPS_FLOAT64:
-      return _sum(reinterpret_cast<double*>(dst),
-                  reinterpret_cast<double*>(src1),
-                  reinterpret_cast<double*>(src2), len);
+      return _sum(
+          reinterpret_cast<double*>(dst), reinterpret_cast<double*>(src1),
+          reinterpret_cast<double*>(src2), len, static_cast<double>(alpha));
     case BYTEPS_FLOAT16:
       return _sum_float16(dst, src1, src2, len);
     case BYTEPS_UINT8:
-      return _sum(reinterpret_cast<uint8_t*>(dst),
-                  reinterpret_cast<uint8_t*>(src1),
-                  reinterpret_cast<uint8_t*>(src2), len);
+      return _sum(
+          reinterpret_cast<uint8_t*>(dst), reinterpret_cast<uint8_t*>(src1),
+          reinterpret_cast<uint8_t*>(src2), len, static_cast<uint8_t>(alpha));
     case BYTEPS_INT32:
-      return _sum(reinterpret_cast<int32_t*>(dst),
-                  reinterpret_cast<int32_t*>(src1),
-                  reinterpret_cast<int32_t*>(src2), len);
+      return _sum(
+          reinterpret_cast<int32_t*>(dst), reinterpret_cast<int32_t*>(src1),
+          reinterpret_cast<int32_t*>(src2), len, static_cast<int32_t>(alpha));
     case BYTEPS_INT8:
-      return _sum(reinterpret_cast<int8_t*>(dst),
-                  reinterpret_cast<int8_t*>(src1),
-                  reinterpret_cast<int8_t*>(src2), len);
+      return _sum(
+          reinterpret_cast<int8_t*>(dst), reinterpret_cast<int8_t*>(src1),
+          reinterpret_cast<int8_t*>(src2), len, static_cast<int8_t>(alpha));
     case BYTEPS_INT64:
-      return _sum(reinterpret_cast<int64_t*>(dst),
-                  reinterpret_cast<int64_t*>(src1),
-                  reinterpret_cast<int64_t*>(src2), len);
+      return _sum(
+          reinterpret_cast<int64_t*>(dst), reinterpret_cast<int64_t*>(src1),
+          reinterpret_cast<int64_t*>(src2), len, static_cast<int64_t>(alpha));
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -164,10 +169,10 @@ int CpuReducer::sum(void* dst, void* src1, void* src2, size_t len,
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, T* src1, T* src2, size_t len) {
+int CpuReducer::_sum(T* dst, T* src1, T* src2, size_t len, T alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
-    dst[i] = src1[i] + src2[i];
+    dst[i] = src1[i] + alpha * src2[i];
   }
   return 0;
 }
@@ -240,9 +245,9 @@ int CpuReducer::sign(void* dst, void* src, size_t len, DataType dtype) {
 
 template <typename T>
 size_t CpuReducer::_sign(int* dst, T* src, size_t len) {
-// extract sign bit
-int num_threads = len > (1<<16) ? _num_threads:1;
-#pragma omp parallel for simd num_threads(num_threads) 
+  // extract sign bit
+  int num_threads = len > (1 << 16) ? _num_threads : 1;
+#pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     dst[i] = src[i] < 0;
   }
@@ -252,8 +257,8 @@ int num_threads = len > (1<<16) ? _num_threads:1;
 int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _int2fp(reinterpret_cast<float*>(dst), 
-                     reinterpret_cast<int*>(src), len);
+      return _int2fp(reinterpret_cast<float*>(dst), reinterpret_cast<int*>(src),
+                     len);
     case BYTEPS_FLOAT64:
       return _int2fp(reinterpret_cast<double*>(dst),
                      reinterpret_cast<int*>(src), len);

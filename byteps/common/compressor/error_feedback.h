@@ -18,6 +18,8 @@
 
 #include "base_compressor.h"
 
+#include <future>
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -63,30 +65,34 @@ class ErrorFeedback : public BaseCompressor {
    *
    * grad += error
    *
-   * \param grad input gradient to be updated
-   * \param corrected corrected gradient
+   * \param grad input gradient to be updated inplace
+   * \param dtype type
    */
-  virtual void UpdateGradient(ByteBuf grad, ByteBuf* corrected) = 0;
+  virtual void UpdateGradient(ByteBuf grad, int dtype) = 0;
 
   /*!
    * \brief Update error
    *
-   * error = corrected_grad - decompress(compressed_corrected_grad)
+   * error = corrected_grad - decompressed
    *
    * \param corrected refers to gradient + error
+   * \param dtype type
    * \param compressed compressed tensor
    */
-  virtual void UpdateError(ByteBuf corrected, ByteBuf* compressed) = 0;
+  virtual void UpdateError(ByteBuf corrected, int dtype,
+                           ByteBuf* decompressed) = 0;
 
  protected:
   std::unique_ptr<char[]> _decode_buf;
-  std::unique_ptr<char[]> _error_buf;
+  std::unique_ptr<char[]> _error;
 
  private:
   /*!
    * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
+
+  std::future<void> _future;
 };
 }  // namespace compressor
 }  // namespace common
