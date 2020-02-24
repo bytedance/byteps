@@ -45,8 +45,8 @@ class CpuReducer {
     BPS_LOG(DEBUG) << "Clear CpuReducer";
   }
 
-  int sum(void* dst, void* src, size_t len, DataType dtype, float alpha=1.0);
-  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype, float alpha=1.0);
+  int sum(void* dst, void* src, size_t len, DataType dtype, float alpha);
+  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype, float alpha);
   int copy(void* dst, void* src, size_t len);
   int sign(void* dst, void* src, size_t len, DataType dtype);
   int int2fp(void* dst, void* src, size_t len, DataType dtype);
