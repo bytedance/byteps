@@ -202,7 +202,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto compressor_ptr =
         byteps::common::compressor::CompressorRegistry::Create(kwargs);
     if (compressor_ptr) {
-      compressor_ptr->Init(std::stoi(kwargs["src_len"]));
+      size_t aligned_size = common::Align(std::stoi(kwargs["src_len"]));
+      compressor_ptr->Init(aligned_size);
       compressor_map_[key] = std::move(compressor_ptr);
       if (log_key_info_) {
         LOG(INFO) << "register compressor for key=" << key;
@@ -249,9 +250,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << ", init the store buffer size=" << (size_t) req_data.lens[0];
       }
       // init stored buffer, use page aligned memory
-      constexpr size_t min_size = common::PACKING_SIZE * sizeof(int); // 32*4 bytes
-      size_t aligned_len = len + (min_size - len % min_size) % min_size;
-      PageAlignedMalloc((void**) &stored->tensor, aligned_len);
+      size_t aligned_size = common::Align(len);
+      PageAlignedMalloc((void**) &stored->tensor, aligned_size);
       stored->len = len;
       stored->dtype = type.dtype;
       CHECK(stored->tensor);
