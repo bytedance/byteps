@@ -103,7 +103,7 @@ class OnebitCaseBase(unittest.TestCase, metaclass=TestMeta):
         self.assertAlmostEqual(
             self._run_impl(dtype=dtype, compress=False),
             self._run_impl(dtype=dtype, compress=True))
-        bps.shutdown()
+        exit()
 
     def _run_impl(self, dtype, compress):
         model = self._model()
