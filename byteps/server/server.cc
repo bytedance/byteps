@@ -224,8 +224,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto iter = compressor_map_.find(key);
     if (iter != compressor_map_.end()) {
       CHECK_NE(iter->second, nullptr);
-      common::compressor::ByteBuf compressed{recved, len}, decompressed;
-      decompressed.size = stored->len;
+      common::compressor::ByteBuf compressed{recved, len},
+          decompressed{nullptr, stored->len};
       iter->second->Decompress(compressed, type.dtype, &decompressed);
       recved = decompressed.data;
       len = stored->len;

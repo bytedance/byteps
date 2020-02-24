@@ -45,8 +45,8 @@ class CpuReducer {
     BPS_LOG(DEBUG) << "Clear CpuReducer";
   }
 
-  int sum(void* dst, void* src, size_t len, DataType dtype);
-  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
+  int sum(void* dst, void* src, size_t len, DataType dtype, float alpha=1.0);
+  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype, float alpha=1.0);
   int copy(void* dst, void* src, size_t len);
   int sign(void* dst, void* src, size_t len, DataType dtype);
   int int2fp(void* dst, void* src, size_t len, DataType dtype);
@@ -177,10 +177,10 @@ class CpuReducer {
   }
 
   template <typename T>
-  int _sum(T* dst, T* src, size_t len);
+  int _sum(T* dst, T* src, size_t len, T alpha);
 
   template <typename T>
-  int _sum(T* dst, T* src1, T* src2, size_t len);
+  int _sum(T* dst, T* src1, T* src2, size_t len, T alpha);
 
   int _sum_float16(void* dst, void* src, size_t len);
   int _sum_float16(void* dst, void* src1, void* src2, size_t len);

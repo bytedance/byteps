@@ -27,18 +27,18 @@ ErrorFeedback::~ErrorFeedback() = default;
 void ErrorFeedback::Init(size_t aligned_size) {
   _compressor_ptr->Init(aligned_size);
   _decode_buf.reset(new char[aligned_size]);
-  _error_buf.reset(new char[aligned_size]);
+  _error.reset(new char[aligned_size]);
 }
 
 void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
+  if (_future.valid()) _future.wait();
   // before: grad += error
-  ByteBuf corrected;
-  UpdateGradient(grad, &corrected);
+  UpdateGradient(grad, dtype);
   // compress
-  _compressor_ptr->Compress(corrected, dtype, compressed);
-
-  // after: error = corrected_grad - decompress(compressed_corrected_grad)
-  UpdateError(corrected, compressed);
+  _compressor_ptr->Compress(grad, dtype, compressed);
+  // after: error = corrected_grad - decompressed
+  std::async(std::launch::async, &ErrorFeedback::UpdateError, this, grad, dtype,
+             compressed);
 }
 
 void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,

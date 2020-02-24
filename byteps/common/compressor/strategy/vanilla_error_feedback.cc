@@ -40,14 +40,17 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
 
 VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 
-void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad,
-                                                    ByteBuf* corrected) {
-  // TODO
+void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+                          static_cast<DataType>(dtype));
 }
 
-void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected,
+void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
                                                  ByteBuf* compressed) {
-  // TODO
+  ByteBuf decompressed{_decode_buf.get(), corrected.size};
+  Decompress(*compressed, dtype, &decompressed);
+  this->_cpu_reducer->sum(_error.get(), corrected.data, decompressed.data,
+                          corrected.size, static_cast<DataType>(dtype), -1.0);
 }
 }  // namespace compressor
 }  // namespace common

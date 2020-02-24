@@ -59,7 +59,7 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   auto compressed_len = Packing(_buf.get(), grad.data, reduced_len);
 
   compressed->data = _buf.get();
-  compressed->size = compressed_len*sizeof(int);
+  compressed->size = compressed_len * sizeof(int);
 }
 
 void Unpacking(void* dst, void* src, size_t size) {
@@ -82,8 +82,9 @@ void Unpacking(void* dst, void* src, size_t size) {
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf* decompressed) {
   BPS_CHECK(decompressed);
+  BPS_CHECK(decompressed->data);
   Unpacking(_buf.get(), compressed.data, compressed.size);
-  _cpu_reducer->int2fp(compressed.data, _buf.get(), decompressed->size,
+  _cpu_reducer->int2fp(decompressed->data, _buf.get(), decompressed->size,
                        static_cast<DataType>(dtype));
 }
 
@@ -93,9 +94,9 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf* decompressed) {
   BPS_CHECK(decompressed);
   Unpacking(_buf.get(), compressed.data, compressed.size);
-  _cpu_reducer->int2fp(_buf.get(), _buf.get(), decompressed->size,
+  if (decompressed->data == nullptr) decompressed->data = _buf.get();
+  _cpu_reducer->int2fp(decompressed->data, _buf.get(), decompressed->size,
                        static_cast<DataType>(dtype));
-  decompressed->data = _buf.get();
 }
 #endif
 
