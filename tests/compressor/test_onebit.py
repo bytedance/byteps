@@ -22,9 +22,9 @@ from mxnet.gluon.model_zoo import vision
 
 import byteps.mxnet as bps
 
-from .datasets import fake_data
-from .test_meta import TestMeta
-from .utils import Config
+from datasets import fake_data
+from test_meta import TestMeta
+from utils import Config
 
 logging.basicConfig(level=logging.INFO)
 
@@ -129,7 +129,3 @@ class OnebitResnet18(OnebitCaseBase):
 
 
 del OnebitCaseBase
-
-
-if __name__ == "__main__":
-    unittest.main()
