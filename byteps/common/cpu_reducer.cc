@@ -55,7 +55,7 @@ bool CpuReducer::isRoot() {
 #endif
 
 int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype,
-                    float alpha = 1.0) {
+                    float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src),
@@ -134,7 +134,7 @@ int CpuReducer::_sum_float16(void* dst, void* src, size_t len) {
 }
 
 int CpuReducer::sum(void* dst, void* src1, void* src2, size_t len,
-                    DataType dtype, float alpha = 1.0) {
+                    DataType dtype, float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst), reinterpret_cast<float*>(src1),
