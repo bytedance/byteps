@@ -33,18 +33,16 @@ OnebitCompressor::OnebitCompressor() = default;
 
 OnebitCompressor::~OnebitCompressor() = default;
 
-size_t Packing(void* dst, void* src, size_t len) {
-  BPS_CHECK_NE(dst, src);
+size_t Packing(void* data, size_t len) {
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
-  auto ptr_dst = reinterpret_cast<int*>(dst);
-  auto ptr_src = reinterpret_cast<int*>(src);
+  auto ptr = reinterpret_cast<int*>(data);
 #pragma unroll
-  for (int i = 0; i < PACKING_SIZE; ++i) {
+  for (int i = 1; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
-      ptr_dst[j] <<= 1;
-      ptr_dst[j] |= ptr_src[i * chunk_size + j] & 0x01;
+      ptr[j] <<= 1;
+      ptr[j] |= ptr[i * chunk_size + j] & 0x01;
     }
   }
 
@@ -53,10 +51,10 @@ size_t Packing(void* dst, void* src, size_t len) {
 
 void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   BPS_CHECK(compressed);
-  auto reduced_len = _cpu_reducer->sign(grad.data, grad.data, grad.size,
+  auto reduced_len = _cpu_reducer->sign(_buf.get(), grad.data, grad.size,
                                         static_cast<DataType>(dtype));
 
-  auto compressed_len = Packing(_buf.get(), grad.data, reduced_len);
+  auto compressed_len = Packing(_buf.get(), reduced_len);
 
   compressed->data = _buf.get();
   compressed->size = compressed_len * sizeof(int);
