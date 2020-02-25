@@ -83,7 +83,7 @@ class ErrorFeedback : public BaseCompressor {
                            ByteBuf* decompressed) = 0;
 
  protected:
-  std::unique_ptr<char[]> _decode_buf;
+  std::unique_ptr<char[]> _debuf;
   std::unique_ptr<char[]> _error;
 
  private:

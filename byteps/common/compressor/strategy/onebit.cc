@@ -34,7 +34,7 @@ OnebitCompressor::OnebitCompressor() = default;
 OnebitCompressor::~OnebitCompressor() = default;
 
 size_t Packing(void* dst, void* src, size_t len) {
-  constexpr int MASK = 1;
+  BPS_CHECK_NE(dst, src);
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
@@ -44,7 +44,7 @@ size_t Packing(void* dst, void* src, size_t len) {
   for (int i = 0; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
       ptr_dst[j] <<= 1;
-      ptr_dst[j] |= ptr_src[i * chunk_size + j] & MASK;
+      ptr_dst[j] |= ptr_src[i * chunk_size + j] & 0x01;
     }
   }
 
@@ -63,7 +63,7 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
 }
 
 void Unpacking(void* dst, void* src, size_t size) {
-  constexpr int MASK = 1;
+  BPS_CHECK_NE(dst, src);
   auto chunk_size = size / sizeof(int);
 
   auto ptr_dst = reinterpret_cast<int*>(dst);
@@ -71,7 +71,7 @@ void Unpacking(void* dst, void* src, size_t size) {
 #pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < chunk_size; ++j) {
-      ptr_dst[i * chunk_size + j] = -(((ptr_src[j] & MASK) << 1) - 1);
+      ptr_dst[i * chunk_size + j] = -(((ptr_src[j] & 0x01) << 1) - 1);
       ptr_src[j] >>= 1;
     }
   }
