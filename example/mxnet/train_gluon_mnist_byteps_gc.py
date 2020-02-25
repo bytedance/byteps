@@ -44,6 +44,10 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
+parser.add_argument('--compressor', type=str, default='onebit',
+                    help='onebit compressor')
+parser.add_argument('--ef', type=str, default=None,
+                    help='ef')                    
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -64,9 +68,11 @@ def dummy_transform(data, label):
 # Function to get mnist iterator
 def get_mnist_iterator():
     train_set = MNIST(train=True, transform=dummy_transform)
-    train_iter = gluon.data.DataLoader(train_set, args.batch_size, True, num_workers=args.j, last_batch='discard')
+    train_iter = gluon.data.DataLoader(
+        train_set, args.batch_size, True, num_workers=args.j, last_batch='discard')
     val_set = MNIST(train=False, transform=dummy_transform)
-    val_iter = gluon.data.DataLoader(val_set, args.batch_size, False, num_workers=args.j)
+    val_iter = gluon.data.DataLoader(
+        val_set, args.batch_size, False, num_workers=args.j)
 
     return train_iter, val_iter, len(train_set)
 
@@ -104,7 +110,8 @@ train_data, val_data, train_size = get_mnist_iterator()
 bps.init()
 
 # BytePS: pin context to local rank
-context = mx.cpu(bps.local_rank()) if args.no_cuda else mx.gpu(bps.local_rank())
+context = mx.cpu(bps.local_rank()) if args.no_cuda else mx.gpu(
+    bps.local_rank())
 num_workers = bps.size()
 
 # Build model
@@ -120,12 +127,14 @@ model.hybridize()
 params = model.collect_params()
 
 for name, param in params.items():
-  assert isinstance(param, mx.gluon.Parameter)
-  setattr(param, "byteps_compressor_type", "onebit")
-  setattr(param, "byteps_error_feedback_type", "vanilla")
+    assert isinstance(param, mx.gluon.Parameter)
+    setattr(param, "byteps_compressor_type", args.compressor)
+    if args.ef:
+        setattr(param, "byteps_error_feedback_type", args.ef)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
-optimizer_params = {'momentum': args.momentum, 'learning_rate': args.lr * num_workers}
+optimizer_params = {'momentum': args.momentum,
+                    'learning_rate': args.lr * num_workers}
 trainer = bps.DistributedTrainer(params, "sgd", optimizer_params)
 
 # Create loss function and train metric
