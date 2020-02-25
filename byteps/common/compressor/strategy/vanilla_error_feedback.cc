@@ -40,10 +40,20 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
 
 VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 
+#ifndef BYTEPS_BUILDING_SERVER
+// worker version decompressor
 void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
   this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
                           static_cast<DataType>(dtype));
 }
+#else
+// server version decompressor
+void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+  float len = grad.size / getDataTypeLength(dtype);
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+                          static_cast<DataType>(dtype), 1.0 / len);
+}
+#endif
 
 void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
                                                  ByteBuf* compressed) {
