@@ -254,18 +254,18 @@ size_t CpuReducer::_sign(int* dst, T* src, size_t len) {
   return len / sizeof(T);
 }
 
-int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype) {
+int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype, float scale=1.0) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _int2fp(reinterpret_cast<float*>(dst), reinterpret_cast<int*>(src),
-                     len);
+                     len, static_cast<float>(scale));
     case BYTEPS_FLOAT64:
       return _int2fp(reinterpret_cast<double*>(dst),
-                     reinterpret_cast<int*>(src), len);
-    case BYTEPS_FLOAT16: {
-      return _int2fp(reinterpret_cast<unsigned short*>(dst),
-                     reinterpret_cast<int*>(src), len);
-    }
+                     reinterpret_cast<int*>(src), len, static_cast<double>(scale));
+    // case BYTEPS_FLOAT16: {
+    //   return _int2fp(reinterpret_cast<unsigned short*>(dst),
+    //                  reinterpret_cast<int*>(src), len, );
+    // }
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -273,12 +273,35 @@ int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_int2fp(T* dst, int* src, size_t len) {
+int CpuReducer::_int2fp(T* dst, int* src, size_t len, T scale) {
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
-    dst[i] = static_cast<T>(src[i]);
+    dst[i] = static_cast<T>(src[i]) * scale;
   }
+  return 0;
+}
+
+int CpuReducer::norm1(float* out, void* src, size_t len, DataType dtype) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _norm1(out, reinterpret_cast<float*>(src), len);
+    case BYTEPS_FLOAT64:
+      return _norm1(out, reinterpret_cast<double*>(src), len);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+}
+
+template <typename T>
+int CpuReducer::_norm1(float* out, T* src, size_t len) {
+  float ret = 0;
+  int num_threads = len > (1 << 16) ? _num_threads : 1;
+#pragma omp parallel simd for num_threads(num_threads) reduction(+ : sum)
+  for (size_t i = 0; i < len / sizeof(T); ++i) {
+    ret += std::abs(src[i]);
+  }
+  *out = ret;
   return 0;
 }
 
