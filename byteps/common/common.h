@@ -43,6 +43,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 class BaseCompressor;
+class ErrorFeedback;
 }
 
 // Device ID used for CPU.
