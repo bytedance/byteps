@@ -254,7 +254,7 @@ size_t CpuReducer::_sign(int* dst, T* src, size_t len) {
   return len / sizeof(T);
 }
 
-int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype, float scale=1.0) {
+int CpuReducer::int2fp(void* dst, void* src, size_t len, DataType dtype, float scale) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _int2fp(reinterpret_cast<float*>(dst), reinterpret_cast<int*>(src),
