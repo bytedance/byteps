@@ -122,7 +122,8 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
                     &MX_EXEC_CTX, nullptr, 0, &var, 1,
                     &MX_FUNC_PROP, 0, "BytePSPushPull");
 
-  if (is_average) {
+  auto use_ef = common::instanceof<common::compressor::ErrorFeedback>(context.compressor);
+  if (is_average && !use_ef) {
     // average the aggregated gradient
     auto num_worker = byteps_size();
     *tensor /= num_worker;
