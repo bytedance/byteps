@@ -44,14 +44,14 @@ VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 // worker version decompressor
 void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
   int local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.data, grad.size,
                           static_cast<DataType>(dtype), 1.0 / local_size);
 }
 #else
 // server version decompressor
 void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
   int num_workers = atoi(getenv("DMLC_NUM_WORKER"));
-  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.data, grad.size,
                           static_cast<DataType>(dtype), 1.0 / num_workers);
 }
 #endif
