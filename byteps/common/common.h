@@ -266,11 +266,6 @@ inline size_t Align(size_t size) {
   constexpr size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
   return size + (min_size - size % min_size) % min_size;
 }
-
-template<typename Base, typename T>
-inline bool instanceof(std::shared_ptr<T>) {
-  return std::is_base_of<Base, T>::value;
-}
 }  // namespace common
 }  // namespace byteps
 
