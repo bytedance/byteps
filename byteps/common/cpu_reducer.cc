@@ -297,7 +297,7 @@ template <typename T>
 int CpuReducer::_norm1(float* out, T* src, size_t len) {
   float ret = 0;
   int num_threads = len > (1 << 16) ? _num_threads : 1;
-#pragma omp parallel simd for num_threads(num_threads) reduction(+ : sum)
+#pragma omp parallel for simd num_threads(num_threads) reduction(+ : sum)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     ret += std::abs(src[i]);
   }
