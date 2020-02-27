@@ -26,7 +26,6 @@ ErrorFeedback::~ErrorFeedback() = default;
 
 void ErrorFeedback::Init(size_t aligned_size) {
   _compressor_ptr->Init(aligned_size);
-  _debuf.reset(new char[aligned_size]);
   _error.reset(new char[aligned_size]);
   memset(_error.get(), 0, aligned_size);
   _cpu_reducer.reset(new CpuReducer(nullptr));
