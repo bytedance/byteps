@@ -25,11 +25,14 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg("onebit", [](const kwargs_t& kwargs) {
   BPS_LOG(DEBUG) << "Register Onebit Compressor";
+  if (kwargs.find("compressor_onebit_enable_scale") != kwargs.end()) {
+    return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
+  }
   return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
 });
 }
 
-OnebitCompressor::OnebitCompressor() = default;
+OnebitCompressor::OnebitCompressor(bool use_scale) : _use_scale(use_scale){};
 
 OnebitCompressor::~OnebitCompressor() = default;
 
@@ -53,10 +56,13 @@ size_t Packing(void* data, size_t len, float scale) {
 
 void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   BPS_CHECK(compressed);
-  float norm1, scale;
-  _cpu_reducer->norm1(&norm1, grad.data, grad.size,
-                      static_cast<DataType>(dtype));
-  scale = norm1 / (grad.size / getDataTypeLength(dtype));
+  float scale = 1.0;
+  if (_use_scale) {
+    float norm1;
+    _cpu_reducer->norm1(&norm1, grad.data, grad.size,
+                        static_cast<DataType>(dtype));
+    scale = norm1 / (grad.size / getDataTypeLength(dtype));
+  }
 
   auto reduced_len = _cpu_reducer->sign(_buf.get(), grad.data, grad.size,
                                         static_cast<DataType>(dtype));
@@ -114,8 +120,8 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
   float scale;
   if (decompressed->data == nullptr) decompressed->data = _buf.get();
   Unpacking(decompressed->data, compressed.data, compressed.size, &scale);
-  _cpu_reducer->int2fp(decompressed->data, decompressed->data, decompressed->size,
-                       static_cast<DataType>(dtype), scale);
+  _cpu_reducer->int2fp(decompressed->data, decompressed->data,
+                       decompressed->size, static_cast<DataType>(dtype), scale);
 }
 #endif
 
