@@ -39,7 +39,7 @@ namespace compressor {
  */
 class OnebitCompressor : public BaseCompressor {
  public:
-  OnebitCompressor();
+  OnebitCompressor(bool use_scale=false);
   virtual ~OnebitCompressor();
 
   /*!
@@ -66,6 +66,9 @@ class OnebitCompressor : public BaseCompressor {
    */
   void Decompress(ByteBuf compressed, int dtype,
                   ByteBuf* decompressed) override;
+
+ private:
+  bool _use_scale;
 };
 }  // namespace compressor
 }  // namespace common
