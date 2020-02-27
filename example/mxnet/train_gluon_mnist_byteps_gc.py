@@ -47,7 +47,9 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 parser.add_argument('--compressor', type=str, default='onebit',
                     help='onebit compressor')
 parser.add_argument('--ef', type=str, default=None,
-                    help='ef')                    
+                    help='ef')
+parser.add_argument('--scaling', action='store_true', default=False,
+                    help='enable scaling for onebit compressor')
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -131,6 +133,8 @@ for name, param in params.items():
     setattr(param, "byteps_compressor_type", args.compressor)
     if args.ef:
         setattr(param, "byteps_error_feedback_type", args.ef)
+    if args.scaling:
+        setattr(param, "byteps_compressor_onebit_enable_scale", args.scaling)
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum,
