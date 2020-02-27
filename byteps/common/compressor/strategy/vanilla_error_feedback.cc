@@ -59,7 +59,7 @@ void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
 void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
                                                  ByteBuf* compressed) {
   // TODO: we may remove this copy in the futher
-  ByteBuf decompressed{_debuf.get(), corrected.size};
+  ByteBuf decompressed{_error.get(), corrected.size};
   Decompress(*compressed, dtype, &decompressed);
   this->_cpu_reducer->sum(_error.get(), corrected.data, decompressed.data,
                           corrected.size, static_cast<DataType>(dtype), -1.0);
