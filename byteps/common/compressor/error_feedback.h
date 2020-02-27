@@ -83,7 +83,6 @@ class ErrorFeedback : public BaseCompressor {
                            ByteBuf* decompressed) = 0;
 
  protected:
-  std::unique_ptr<char[]> _debuf;
   std::unique_ptr<char[]> _error;
 
  private:
@@ -91,8 +90,6 @@ class ErrorFeedback : public BaseCompressor {
    * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
-
-  std::future<void> _future;
 };
 }  // namespace compressor
 }  // namespace common
