@@ -790,7 +790,43 @@ class custom_build_ext(build_ext):
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
-                make_option += "USE_RDMA=1 "
+                make_option += "USE_RDMA=1 "            
+            
+            # To resolve tf-gcc incompatibility
+            has_cxx_flag = False
+            glibcxx_flag = False
+            if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+                try: 
+                    import tensorflow as tf
+                    make_option += 'ADD_CFLAGS="'
+                    for flag in tf.sysconfig.get_compile_flags():
+                        if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
+                            has_cxx_flag = True
+                            glibcxx_flag = False if (flag[-1]=='0') else True
+                            make_option += flag + ' '
+                    make_option += '"'
+                except:
+                    pass
+
+            # To resolve torch-gcc incompatibility
+            if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+                try: 
+                    import torch
+                    torch_flag = torch.compiled_with_cxx11_abi()
+                    if has_cxx_flag:
+                        if glibcxx_flag != torch_flag:
+                            raise DistutilsError(
+                                '-D_GLIBCXX_USE_CXX11_ABI is not consistent between TensorFlow and PyTorch, '
+                                'consider install them separately.')
+                        else:
+                            pass
+                    else:
+                        make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
+                                        str(int(torch_flag)) + ' '
+                        has_cxx_flag = True
+                        glibcxx_flag = torch_flag
+                except:
+                    pass
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
@@ -804,8 +840,10 @@ class custom_build_ext(build_ext):
                                           'Exit code: {0}'.format(make_process.returncode))
 
         options = get_common_options(self)
-        built_plugins = []
+        if has_cxx_flag:
+            options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
 
+        built_plugins = []
         try:
             build_server(self, options)
         except:
