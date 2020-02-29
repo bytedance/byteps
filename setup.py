@@ -624,6 +624,12 @@ def get_nccl_vals():
 def build_mx_extension(build_ext, options):
     # clear ROLE -- installation does not need this
     os.environ.pop("DMLC_ROLE", None)
+
+    # fix "libcuda.so.1 not found" issue
+    cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/lib/cuda/')
+    ln_command = "ln -sf " + cuda_home + "lib64/stubs/libcuda.so /usr/lib/libcuda.so.1"
+    os.system(ln_command)
+
     check_mx_version()
     mx_compile_flags, mx_link_flags = get_mx_flags(
         build_ext, options['COMPILE_FLAGS'])
@@ -668,6 +674,8 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.libraries = options['LIBRARIES']
 
     build_ext.build_extension(mxnet_lib)
+
+    os.system("rm -rf /usr/lib/libcuda.so.1")
 
 
 def dummy_import_torch():
