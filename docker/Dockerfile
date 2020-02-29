@@ -31,8 +31,8 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         python3-dev \
         python3-pip \
         python3-setuptools \
-        libnccl2=2.4.8-1+cuda10.1 \
-        libnccl-dev=2.4.8-1+cuda10.1
+        libnccl2=2.4.7-1+cuda10.0 \
+        libnccl-dev=2.4.7-1+cuda10.0
 
 # install framework
 ARG FRAMEWORK=tensorflow
