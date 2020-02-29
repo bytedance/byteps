@@ -626,10 +626,9 @@ def build_mx_extension(build_ext, options):
     os.environ.pop("DMLC_ROLE", None)
 
     # fix "libcuda.so.1 not found" issue
-    cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/lib/cuda')
+    cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
     cuda_stub_path = cuda_home + '/lib64/stubs'
     ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
-    os.environ["LD_LIBRARY_PATH"] += ":" + cuda_stub_path
     os.system(ln_command)
 
     check_mx_version()
