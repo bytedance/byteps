@@ -629,7 +629,7 @@ def build_mx_extension(build_ext, options):
     cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/lib/cuda')
     cuda_stub_path = cuda_home + '/lib64/stubs'
     ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
-    os.environ["PATH"] += os.pathsep + cuda_stub_path
+    os.environ["LD_LIBRARY_PATH"] += ":" + cuda_stub_path
     os.system(ln_command)
 
     check_mx_version()
