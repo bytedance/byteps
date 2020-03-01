@@ -622,17 +622,8 @@ def get_nccl_vals():
 
 
 def build_mx_extension(build_ext, options):
-    # try to raise exception in the begining
-    import mxnet 
-
     # clear ROLE -- installation does not need this
     os.environ.pop("DMLC_ROLE", None)
-
-    # fix "libcuda.so.1 not found" issue
-    cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
-    cuda_stub_path = cuda_home + '/lib64/stubs'
-    ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
-    os.system(ln_command)
 
     check_mx_version()
     mx_compile_flags, mx_link_flags = get_mx_flags(
@@ -678,8 +669,6 @@ def build_mx_extension(build_ext, options):
     mxnet_lib.libraries = options['LIBRARIES']
 
     build_ext.build_extension(mxnet_lib)
-
-    os.system("rm -rf " + cuda_stub_path + "/libcuda.so.1")
 
 
 def dummy_import_torch():
@@ -880,18 +869,6 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
-        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
-            try:
-                build_mx_extension(self, options)
-                built_plugins.append(True)
-                print('INFO: MXNet extension is built successfully.')
-            except:
-                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
-                    print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
-                          '%s' % traceback.format_exc())
-                    built_plugins.append(False)
-                else:
-                    raise
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
             try:
                 torch_version = check_torch_version()
@@ -905,6 +882,25 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
+        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
+            # fix "libcuda.so.1 not found" issue
+            cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
+            cuda_stub_path = cuda_home + '/lib64/stubs'
+            ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
+            os.system(ln_command)
+            try:
+                build_mx_extension(self, options)
+                built_plugins.append(True)
+                print('INFO: MXNet extension is built successfully.')
+            except:
+                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
+                    print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
+                          '%s' % traceback.format_exc())
+                    built_plugins.append(False)
+                else:
+                    raise
+            finally:
+                os.system("rm -rf " + cuda_stub_path + "/libcuda.so.1")
 
         if not built_plugins:
             print('INFO: Only server module is built.')
