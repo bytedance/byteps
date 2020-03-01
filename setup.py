@@ -622,6 +622,9 @@ def get_nccl_vals():
 
 
 def build_mx_extension(build_ext, options):
+    # try to raise exception in the begining
+    import mxnet 
+
     # clear ROLE -- installation does not need this
     os.environ.pop("DMLC_ROLE", None)
 
@@ -793,49 +796,51 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
+        make_option = ""
+        # To resolve tf-gcc incompatibility
+        has_cxx_flag = False
+        glibcxx_flag = False
+        if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+            try: 
+                import tensorflow as tf
+                make_option += 'ADD_CFLAGS="'
+                for flag in tf.sysconfig.get_compile_flags():
+                    if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
+                        has_cxx_flag = True
+                        glibcxx_flag = False if (flag[-1]=='0') else True
+                        make_option += flag + ' '
+                        break
+                make_option += '" '
+            except:
+                pass
+
+        # To resolve torch-gcc incompatibility
+        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+            try: 
+                import torch
+                torch_flag = torch.compiled_with_cxx11_abi()
+                if has_cxx_flag:
+                    if glibcxx_flag != torch_flag:
+                        raise DistutilsError(
+                            '-D_GLIBCXX_USE_CXX11_ABI is not consistent between TensorFlow and PyTorch, '
+                            'consider install them separately.')
+                    else:
+                        pass
+                else:
+                    make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
+                                    str(int(torch_flag)) + ' '
+                    has_cxx_flag = True
+                    glibcxx_flag = torch_flag
+            except:
+                pass
+
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
            not os.path.exists("3rdparty/ps-lite/deps/lib"):
-            make_option = ""
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
                 make_option += "USE_RDMA=1 "            
-            
-            # To resolve tf-gcc incompatibility
-            has_cxx_flag = False
-            glibcxx_flag = False
-            if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
-                try: 
-                    import tensorflow as tf
-                    make_option += 'ADD_CFLAGS="'
-                    for flag in tf.sysconfig.get_compile_flags():
-                        if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
-                            has_cxx_flag = True
-                            glibcxx_flag = False if (flag[-1]=='0') else True
-                            make_option += flag + ' '
-                    make_option += '"'
-                except:
-                    pass
-
-            # To resolve torch-gcc incompatibility
-            if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
-                try: 
-                    import torch
-                    torch_flag = torch.compiled_with_cxx11_abi()
-                    if has_cxx_flag:
-                        if glibcxx_flag != torch_flag:
-                            raise DistutilsError(
-                                '-D_GLIBCXX_USE_CXX11_ABI is not consistent between TensorFlow and PyTorch, '
-                                'consider install them separately.')
-                        else:
-                            pass
-                    else:
-                        make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
-                                        str(int(torch_flag)) + ' '
-                        has_cxx_flag = True
-                        glibcxx_flag = torch_flag
-                except:
-                    pass
+ 
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',

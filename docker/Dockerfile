@@ -35,9 +35,11 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         libnccl-dev=2.4.7-1+cuda10.0
 
 # install framework
+# note: for tf <= 1.14, you need gcc-4.9
 ARG FRAMEWORK=tensorflow
 RUN if [ "$FRAMEWORK" = "tensorflow" ]; then \
-        pip3 install -U tensorflow-gpu==1.14.0; \
+        pip3 install --upgrade pip; \
+        pip3 install -U tensorflow-gpu==1.15.0; \
     elif [ "$FRAMEWORK" = "pytorch" ]; then \
         pip3 install -U numpy==1.18.1 torchvision==0.5.0 torch==1.4.0; \
     elif [ "$FRAMEWORK" = "mxnet" ]; then \
