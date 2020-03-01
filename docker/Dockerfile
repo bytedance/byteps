@@ -39,7 +39,7 @@ ARG FRAMEWORK=tensorflow
 RUN if [ "$FRAMEWORK" = "tensorflow" ]; then \
         pip3 install -U tensorflow-gpu==1.14.0; \
     elif [ "$FRAMEWORK" = "pytorch" ]; then \
-        pip3 install -U numpy torch==1.4.0; \
+        pip3 install -U numpy==1.18.1 torchvision==0.5.0 torch==1.4.0; \
     elif [ "$FRAMEWORK" = "mxnet" ]; then \
         pip3 install -U mxnet-cu100==1.5.0; \
     else \
