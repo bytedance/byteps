@@ -73,21 +73,23 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
   compressed->size = compressed_len * sizeof(int);
 }
 
-void Unpacking(void* dst, void* src, size_t size, float* scale) {
+void Unpacking(void* dst, const void* src, size_t size, float* scale) {
   BPS_CHECK_NE(dst, src);
   auto chunk_size = size / sizeof(int) - 1;
 
   auto ptr_dst = reinterpret_cast<int*>(dst);
-  auto ptr_src = reinterpret_cast<int*>(src);
+  auto ptr_src = reinterpret_cast<const int*>(src);
+  unsigned int mask = 1;
 #pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < chunk_size; ++j) {
-      ptr_dst[i * chunk_size + j] = -(((ptr_src[j] & 0x01) << 1) - 1);
-      ptr_src[j] >>= 1;
+      int sign_bit = (ptr_src[j] & mask) >> (PACKING_SIZE - i - 1);
+      ptr_dst[i * chunk_size + j] = -((sign_bit << 1) - 1);
     }
+    mask <<= 1;
   }
 
-  auto ptr_src_fp = reinterpret_cast<float*>(src);
+  auto ptr_src_fp = reinterpret_cast<const float*>(src);
   *scale = ptr_src_fp[chunk_size];
 }
 
