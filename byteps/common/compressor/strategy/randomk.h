@@ -30,10 +30,10 @@ class RandomkCompressor : public BaseCompressor {
   explicit RandomkCompressor(int k);
   virtual ~RandomkCompressor();
 
-  void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) override;
+  void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
 
   void Decompress(ByteBuf compressed, int dtype,
-                  ByteBuf* decompressed) override;
+                  ByteBuf& decompressed) override;
 
  private:
   int _k;

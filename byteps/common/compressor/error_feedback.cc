@@ -31,7 +31,7 @@ void ErrorFeedback::Init(size_t aligned_size) {
   _cpu_reducer.reset(new CpuReducer(nullptr));
 }
 
-void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
+void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   // if (_future.valid()) _future.wait();
   // before: grad += error
   UpdateGradient(grad, dtype);
@@ -44,7 +44,7 @@ void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
 }
 
 void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,
-                               ByteBuf* decompressed) {
+                               ByteBuf& decompressed) {
   _compressor_ptr->Decompress(compressed, dtype, decompressed);
 }
 }  // namespace compressor

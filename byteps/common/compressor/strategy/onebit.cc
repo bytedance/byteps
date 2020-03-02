@@ -54,8 +54,7 @@ size_t Packing(void* data, size_t len, float scale) {
   return chunk_size + 1;
 }
 
-void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
-  BPS_CHECK(compressed);
+void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   float scale = 1.0;
   if (_use_scale) {
     float norm1;
@@ -69,8 +68,8 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
 
   auto compressed_len = Packing(_buf.get(), reduced_len, scale);
 
-  compressed->data = _buf.get();
-  compressed->size = compressed_len * sizeof(int);
+  compressed.data = _buf.get();
+  compressed.size = compressed_len * sizeof(int);
 }
 
 void Unpacking(void* dst, const void* src, size_t size, float* scale) {
@@ -96,20 +95,19 @@ void Unpacking(void* dst, const void* src, size_t size, float* scale) {
 #ifndef BYTEPS_BUILDING_SERVER
 // worker version decompressor
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
-                                  ByteBuf* decompressed) {
-  BPS_CHECK(decompressed);
-  BPS_CHECK(decompressed->data);
+                                  ByteBuf& decompressed) {
+  BPS_CHECK(decompressed.data);
   float scale;
   // core_loop's
-  if (decompressed->data == compressed.data) {
+  if (decompressed.data == compressed.data) {
     Unpacking(_buf.get(), compressed.data, compressed.size, &scale);
-    _cpu_reducer->int2fp(decompressed->data, _buf.get(), decompressed->size,
+    _cpu_reducer->int2fp(decompressed.data, _buf.get(), decompressed.size,
                          static_cast<DataType>(dtype), scale);
   } else {
     // error feedback
-    Unpacking(decompressed->data, compressed.data, compressed.size, &scale);
-    _cpu_reducer->int2fp(decompressed->data, decompressed->data,
-                         decompressed->size, static_cast<DataType>(dtype),
+    Unpacking(decompressed.data, compressed.data, compressed.size, &scale);
+    _cpu_reducer->int2fp(decompressed.data, decompressed.data,
+                         decompressed.size, static_cast<DataType>(dtype),
                          scale);
   }
 }
@@ -117,13 +115,13 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
 #else
 
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
-                                  ByteBuf* decompressed) {
+                                  ByteBuf& decompressed) {
   BPS_CHECK(decompressed);
   float scale;
-  if (decompressed->data == nullptr) decompressed->data = _buf.get();
-  Unpacking(decompressed->data, compressed.data, compressed.size, &scale);
-  _cpu_reducer->int2fp(decompressed->data, decompressed->data,
-                       decompressed->size, static_cast<DataType>(dtype), scale);
+  if (decompressed.data == nullptr) decompressed.data = _buf.get();
+  Unpacking(decompressed.data, compressed.data, compressed.size, &scale);
+  _cpu_reducer->int2fp(decompressed.data, decompressed.data,
+                       decompressed.size, static_cast<DataType>(dtype), scale);
 }
 #endif
 
