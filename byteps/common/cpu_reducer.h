@@ -45,12 +45,12 @@ class CpuReducer {
     BPS_LOG(DEBUG) << "Clear CpuReducer";
   }
 
-  int sum(void* dst, void* src, size_t len, DataType dtype, float alpha=1.0);
-  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype, float alpha=1.0);
-  int copy(void* dst, void* src, size_t len);
-  int sign(void* dst, void* src, size_t len, DataType dtype);
-  int int2fp(void* dst, void* src, size_t len, DataType dtype, float scale=1.0);
-  int norm1(float* out, void* src, size_t len, DataType dtype);
+  int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha=1.0);
+  int sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, float alpha=1.0);
+  int copy(void* dst, const void* src, size_t len);
+  int sign(void* dst, const void* src, size_t len, DataType dtype);
+  int int2fp(void* dst, const void* src, size_t len, DataType dtype, float scale=1.0);
+  int norm1(float* out, const void* src, size_t len, DataType dtype);
 
 #ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();
@@ -178,22 +178,22 @@ class CpuReducer {
   }
 
   template <typename T>
-  int _sum(T* dst, T* src, size_t len, T alpha);
+  int _sum(T* dst, const T* src, size_t len, T alpha);
 
   template <typename T>
-  int _sum(T* dst, T* src1, T* src2, size_t len, T alpha);
+  int _sum(T* dst, const T* src1, const T* src2, size_t len, T alpha);
 
-  int _sum_float16(void* dst, void* src, size_t len);
-  int _sum_float16(void* dst, void* src1, void* src2, size_t len);
-
-  template <typename T>
-  size_t _sign(int* dst, T* src, size_t len);
+  int _sum_float16(void* dst, const void* src, size_t len);
+  int _sum_float16(void* dst, const void* src1, const void* src2, size_t len);
 
   template <typename T>
-  int _int2fp(T* dst, int* src, size_t len, T scale);
+  size_t _sign(int* dst, const T* src, size_t len);
 
   template <typename T>
-  int _norm1(float* out, T* src, size_t len);
+  int _int2fp(T* dst, const int* src, size_t len, T scale);
+
+  template <typename T>
+  int _norm1(float* out, const T* src, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
