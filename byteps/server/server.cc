@@ -56,7 +56,7 @@ void SendPullResponse(const DataHandleType type,
   if (iter != compressor_map_.end()) {
     CHECK_NE(iter->second, nullptr);
     common::compressor::ByteBuf grad{data, len}, compressed;
-    iter->second->Compress(grad, type.dtype, &compressed);
+    iter->second->Compress(grad, type.dtype, compressed);
     data = compressed.data;
     len = compressed.size;
     if (log_key_info_) {
@@ -226,7 +226,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       CHECK_NE(iter->second, nullptr);
       common::compressor::ByteBuf compressed{recved, len},
           decompressed{nullptr, stored->len};
-      iter->second->Decompress(compressed, type.dtype, &decompressed);
+      iter->second->Decompress(compressed, type.dtype, decompressed);
       recved = decompressed.data;
       len = stored->len;
       if (log_key_info_) {

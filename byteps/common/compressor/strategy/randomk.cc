@@ -40,12 +40,12 @@ RandomkCompressor::RandomkCompressor(int k) : _k(k){};
 
 RandomkCompressor::~RandomkCompressor() = default;
 
-void RandomkCompressor::Compress(ByteBuf grad, int dtype, ByteBuf* compressed) {
+void RandomkCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   // TODO
 }
 
 void RandomkCompressor::Decompress(ByteBuf compressed, int dtype,
-                                   ByteBuf* decompressed) {
+                                   ByteBuf& decompressed) {
   // TODO
 }
 }  // namespace compressor

@@ -57,7 +57,7 @@ class BaseCompressor {
    * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) = 0;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) = 0;
 
   /*!
    * \brief Decompress function
@@ -67,7 +67,7 @@ class BaseCompressor {
    * \param decompressed decompressed tensor
    */
   virtual void Decompress(ByteBuf compressed, int dtype,
-                          ByteBuf* decompressed) = 0;
+                          ByteBuf& decompressed) = 0;
 
  protected:
   /*!

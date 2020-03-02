@@ -508,7 +508,7 @@ bool RunPushLoopOnce() {
       // do compression
       if (task->compressor) {
         compressor::ByteBuf grad{data, len}, compressed;
-        task->compressor->Compress(grad, dtype, &compressed);
+        task->compressor->Compress(grad, dtype, compressed);
         data = compressed.data;
         BPS_CHECK_LE(compressed.size, len)
             << "Compressor Implementation Error "
@@ -637,7 +637,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
       auto len = pskv.lens[0];
       compressor::ByteBuf compressed{data, len}, decompressed{data, task->len};
       int dtype = task->tensor->dtype();
-      task->compressor->Decompress(compressed, dtype, &decompressed);
+      task->compressor->Decompress(compressed, dtype, decompressed);
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
     }
 

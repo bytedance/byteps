@@ -52,7 +52,7 @@ class OnebitCompressor : public BaseCompressor {
    * \param dtype data type
    * \param compressed compressed tensor
    */
-  void Compress(ByteBuf grad, int dtype, ByteBuf* compressed) override;
+  void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
 
   /*!
    * \brief Decompress
@@ -65,7 +65,7 @@ class OnebitCompressor : public BaseCompressor {
    * \param decompressed decompressed tensor
    */
   void Decompress(ByteBuf compressed, int dtype,
-                  ByteBuf* decompressed) override;
+                  ByteBuf& decompressed) override;
 
  private:
   bool _use_scale;

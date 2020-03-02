@@ -41,12 +41,12 @@ MultibitCompressor::MultibitCompressor(int k) : _k(k){};
 MultibitCompressor::~MultibitCompressor() = default;
 
 void MultibitCompressor::Compress(ByteBuf grad, int dtype,
-                                  ByteBuf* compressed) {
+                                  ByteBuf& compressed) {
   // TOOD
 }
 
 void MultibitCompressor::Decompress(ByteBuf compressed, int dtype,
-                                    ByteBuf* decompressed) {
+                                    ByteBuf& decompressed) {
   // TODO
 }
 }  // namespace compressor
