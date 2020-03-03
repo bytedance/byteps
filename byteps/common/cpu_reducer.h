@@ -49,7 +49,7 @@ class CpuReducer {
   int sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, float alpha=1.0);
   int copy(void* dst, const void* src, size_t len);
   int sign(void* dst, const void* src, size_t len, DataType dtype);
-  int int2fp(void* dst, const void* src, size_t len, DataType dtype, float scale=1.0);
+  int scale(void* dst, const void* src, size_t len, DataType dtype, float alpha=1.0);
   int norm1(float* out, const void* src, size_t len, DataType dtype);
 
 #ifndef BYTEPS_BUILDING_SERVER
@@ -79,7 +79,7 @@ class CpuReducer {
   }
 #endif
 
-  inline void HalfBits2Float(unsigned short* src, float* res) {
+  inline void HalfBits2Float(const unsigned short* src, float* res) {
     unsigned h = *src;
     int sign = ((h >> 15) & 1);
     int exp = ((h >> 10) & 0x1f);
@@ -115,7 +115,7 @@ class CpuReducer {
     *res = *reinterpret_cast<float const*>(&f);
   }
 
-  inline void Float2HalfBits(float* src, unsigned short* dest) {
+  inline void Float2HalfBits(const float* src, unsigned short* dest) {
     // software implementation rounds toward nearest even
     unsigned const& s = *reinterpret_cast<unsigned const*>(src);
     uint16_t sign = uint16_t((s >> 16) & 0x8000);
@@ -178,22 +178,26 @@ class CpuReducer {
   }
 
   template <typename T>
-  int _sum(T* dst, const T* src, size_t len, T alpha);
+  int _sum(T* dst, const T* src, size_t len, float alpha);
 
   template <typename T>
-  int _sum(T* dst, const T* src1, const T* src2, size_t len, T alpha);
+  int _sum(T* dst, const T* src1, const T* src2, size_t len, float alpha);
 
-  int _sum_float16(void* dst, const void* src, size_t len);
-  int _sum_float16(void* dst, const void* src1, const void* src2, size_t len);
+  int _sum_float16(void* dst, const void* src, size_t len, float alpha);
+  int _sum_float16(void* dst, const void* src1, const void* src2, size_t len, float alpha);
 
   template <typename T>
   size_t _sign(int* dst, const T* src, size_t len);
 
   template <typename T>
-  int _int2fp(T* dst, const int* src, size_t len, T scale);
+  int _scale(T* dst, const int* src, size_t len, float alpha);
+
+  int _scale_float16(void* dst, const void* src, size_t len, float alpha);
 
   template <typename T>
   int _norm1(float* out, const T* src, size_t len);
+
+  int _norm1_float16(float* out, const void* src, size_t len);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
