@@ -624,6 +624,7 @@ def get_nccl_vals():
 def build_mx_extension(build_ext, options):
     # clear ROLE -- installation does not need this
     os.environ.pop("DMLC_ROLE", None)
+
     check_mx_version()
     mx_compile_flags, mx_link_flags = get_mx_flags(
         build_ext, options['COMPILE_FLAGS'])
@@ -784,13 +785,51 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
+        make_option = ""
+        # To resolve tf-gcc incompatibility
+        has_cxx_flag = False
+        glibcxx_flag = False
+        if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+            try: 
+                import tensorflow as tf
+                make_option += 'ADD_CFLAGS="'
+                for flag in tf.sysconfig.get_compile_flags():
+                    if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
+                        has_cxx_flag = True
+                        glibcxx_flag = False if (flag[-1]=='0') else True
+                        make_option += flag + ' '
+                        break
+                make_option += '" '
+            except:
+                pass
+
+        # To resolve torch-gcc incompatibility
+        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+            try: 
+                import torch
+                torch_flag = torch.compiled_with_cxx11_abi()
+                if has_cxx_flag:
+                    if glibcxx_flag != torch_flag:
+                        raise DistutilsError(
+                            '-D_GLIBCXX_USE_CXX11_ABI is not consistent between TensorFlow and PyTorch, '
+                            'consider install them separately.')
+                    else:
+                        pass
+                else:
+                    make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
+                                    str(int(torch_flag)) + ' '
+                    has_cxx_flag = True
+                    glibcxx_flag = torch_flag
+            except:
+                pass
+
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
            not os.path.exists("3rdparty/ps-lite/deps/lib"):
-            make_option = ""
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
-                make_option += "USE_RDMA=1 "
+                make_option += "USE_RDMA=1 "            
+ 
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
@@ -804,8 +843,10 @@ class custom_build_ext(build_ext):
                                           'Exit code: {0}'.format(make_process.returncode))
 
         options = get_common_options(self)
-        built_plugins = []
+        if has_cxx_flag:
+            options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
 
+        built_plugins = []
         try:
             build_server(self, options)
         except:
@@ -828,18 +869,6 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
-        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
-            try:
-                build_mx_extension(self, options)
-                built_plugins.append(True)
-                print('INFO: MXNet extension is built successfully.')
-            except:
-                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
-                    print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
-                          '%s' % traceback.format_exc())
-                    built_plugins.append(False)
-                else:
-                    raise
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
             try:
                 torch_version = check_torch_version()
@@ -853,6 +882,25 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
+        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
+            # fix "libcuda.so.1 not found" issue
+            cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
+            cuda_stub_path = cuda_home + '/lib64/stubs'
+            ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
+            os.system(ln_command)
+            try:
+                build_mx_extension(self, options)
+                built_plugins.append(True)
+                print('INFO: MXNet extension is built successfully.')
+            except:
+                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
+                    print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
+                          '%s' % traceback.format_exc())
+                    built_plugins.append(False)
+                else:
+                    raise
+            finally:
+                os.system("rm -rf " + cuda_stub_path + "/libcuda.so.1")
 
         if not built_plugins:
             print('INFO: Only server module is built.')
