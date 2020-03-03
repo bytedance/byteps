@@ -59,30 +59,24 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst),
-                  reinterpret_cast<const float*>(src), len,
-                  static_cast<float>(alpha));
+                  reinterpret_cast<const float*>(src), len, alpha);
     case BYTEPS_FLOAT64:
       return _sum(reinterpret_cast<double*>(dst),
-                  reinterpret_cast<const double*>(src), len,
-                  static_cast<double>(alpha));
+                  reinterpret_cast<const double*>(src), len, alpha);
     case BYTEPS_FLOAT16:
-      return _sum_float16(dst, src, len);
+      return _sum_float16(dst, src, len, alpha);
     case BYTEPS_UINT8:
       return _sum(reinterpret_cast<uint8_t*>(dst),
-                  reinterpret_cast<const uint8_t*>(src), len,
-                  static_cast<uint8_t>(alpha));
+                  reinterpret_cast<const uint8_t*>(src), len, alpha);
     case BYTEPS_INT32:
       return _sum(reinterpret_cast<int32_t*>(dst),
-                  reinterpret_cast<const int32_t*>(src), len,
-                  static_cast<int32_t>(alpha));
+                  reinterpret_cast<const int32_t*>(src), len, alpha);
     case BYTEPS_INT8:
       return _sum(reinterpret_cast<int8_t*>(dst),
-                  reinterpret_cast<const int8_t*>(src), len,
-                  static_cast<int8_t>(alpha));
+                  reinterpret_cast<const int8_t*>(src), len, alpha);
     case BYTEPS_INT64:
       return _sum(reinterpret_cast<int64_t*>(dst),
-                  reinterpret_cast<const int64_t*>(src), len,
-                  static_cast<int64_t>(alpha));
+                  reinterpret_cast<const int64_t*>(src), len, alpha);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -90,7 +84,7 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, const T* src, size_t len, T alpha) {
+int CpuReducer::_sum(T* dst, const T* src, size_t len, float alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + alpha * src[i];
@@ -98,14 +92,19 @@ int CpuReducer::_sum(T* dst, const T* src, size_t len, T alpha) {
   return 0;
 }
 
-int CpuReducer::_sum_float16(void* dst, const void* src, size_t len) {
+int CpuReducer::_sum_float16(void* dst, const void* src, size_t len,
+                             float alpha) {
   // cast src and dst to your float16 type
-  auto in = (unsigned short*)src;
-  auto inout = (unsigned short*)dst;
+  auto in = reinterpret_cast<const unsigned short*>(src);
+  auto inout = reinterpret_cast<unsigned short*>(dst);
   len = len / (size_t)2;
 
 #if __AVX__ && __F16C__
+  float mm256_alpha[8];
+  for (int i = 0; i < 8; ++i) mm256_alpha[i] = alpha;
+
   if (is_avx_and_f16c()) {
+    __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
 #pragma omp parallel for simd num_threads(_num_threads)
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & inout to m256
@@ -113,23 +112,35 @@ int CpuReducer::_sum_float16(void* dst, const void* src, size_t len) {
       __m256 inout_m256 =
           _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(inout + i)));
 
+      __m256 scaled_in_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
       // add them together to new_inout_m256
-      __m256 new_inout_m256 = _mm256_add_ps(in_m256, inout_m256);
+      __m256 new_inout_m256 = _mm256_add_ps(scaled_in_m256, inout_m256);
 
       // convert back and store in inout
       __m128i new_inout_m128i = _mm256_cvtps_ph(new_inout_m256, 0);
       _mm_storeu_si128((__m128i*)(inout + i), new_inout_m128i);
     }
   }
-#endif
+
   for (size_t i = (len / 8) * 8; i < (size_t)len; ++i) {
     float in_float;
     float inout_float;
     HalfBits2Float(in + i, &in_float);
     HalfBits2Float(inout + i, &inout_float);
-    inout_float += in_float;
+    inout_float += in_float * alpha;
     Float2HalfBits(&inout_float, inout + i);
   }
+#else
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < (size_t)len; ++i) {
+    float in_float;
+    float inout_float;
+    HalfBits2Float(in + i, &in_float);
+    HalfBits2Float(inout + i, &inout_float);
+    inout_float += in_float * alpha;
+    Float2HalfBits(&inout_float, inout + i);
+  }
+#endif
 
   return 0;
 }
@@ -138,36 +149,31 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
                     DataType dtype, float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _sum(
-          reinterpret_cast<float*>(dst), reinterpret_cast<const float*>(src1),
-          reinterpret_cast<const float*>(src2), len, static_cast<float>(alpha));
+      return _sum(reinterpret_cast<float*>(dst),
+                  reinterpret_cast<const float*>(src1),
+                  reinterpret_cast<const float*>(src2), len, alpha);
     case BYTEPS_FLOAT64:
       return _sum(reinterpret_cast<double*>(dst),
                   reinterpret_cast<const double*>(src1),
-                  reinterpret_cast<const double*>(src2), len,
-                  static_cast<double>(alpha));
+                  reinterpret_cast<const double*>(src2), len, alpha);
     case BYTEPS_FLOAT16:
-      return _sum_float16(dst, src1, src2, len);
+      return _sum_float16(dst, src1, src2, len, alpha);
     case BYTEPS_UINT8:
       return _sum(reinterpret_cast<uint8_t*>(dst),
                   reinterpret_cast<const uint8_t*>(src1),
-                  reinterpret_cast<const uint8_t*>(src2), len,
-                  static_cast<uint8_t>(alpha));
+                  reinterpret_cast<const uint8_t*>(src2), len, alpha);
     case BYTEPS_INT32:
       return _sum(reinterpret_cast<int32_t*>(dst),
                   reinterpret_cast<const int32_t*>(src1),
-                  reinterpret_cast<const int32_t*>(src2), len,
-                  static_cast<int32_t>(alpha));
+                  reinterpret_cast<const int32_t*>(src2), len, alpha);
     case BYTEPS_INT8:
       return _sum(reinterpret_cast<int8_t*>(dst),
                   reinterpret_cast<const int8_t*>(src1),
-                  reinterpret_cast<const int8_t*>(src2), len,
-                  static_cast<int8_t>(alpha));
+                  reinterpret_cast<const int8_t*>(src2), len, alpha);
     case BYTEPS_INT64:
       return _sum(reinterpret_cast<int64_t*>(dst),
                   reinterpret_cast<const int64_t*>(src1),
-                  reinterpret_cast<const int64_t*>(src2), len,
-                  static_cast<int64_t>(alpha));
+                  reinterpret_cast<const int64_t*>(src2), len, alpha);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -176,7 +182,7 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
 
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
-                     T alpha) {
+                     float alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = src1[i] + alpha * src2[i];
@@ -185,45 +191,62 @@ int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
 }
 
 int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
-                             size_t len) {
+                             size_t len, float alpha) {
   // cast src and dst to your float16 type
-  auto in1 = (unsigned short*)src1;
-  auto in2 = (unsigned short*)src2;
-  auto out = (unsigned short*)dst;
+  auto in1 = reinterpret_cast<const unsigned short*>(src1);
+  auto in2 = reinterpret_cast<const unsigned short*>(src2);
+  auto out = reinterpret_cast<unsigned short*>(dst);
   len = len / (size_t)2;
 
 #if __AVX__ && __F16C__
+  float mm256_alpha[8];
+  for (int i = 0; i < 8; ++i) mm256_alpha[i] = alpha;
+
   if (is_avx_and_f16c()) {
+    __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
 #pragma omp parallel for simd num_threads(_num_threads)
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in1 & in2 to m256
-      __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
-      __m256 inout_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in2 + i)));
+      __m256 in1_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
+      __m256 in2_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in2 + i)));
 
+      __m256 scaled_in2_m256 = _mm256_mul_ps(in2_m256, __mm256_alpha);
       // add them together to new_inout_m256
-      __m256 new_inout_m256 = _mm256_add_ps(in_m256, inout_m256);
+      __m256 new_out_m256 = _mm256_add_ps(in1_m256, scaled_in2_m256);
 
       // convert back and store in out
-      __m128i new_inout_m128i = _mm256_cvtps_ph(new_inout_m256, 0);
-      _mm_storeu_si128((__m128i*)(out + i), new_inout_m128i);
+      __m128i new_out_m128i = _mm256_cvtps_ph(new_out_m256, 0);
+      _mm_storeu_si128((__m128i*)(out + i), new_out_m128i);
     }
   }
-#endif
+
   for (size_t i = (size_t)(len / 8) * 8; i < (size_t)len; ++i) {
     float in1_float;
     float in2_float;
     float out_float;
     HalfBits2Float(in1 + i, &in1_float);
     HalfBits2Float(in2 + i, &in2_float);
-    out_float = in1_float + in2_float;
+    out_float = in1_float + in2_float * alpha;
     Float2HalfBits(&out_float, out + i);
   }
+#else
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < (size_t)len; ++i) {
+    float in1_float;
+    float in2_float;
+    float out_float;
+    HalfBits2Float(in1 + i, &in1_float);
+    HalfBits2Float(in2 + i, &in2_float);
+    out_float = in1_float + in2_float * alpha;
+    Float2HalfBits(&out_float, out + i);
+  }
+#endif
   return 0;
 }
 
 int CpuReducer::copy(void* dst, const void* src, size_t len) {
-  auto in = (float*)src;
-  auto out = (float*)dst;
+  auto in = reinterpret_cast<const float*>(src);
+  auto out = reinterpret_cast<float*>(dst);
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / 4; ++i) {
     out[i] = in[i];
@@ -237,14 +260,14 @@ int CpuReducer::copy(void* dst, const void* src, size_t len) {
 int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _sign(reinterpret_cast<int*>(dst), reinterpret_cast<const float*>(src),
-                   len);
+      return _sign(reinterpret_cast<int*>(dst),
+                   reinterpret_cast<const float*>(src), len);
     case BYTEPS_FLOAT64:
-      return _sign(reinterpret_cast<int*>(dst), reinterpret_cast<const double*>(src),
-                   len);
+      return _sign(reinterpret_cast<int*>(dst),
+                   reinterpret_cast<const double*>(src), len);
     case BYTEPS_FLOAT16:
-      return _sign(reinterpret_cast<int*>(dst), reinterpret_cast<const short*>(src),
-                   len);
+      return _sign(reinterpret_cast<int*>(dst),
+                   reinterpret_cast<const unsigned short*>(src), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -253,29 +276,46 @@ int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
 
 template <typename T>
 size_t CpuReducer::_sign(int* dst, const T* src, size_t len) {
+  const int end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+  char* psrc;
   // extract sign bit
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
-  for (size_t i = 0; i < len / sizeof(T); ++i) {
-    dst[i] = src[i] < 0;
+  for (size_t i = 0; i < reduced_len; ++i) {
+    psrc = reinterpret_cast<char*>(const_cast<T*>(src + i));
+
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
+    defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
+    defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) ||       \
+    defined(__MIBSEB__)
+    // big-endian target architecture
+    dst[i] = (psrc[0] & 0x80) >> 7;
+
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN ||         \
+    defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) ||                   \
+    defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || \
+    defined(__MIPSEL) || defined(__MIPSEL__)
+    // little-endian target architecture
+    dst[i] = (psrc[end] & 0x80) >> 7;
+#else
+#error "Unknown endian"
+#endif
   }
-  return len / sizeof(T);
+
+  return reduced_len;
 }
 
-int CpuReducer::int2fp(void* dst, const void* src, size_t len, DataType dtype,
-                       float scale) {
+int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
+                      float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _int2fp(reinterpret_cast<float*>(dst), reinterpret_cast<const int*>(src),
-                     len, static_cast<float>(scale));
+      return _scale(reinterpret_cast<float*>(dst),
+                    reinterpret_cast<const int*>(src), len, alpha);
     case BYTEPS_FLOAT64:
-      return _int2fp(reinterpret_cast<double*>(dst),
-                     reinterpret_cast<const int*>(src), len,
-                     static_cast<double>(scale));
-    // case BYTEPS_FLOAT16: {
-    //   return _int2fp(reinterpret_cast<unsigned short*>(dst),
-    //                  reinterpret_cast<int*>(src), len, );
-    // }
+      return _scale(reinterpret_cast<double*>(dst),
+                    reinterpret_cast<const int*>(src), len, alpha);
+    case BYTEPS_FLOAT16:
+      return _scale_float16(dst, src, len, alpha);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -283,12 +323,55 @@ int CpuReducer::int2fp(void* dst, const void* src, size_t len, DataType dtype,
 }
 
 template <typename T>
-int CpuReducer::_int2fp(T* dst, const int* src, size_t len, T scale) {
+int CpuReducer::_scale(T* dst, const int* src, size_t len, float alpha) {
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
-    dst[i] = static_cast<T>(src[i]) * scale;
+    dst[i] = static_cast<T>(src[i] * alpha);
   }
+  return 0;
+}
+
+int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
+                               float alpha) {
+  // cast src and dst to your float16 type
+  auto in = reinterpret_cast<const int*>(src);
+  auto out = reinterpret_cast<unsigned short*>(dst);
+  len = len / (size_t)2;
+
+#if __AVX__ && __F16C__
+  float mm256_alpha[8];
+  for (int i = 0; i < 8; ++i) mm256_alpha[i] = alpha;
+
+  if (is_avx_and_f16c()) {
+    __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
+#pragma omp parallel for simd num_threads(_num_threads)
+    for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
+      // convert in & out to m256
+      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_loadu_epi32(in + i));
+
+      __m256 new_out_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
+      // convert back and store in out
+      __m128i new_out_m128i = _mm256_cvtps_ph(new_out_m256, 0);
+      _mm_storeu_si128((__m128i*)(out + i), new_out_m128i);
+    }
+  }
+
+  for (size_t i = (len / 8) * 8; i < (size_t)len; ++i) {
+    float in_float = static_cast<float>(src[i]);
+    float out_float;
+    out_float = in_float * alpha;
+    Float2HalfBits(&out_float, out + i);
+  }
+#else
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < (size_t)len; ++i) {
+    float in_float = static_cast<float>(in[i]);
+    float out_float;
+    out_float = in_float * alpha;
+    Float2HalfBits(&out_float, out + i);
+  }
+#endif
   return 0;
 }
 
@@ -306,6 +389,7 @@ int CpuReducer::norm1(float* out, const void* src, size_t len, DataType dtype) {
 template <typename T>
 int CpuReducer::_norm1(float* out, const T* src, size_t len) {
   float ret = 0;
+  // maybe use std::reduce in the future
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
@@ -315,5 +399,24 @@ int CpuReducer::_norm1(float* out, const T* src, size_t len) {
   return 0;
 }
 
+int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
+  // cast src and dst to your float16 type
+  auto in = reinterpret_cast<const unsigned short*>(src);
+  len = len / (size_t)2;
+
+// #if __AVX512F__ && __F16C__
+//    // TODO
+// #else
+  float ret;
+#pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
+  for (size_t i = 0; i < len; ++i) {
+    float in_float;
+    HalfBits2Float(in + i, &in_float);
+    ret += std::abs(in_float);
+  }
+  *out = ret;
+// #endif
+  return 0;
+}
 }  // namespace common
 }  // namespace byteps

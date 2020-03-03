@@ -101,12 +101,12 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
   // core_loop's
   if (decompressed.data == compressed.data) {
     Unpacking(_buf.get(), compressed.data, compressed.size, &scale);
-    _cpu_reducer->int2fp(decompressed.data, _buf.get(), decompressed.size,
+    _cpu_reducer->scale(decompressed.data, _buf.get(), decompressed.size,
                          static_cast<DataType>(dtype), scale);
   } else {
     // error feedback
     Unpacking(decompressed.data, compressed.data, compressed.size, &scale);
-    _cpu_reducer->int2fp(decompressed.data, decompressed.data,
+    _cpu_reducer->scale(decompressed.data, decompressed.data,
                          decompressed.size, static_cast<DataType>(dtype),
                          scale);
   }
