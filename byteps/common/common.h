@@ -184,8 +184,8 @@ typedef struct BytePSContext {
   int step_cnt = 0;
   int local_rank = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
-  // Compressor 
-  std::shared_ptr<compressor::BaseCompressor> compressor;
+  // Compressor list 
+  std::vector<std::shared_ptr<compressor::BaseCompressor>> compressor_list;
   // kwargs
   std::unordered_map<std::string, std::string> kwargs;
 } BPSContext;
