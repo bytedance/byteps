@@ -14,16 +14,18 @@
 // =============================================================================
 
 #include "operations.h"
+
 #include <cuda_runtime.h>
+#include <unistd.h>
+
 #include <cstring>
 #include <memory>
 #include <thread>
-#include <unistd.h>
+
+#include "compressor/base_compressor.h"
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
-
-#include "compressor/base_compressor.h"
 
 namespace byteps {
 namespace common {
@@ -154,7 +156,7 @@ void PartitionTensor(
     e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
-    e->compressor = entry->compressor;
+    e->compressor = entry->context->compressor_list[i];
 
     accumulated += e->len;
     ++i;
@@ -195,7 +197,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->queue_list = *queue_list;
   e->counter_ptr = std::make_shared<std::atomic_int>(0);
   e->total_partnum = context.key_list.size();
-  e->compressor = context.compressor;
 
   std::vector<std::shared_ptr<TensorTableEntry>> partitions;
   PartitionTensor(e, partitions);
@@ -309,18 +310,14 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   size_t aligned_size = Align(size);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
+    context.pcie_cpubuff =
+        shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
                                                 key_list[0], aligned_size);
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
-
-  // Init Compressor buffer
-  if (context.compressor) {
-    context.compressor->Init(aligned_size);
-  }
 
   // Init tensors with BytePS server
   char *data = const_cast<char *>(static_cast<const char *>(context.cpubuff));
@@ -330,7 +327,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    
+
     if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
@@ -343,20 +340,26 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
 
       // register
-      if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank() && context.compressor) {
-        PSKV kv;
-        kv.keys.push_back(pskv.keys[0]);
-        context.kwargs["src_len"] = std::to_string(len);
-        auto content = compressor::Serialize(context.kwargs);
-        int len = content.size();
-        kv.lens.push_back(len);
-        char* data = const_cast<char*>(content.c_str());
-        ps::SArray<char> vals(data, len, false);
-        int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
-        BPS_LOG(DEBUG) << "Register for Server  key=" << key 
-                      << " content=" << content;
-        
-        ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
+      if (!context.kwargs.empty()) {
+        auto compressor_ptr = compressor::CompressorRegistry::Create(context.kwargs); 
+        compressor_ptr->Init(Align(len));
+        context.compressor_list.push_back(std::move(compressor_ptr));
+
+        if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank()) {
+          PSKV kv;
+          kv.keys.push_back(pskv.keys[0]);
+          context.kwargs["src_len"] = std::to_string(len);
+          auto content = compressor::Serialize(context.kwargs);
+          int len = content.size();
+          kv.lens.push_back(len);
+          char *data = const_cast<char *>(content.c_str());
+          ps::SArray<char> vals(data, len, false);
+          int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+          BPS_LOG(DEBUG) << "Register for Server  key=" << key
+                         << " content=" << content;
+
+          ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
+        }
       }
     }
 
