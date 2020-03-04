@@ -308,7 +308,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
 
-  size_t aligned_size = Align(size);
+  size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
     context.pcie_cpubuff =
         shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
@@ -342,7 +342,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // register
       if (!context.kwargs.empty()) {
         auto compressor_ptr = compressor::CompressorRegistry::Create(context.kwargs); 
-        compressor_ptr->Init(Align(len));
+        compressor_ptr->Init(Align(len, dtype));
         context.compressor_list.push_back(std::move(compressor_ptr));
 
         if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank()) {

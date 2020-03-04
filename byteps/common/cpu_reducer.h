@@ -186,11 +186,11 @@ class CpuReducer {
   int _sum_float16(void* dst, const void* src, size_t len, float alpha);
   int _sum_float16(void* dst, const void* src1, const void* src2, size_t len, float alpha);
 
-  template <typename T>
-  size_t _sign(int* dst, const T* src, size_t len);
+  template <typename T1, typename T2>
+  size_t _sign(T1* dst, const T2* src, size_t len);
 
-  template <typename T>
-  int _scale(T* dst, const int* src, size_t len, float alpha);
+  template <typename T1, typename T2>
+  int _scale(T1* dst, const T2* src, size_t len, float alpha);
 
   int _scale_float16(void* dst, const void* src, size_t len, float alpha);
 
