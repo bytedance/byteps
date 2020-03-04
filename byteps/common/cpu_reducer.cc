@@ -388,6 +388,7 @@ int CpuReducer::norm1(float* out, const void* src, size_t len, DataType dtype) {
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
+  return 0;
 }
 
 template <typename T>
@@ -411,7 +412,7 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
   // #if __AVX512F__ && __F16C__
   //    // TODO
   // #else
-  float ret;
+  float ret = 0;
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len; ++i) {

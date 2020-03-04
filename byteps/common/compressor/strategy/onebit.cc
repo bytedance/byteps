@@ -42,7 +42,6 @@ size_t _Packing(T* data, size_t len, float scale) {
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
-#pragma unroll
   for (int i = 1; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
       data[j] <<= 1;
@@ -98,7 +97,6 @@ size_t _Unpacking(T* dst, const T* src, size_t size, float* scale) {
   auto chunk_size = size / sizeof(int) - 1;
 
   unsigned int mask = 1;
-#pragma unroll
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < chunk_size; ++j) {
       int sign_bit = (src[j] & mask) >> (PACKING_SIZE - i - 1);
