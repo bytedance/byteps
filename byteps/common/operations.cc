@@ -156,7 +156,9 @@ void PartitionTensor(
     e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
-    e->compressor = entry->context->compressor_list[i];
+    if (!entry->context->compressor_list.empty()) {
+      e->compressor = entry->context->compressor_list[i];
+    }
 
     accumulated += e->len;
     ++i;
