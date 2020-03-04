@@ -276,13 +276,14 @@ int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
 
 template <typename T1, typename T2>
 size_t CpuReducer::_sign(T1* dst, const T2* src, size_t len) {
-  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+  static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
+  const size_t end = sizeof(T1) - 1, reduced_len = len / sizeof(T1);
   char* psrc;
   // extract sign bit
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < reduced_len; ++i) {
-    psrc = reinterpret_cast<char*>(const_cast<T*>(src + i));
+    psrc = reinterpret_cast<char*>(const_cast<T2*>(src + i));
 
 #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
     defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
@@ -324,9 +325,10 @@ int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
 
 template <typename T1, typename T2>
 int CpuReducer::_scale(T1* dst, const T2* src, size_t len, float alpha) {
+  static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
-  for (size_t i = 0; i < len / sizeof(T); ++i) {
+  for (size_t i = 0; i < len / sizeof(T1); ++i) {
     dst[i] = static_cast<T>(src[i] * alpha);
   }
   return 0;
@@ -348,7 +350,7 @@ int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
 #pragma omp parallel for simd num_threads(_num_threads)
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & out to m256
-      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_loadu_epi32(in + i));
+      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i)));
 
       __m256 new_out_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
       // convert back and store in out
@@ -358,7 +360,7 @@ int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
   }
 
   for (size_t i = (len / 8) * 8; i < (size_t)len; ++i) {
-    float in_float = static_cast<float>(src[i]);
+    float in_float = static_cast<float>(in[i]);
     float out_float;
     out_float = in_float * alpha;
     Float2HalfBits(&out_float, out + i);
