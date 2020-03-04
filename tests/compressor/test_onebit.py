@@ -40,7 +40,7 @@ def worker(model, input_data, dtype, config, compress=False, cpr_config=None):
 
     model.cast(dtype)
     model.initialize(mx.init.MSRAPrelu(), ctx=ctx)
-    model.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+    model.summary(nd.ones((1, 3, 224, 224), ctx=ctx, dtype=dtype))
     model.hybridize()
 
     params = model.collect_params()
