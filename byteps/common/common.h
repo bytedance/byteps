@@ -31,20 +31,21 @@
 #include <vector>
 
 // Add for profiling communication events
-#include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <iostream>
-#include <thread>
+
 #include <chrono>
+#include <fstream>
+#include <iostream>
 #include <queue>
+#include <thread>
 
 namespace byteps {
 namespace common {
 namespace compressor {
 class BaseCompressor;
 class ErrorFeedback;
-}
+}  // namespace compressor
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
@@ -177,12 +178,14 @@ typedef struct BytePSContext {
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
   // Used for profiling communication events
-  std::queue<BPSCommTime *> comm_time;
+  std::queue<BPSCommTime*> comm_time;
   bool profile_flag = false;
   int step_cnt = 0;
   int local_rank = 0;
-  std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
-  // Compressor list 
+  std::unordered_map<uint64_t,
+                     std::unordered_map<int, std::queue<BPSCommTime*>>>
+      part_comm_time;
+  // Compressor list
   std::vector<std::shared_ptr<compressor::BaseCompressor>> compressor_list;
   // kwargs
   std::unordered_map<std::string, std::string> kwargs;
@@ -261,7 +264,8 @@ ncclDataType_t getNcclDataType(DataType dtype);
 int getDataTypeLength(int dtype);
 
 inline size_t Align(size_t size, int dtype) {
-  const size_t min_size = getDataTypeLength(dtype) * 8; // 32*4 bytes
+  const size_t min_size =
+      (getDataTypeLength(dtype) * getDataTypeLength(dtype)) * 8;  
   return size + (min_size - size % min_size) % min_size;
 }
 }  // namespace common
