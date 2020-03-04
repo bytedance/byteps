@@ -260,13 +260,13 @@ int CpuReducer::copy(void* dst, const void* src, size_t len) {
 int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _sign(reinterpret_cast<int*>(dst),
+      return _sign(reinterpret_cast<int32_t*>(dst),
                    reinterpret_cast<const float*>(src), len);
     case BYTEPS_FLOAT64:
-      return _sign(reinterpret_cast<int*>(dst),
+      return _sign(reinterpret_cast<int64_t*>(dst),
                    reinterpret_cast<const double*>(src), len);
     case BYTEPS_FLOAT16:
-      return _sign(reinterpret_cast<int*>(dst),
+      return _sign(reinterpret_cast<int16_t*>(dst),
                    reinterpret_cast<const unsigned short*>(src), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
@@ -274,9 +274,9 @@ int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
   return 0;
 }
 
-template <typename T>
-size_t CpuReducer::_sign(int* dst, const T* src, size_t len) {
-  const int end = sizeof(T) - 1, reduced_len = len / sizeof(T);
+template <typename T1, typename T2>
+size_t CpuReducer::_sign(T1* dst, const T2* src, size_t len) {
+  const size_t end = sizeof(T) - 1, reduced_len = len / sizeof(T);
   char* psrc;
   // extract sign bit
   int num_threads = len > (1 << 16) ? _num_threads : 1;
@@ -310,10 +310,10 @@ int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _scale(reinterpret_cast<float*>(dst),
-                    reinterpret_cast<const int*>(src), len, alpha);
+                    reinterpret_cast<const int32_t*>(src), len, alpha);
     case BYTEPS_FLOAT64:
       return _scale(reinterpret_cast<double*>(dst),
-                    reinterpret_cast<const int*>(src), len, alpha);
+                    reinterpret_cast<const int64_t*>(src), len, alpha);
     case BYTEPS_FLOAT16:
       return _scale_float16(dst, src, len, alpha);
     default:
@@ -322,8 +322,8 @@ int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
   return 0;
 }
 
-template <typename T>
-int CpuReducer::_scale(T* dst, const int* src, size_t len, float alpha) {
+template <typename T1, typename T2>
+int CpuReducer::_scale(T1* dst, const T2* src, size_t len, float alpha) {
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
@@ -335,7 +335,7 @@ int CpuReducer::_scale(T* dst, const int* src, size_t len, float alpha) {
 int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
                                float alpha) {
   // cast src and dst to your float16 type
-  auto in = reinterpret_cast<const int*>(src);
+  auto in = reinterpret_cast<const int16_t*>(src);
   auto out = reinterpret_cast<unsigned short*>(dst);
   len = len / (size_t)2;
 
@@ -381,6 +381,8 @@ int CpuReducer::norm1(float* out, const void* src, size_t len, DataType dtype) {
       return _norm1(out, reinterpret_cast<const float*>(src), len);
     case BYTEPS_FLOAT64:
       return _norm1(out, reinterpret_cast<const double*>(src), len);
+    case BYTEPS_FLOAT16:
+      return _norm1_float16(out, src, len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -404,9 +406,9 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
   auto in = reinterpret_cast<const unsigned short*>(src);
   len = len / (size_t)2;
 
-// #if __AVX512F__ && __F16C__
-//    // TODO
-// #else
+  // #if __AVX512F__ && __F16C__
+  //    // TODO
+  // #else
   float ret;
 #pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len; ++i) {
@@ -415,7 +417,7 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
     ret += std::abs(in_float);
   }
   *out = ret;
-// #endif
+  // #endif
   return 0;
 }
 }  // namespace common

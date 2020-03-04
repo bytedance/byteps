@@ -103,8 +103,6 @@ const std::vector<std::string> LogStrings = {
     "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
     "COORDINATE_BROADCAST", "BROADCAST"};
 
-constexpr int PACKING_SIZE = 32;
-
 class Status {
  public:
   Status();
@@ -262,8 +260,8 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-inline size_t Align(size_t size) {
-  constexpr size_t min_size = PACKING_SIZE * sizeof(int); // 32*4 bytes
+inline size_t Align(size_t size, int dtype) {
+  const size_t min_size = getDataTypeLength(dtype) * 8; // 32*4 bytes
   return size + (min_size - size % min_size) % min_size;
 }
 }  // namespace common
