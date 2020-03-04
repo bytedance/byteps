@@ -350,7 +350,7 @@ int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
 #pragma omp parallel for simd num_threads(_num_threads)
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & out to m256
-      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i)));
+      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i))));
 
       __m256 new_out_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
       // convert back and store in out
