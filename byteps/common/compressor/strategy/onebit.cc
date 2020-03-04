@@ -161,12 +161,12 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
 
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf& decompressed) {
-  BPS_CHECK(decompressed);
+  BPS_CHECK(decompressed.data);
   float scale;
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
   Unpacking(decompressed.data, compressed.data, compressed.size, &scale, dtype);
-  _cpu_reducer->int2fp(decompressed.data, decompressed.data, decompressed.size,
-                       static_cast<DataType>(dtype), scale);
+  _cpu_reducer->scale(decompressed.data, decompressed.data, decompressed.size,
+                      static_cast<DataType>(dtype), scale);
 }
 #endif
 
