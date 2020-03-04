@@ -329,7 +329,7 @@ int CpuReducer::_scale(T1* dst, const T2* src, size_t len, float alpha) {
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads)
   for (size_t i = 0; i < len / sizeof(T1); ++i) {
-    dst[i] = static_cast<T>(src[i] * alpha);
+    dst[i] = static_cast<T1>(src[i] * alpha);
   }
   return 0;
 }
