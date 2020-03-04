@@ -410,6 +410,7 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
   //    // TODO
   // #else
   float ret;
+  int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len; ++i) {
     float in_float;
