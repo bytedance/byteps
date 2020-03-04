@@ -50,8 +50,8 @@ parser.add_argument('--ef', type=str, default=None,
                     help='ef')
 parser.add_argument('--scaling', action='store_true', default=False,
                     help='enable scaling for onebit compressor')
-parser.add_argument('--intra-cpr', action='store_true', default=False,
-                    help='enable intra-node compression')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -142,7 +142,7 @@ for name, param in params.items():
 optimizer_params = {'momentum': args.momentum,
                     'learning_rate': args.lr * num_workers}
 
-compression = bps.Compression.fp16 if args.intra_cpr else bps.Compression.none
+compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, compression=compression)
 
 # Create loss function and train metric
