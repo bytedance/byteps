@@ -15,13 +15,15 @@
 // =============================================================================
 
 #include "ops.h"
+
 #include <atomic>
+
+#include "../common/logging.h"
 #include "../common/operations.h"
 #include "adapter.h"
 #include "cuda_util.h"
 #include "ready_event.h"
 #include "tensor_util.h"
-#include "../common/logging.h"
 
 namespace byteps {
 namespace mxnet {
@@ -119,10 +121,11 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
   // Use MXEnginePushAsync instead of Engine::Get()->PushAsync to avoid ABI
   // compatibility issues
   MXEnginePushAsync(DoPushPull, push_pull_param, DeletePushPullParam,
-                    &MX_EXEC_CTX, nullptr, 0, &var, 1,
-                    &MX_FUNC_PROP, 0, "BytePSPushPull");
+                    &MX_EXEC_CTX, nullptr, 0, &var, 1, &MX_FUNC_PROP, 0,
+                    "BytePSPushPull");
 
-  auto use_ef = context.kwargs.find("error_feedback_type") != context.kwargs.end();
+  auto use_ef =
+      context.kwargs.find("error_feedback_type") != context.kwargs.end();
   if (is_average && !(!context.kwargs.empty() && use_ef)) {
     // average the aggregated gradient
     auto num_worker = byteps_size();
@@ -146,11 +149,11 @@ extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
     val = args_vals[i];
     kwargs[key] = val;
   }
-  
+
   if (num_args > 0) {
     common::RegisterCompressor(tensor_name, kwargs);
-  } 
-  
+  }
+
   return;
 }
 
