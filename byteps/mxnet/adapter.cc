@@ -25,19 +25,20 @@
 namespace byteps {
 namespace mxnet {
 
-// We have to do shallow copy here to prevent the tensor from being released in
-// the python thread since byteps does not know that.
+// We need to create a shared_ptr to NDArray object with
+// shallow copy to prevent from NDArray object being freed
+// before MXNet engine process it
 template <class T>
-MXTensor<T>::MXTensor(T* tensor) : tensor_(new T(*tensor)) {}
+MXTensor<T>::MXTensor(T* tensor) : tensor_(std::make_shared<T>(*tensor)) {}
 
 template <class T>
 const DataType MXTensor<T>::dtype() const {
-  return TensorUtil::GetDType(tensor_);
+  return TensorUtil::GetDType(tensor_.get());
 }
 
 template <class T>
 const TensorShape MXTensor<T>::shape() const {
-  auto shape = TensorUtil::GetShape(tensor_);
+  auto shape = TensorUtil::GetShape(tensor_.get());
   if (shape.dims() == 0) {
     // Tensor with empty shape is a Tensor with no values in MXNet, unlike a
     // constant in TensorFlow. So, we inject a dummy zero dimension to make sure
@@ -49,12 +50,12 @@ const TensorShape MXTensor<T>::shape() const {
 
 template <class T>
 const void* MXTensor<T>::data() const {
-  return TensorUtil::GetData(tensor_);
+  return TensorUtil::GetData(tensor_.get());
 }
 
 template <class T>
 int64_t MXTensor<T>::size() const {
-  return TensorUtil::GetSize(tensor_);
+  return TensorUtil::GetSize(tensor_.get());
 }
 
 template class MXTensor<NDArray>;
