@@ -213,15 +213,14 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
     def _allreduce_grads(self):
-        self._compressed.clear()
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
                 compressed, ctx = self._compression.compress(
                     param.list_grad()[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                self._compressed.append(compressed) # add refs
                 param._grad[0] = self._compression.decompress(compressed, ctx) 
+                
         
 
     def _init_params(self):
@@ -238,7 +237,6 @@ class DistributedTrainer(mx.gluon.Trainer):
                 compressed, ctx = self._compression.compress(param_arrays[0])
                 byteps_push_pull(compressed, version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                compressed.wait_to_read()
                 param.set_data(self._compression.decompress(compressed, ctx))
 
         self._params_to_init = tensors
