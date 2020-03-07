@@ -35,7 +35,7 @@ class MXTensor : public Tensor {
   virtual int64_t size() const override;
 
  protected:
-  T* tensor_;
+  std::shared_ptr<T> tensor_;
 };
 
 inline void ThrowIfError(const Status& status) {
