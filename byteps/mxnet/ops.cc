@@ -76,7 +76,7 @@ void DoPushPull(void*, void* on_complete_ptr, void* param) {
   auto push_pull_param = static_cast<PushPullParam*>(param);
   int priority = push_pull_param->priority;
   int version = push_pull_param->version;
-  NDArray* input = push_pull_param->input.get();
+  auto input = push_pull_param->input.get();
   BPSContext& context = *push_pull_param->context;
 
   auto device = TensorUtil::GetDevice(input);
