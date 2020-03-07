@@ -225,6 +225,5 @@ class DistributedTrainer(mx.gluon.Trainer):
                     param_arrays[0].__imul__(0)
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                param_arrays[0].wait_to_read()
 
         self._params_to_init = tensors

@@ -34,11 +34,11 @@ const auto MX_FUNC_PROP = FnProperty::kCPUPrioritized;
 // struct to hold parameters for pushpull with MXNet Engine
 struct PushPullParam {
   BPSContext* context;
-  NDArray* input;
+  std::shared_ptr<NDArray> input;
   int version;
   int priority;
 
-  PushPullParam(BPSContext* context, NDArray* input, int version, int priority)
+  PushPullParam(BPSContext* context, std::shared_ptr<NDArray> input, int version, int priority)
       : context(context), input(input), version(version), priority(priority) {}
 };
 
@@ -73,7 +73,7 @@ void DoPushPull(void*, void* on_complete_ptr, void* param) {
   auto push_pull_param = static_cast<PushPullParam*>(param);
   int priority = push_pull_param->priority;
   int version = push_pull_param->version;
-  NDArray* input = push_pull_param->input;
+  NDArray* input = push_pull_param->input.get();
   BPSContext& context = *push_pull_param->context;
 
   auto device = TensorUtil::GetDevice(input);
@@ -99,17 +99,21 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
 
   std::string tensor_name = GetOpName("byteps", name);
 
+  // We need to create a shared_ptr to NDArray object with
+  // shallow copy to prevent from NDArray object being freed
+  // before MXNet engine process it
+  auto tensor_copy = std::make_shared<NDArray>(*tensor);
   auto& context = common::GetContextFromName(tensor_name);
   auto dtype = TensorUtil::GetDType(tensor);
   auto size = TensorUtil::GetSize(tensor);
   auto device = TensorUtil::GetDevice(tensor);
   void* cpubuff = (device == CPU_DEVICE_ID)
                       ? const_cast<void*>(
-                            std::make_shared<MXTensor<NDArray>>(tensor)->data())
+                            std::make_shared<MXTensor<NDArray>>(tensor_copy.get())->data())
                       : nullptr;
   common::InitTensor(context, size, dtype, cpubuff);
 
-  auto push_pull_param = new PushPullParam(&context, tensor, version, priority);
+  auto push_pull_param = new PushPullParam(&context, tensor_copy, version, priority);
   auto var = tensor->var();
   // Use MXEnginePushAsync instead of Engine::Get()->PushAsync to avoid ABI
   // compatibility issues
