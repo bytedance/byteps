@@ -25,8 +25,10 @@
 namespace byteps {
 namespace mxnet {
 
+// We have to do shallow copy here to prevent the tensor from being released in
+// the python thread since byteps does not know that.
 template <class T>
-MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
+MXTensor<T>::MXTensor(T* tensor) : tensor_(new T(*tensor)) {}
 
 template <class T>
 const DataType MXTensor<T>::dtype() const {
