@@ -25,11 +25,9 @@
 namespace byteps {
 namespace mxnet {
 
-// We need to create a shared_ptr to NDArray object with
-// shallow copy to prevent from NDArray object being freed
-// before MXNet engine process it
+
 template <class T>
-MXTensor<T>::MXTensor(T* tensor) : tensor_(std::make_shared<T>(*tensor)) {}
+MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
 
 template <class T>
 const DataType MXTensor<T>::dtype() const {
