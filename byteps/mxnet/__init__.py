@@ -189,6 +189,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
         self._compression = compression
+        self._compressed = []
         param_list = []
         if isinstance(params, mx.gluon.ParameterDict):
             for key in sorted(list(params.keys())):
@@ -212,13 +213,16 @@ class DistributedTrainer(mx.gluon.Trainer):
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
     def _allreduce_grads(self):
+        self._compressed.clear()
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
                 compressed, ctx = self._compression.compress(
                     param.list_grad()[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                param._grad[0] = self._compression.decompress(compressed, ctx)        
+                self._compressed.append(compressed) # add refs
+                param._grad[0] = self._compression.decompress(compressed, ctx) 
+        
 
     def _init_params(self):
         tensors = []
@@ -234,6 +238,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 compressed, ctx = self._compression.compress(param_arrays[0])
                 byteps_push_pull(compressed, version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                param._data[0] = self._compression.decompress(compressed, ctx)
+                compressed.wait_to_read()
+                param.set_data(self._compression.decompress(compressed, ctx))
 
         self._params_to_init = tensors

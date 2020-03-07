@@ -138,7 +138,6 @@ extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
   std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
 
-  BPS_LOG(DEBUG) << "IN ops.cc " << "num_args=" << num_args; 
   std::unordered_map<std::string, std::string> kwargs;
   std::string key, val;
   std::string::size_type pos;
@@ -146,7 +145,6 @@ extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
     key = args_keys[i];
     val = args_vals[i];
     kwargs[key] = val;
-    BPS_LOG(DEBUG) << "IN ops.cc " << "key=" << key << " val=" << val;
   }
   
   if (num_args > 0) {
