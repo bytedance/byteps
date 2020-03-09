@@ -189,7 +189,6 @@ class DistributedTrainer(mx.gluon.Trainer):
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
         self._compression = compression
-        self._compressed = []
         param_list = []
         if isinstance(params, mx.gluon.ParameterDict):
             for key in sorted(list(params.keys())):
