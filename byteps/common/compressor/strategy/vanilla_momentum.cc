@@ -38,6 +38,12 @@ CompressorRegistry::Register reg(
     });
 }
 
+VanillaMomentumCompressor::VanillaMomentumCompressor(
+    std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
+    : Momentum(std::move(compressor_ptr), mu){};
+
+VanillaMomentumCompressor::~VanillaMomentumCompressor() = default;
+
 void VanillaMomentumCompressor::UpdateMom(ByteBuf grad, int dtype,
                                           ByteBuf& mom) {
   // m_{t} = \mu * m_{t-1} + g_t

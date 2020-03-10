@@ -30,7 +30,8 @@ namespace compressor {
  * in the framework such as MXNet, Tensorflow or PyTorch etc.
  */
 class Momentum : public BaseCompressor {
-  explicit Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu);
+ public:
+  Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu);
   virtual ~Momentum();
   /*!
    * \brief Allocate encoding buffer for compression.
