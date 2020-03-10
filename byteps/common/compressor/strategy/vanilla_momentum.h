@@ -24,8 +24,8 @@ namespace compressor {
 
 class VanillaMomentumCompressor : public Momentum {
  public:
-  explicit VanillaMomentumCompressor(
-      std::unique_ptr<BaseCompressor> compressor_ptr, float mu);
+  VanillaMomentumCompressor(std::unique_ptr<BaseCompressor> compressor_ptr,
+                            float mu);
   virtual ~VanillaMomentumCompressor();
 
  protected:
