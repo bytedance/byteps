@@ -1,4 +1,4 @@
-// Copyright 2019 Amazon Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,25 +13,25 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_ERROR_FEEDBACK_H
-#define BYTEPS_COMPRESS_ERROR_FEEDBACK_H
+#ifndef BYTEPS_COMPRESS_MOMENTUM_H
+#define BYTEPS_COMPRESS_MOMENTUM_H
 
 #include "base_compressor.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
-
 /*!
- *  \brief Error feedback Decorator
+ * \brief Momentum
  *
- *  add error feedback behavior to any compressor at run-time
+ * Stochastic gradient descent with momentum
+ *
+ * NOTE: This should not be used at the same time with the momentum implemented
+ * in the framework such as MXNet, Tensorflow or PyTorch etc.
  */
-class ErrorFeedback : public BaseCompressor {
- public:
-  explicit ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr);
-  virtual ~ErrorFeedback();
-
+class Momentum : public BaseCompressor {
+  explicit Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu);
+  virtual ~Momentum();
   /*!
    * \brief Allocate encoding buffer for compression.
    * \param aligned_size aligned size
@@ -45,8 +45,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype,
-                        ByteBuf& compressed) final;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) final;
 
   /*!
    * \brief Decompress function
@@ -60,29 +59,20 @@ class ErrorFeedback : public BaseCompressor {
 
  protected:
   /*!
-   * \brief Correct gradient with error
+   * \brief Update momentum
    *
-   * grad += error
+   * m_{t} = \mu * m_{t-1} + g_t
    *
-   * \param grad input gradient to be updated inplace
+   * \param grad refers to gradient
    * \param dtype type
+   * \param mom m_{t}
    */
-  virtual void UpdateGradient(ByteBuf grad, int dtype) = 0;
-
-  /*!
-   * \brief Update error
-   *
-   * error = corrected_grad - decompressed
-   *
-   * \param corrected refers to gradient + error
-   * \param dtype type
-   * \param compressed compressed tensor
-   */
-  virtual void UpdateError(ByteBuf corrected, int dtype,
-                           ByteBuf& decompressed) = 0;
+  virtual void UpdateMom(ByteBuf grad, int dtype, ByteBuf& mom) = 0;
 
  protected:
-  std::unique_ptr<char[]> _error;
+  std::unique_ptr<char[]> _mom;
+
+  float _mu;
 
  private:
   /*!
@@ -94,4 +84,4 @@ class ErrorFeedback : public BaseCompressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_ERROR_FEEDBACK_H
+#endif

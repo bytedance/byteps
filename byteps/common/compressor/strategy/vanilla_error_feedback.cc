@@ -24,11 +24,12 @@ namespace {
 CompressorRegistry::Register reg(
     "vanilla_error_feedback",
     [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
-      auto kwargs_clone = kwargs;
-      kwargs_clone.erase("error_feedback_type");
-      auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
-      BPS_LOG(DEBUG) << "Register Error feedback "
-                     << "compressor_type=" << kwargs_clone["compressor_type"];
+      // register cpr
+      auto ctor = CompressorRegistry::Find("compressor_type");
+      BPS_CHECK_NE(ctor, nullptr);
+      auto compressor_ptr = ctor(kwargs);
+
+      BPS_LOG(DEBUG) << "with Error feedback";
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
     });
@@ -58,7 +59,6 @@ void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
 
 void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
                                                  ByteBuf& compressed) {
-  // TODO: we may remove this copy in the futher
   ByteBuf decompressed{_error.get(), corrected.size};
   Decompress(compressed, dtype, decompressed);
   this->_cpu_reducer->sum(_error.get(), corrected.data, decompressed.data,

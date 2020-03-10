@@ -21,19 +21,20 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorRegistry::Register reg(
-    "multibit", [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
-      auto iter = kwargs.find("compressor_k");
-      if (iter == kwargs.end()) {
-        BPS_LOG(WARNING)
-            << "Multibit Compressor needs parameter \"compressor_k\"";
-        return nullptr;
-      }
-      int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Multibit Compressor "
-                     << "k=" << k;
-      return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
-    });
+CompressorRegistry::Register
+    reg("multibit_compressor",
+        [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+          auto iter = kwargs.find("compressor_k");
+          if (iter == kwargs.end()) {
+            BPS_LOG(WARNING)
+                << "Multibit Compressor needs parameter \"compressor_k\"";
+            return nullptr;
+          }
+          int k = std::stoi(iter->second);
+          BPS_LOG(DEBUG) << "Register Multibit Compressor "
+                         << "k=" << k;
+          return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
+        });
 }
 
 MultibitCompressor::MultibitCompressor(int k) : _k(k){};
