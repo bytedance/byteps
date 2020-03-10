@@ -44,7 +44,7 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
-parser.add_argument('--compressor', type=str, default='onebit',
+parser.add_argument('--compressor', type=str, default='',
                     help='onebit compressor')
 parser.add_argument('--ef', type=str, default=None,
                     help='ef')
@@ -52,6 +52,8 @@ parser.add_argument('--scaling', action='store_true', default=False,
                     help='enable scaling for onebit compressor')
 parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                     help='use fp16 compression during pushpull')
+parser.add_argument('--compress-momentum', action='store_true', default=False,
+                    help='enable compress momentum.')
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -132,18 +134,26 @@ params = model.collect_params()
 
 for name, param in params.items():
     assert isinstance(param, mx.gluon.Parameter)
-    setattr(param, "byteps_compressor_type", args.compressor)
+    if args.compressor:
+        setattr(param, "byteps_compressor_type", args.compressor)
     if args.ef:
         setattr(param, "byteps_error_feedback_type", args.ef)
     if args.scaling:
         setattr(param, "byteps_compressor_onebit_enable_scale", args.scaling)
+    if args.compress_momentum:
+        setattr(param, "byteps_momentum_type", "vanilla")
+
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum,
                     'learning_rate': args.lr * num_workers}
 
+if args.compress_momentum:
+    del optimizer_params['momentum']
+
 compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
-trainer = bps.DistributedTrainer(params, "sgd", optimizer_params, compression=compression)
+trainer = bps.DistributedTrainer(
+    params, "sgd", optimizer_params, compression=compression)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
