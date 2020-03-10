@@ -1,4 +1,4 @@
-// Copyright 2019 Amazon Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,38 +13,37 @@
 // limitations under the License.
 // =============================================================================
 
-#include "error_feedback.h"
+#include "momentum.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 
-ErrorFeedback::ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr)
-    : _compressor_ptr(std::move(compressor_ptr)) {}
+Momentum::Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
+    : _compressor_ptr(std::move(compressor_ptr)), _mu(mu) {}
 
-ErrorFeedback::~ErrorFeedback() = default;
+Momentum::~Momentum() = default;
 
-void ErrorFeedback::Init(size_t aligned_size) {
-  _compressor_ptr->Init(aligned_size);
-  _error.reset(new char[aligned_size]);
-  memset(_error.get(), 0, aligned_size);
-  _cpu_reducer.reset(new CpuReducer(nullptr));
+void Momentum::Init(size_t aligned_size) {
+    _compressor_ptr->Init(aligned_size);
+    _mom.reset(new char[aligned_size]);
+    memset(_mom.get(), 0, aligned_size);
+    _cpu_reducer.reset(new CpuReducer(nullptr));
 }
 
-void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
-  // before: grad += error
-  UpdateGradient(grad, dtype);
+void Momentum::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
+  ByteBuf new_mom{_mom.get(), grad.size};
+  // before: m_{t} = \mu * m_{t-1} + g_t
+  UpdateMom(grad, dtype, new_mom);
   // compress
-  _compressor_ptr->Compress(grad, dtype, compressed);
-
-  // TODO: maybe execute asynchronously
-  UpdateError(grad, dtype, compressed);
+  _compressor_ptr->Compress(new_mom, dtype, compressed);
 }
 
-void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,
+void Momentum::Decompress(ByteBuf compressed, int dtype,
                                ByteBuf& decompressed) {
   _compressor_ptr->Decompress(compressed, dtype, decompressed);
 }
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

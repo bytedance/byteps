@@ -23,13 +23,14 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorRegistry::Register reg("onebit", [](const kwargs_t& kwargs) {
-  BPS_LOG(DEBUG) << "Register Onebit Compressor";
-  if (kwargs.find("compressor_onebit_enable_scale") != kwargs.end()) {
-    return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
-  }
-  return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
-});
+CompressorRegistry::Register reg(
+    "onebit_compressor", [](const kwargs_t& kwargs) {
+      BPS_LOG(DEBUG) << "Register Onebit Compressor";
+      if (kwargs.find("compressor_onebit_enable_scale") != kwargs.end()) {
+        return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
+      }
+      return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
+    });
 }
 
 OnebitCompressor::OnebitCompressor(bool use_scale) : _use_scale(use_scale){};

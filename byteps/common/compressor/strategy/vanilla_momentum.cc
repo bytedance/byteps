@@ -1,4 +1,4 @@
-// Copyright 2019 Amazon Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "topk.h"
+#include "vanilla_momentum.h"
 
 #include "../../logging.h"
 
@@ -22,31 +22,27 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
-    "topk_compressor",
+    "vanilla_momentum",
     [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
-      auto iter = kwargs.find("compressor_k");
-      if (iter == kwargs.end()) {
-        BPS_LOG(WARNING) << "Topk Compressor needs parameter \"compressor_k\"";
-        return nullptr;
-      }
-      int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Topk Compressor "
-                     << "k=" << k;
-      return std::unique_ptr<BaseCompressor>(new TopkCompressor(k));
+      // register cpr
+      auto ctor = CompressorRegistry::Find("error_feedback_type");
+      BPS_CHECK_NE(ctor, nullptr);
+      auto compressor_ptr = ctor(kwargs);
+      // find \mu
+      auto iter = kwargs.find("momentum_mu");
+      BPS_CHECK_NE(iter, kwargs.end()) << "momentum \mu is not defined";
+      float mu = std::stof(iter->second);
+      BPS_LOG(DEBUG) << "with momentum";
+      return std::unique_ptr<VanillaMomentumCompressor>(
+          new VanillaMomentumCompressor(std::move(compressor_ptr), mu));
     });
 }
 
-TopkCompressor::TopkCompressor(int k) : _k(k){};
-
-TopkCompressor::~TopkCompressor() = default;
-
-void TopkCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
-  // TODO
-}
-
-void TopkCompressor::Decompress(ByteBuf compressed, int dtype,
-                                ByteBuf& decompressed) {
-  // TODO
+void VanillaMomentumCompressor::UpdateMom(ByteBuf grad, int dtype,
+                                          ByteBuf& mom) {
+  // m_{t} = \mu * m_{t-1} + g_t
+  this->_cpu_reducer->sum(mom.data, grad.data, mom.data, grad.size,
+                          static_cast<DataType>(dtype), _mu);
 }
 }  // namespace compressor
 }  // namespace common

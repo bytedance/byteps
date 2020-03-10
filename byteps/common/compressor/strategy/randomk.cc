@@ -21,19 +21,20 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorRegistry::Register reg(
-    "randomk", [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
-      auto iter = kwargs.find("compressor_k");
-      if (iter == kwargs.end()) {
-        BPS_LOG(WARNING)
-            << "Randomk Compressor needs parameter \"compressor_k\"";
-        return nullptr;
-      }
-      int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Randomk Compressor "
-                     << "k=" << k;
-      return std::unique_ptr<BaseCompressor>(new RandomkCompressor(k));
-    });
+CompressorRegistry::Register
+    reg("randomk_compressor",
+        [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+          auto iter = kwargs.find("compressor_k");
+          if (iter == kwargs.end()) {
+            BPS_LOG(WARNING)
+                << "Randomk Compressor needs parameter \"compressor_k\"";
+            return nullptr;
+          }
+          int k = std::stoi(iter->second);
+          BPS_LOG(DEBUG) << "Register Randomk Compressor "
+                         << "k=" << k;
+          return std::unique_ptr<BaseCompressor>(new RandomkCompressor(k));
+        });
 }
 
 RandomkCompressor::RandomkCompressor(int k) : _k(k){};
