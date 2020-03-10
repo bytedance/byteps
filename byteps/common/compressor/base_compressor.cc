@@ -50,7 +50,7 @@ std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
   for (auto&& type : types) {
     auto iter = kwargs.find(type);
     if (iter != kwargs.end()) {
-      auto ctor = CompressorRegistry::Find(iter->second + type);
+      auto ctor = CompressorRegistry::Find(iter->second + "_" + type);
       BPS_CHECK_NE(ctor, nullptr);
       return ctor(kwargs);
     }
