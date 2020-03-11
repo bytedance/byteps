@@ -396,9 +396,9 @@ def main():
                 setattr(param, "byteps_compressor_type", opt.compressor)
                 if opt.ef:
                     setattr(param, "byteps_error_feedback_type", opt.ef)
-                if opt.scaling:
+                if opt.onebit_scaling:
                     setattr(
-                        param, "byteps_compressor_onebit_enable_scale", opt.scaling)
+                        param, "byteps_compressor_onebit_enable_scale", opt.onebit_scaling)
                 if opt.compress_momentum:
                     setattr(param, "byteps_momentum_type", "vanilla")
                     setattr(param, "byteps_momentum_mu", opt.momentum)
