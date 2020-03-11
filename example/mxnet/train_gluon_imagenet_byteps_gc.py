@@ -116,6 +116,8 @@ def parse_args():
                         help='enable scaling for onebit compressor')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
+    parser.add_argument('--compress-momentum', action='store_true', default=False,
+                        help='enable compress momentum.')
     opt = parser.parse_args()
     return opt
 
@@ -370,7 +372,12 @@ def main():
                     setattr(param, "byteps_error_feedback_type", opt.ef)
                 if opt.scaling:
                     setattr(param, "byteps_compressor_onebit_enable_scale", opt.scaling)
-        
+                if opt.compress_momentum:
+                    setattr(param, "byteps_momentum_type", "vanilla")
+                    setattr(param, "byteps_momentum_mu", opt.momentum)
+
+        if opt.compress_momentum:
+            del optimizer_params['momentum']
         compression = bps.Compression.fp16 if opt.fp16_pushpull else opt.Compression.none
         trainer = bps.DistributedTrainer(params, optimizer, optimizer_params, compression=compression)
         if opt.resume_states is not '':
@@ -452,10 +459,10 @@ def main():
             throughput = int(batch_size * bps.size() * i /(time.time() - tic))
 
             err_top1_val, err_top5_val = test(ctx, val_data)
-
-            logger.info('[Epoch %d] training: %s=%f'%(epoch, train_metric_name, train_metric_score))
-            logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f'%(epoch, throughput, time.time()-tic))
-            logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f'%(epoch, err_top1_val, err_top5_val))
+            if bps.rank() == 0:
+                logger.info('[Epoch %d] training: %s=%f'%(epoch, train_metric_name, train_metric_score))
+                logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f'%(epoch, throughput, time.time()-tic))
+                logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f'%(epoch, err_top1_val, err_top5_val))
 
             if err_top1_val < best_val_score:
                 best_val_score = err_top1_val
