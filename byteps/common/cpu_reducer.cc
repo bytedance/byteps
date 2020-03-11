@@ -17,6 +17,8 @@
 #include "global.h"
 #endif
 
+#include <cmath>
+
 #include "cpu_reducer.h"
 
 namespace byteps {
@@ -398,7 +400,7 @@ int CpuReducer::_norm1(float* out, const T* src, size_t len) {
   int num_threads = len > (1 << 16) ? _num_threads : 1;
 #pragma omp parallel for simd num_threads(num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
-    ret += std::abs(src[i]);
+    ret += std::fabs(src[i]);
   }
   *out = ret;
   return 0;
@@ -418,7 +420,7 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     float in_float;
     HalfBits2Float(in + i, &in_float);
-    ret += std::abs(in_float);
+    ret += std::fabs(in_float);
   }
   *out = ret;
   // #endif
