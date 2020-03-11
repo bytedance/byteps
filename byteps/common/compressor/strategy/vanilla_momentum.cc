@@ -25,9 +25,10 @@ CompressorRegistry::Register reg(
     "vanilla_momentum",
     [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
       // register cpr
-      auto ctor = CompressorRegistry::Find("error_feedback_type");
-      BPS_CHECK_NE(ctor, nullptr);
-      auto compressor_ptr = ctor(kwargs);
+      auto kwargs_clone = kwargs;
+      kwargs_clone.erase("momentum_type");
+      auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
+      BPS_CHECK_NE(compressor_ptr, nullptr);
       // find \mu
       auto iter = kwargs.find("momentum_mu");
       BPS_CHECK_NE(iter, kwargs.end()) << "momentum \mu is not defined";
