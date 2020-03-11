@@ -32,11 +32,14 @@ void Momentum::Init(size_t aligned_size) {
 }
 
 void Momentum::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
-  ByteBuf new_mom{_mom.get(), grad.size};
-  // before: m_{t} = \mu * m_{t-1} + g_t
-  UpdateMom(grad, dtype, new_mom);
+  // m_t = \mu * m_{t-1} + g_t
+  UpdateMom(grad, dtype);
+
+  // p_t = \mu m_t + g_t
+  UpdateGradient(grad, dtype);
+
   // compress
-  _compressor_ptr->Compress(new_mom, dtype, compressed);
+  _compressor_ptr->Compress(grad, dtype, compressed);
 }
 
 void Momentum::Decompress(ByteBuf compressed, int dtype,

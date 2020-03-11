@@ -29,7 +29,8 @@ class VanillaMomentumCompressor : public Momentum {
   virtual ~VanillaMomentumCompressor();
 
  protected:
-  void UpdateMom(ByteBuf grad, int dtype, ByteBuf& mom) override;
+  void UpdateMom(ByteBuf grad, int dtype) override;
+  void UpdateGradient(ByteBuf grad, int dtype) override;
 };
 
 }  // namespace compressor

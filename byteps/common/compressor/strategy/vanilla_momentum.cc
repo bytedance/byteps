@@ -45,12 +45,18 @@ VanillaMomentumCompressor::VanillaMomentumCompressor(
 
 VanillaMomentumCompressor::~VanillaMomentumCompressor() = default;
 
-void VanillaMomentumCompressor::UpdateMom(ByteBuf grad, int dtype,
-                                          ByteBuf& mom) {
-  // m_{t} = \mu * m_{t-1} + g_t
-  this->_cpu_reducer->sum(mom.data, grad.data, mom.data, grad.size,
+void VanillaMomentumCompressor::UpdateMom(ByteBuf grad, int dtype) {
+  // m_t = \mu * m_{t-1} + g_t
+  this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
                           static_cast<DataType>(dtype), _mu);
 }
+
+void VanillaMomentumCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+  // p_t = \mu m_t + g_t
+  this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
+                          static_cast<DataType>(dtype), _mu);
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

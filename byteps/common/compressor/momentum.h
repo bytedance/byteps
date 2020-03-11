@@ -62,13 +62,22 @@ class Momentum : public BaseCompressor {
   /*!
    * \brief Update momentum
    *
-   * m_{t} = \mu * m_{t-1} + g_t
+   * m_t = \mu * m_{t-1} + g_t
    *
    * \param grad refers to gradient
    * \param dtype type
-   * \param mom m_{t}
    */
-  virtual void UpdateMom(ByteBuf grad, int dtype, ByteBuf& mom) = 0;
+  virtual void UpdateMom(ByteBuf grad, int dtype) = 0;
+
+    /*!
+   * \brief Update gradient
+   *
+   * p_t = \mu m_t + g_t
+   *
+   * \param grad refers to gradient which adds momentum in place.
+   * \param dtype type
+   */
+  virtual void UpdateGradient(ByteBuf grad, int dtype) = 0;
 
  protected:
   std::unique_ptr<char[]> _mom;
