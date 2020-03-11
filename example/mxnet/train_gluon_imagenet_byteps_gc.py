@@ -378,7 +378,7 @@ def main():
 
         if opt.compress_momentum:
             del optimizer_params['momentum']
-        compression = bps.Compression.fp16 if opt.fp16_pushpull else opt.Compression.none
+        compression = bps.Compression.fp16 if opt.fp16_pushpull else bps.Compression.none
         trainer = bps.DistributedTrainer(params, optimizer, optimizer_params, compression=compression)
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)
