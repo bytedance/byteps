@@ -142,6 +142,7 @@ for name, param in params.items():
         setattr(param, "byteps_compressor_onebit_enable_scale", args.scaling)
     if args.compress_momentum:
         setattr(param, "byteps_momentum_type", "vanilla")
+        setattr(param, "byteps_momentum_mu", args.momentum)
 
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
