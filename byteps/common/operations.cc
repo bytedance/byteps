@@ -346,22 +346,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         auto compressor_ptr = compressor::CompressorRegistry::Create(context.kwargs); 
         compressor_ptr->Init(Align(len, dtype));
         context.compressor_list.push_back(std::move(compressor_ptr));
-
-        if (BytePSGlobal::GetRank() == BytePSGlobal::GetLocalRank()) {
-          PSKV kv;
-          kv.keys.push_back(pskv.keys[0]);
-          context.kwargs["src_len"] = std::to_string(len);
-          auto content = compressor::Serialize(context.kwargs);
-          int len = content.size();
-          kv.lens.push_back(len);
-          char *data = const_cast<char *>(content.c_str());
-          ps::SArray<char> vals(data, len, false);
-          int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
-          BPS_LOG(DEBUG) << "Register for Server  key=" << key
-                         << " content=" << content;
-
-          ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
-        }
       }
     }
 
