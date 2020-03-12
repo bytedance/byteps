@@ -430,14 +430,13 @@ void BytePSGlobal::RegisterCompressor(const std::string& name,
       << name << " is not initialized";
   // send to server
   if (_rank == _local_rank) {
+    auto ps = GetOrInitPS();
     auto content = compressor::Serialize(kwargs);
     auto len = content.size();
     auto& kv = EncodeDefaultKey(_name_to_cxt[name].declared_key, len);
     auto data = const_cast<char*>(content.c_str());
     ps::SArray<char> vals(data, len, false);
     int cmd = GetCommandType(RequestType::kCompressedPushPull, 0);
-    auto ps = GetOrInitPS();
-    BPS_LOG(DEBUG) << "Register compressor for server";
     ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
   }
   _name_to_cxt[name].kwargs = std::move(kwargs);
