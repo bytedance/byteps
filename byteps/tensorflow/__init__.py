@@ -30,11 +30,6 @@ import tensorflow as tf
 import os, sys
 from tensorflow.python.ops import control_flow_ops
 
-if hasattr(tf, 'div'):
-    _div = tf.div
-else: 
-    _div = tf.math.divide
-
 def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
               compression=Compression.none, enable_async=False):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
@@ -59,6 +54,7 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
+            _div = tf.div if hasattr(tf, 'div') else tf.math.divide
             new_tensor = (_div(summed_tensor, byteps_size)
                           if average else summed_tensor)
         else: # no need to average for async training
@@ -75,10 +71,6 @@ def broadcast_global_variables(root_rank, scope=''):
     """
     return broadcast_variables(tf.global_variables(), root_rank, scope)
 
-if hasattr(tf, 'assign'):
-    _assign = tf.assign
-else:
-    _assign = tf.compat.v1.assign
 
 def broadcast_variables(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
@@ -88,6 +80,7 @@ def broadcast_variables(variables, root_rank, scope=''):
                    to all other processes.
         scope: the graph name scope
     """
+    _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     return tf.group(*[_assign(var, broadcast(var, root_rank, scope))
                       for var in variables])
 
