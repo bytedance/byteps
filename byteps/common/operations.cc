@@ -29,6 +29,11 @@ namespace common {
 extern "C" {
 
 void byteps_init() {
+  byteps_lazy_init();
+  BytePSGlobal::GetOrInitPS();
+}
+
+void byteps_lazy_init() {
   BytePSGlobal::Init();
 
   // The order of func does not matter
