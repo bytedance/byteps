@@ -358,13 +358,14 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   BPS_CHECK_EQ(i, key_list.size());
 
   // send to server
-  if (BytePSGlobal::IsRootDevice()) {
+  if (!context.kwargs.empty() && BytePSGlobal::IsDistributed() &&
+      BytePSGlobal::IsRootDevice()) {
     auto ps = BytePSGlobal::GetOrInitPS();
     auto content = compressor::Serialize(context.kwargs);
     auto len = content.size();
+    auto data = const_cast<char *>(content.c_str());
     for (auto key : key_list) {
       auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
-      auto data = const_cast<char *>(content.c_str());
       ps::SArray<char> vals(data, len, false);
       int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
       ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
