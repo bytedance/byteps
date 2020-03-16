@@ -38,8 +38,8 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* input, char* name,
                                             bool is_average);
 
 extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
-                                            const char** args_keys,
-                                            const char** args_vals);
+                                            char** args_keys,
+                                            char** args_vals);
 
 }  // namespace mxnet
 }  // namespace byteps
