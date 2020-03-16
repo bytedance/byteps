@@ -303,20 +303,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
                  << ", parts=" << key_list.size();
 
-  // send to server
-  if (BytePSGlobal::IsRootDevice()) {
-    auto ps = BytePSGlobal::GetOrInitPS();
-    auto content = compressor::Serialize(context.kwargs);
-    auto len = content.size();
-    for (auto key : key_list) {
-      auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
-      auto data = const_cast<char *>(content.c_str());
-      ps::SArray<char> vals(data, len, false);
-      int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
-      ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
-    }
-  } 
-
   // If cpubuff is not nullptr, the tensor itself is on CPU
   // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
@@ -379,6 +365,20 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   BPS_CHECK_EQ(accumulated, size);
   BPS_CHECK_EQ(i, key_list.size());
+
+  // send to server
+  if (BytePSGlobal::IsRootDevice()) {
+    auto ps = BytePSGlobal::GetOrInitPS();
+    auto content = compressor::Serialize(context.kwargs);
+    auto len = content.size();
+    for (auto key : key_list) {
+      auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
+      auto data = const_cast<char *>(content.c_str());
+      ps::SArray<char> vals(data, len, false);
+      int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+      ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
+    }
+  }
 
   context.initialized = true;
 
