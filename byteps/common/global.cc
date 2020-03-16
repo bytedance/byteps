@@ -428,26 +428,6 @@ void BytePSGlobal::RegisterCompressor(const std::string& name,
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
       << name << " is not initialized";
-  auto& context = _name_to_cxt[name];
-  ps::Key start_key = context.declared_key << 16;
-  while (accumulated < size) {
-    context.key_list.push_back(start_key++);
-    accumulated +=
-        ((size - accumulated) > bound) ? bound : (size - accumulated);
-  }
-  // send to server
-  if (_rank == _local_rank) {
-    auto ps = GetOrInitPS();
-    auto content = compressor::Serialize(kwargs);
-    auto len = content.size();
-    for (auto key : context.key_list) {
-      auto& kv = EncodeDefaultKey(key, len);
-      auto data = const_cast<char*>(content.c_str());
-      ps::SArray<char> vals(data, len, false);
-      int cmd = GetCommandType(RequestType::kCompressedPushPull, 0);
-      ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
-    }
-  }
   _name_to_cxt[name].kwargs = std::move(kwargs);
 }
 
