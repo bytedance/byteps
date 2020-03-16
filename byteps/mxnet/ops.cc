@@ -136,8 +136,8 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
 }
 
 extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
-                                            char** args_keys,
-                                            char** args_vals) {
+                                            const char** args_keys,
+                                            const char** args_vals) {
   std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
 
