@@ -212,7 +212,17 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     if (log_key_info_) {
       LOG(INFO) << "register compressor for key=" << key;
     }
-    SendPushResponse(key, req_meta, server);
+
+    // buffer the request meta
+    auto& updates = update_buf_[key];
+    updates.request.push_back(req_meta);
+    // should send response after collecting all init push
+    if (updates.request.size() < (size_t)ps::NumWorkers()) return;
+
+    for (const auto& req : updates.request) {
+      SendPushResponse(key, req, server);
+    }
+    updates.request.clear();
     return;
   }
 
