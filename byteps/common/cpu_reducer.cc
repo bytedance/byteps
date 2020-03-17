@@ -18,6 +18,7 @@
 #endif
 
 #include <cmath>
+#include <omp.h>
 
 #include "cpu_reducer.h"
 
@@ -42,7 +43,17 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
-    _num_threads = 4;
+    // each cpu at least has one thread
+    int reserve_cores = BytePSGlobal::GetLocalSize();
+    if (getenv("BYTEPS_RESERVE_CORES")) {
+      reserve_cores = atoi(getenv("BYTEPS_RESERVE_CORES"));
+    }
+    int thread_count = omp_get_max_threads();
+    if (thread_count > reserve_cores) {
+      _num_threads = thread_count - reserve_cores;
+    } else {
+      _num_threads = 1;
+    }
   }
   return;
 }
