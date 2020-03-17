@@ -94,9 +94,6 @@ void BytePSServerEngineThread(int i) {
         iter->second->Compress(grad, msg.type.dtype, compressed);
         auto& updates = update_buf_[msg.key];
         auto stored = GetStore(msg.key);
-        // 1. tmp <- store
-        updates.merged.tensor = stored->tensor;
-        updates.merged.len = stored->len;
         // 2. store <- compressed
         stored->tensor = compressed.data;
         stored->len = compressed.size;
@@ -303,6 +300,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
+          // 1. tmp <- store
+          updates.merged.tensor = stored->tensor;
+          updates.merged.len = stored->len;
           updates.merged.tmp_sarray = req_data;
           // copy
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
