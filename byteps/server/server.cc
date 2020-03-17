@@ -173,8 +173,9 @@ void BytePSServerEngineThread(int i) {
             is_push_finished_[i][msg.key] = false;
             pull_cnt_[i][msg.key] = 0;
             seen_sender_[i][msg.key].clear();
-            auto& updates = update_buf_[key];
+            auto& updates = update_buf_[msg.key];
             // 3. store <- tmp
+            auto stored = GetStore(msg.key);
             stored->tensor = updates.merged.tensor;
             stored->len = updates.merged.len;
             break;
