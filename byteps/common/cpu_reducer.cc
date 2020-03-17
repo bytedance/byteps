@@ -17,8 +17,9 @@
 #include "global.h"
 #endif
 
-#include <cmath>
 #include <omp.h>
+
+#include <cmath>
 
 #include "cpu_reducer.h"
 
@@ -43,8 +44,12 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
-    // each cpu at least has one thread
+// each cpu at least has one thread
+#ifndef BYTEPS_BUILDING_SERVER
     int reserve_cores = BytePSGlobal::GetLocalSize();
+#else
+    int reserve_cores = 0;
+#endif
     if (getenv("BYTEPS_RESERVE_CORES")) {
       reserve_cores = atoi(getenv("BYTEPS_RESERVE_CORES"));
     }
@@ -293,7 +298,7 @@ size_t CpuReducer::_sign(T1* dst, const T2* src, size_t len) {
   const size_t end = sizeof(T1) - 1, reduced_len = len / sizeof(T1);
   char* psrc;
   // extract sign bit
-  
+
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < reduced_len; ++i) {
     psrc = reinterpret_cast<char*>(const_cast<T2*>(src + i));
@@ -339,7 +344,7 @@ int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
 template <typename T1, typename T2>
 int CpuReducer::_scale(T1* dst, const T2* src, size_t len, float alpha) {
   static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
-  
+
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / sizeof(T1); ++i) {
     dst[i] = static_cast<T1>(src[i] * alpha);
@@ -363,7 +368,8 @@ int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
 #pragma omp parallel for simd num_threads(_num_threads)
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & out to m256
-      __m256 in_m256 = _mm256_cvtepi32_ps(_mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i))));
+      __m256 in_m256 = _mm256_cvtepi32_ps(
+          _mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i))));
 
       __m256 new_out_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
       // convert back and store in out
@@ -408,7 +414,7 @@ template <typename T>
 int CpuReducer::_norm1(float* out, const T* src, size_t len) {
   float ret = 0;
   // maybe use std::reduce in the future
-  
+
 #pragma omp parallel for simd num_threads(_num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     ret += std::fabs(src[i]);
@@ -426,7 +432,7 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
   //    // TODO
   // #else
   float ret = 0;
-  
+
 #pragma omp parallel for simd num_threads(_num_threads) reduction(+ : ret)
   for (size_t i = 0; i < len; ++i) {
     float in_float;
