@@ -53,17 +53,17 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
   char* data = stored->tensor;
   auto len = stored->len;
 
-  auto iter = compressor_map_.find(key);
-  if (iter != compressor_map_.end()) {
-    CHECK_NE(iter->second, nullptr);
-    common::compressor::ByteBuf grad{data, len}, compressed;
-    iter->second->Compress(grad, type.dtype, compressed);
-    data = compressed.data;
-    len = compressed.size;
-    if (log_key_info_) {
-      LOG(INFO) << "compress for key=" << key << " compressed_len=" << len;
-    }
-  }
+  // auto iter = compressor_map_.find(key);
+  // if (iter != compressor_map_.end()) {
+  //   CHECK_NE(iter->second, nullptr);
+  //   common::compressor::ByteBuf grad{data, len}, compressed;
+  //   iter->second->Compress(grad, type.dtype, compressed);
+  //   data = compressed.data;
+  //   len = compressed.size;
+  //   if (log_key_info_) {
+  //     LOG(INFO) << "compress for key=" << key << " compressed_len=" << len;
+  //   }
+  // }
 
   // send pull response
   auto iterator = pull_response_map_.find(key);
@@ -96,9 +96,36 @@ void BytePSServerEngineThread(int i) {
     CHECK(msg.dst);
     CHECK(msg.src);
 
+    auto iter = compressor_map_.find(msg.key);
+    if (iter != compressor_map_.end()) {
+      // compress
+      if (msg.ops == ALL_RECV) {
+        common::compressor::ByteBuf grad{reinterpret_cast<char*>(msg.src),
+                                         msg.len},
+            compressed;
+        iter->second->Compress(grad, msg.type.dtype, compressed);
+        auto& updates = update_buf_[msg.key];
+        auto stored = GetStore(msg.key);
+        // 1. tmp <- store
+        updates.merged.tensor = stored->tensor;
+        updates.merged.len = stored->len;
+        // 2. store <- compressed
+        stored->tensor = compressed.data;
+        stored->len = compressed.size;
+      } else {  // decompress
+        auto compressed_len = msg.sarray.lens[0];
+        CHECK_LE(compressed_len, msg.len);
+        common::compressor::ByteBuf compressed{reinterpret_cast<char*>(msg.src),
+                                               compressed_len},
+            decompressed{nullptr, msg.len};
+        iter->second->Decompress(compressed, msg.type.dtype, decompressed);
+        msg.src = decompressed.data;
+      }
+    }
+
     bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
     switch (msg.ops) {
-      case COPY_MERGED: {
+      case COPY_FIRST: {
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_COPY_MERGED_TO_STORE_BEFORE \t"
@@ -120,6 +147,9 @@ void BytePSServerEngineThread(int i) {
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src)
                     << "\t";
         }
+      } break;
+
+      case ALL_RECV: {
         std::lock_guard<std::mutex> lock(flag_mu_[i]);
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
           is_push_finished_[i][msg.key] = false;
@@ -143,6 +173,10 @@ void BytePSServerEngineThread(int i) {
             is_push_finished_[i][msg.key] = false;
             pull_cnt_[i][msg.key] = 0;
             seen_sender_[i][msg.key].clear();
+            auto& updates = update_buf_[key];
+            // 3. store <- tmp
+            stored->tensor = updates.merged.tensor;
+            stored->len = updates.merged.len;
             break;
           }
         }
@@ -172,12 +206,11 @@ void BytePSServerEngineThread(int i) {
                     << "\t";
         }
       } break;
-
       default:
         CHECK(0);
     }
   }
-}
+}  // namespace server
 
 void BytePSHandler(const ps::KVMeta& req_meta,
                    const ps::KVPairs<char>& req_data,
@@ -238,19 +271,19 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto len = (size_t)req_data.lens[0];
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
 
-    // do decompression
-    auto iter = compressor_map_.find(key);
-    if (iter != compressor_map_.end()) {
-      CHECK_NE(iter->second, nullptr);
-      common::compressor::ByteBuf compressed{recved, len},
-          decompressed{nullptr, stored->len};
-      iter->second->Decompress(compressed, type.dtype, decompressed);
-      recved = decompressed.data;
-      len = stored->len;
-      if (log_key_info_) {
-        LOG(INFO) << "decompress for key=" << key << " src_len=" << len;
-      }
-    }
+    // // do decompression
+    // auto iter = compressor_map_.find(key);
+    // if (iter != compressor_map_.end()) {
+    //   CHECK_NE(iter->second, nullptr);
+    //   common::compressor::ByteBuf compressed{recved, len},
+    //       decompressed{nullptr, stored->len};
+    //   iter->second->Decompress(compressed, type.dtype, decompressed);
+    //   recved = decompressed.data;
+    //   len = stored->len;
+    //   if (log_key_info_) {
+    //     LOG(INFO) << "decompress for key=" << key << " src_len=" << len;
+    //   }
+    // }
 
     if (!stored->tensor) {
       if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
@@ -295,9 +328,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
-          // zero copy
-          updates.merged.tensor = recved;
           updates.merged.tmp_sarray = req_data;
+          // copy
+          BytePSEngineMessage msg = {timestamp_++,   type,     key,
+                                     stored->tensor, recved,   stored->len,
+                                     COPY_FIRST,     req_data, req_meta};
+          engine_queues_[tid]->Push(msg);
         } else {  // async mode, directly add to the buffer
           CHECK_GE(bps_reducer_->sum((void*)stored->tensor, (void*)recved, len,
                                      bps_reducer_->GetDataType(stored->dtype)),
@@ -305,28 +341,26 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         }
       } else {  // from other workers
         CHECK(sync_mode_);
-        CHECK(updates.merged.tensor);
+        // CHECK(updates.merged.tensor);
         if (debug_mode_ && (debug_key_ == key)) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: OTHER_WORKER_SUM \t"
                     << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
                     << "\t"
-                    << "merged: "
-                    << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                     << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
                     << "len: " << len << "\t"
                     << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
         }
         if (is_engine_blocking_) {
+          // TODO: decompress
           CHECK_GE(bps_reducer_->sum(
                        (void*)updates.merged.tensor, (void*)recved, len,
                        bps_reducer_->GetDataType(updates.merged.dtype)),
                    0);
         } else {  // non-blocking
-          BytePSEngineMessage msg = {
-              timestamp_++, type, key,      updates.merged.tensor,
-              recved,       len,  SUM_RECV, req_data,
-              req_meta};
+          BytePSEngineMessage msg = {timestamp_++,   type,     key,
+                                     stored->tensor, recved,   stored->len,
+                                     SUM_RECV,       req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }
       }
@@ -346,11 +380,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                     << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
         }
         if (is_engine_blocking_) {
+          // TODO: compress
           bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
         } else {
-          BytePSEngineMessage msg = {timestamp_++,   type,          key,
-                                     stored->tensor, update.tensor, len,
-                                     COPY_MERGED};
+          BytePSEngineMessage msg = {
+              timestamp_++,   type,        key,     stored->tensor,
+              stored->tensor, stored->len, ALL_RECV};
           engine_queues_[tid]->Push(msg);
           engine_queues_[tid]->ClearCounter(key);
         }
@@ -387,6 +422,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           is_push_finished_[tid][key] = false;
           pull_cnt_[tid][key] = 0;
           seen_sender_[tid][key].clear();
+          auto& updates = update_buf_[key];
+          // 3. store <- tmp
+          stored->tensor = updates.merged.tensor;
+          stored->len = updates.merged.len;
         }
       } else {
         // push not finished, put into the queue, and wait for the engine
