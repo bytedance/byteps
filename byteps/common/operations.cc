@@ -335,6 +335,10 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   accumulated = 0;
   size_t i = 0;
   BPS_LOG(INFO) << "tensor size=" << size;
+  // small tensor does not need to be compressed
+  if (size < compressor::MIN_COMPRESS_SIZE) {
+    context.kwargs.clear();
+  }
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
