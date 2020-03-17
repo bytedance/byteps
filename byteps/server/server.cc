@@ -53,18 +53,6 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
   char* data = stored->tensor;
   auto len = stored->len;
 
-  // auto iter = compressor_map_.find(key);
-  // if (iter != compressor_map_.end()) {
-  //   CHECK_NE(iter->second, nullptr);
-  //   common::compressor::ByteBuf grad{data, len}, compressed;
-  //   iter->second->Compress(grad, type.dtype, compressed);
-  //   data = compressed.data;
-  //   len = compressed.size;
-  //   if (log_key_info_) {
-  //     LOG(INFO) << "compress for key=" << key << " compressed_len=" << len;
-  //   }
-  // }
-
   // send pull response
   auto iterator = pull_response_map_.find(key);
   if (iterator == pull_response_map_.end()) {  // new key
@@ -271,20 +259,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto stored = GetStore(key);
     auto len = (size_t)req_data.lens[0];
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
-
-    // // do decompression
-    // auto iter = compressor_map_.find(key);
-    // if (iter != compressor_map_.end()) {
-    //   CHECK_NE(iter->second, nullptr);
-    //   common::compressor::ByteBuf compressed{recved, len},
-    //       decompressed{nullptr, stored->len};
-    //   iter->second->Decompress(compressed, type.dtype, decompressed);
-    //   recved = decompressed.data;
-    //   len = stored->len;
-    //   if (log_key_info_) {
-    //     LOG(INFO) << "decompress for key=" << key << " src_len=" << len;
-    //   }
-    // }
 
     if (!stored->tensor) {
       if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
