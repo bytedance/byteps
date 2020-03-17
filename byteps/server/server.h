@@ -40,7 +40,7 @@ enum class RequestType {
 };
 
 enum BytePSEngineOperation {
-  SUM_RECV, COPY_MERGED, TERMINATE
+  SUM_RECV, COPY_FIRST, ALL_RECV, TERMINATE
 };
 
 struct PSKV {
