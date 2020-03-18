@@ -56,6 +56,10 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
     int thread_count = omp_get_max_threads();
     if (thread_count > reserve_cores) {
       _num_threads = thread_count - reserve_cores;
+#ifndef BYTEPS_BUILDING_SERVER
+      // per GPU
+      _num_threads /= BytePSGlobal::GetLocalSize();
+#endif
     } else {
       _num_threads = 1;
     }
