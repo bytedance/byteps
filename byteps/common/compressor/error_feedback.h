@@ -16,6 +16,8 @@
 #ifndef BYTEPS_COMPRESS_ERROR_FEEDBACK_H
 #define BYTEPS_COMPRESS_ERROR_FEEDBACK_H
 
+#include <future>
+
 #include "base_compressor.h"
 
 namespace byteps {
@@ -45,8 +47,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype,
-                        ByteBuf& compressed) final;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) final;
 
   /*!
    * \brief Decompress function
@@ -79,7 +80,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param compressed compressed tensor
    */
   virtual void UpdateError(ByteBuf corrected, int dtype,
-                           ByteBuf& decompressed) = 0;
+                           ByteBuf compressed) = 0;
 
  protected:
   std::unique_ptr<char[]> _error;
@@ -89,6 +90,8 @@ class ErrorFeedback : public BaseCompressor {
    * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
+
+  std::future<void> _future;
 };
 }  // namespace compressor
 }  // namespace common

@@ -59,7 +59,7 @@ void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
 #endif
 
 void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
-                                                 ByteBuf& compressed) {
+                                                 ByteBuf compressed) {
   ByteBuf decompressed{_error.get(), corrected.size};
   Decompress(compressed, dtype, decompressed);
   this->_cpu_reducer->sum(_error.get(), corrected.data, decompressed.data,
