@@ -99,7 +99,7 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
 
 template <typename T1, typename T2>
 size_t _Unpacking(T1* dst, const T2* src, size_t size) {
-  static_assert(sizeof(T1) == sizeof(T2));
+  static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
   constexpr int PACKING_SIZE = sizeof(T2) * 8;
   auto chunk_size = (size - sizeof(float)) / sizeof(T2);
 
