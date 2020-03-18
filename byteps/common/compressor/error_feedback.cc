@@ -31,15 +31,12 @@ void ErrorFeedback::Init(size_t aligned_size) {
 }
 
 void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
-  if (_future.valid()) _future.wait();
   // before: grad += error
   UpdateGradient(grad, dtype);
   // compress
   _compressor_ptr->Compress(grad, dtype, compressed);
 
-  // execute asynchronously
-  _future = std::async(std::launch::async, &ErrorFeedback::UpdateError, this,
-                       grad, dtype, compressed);
+  UpdateError(grad, dtype, compressed);
 }
 
 void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,

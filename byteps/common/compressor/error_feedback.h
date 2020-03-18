@@ -16,8 +16,6 @@
 #ifndef BYTEPS_COMPRESS_ERROR_FEEDBACK_H
 #define BYTEPS_COMPRESS_ERROR_FEEDBACK_H
 
-#include <future>
-
 #include "base_compressor.h"
 
 namespace byteps {
@@ -90,8 +88,6 @@ class ErrorFeedback : public BaseCompressor {
    * \brief compressor
    */
   std::unique_ptr<BaseCompressor> _compressor_ptr;
-
-  std::future<void> _future;
 };
 }  // namespace compressor
 }  // namespace common

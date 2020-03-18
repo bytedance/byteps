@@ -15,8 +15,6 @@
 
 #include "onebit.h"
 
-#include <future>
-
 #include "../../logging.h"
 
 namespace byteps {
@@ -74,11 +72,10 @@ size_t Packing(void* data, size_t len, int dtype) {
 
 void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   float scale = 1.0;
-  std::future<float> norm1;
   if (_use_scale) {
-    norm1 =
-        std::async(std::launch::async, &CpuReducer::norm1, _cpu_reducer.get(),
-                   grad.data, grad.size, static_cast<DataType>(dtype));
+    float norm1 =
+        _cpu_reducer->norm1(grad.data, grad.size, static_cast<DataType>(dtype));
+    scale = norm1 / (grad.size / getDataTypeLength(dtype));
   }
 
   auto reduced_len = _cpu_reducer->sign(_buf.get(), grad.data, grad.size,
@@ -87,10 +84,6 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   auto compressed_size = Packing(_buf.get(), reduced_len, dtype);
 
   auto pf = reinterpret_cast<float*>(_buf.get() + compressed_size);
-  if (_use_scale) {
-    // `get` will block until the result is available
-    scale = norm1.get() / (grad.size / getDataTypeLength(dtype));
-  }
   *pf = scale;
 
   compressed.data = _buf.get();
