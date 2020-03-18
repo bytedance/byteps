@@ -396,7 +396,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           is_push_finished_[tid][key] = false;
           pull_cnt_[tid][key] = 0;
           seen_sender_[tid][key].clear();
-          auto& updates = update_buf_[key];
         }
       } else {
         // push not finished, put into the queue, and wait for the engine
