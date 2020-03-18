@@ -98,6 +98,7 @@ class BytePSGlobal {
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 
   static uint32_t GetPartitionBound() { return _partition_bytes; }
+  static uint32_t GetMinCompressBound() { return _min_compress_bytes; }
 
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
@@ -174,6 +175,7 @@ class BytePSGlobal {
   static cudaStream_t* _copy_host2device_stream;
 
   static uint32_t _partition_bytes;
+  static uint32_t _min_compress_bytes;
 
   // (key, ready_signal_count) pair, only valid for root device
   static ReadyTable* _reduce_table;
