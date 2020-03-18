@@ -48,10 +48,10 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req,
 void SendPullResponse(const DataHandleType type, const uint64_t key,
                       const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
-  auto stored = GetStore(key);
-  CHECK(stored->tensor) << "init " << key << " first";
-  char* data = stored->tensor;
-  auto len = stored->len;
+  auto& updates = update_buf_[key];
+  CHECK(updates.merged.tensor) << "init " << key << " first";
+  char* data = updates.merged.tensor;
+  auto len = updates.merged.len;
 
   // send pull response
   auto iterator = pull_response_map_.find(key);
@@ -92,11 +92,10 @@ void BytePSServerEngineThread(int i) {
                                          msg.len},
             compressed;
         iter->second->Compress(grad, msg.type.dtype, compressed);
+        // 1. compress
         auto& updates = update_buf_[msg.key];
-        auto stored = GetStore(msg.key);
-        // 2. store <- compressed
-        stored->tensor = compressed.data;
-        stored->len = compressed.size;
+        updates.merged.tensor = compressed.data;
+        updates.merged.len = compressed.size;
       } else {  // decompress
         auto compressed_len = msg.sarray.lens[0];
         CHECK_LE(compressed_len, msg.len);
@@ -105,6 +104,14 @@ void BytePSServerEngineThread(int i) {
             decompressed{nullptr, msg.len};
         iter->second->Decompress(compressed, msg.type.dtype, decompressed);
         msg.src = decompressed.data;
+      }
+    } else {
+      if (msg.ops == ALL_RECV) {
+        // 2. no compress
+        auto& updates = update_buf_[msg.key];
+        auto stored = GetStore(msg.key);
+        updates.merged.tensor = stored->tensor;
+        updates.merged.len = stored->len;
       }
     }
 
@@ -158,11 +165,6 @@ void BytePSServerEngineThread(int i) {
             is_push_finished_[i][msg.key] = false;
             pull_cnt_[i][msg.key] = 0;
             seen_sender_[i][msg.key].clear();
-            auto& updates = update_buf_[msg.key];
-            // 3. store <- tmp
-            auto stored = GetStore(msg.key);
-            stored->tensor = updates.merged.tensor;
-            stored->len = updates.merged.len;
             break;
           }
         }
@@ -300,9 +302,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
-          // 1. tmp <- store
-          updates.merged.tensor = stored->tensor;
-          updates.merged.len = stored->len;
           updates.merged.tmp_sarray = req_data;
           // copy
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
@@ -398,9 +397,6 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           pull_cnt_[tid][key] = 0;
           seen_sender_[tid][key].clear();
           auto& updates = update_buf_[key];
-          // 3. store <- tmp
-          stored->tensor = updates.merged.tensor;
-          stored->len = updates.merged.len;
         }
       } else {
         // push not finished, put into the queue, and wait for the engine
