@@ -28,8 +28,6 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-constexpr size_t MIN_COMPRESS_SIZE = (1<<16);
-
 /*!
  * \brief Byte buffer
  */

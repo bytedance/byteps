@@ -41,6 +41,7 @@ bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
+uint32_t BytePSGlobal::_min_compress_bytes = (1<<16);
 
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
@@ -132,6 +133,9 @@ void BytePSGlobal::Init() {
   // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
+  }
+  if (getenv("BYTEPS_MIN_COMPRESS_BYTES")) {
+    _min_compress_bytes = atoi(getenv("BYTEPS_MIN_COMPRESS_BYTES"));
   }
   _pagesize = sysconf(_SC_PAGESIZE);
   BPS_CHECK_GT(_pagesize, 0);

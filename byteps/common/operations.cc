@@ -327,7 +327,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   size_t i = 0;
   BPS_LOG(INFO) << "tensor size=" << size;
   // small tensor does not need to be compressed
-  if (size < compressor::MIN_COMPRESS_SIZE) {
+  if (size < BytePSGlobal::GetMinCompressBound()) {
     context.kwargs.clear();
   }
   while (accumulated < size) {
