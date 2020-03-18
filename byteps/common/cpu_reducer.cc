@@ -310,86 +310,14 @@ size_t CpuReducer::_sign(T1* dst, const T2* src, size_t len) {
   return reduced_len;
 }
 
-int CpuReducer::scale(void* dst, const void* src, size_t len, DataType dtype,
-                      float alpha) {
+float CpuReducer::norm1(const void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
-      return _scale(reinterpret_cast<float*>(dst),
-                    reinterpret_cast<const int32_t*>(src), len, alpha);
+      return _norm1(reinterpret_cast<const float*>(src), len);
     case BYTEPS_FLOAT64:
-      return _scale(reinterpret_cast<double*>(dst),
-                    reinterpret_cast<const int64_t*>(src), len, alpha);
+      return _norm1(reinterpret_cast<const double*>(src), len);
     case BYTEPS_FLOAT16:
-      return _scale_float16(dst, src, len, alpha);
-    default:
-      BPS_CHECK(0) << "Unsupported data type: " << dtype;
-  }
-  return 0;
-}
-
-template <typename T1, typename T2>
-int CpuReducer::_scale(T1* dst, const T2* src, size_t len, float alpha) {
-  static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
-
-#pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len / sizeof(T1); ++i) {
-    dst[i] = static_cast<T1>(src[i] * alpha);
-  }
-  return 0;
-}
-
-int CpuReducer::_scale_float16(void* dst, const void* src, size_t len,
-                               float alpha) {
-  // cast src and dst to your float16 type
-  auto in = reinterpret_cast<const int16_t*>(src);
-  auto out = reinterpret_cast<unsigned short*>(dst);
-  len = len / (size_t)2;
-
-#if __AVX__ && __F16C__
-  float mm256_alpha[8];
-  for (int i = 0; i < 8; ++i) mm256_alpha[i] = alpha;
-
-  if (is_avx_and_f16c()) {
-    __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
-#pragma omp parallel for simd num_threads(_num_threads)
-    for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
-      // convert in & out to m256
-      __m256 in_m256 = _mm256_cvtepi32_ps(
-          _mm256_cvtepi16_epi32(_mm_loadu_si128((__m128i*)(in + i))));
-
-      __m256 new_out_m256 = _mm256_mul_ps(in_m256, __mm256_alpha);
-      // convert back and store in out
-      __m128i new_out_m128i = _mm256_cvtps_ph(new_out_m256, 0);
-      _mm_storeu_si128((__m128i*)(out + i), new_out_m128i);
-    }
-  }
-
-  for (size_t i = (len / 8) * 8; i < (size_t)len; ++i) {
-    float in_float = static_cast<float>(in[i]);
-    float out_float;
-    out_float = in_float * alpha;
-    Float2HalfBits(&out_float, out + i);
-  }
-#else
-#pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < (size_t)len; ++i) {
-    float in_float = static_cast<float>(in[i]);
-    float out_float;
-    out_float = in_float * alpha;
-    Float2HalfBits(&out_float, out + i);
-  }
-#endif
-  return 0;
-}
-
-int CpuReducer::norm1(float* out, const void* src, size_t len, DataType dtype) {
-  switch (dtype) {
-    case BYTEPS_FLOAT32:
-      return _norm1(out, reinterpret_cast<const float*>(src), len);
-    case BYTEPS_FLOAT64:
-      return _norm1(out, reinterpret_cast<const double*>(src), len);
-    case BYTEPS_FLOAT16:
-      return _norm1_float16(out, src, len);
+      return _norm1_float16(src, len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -397,7 +325,7 @@ int CpuReducer::norm1(float* out, const void* src, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_norm1(float* out, const T* src, size_t len) {
+float CpuReducer::_norm1(const T* src, size_t len) {
   float ret = 0;
   // maybe use std::reduce in the future
 
@@ -405,11 +333,11 @@ int CpuReducer::_norm1(float* out, const T* src, size_t len) {
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     ret += std::fabs(src[i]);
   }
-  *out = ret;
-  return 0;
+
+  return ret;
 }
 
-int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
+float CpuReducer::_norm1_float16(const void* src, size_t len) {
   // cast src and dst to your float16 type
   auto in = reinterpret_cast<const unsigned short*>(src);
   len = len / (size_t)2;
@@ -425,9 +353,9 @@ int CpuReducer::_norm1_float16(float* out, const void* src, size_t len) {
     HalfBits2Float(in + i, &in_float);
     ret += std::fabs(in_float);
   }
-  *out = ret;
+
   // #endif
-  return 0;
+  return ret;
 }
 }  // namespace common
 }  // namespace byteps
