@@ -44,25 +44,7 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
-// each cpu at least has one thread
-#ifndef BYTEPS_BUILDING_SERVER
-    int reserve_cores = BytePSGlobal::GetLocalSize();
-#else
-    int reserve_cores = 0;
-#endif
-    if (getenv("BYTEPS_RESERVE_CORES")) {
-      reserve_cores = atoi(getenv("BYTEPS_RESERVE_CORES"));
-    }
-    int thread_count = omp_get_max_threads();
-    if (thread_count > reserve_cores) {
-      _num_threads = thread_count - reserve_cores;
-#ifndef BYTEPS_BUILDING_SERVER
-      // per GPU
-      _num_threads /= BytePSGlobal::GetLocalSize();
-#endif
-    } else {
-      _num_threads = 1;
-    }
+    _num_threads = omp_get_max_threads();
   }
   return;
 }
