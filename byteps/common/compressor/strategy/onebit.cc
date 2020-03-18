@@ -15,7 +15,7 @@
 
 #include "onebit.h"
 
-#include <chrono>
+#include <future>
 
 #include "../../logging.h"
 
@@ -38,7 +38,7 @@ OnebitCompressor::OnebitCompressor(bool use_scale) : _use_scale(use_scale){};
 OnebitCompressor::~OnebitCompressor() = default;
 
 template <typename T>
-size_t _Packing(T* data, size_t len, float scale) {
+size_t _Packing(T* data, size_t len) {
   constexpr int PACKING_SIZE = sizeof(T) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
@@ -49,25 +49,23 @@ size_t _Packing(T* data, size_t len, float scale) {
       data[j] |= data[i * chunk_size + j] & 0x01;
     }
   }
-  auto ptr_fp = reinterpret_cast<float*>(data);
-  ptr_fp[chunk_size] = scale;
 
-  return chunk_size + 1;
+  return chunk_size * sizeof(T);
 }
 
-size_t Packing(void* data, size_t len, float scale, int dtype) {
+size_t Packing(void* data, size_t len, int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
     case BYTEPS_UINT8:
-      return _Packing(reinterpret_cast<int8_t*>(data), len, scale);
+      return _Packing(reinterpret_cast<int8_t*>(data), len);
     case BYTEPS_FLOAT16:
-      return _Packing(reinterpret_cast<int16_t*>(data), len, scale);
+      return _Packing(reinterpret_cast<int16_t*>(data), len);
     case BYTEPS_INT32:
     case BYTEPS_FLOAT32:
-      return _Packing(reinterpret_cast<int32_t*>(data), len, scale);
+      return _Packing(reinterpret_cast<int32_t*>(data), len);
     case BYTEPS_INT64:
     case BYTEPS_FLOAT64:
-      return _Packing(reinterpret_cast<int64_t*>(data), len, scale);
+      return _Packing(reinterpret_cast<int64_t*>(data), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -76,60 +74,76 @@ size_t Packing(void* data, size_t len, float scale, int dtype) {
 
 void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
   float scale = 1.0;
+  std::future<float> norm1;
   if (_use_scale) {
-    float norm1;
-    _cpu_reducer->norm1(&norm1, grad.data, grad.size,
-                        static_cast<DataType>(dtype));
-    scale = norm1 / (grad.size / getDataTypeLength(dtype));
+    norm1 =
+        std::async(std::launch::async, &CpuReducer::norm1, _cpu_reducer.get(),
+                   grad.data, grad.size, static_cast<DataType>(dtype));
   }
 
   auto reduced_len = _cpu_reducer->sign(_buf.get(), grad.data, grad.size,
                                         static_cast<DataType>(dtype));
 
-  auto compressed_len = Packing(_buf.get(), reduced_len, scale, dtype);
+  auto compressed_size = Packing(_buf.get(), reduced_len, dtype);
+
+  auto pf = reinterpret_cast<float*>(_buf.get() + compressed_size);
+  if (_use_scale) {
+    // `get` will block until the result is available
+    scale = norm1.get() / (grad.size / getDataTypeLength(dtype));
+  }
+  *pf = scale;
 
   compressed.data = _buf.get();
-  compressed.size = compressed_len * sizeof(int);
+  compressed.size = compressed_size + sizeof(float);
 }
 
-template <typename T>
-size_t _Unpacking(T* dst, const T* src, size_t size, float* scale) {
-  constexpr int PACKING_SIZE = sizeof(T) * 8;
-  auto chunk_size = size / sizeof(int) - 1;
+template <typename T1, typename T2>
+size_t _Unpacking(T1* dst, const T2* src, size_t size) {
+  static_assert(sizeof(T1) == sizeof(T2));
+  constexpr int PACKING_SIZE = sizeof(T2) * 8;
+  auto chunk_size = (size - sizeof(float)) / sizeof(T2);
+
+  float scale;
+  auto pf = reinterpret_cast<const float*>(src + chunk_size);
+  scale = *pf;
 
   unsigned int mask = 1;
   for (int i = PACKING_SIZE - 1; i >= 0; --i) {
     for (int j = 0; j < chunk_size; ++j) {
       int sign_bit = (src[j] & mask) >> (PACKING_SIZE - i - 1);
-      dst[i * chunk_size + j] = -((sign_bit << 1) - 1);
+      int sign = -((sign_bit << 1) - 1);
+      dst[i * chunk_size + j] = sign * scale;
     }
     mask <<= 1;
   }
 
-  auto ptr_src_fp = reinterpret_cast<const float*>(src);
-  *scale = ptr_src_fp[chunk_size];
   return chunk_size;
 }
 
-size_t Unpacking(void* dst, const void* src, size_t len, float* scale,
-                 int dtype) {
-  BPS_CHECK_NE(dst, src);
+size_t Unpacking(void* dst, const void* src, size_t len, int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
-    case BYTEPS_UINT8:
       return _Unpacking(reinterpret_cast<int8_t*>(dst),
-                        reinterpret_cast<const int8_t*>(src), len, scale);
-    case BYTEPS_FLOAT16:
-      return _Unpacking(reinterpret_cast<int16_t*>(dst),
-                        reinterpret_cast<const int16_t*>(src), len, scale);
+                        reinterpret_cast<const int8_t*>(src), len);
+    case BYTEPS_UINT8:
+      return _Unpacking(reinterpret_cast<uint8_t*>(dst),
+                        reinterpret_cast<const int8_t*>(src), len);
+    // TODO:
+    // case BYTEPS_FLOAT16:
+    //   return _Unpacking(reinterpret_cast<uint16_t*>(dst),
+    //                     reinterpret_cast<const int16_t*>(src), len);
     case BYTEPS_INT32:
-    case BYTEPS_FLOAT32:
       return _Unpacking(reinterpret_cast<int32_t*>(dst),
-                        reinterpret_cast<const int32_t*>(src), len, scale);
+                        reinterpret_cast<const int32_t*>(src), len);
+    case BYTEPS_FLOAT32:
+      return _Unpacking(reinterpret_cast<float*>(dst),
+                        reinterpret_cast<const int32_t*>(src), len);
     case BYTEPS_INT64:
-    case BYTEPS_FLOAT64:
       return _Unpacking(reinterpret_cast<int64_t*>(dst),
-                        reinterpret_cast<const int64_t*>(src), len, scale);
+                        reinterpret_cast<const int64_t*>(src), len);
+    case BYTEPS_FLOAT64:
+      return _Unpacking(reinterpret_cast<double*>(dst),
+                        reinterpret_cast<const int64_t*>(src), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
@@ -141,19 +155,7 @@ size_t Unpacking(void* dst, const void* src, size_t len, float* scale,
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf& decompressed) {
   BPS_CHECK(decompressed.data);
-  float scale;
-  // core_loop's
-  if (decompressed.data == compressed.data) {
-    Unpacking(_buf.get(), compressed.data, compressed.size, &scale, dtype);
-    _cpu_reducer->scale(decompressed.data, _buf.get(), decompressed.size,
-                        static_cast<DataType>(dtype), scale);
-  } else {
-    // error feedback
-    Unpacking(decompressed.data, compressed.data, compressed.size, &scale,
-              dtype);
-    _cpu_reducer->scale(decompressed.data, decompressed.data, decompressed.size,
-                        static_cast<DataType>(dtype), scale);
-  }
+  Unpacking(decompressed.data, compressed.data, compressed.size, dtype);
 }
 
 #else
@@ -162,9 +164,7 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf& decompressed) {
   float scale;
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
-  Unpacking(decompressed.data, compressed.data, compressed.size, &scale, dtype);
-  _cpu_reducer->scale(decompressed.data, decompressed.data, decompressed.size,
-                      static_cast<DataType>(dtype), scale);
+  Unpacking(decompressed.data, compressed.data, compressed.size, dtype);
 }
 #endif
 
