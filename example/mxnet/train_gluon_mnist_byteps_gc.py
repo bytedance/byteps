@@ -149,7 +149,7 @@ for name, param in params.items():
 optimizer_params = {'momentum': args.momentum,
                     'learning_rate': args.lr * num_workers}
 
-if args.compress_momentum:
+if args.compress_momentum or args.momentum == 0.0:
     del optimizer_params['momentum']
 
 compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
