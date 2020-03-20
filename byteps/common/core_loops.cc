@@ -14,14 +14,16 @@
 // =============================================================================
 
 #include "core_loops.h"
+
 #include <cuda_runtime.h>
+
 #include <chrono>
 #include <memory>
+
 #include "common.h"
+#include "compressor/base_compressor.h"
 #include "global.h"
 #include "logging.h"
-
-#include "compressor/base_compressor.h"
 
 namespace byteps {
 namespace common {
@@ -65,25 +67,27 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
   }
 
   if (task->context->profile_flag) {
-    BPS_CHECK(task->context->part_comm_time[task->key][this_op].back()->dur == 0)
-                    << " tensor: " << task->tensor_name
-                    << " task->key:" << task->key
-                    << " type:" << this_op
-                    << " 'dur' has already been assigned:" << task->context->part_comm_time[task->key][this_op].back()->dur;
+    BPS_CHECK(task->context->part_comm_time[task->key][this_op].back()->dur ==
+              0)
+        << " tensor: " << task->tensor_name << " task->key:" << task->key
+        << " type:" << this_op << " 'dur' has already been assigned:"
+        << task->context->part_comm_time[task->key][this_op].back()->dur;
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-    auto _ts = task->context->part_comm_time[task->key][this_op].back()->start_t;
-    BPS_CHECK(task->context->part_comm_time.find(task->key) != task->context->part_comm_time.end())
-                    << " tensor: " << task->tensor_name
-                    << " task->key:" << task->key
-                    << " type:" << this_op;
-    BPS_CHECK(task->context->part_comm_time[task->key].find(this_op) != task->context->part_comm_time[task->key].end())
-                    << " tensor: " << task->tensor_name
-                    << " task->key:" << task->key
-                    << " type:" << this_op;
+    auto _ts =
+        task->context->part_comm_time[task->key][this_op].back()->start_t;
+    BPS_CHECK(task->context->part_comm_time.find(task->key) !=
+              task->context->part_comm_time.end())
+        << " tensor: " << task->tensor_name << " task->key:" << task->key
+        << " type:" << this_op;
+    BPS_CHECK(task->context->part_comm_time[task->key].find(this_op) !=
+              task->context->part_comm_time[task->key].end())
+        << " tensor: " << task->tensor_name << " task->key:" << task->key
+        << " type:" << this_op;
 
-    task->context->part_comm_time[task->key][this_op].back()->dur = (long long)(us.count()) - _ts;
+    task->context->part_comm_time[task->key][this_op].back()->dur =
+        (long long)(us.count()) - _ts;
   }
 
   // finish current QueueType of this task, erase current QueueType.
@@ -99,7 +103,8 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
     BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
     int v = task->counter_ptr.get()->fetch_add(1);
     if (v == (int)(task->total_partnum - 1)) {
-      // if meet this condition, that means all sub-tasks of this task have been done
+      // if meet this condition, that means all sub-tasks of this task have been
+      // done
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
@@ -107,11 +112,13 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       //* Add for profiling communication events
       if (task->context->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)
-                    << " tensor: " << task->tensor_name
-                    << " 'dur' has already been assigned:" << task->context->comm_time.back()->dur;
+            << " tensor: " << task->tensor_name
+            << " 'dur' has already been assigned:"
+            << task->context->comm_time.back()->dur;
         auto now = std::chrono::system_clock::now();
         auto duration = now.time_since_epoch();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+        auto us =
+            std::chrono::duration_cast<std::chrono::microseconds>(duration);
         auto _ts = task->context->comm_time.back()->start_t;
         task->context->comm_time.back()->dur = (long long)(us.count()) - _ts;
       }
@@ -207,8 +214,7 @@ inline void PostNcclCalls(
     nccl_root = BytePSGlobal::GetReduceRootByKey(key);
     num_elem_per_gpu = 0;
     left_elem = len / unit_len;
-    BPS_LOG(TRACE) << "Reduce key=" << key
-                   << " to root=" << nccl_root
+    BPS_LOG(TRACE) << "Reduce key=" << key << " to root=" << nccl_root
                    << " rank=" << BytePSGlobal::GetLocalRank();
   }
 
@@ -418,8 +424,7 @@ bool RunCopyDevice2HostLoopOnce() {
 
     if (copy_len) {
       CUDA_CALL(cudaMemcpyAsync(
-          (void *)(cpubuff + copy_offset),
-          (const void *)(p + copy_offset),
+          (void *)(cpubuff + copy_offset), (const void *)(p + copy_offset),
           (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyDeviceToHost,
           (cudaStream_t)*copy_d2h_Stream));
       CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
@@ -505,17 +510,35 @@ bool RunPushLoopOnce() {
       // get metadata
       const int dtype = task->tensor->dtype();
 
-      // do compression
+      // do compression async
       if (task->compressor) {
-        compressor::ByteBuf grad{data, len}, compressed;
-        task->compressor->Compress(grad, dtype, compressed);
-        data = compressed.data;
-        BPS_CHECK_LE(compressed.size, len)
-            << "Compressor Implementation Error "
-            << ", key=" << task->key << ", src_len=" << len
-            << ", compressed_len=" << compressed.size;
-        len = compressed.size;
-        BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
+        if (!task->compressed) {
+          std::thread t([task]() {
+            char *data = const_cast<char *>(
+                static_cast<const char *>(task->cpubuff) + task->offset);
+            int len = task->len;
+            int dtype = task->tensor->dtype();
+            compressor::ByteBuf grad{data, len}, compressed;
+            task->compressor->Compress(grad, dtype, compressed);
+            BPS_CHECK_LE(compressed.size, len)
+                << "Compressor Implementation Error "
+                << ", key=" << task->key << ", src_len=" << len
+                << ", compressed_len=" << compressed.size;
+            BPS_LOG(DEBUG) << "PUSH  with gradient compression. key="
+                           << task->key;
+            task->compressed =
+                std::make_shared<decltype(compressed)>(compressed);
+            // re-add to the queue
+            auto &queue_list = task->queue_list;
+            BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
+          });
+          t.detach();
+          return true;
+        } else {
+          data = task->compressed->data;
+          len = task->compressed->size;
+          task->compressed = nullptr;
+        }
       }
 
       // false means not to delete data when SArray is deleted
@@ -530,7 +553,7 @@ bool RunPushLoopOnce() {
       BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
       FinishOrProceed(task);
     }
-  } else { 
+  } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
   return true;
@@ -609,8 +632,7 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
 
   if (copy_len) {
     CUDA_CALL(cudaMemcpyAsync(
-        (void *)(gpu_addr + copy_offset),
-        (const void *)(cpubuff + copy_offset),
+        (void *)(gpu_addr + copy_offset), (const void *)(cpubuff + copy_offset),
         (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyHostToDevice,
         (cudaStream_t)*copy_h2d_stream));
     CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream));
@@ -629,7 +651,7 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     int local_rank = BytePSGlobal::GetLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
 
-     // do decompression
+    // do decompression
     if (task->compressor) {
       char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
                                       task->offset);
