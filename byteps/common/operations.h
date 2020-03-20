@@ -30,6 +30,9 @@ extern "C" {
 // C interface to initialize byteps.
 void byteps_init();
 
+// C interface to initialize byteps (without initializing ps-lite).
+void byteps_lazy_init();
+
 // C interface to shut down byteps.
 void byteps_shutdown();
 
