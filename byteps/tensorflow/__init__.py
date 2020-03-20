@@ -54,7 +54,8 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
-            new_tensor = (tf.div(summed_tensor, byteps_size)
+            _div = tf.div if hasattr(tf, 'div') else tf.math.divide
+            new_tensor = (_div(summed_tensor, byteps_size)
                           if average else summed_tensor)
         else: # no need to average for async training
             new_tensor = summed_tensor
@@ -79,165 +80,193 @@ def broadcast_variables(variables, root_rank, scope=''):
                    to all other processes.
         scope: the graph name scope
     """
-    return tf.group(*[tf.assign(var, broadcast(var, root_rank, scope))
+    _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
+    return tf.group(*[_assign(var, broadcast(var, root_rank, scope))
                       for var in variables])
 
+try:
+    _get_default_graph = tf.get_default_graph
+except AttributeError:
+    try:
+        _get_default_graph = tf.compat.v1.get_default_graph
+    except AttributeError:
+        _get_default_graph = None
 
-class BroadcastGlobalVariablesHook(tf.train.SessionRunHook):
-    """
-    SessionRunHook that will broadcast all global variables from root rank
-    to all other processes during initialization.
-    This is necessary to ensure consistent initialization of all workers when
-    training is started with random weights or restored from a checkpoint.
-    """
+try:
+    _SessionRunHook = tf.estimator.SessionRunHook
+except AttributeError:
+    try:
+        _SessionRunHook = tf.train.SessionRunHook
+    except AttributeError:
+        _SessionRunHook = None
 
-    def __init__(self, root_rank, device=''):
-        """Construct a new BroadcastGlobalVariablesHook that will broadcast all
-        global variables from root rank to all other processes during initialization.
-        Args:
-          root_rank:
-            Rank that will send data, other ranks will receive data.
-          device:
-            Device to be used for broadcasting. Uses GPU by default
-            if BytePS was build with BYTEPS_GPU_BROADCAST.
+if _SessionRunHook is not None and _get_default_graph is not None:
+    class BroadcastGlobalVariablesHook(_SessionRunHook):
         """
-        super(BroadcastGlobalVariablesHook, self).__init__()
-        self.root_rank = root_rank
-        self.bcast_op = None
-        self.device = device
-
-    def begin(self):
-        if not self.bcast_op or self.bcast_op.graph != tf.get_default_graph():
-            with tf.device(self.device):
-                self.bcast_op = broadcast_global_variables(self.root_rank)
-
-    def after_create_session(self, session, coord):
-        session.run(self.bcast_op)
-
-
-class DistributedOptimizer(tf.train.Optimizer):
-    """An optimizer that wraps another tf.Optimizer, using an push_pull to
-    average gradient values before applying gradients to model weights."""
-
-    def __init__(self, optimizer, name=None, use_locking=False, device_dense='',
-                 device_sparse='', compression=Compression.none,
-                 sparse_as_dense=False):
-        """Construct a new DistributedOptimizer, which uses another optimizer
-        under the hood for computing single-process gradient values and
-        applying gradient updates after the gradient values have been averaged
-        across all the BytePS ranks.
-        Args:
-          optimizer:
-            Optimizer to use for computing gradients and applying updates.
-          name:
-            Optional name prefix for the operations created when applying
-            gradients. Defaults to "Distributed" followed by the provided
-            optimizer type.
-          use_locking:
-            Whether to use locking when updating variables.
-            See Optimizer.__init__ for more info.
-          device_dense:
-            Device to be used for dense tensors. Uses GPU by default.
-          device_sparse:
-            Device to be used for sparse tensors. Uses GPU by default.
-          compression:
-            Compression algorithm used during push_pull to reduce the amount
-            of data sent during the each parameter update step.  Defaults to
-            not using compression.
-          sparse_as_dense:
-            Treat all sparse gradients as dense tensors.  This can help improve
-            performance and memory utilization if the original sparse gradient
-            has high density.  Defaults to false.
+        SessionRunHook that will broadcast all global variables from root rank
+        to all other processes during initialization.
+        This is necessary to ensure consistent initialization of all workers when
+        training is started with random weights or restored from a checkpoint.
         """
-        if name is None:
-            name = "Distributed{}".format(type(optimizer).__name__)
 
-        self._optimizer = optimizer
-        self._device_dense = device_dense
-        self._device_sparse = device_sparse
-        self._compression = compression
-        self._sparse_as_dense = sparse_as_dense
+        def __init__(self, root_rank, device=''):
+            """Construct a new BroadcastGlobalVariablesHook that will broadcast all
+            global variables from root rank to all other processes during initialization.
+            Args:
+            root_rank:
+                Rank that will send data, other ranks will receive data.
+            device:
+                Device to be used for broadcasting. Uses GPU by default
+                if BytePS was build with BYTEPS_GPU_BROADCAST.
+            """
+            super(BroadcastGlobalVariablesHook, self).__init__()
+            self.root_rank = root_rank
+            self.bcast_op = None
+            self.device = device
 
-        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
-        if self._enable_async:
-            assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
-                "Async is only valid for distributed training"
-            print('BytePS: enable asynchronous training')
+        def begin(self):
+            if not self.bcast_op or self.bcast_op.graph != _get_default_graph():
+                with tf.device(self.device):
+                    self.bcast_op = broadcast_global_variables(self.root_rank)
 
-        def push_pull_grads(grads):
-            with tf.name_scope(self._name + "_Push_Pull") as scope:
-                if self._sparse_as_dense:
-                    grads = [tf.convert_to_tensor(grad)
-                             if grad is not None and isinstance(grad, tf.IndexedSlices)
-                             else grad for grad in grads]
+        def after_create_session(self, session, coord):
+            session.run(self.bcast_op)
 
-                return [push_pull(grad, scope,
-                                  device_dense=self._device_dense,
-                                  device_sparse=self._device_sparse,
-                                  compression=self._compression,
-                                  enable_async=self._enable_async)
-                        if grad is not None else grad
-                        for grad in grads]
+try:
+    # TensorFlow 2.x
+    _LegacyOptimizer = tf.compat.v1.train.Optimizer
+except AttributeError:
+    try:
+        # TensorFlow 1.x
+        _LegacyOptimizer = tf.train.Optimizer
+    except AttributeError:
+        # Future TensorFlow versions
+        _LegacyOptimizer = None
 
-        if _executing_eagerly():
-            self._push_pull_grads = tf.contrib.eager.defun(push_pull_grads)
-        else:
-            self._push_pull_grads = push_pull_grads
+if _LegacyOptimizer is not None:
+    class DistributedOptimizer(_LegacyOptimizer):
+        """An optimizer that wraps another tf.Optimizer, using an push_pull to
+        average gradient values before applying gradients to model weights."""
 
-        super(DistributedOptimizer, self).__init__(
-            name=name, use_locking=use_locking)
+        def __init__(self, optimizer, name=None, use_locking=False, device_dense='',
+                    device_sparse='', compression=Compression.none,
+                    sparse_as_dense=False):
+            """Construct a new DistributedOptimizer, which uses another optimizer
+            under the hood for computing single-process gradient values and
+            applying gradient updates after the gradient values have been averaged
+            across all the BytePS ranks.
+            Args:
+            optimizer:
+                Optimizer to use for computing gradients and applying updates.
+            name:
+                Optional name prefix for the operations created when applying
+                gradients. Defaults to "Distributed" followed by the provided
+                optimizer type.
+            use_locking:
+                Whether to use locking when updating variables.
+                See Optimizer.__init__ for more info.
+            device_dense:
+                Device to be used for dense tensors. Uses GPU by default.
+            device_sparse:
+                Device to be used for sparse tensors. Uses GPU by default.
+            compression:
+                Compression algorithm used during push_pull to reduce the amount
+                of data sent during the each parameter update step.  Defaults to
+                not using compression.
+            sparse_as_dense:
+                Treat all sparse gradients as dense tensors.  This can help improve
+                performance and memory utilization if the original sparse gradient
+                has high density.  Defaults to false.
+            """
+            if name is None:
+                name = "Distributed{}".format(type(optimizer).__name__)
 
-    def compute_gradients(self, *args, **kwargs):
-        """Compute gradients of all trainable variables.
-        See Optimizer.compute_gradients() for more info.
-        In DistributedOptimizer, compute_gradients() is overriden to also
-        push_pull the gradients before returning them.
-        """
-        gradients = self._optimizer.compute_gradients(*args, **kwargs)
-        if size() > 1 and not self._enable_async:
-            grads, vars = zip(*gradients)
-            avg_grads = self._push_pull_grads(grads)
-            return list(zip(avg_grads, vars))
-        else:
-            return gradients
+            self._optimizer = optimizer
+            self._device_dense = device_dense
+            self._device_sparse = device_sparse
+            self._compression = compression
+            self._sparse_as_dense = sparse_as_dense
 
-    def apply_gradients(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        if self._enable_async: # async training
-            grads_and_vars = args[0]
-            _, vars = zip(*grads_and_vars)
-            old_tensors = []
-            for var in vars:
-                old_tensors.append(tf.convert_to_tensor(var))
-            apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
-            with tf.control_dependencies([apply_ops]):
-                # get the delta
-                for i, var in enumerate(vars):
-                    old_tensors[i] = tf.subtract(var, old_tensors[i])
+            self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
+            if self._enable_async:
+                assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
+                    "Async is only valid for distributed training"
+                print('BytePS: enable asynchronous training')
 
-                # reuse the _push_pul_grads(), but is transferring parameters
-                updated_tensors = self._push_pull_grads(old_tensors)
+            def push_pull_grads(grads):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                    if self._sparse_as_dense:
+                        grads = [tf.convert_to_tensor(grad)
+                                if grad is not None and isinstance(grad, tf.IndexedSlices)
+                                else grad for grad in grads]
 
-                # copy the updated variable back
-                assign_op_list = []
-                for i, tensor in enumerate(updated_tensors):
-                    assign_op_list.append(tf.assign(vars[i], tensor))
+                    return [push_pull(grad, scope,
+                                    device_dense=self._device_dense,
+                                    device_sparse=self._device_sparse,
+                                    compression=self._compression,
+                                    enable_async=self._enable_async)
+                            if grad is not None else grad
+                            for grad in grads]
 
-            return control_flow_ops.group(*assign_op_list)
-        else:
-            return self._optimizer.apply_gradients(*args, **kwargs)
+            if _executing_eagerly():
+                self._push_pull_grads = tf.contrib.eager.defun(push_pull_grads)
+            else:
+                self._push_pull_grads = push_pull_grads
 
-    def get_slot(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer.get_slot(*args, **kwargs)
+            super(DistributedOptimizer, self).__init__(
+                name=name, use_locking=use_locking)
 
-    def get_slot_names(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer.get_slot_names(*args, **kwargs)
+        def compute_gradients(self, *args, **kwargs):
+            """Compute gradients of all trainable variables.
+            See Optimizer.compute_gradients() for more info.
+            In DistributedOptimizer, compute_gradients() is overriden to also
+            push_pull the gradients before returning them.
+            """
+            gradients = self._optimizer.compute_gradients(*args, **kwargs)
+            if size() > 1 and not self._enable_async:
+                grads, vars = zip(*gradients)
+                avg_grads = self._push_pull_grads(grads)
+                return list(zip(avg_grads, vars))
+            else:
+                return gradients
 
-    def variables(self, *args, **kwargs):
-        """Calls this same method on the underlying optimizer."""
-        return self._optimizer.variables(*args, **kwargs)
+        def apply_gradients(self, *args, **kwargs):
+            """Calls this same method on the underlying optimizer."""
+            if self._enable_async: # async training
+                grads_and_vars = args[0]
+                _, vars = zip(*grads_and_vars)
+                old_tensors = []
+                for var in vars:
+                    old_tensors.append(tf.convert_to_tensor(var))
+                apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
+                with tf.control_dependencies([apply_ops]):
+                    # get the delta
+                    for i, var in enumerate(vars):
+                        old_tensors[i] = tf.subtract(var, old_tensors[i])
+
+                    # reuse the _push_pul_grads(), but is transferring parameters
+                    updated_tensors = self._push_pull_grads(old_tensors)
+
+                    # copy the updated variable back
+                    assign_op_list = []
+                    for i, tensor in enumerate(updated_tensors):
+                        assign_op_list.append(tf.assign(vars[i], tensor))
+
+                return control_flow_ops.group(*assign_op_list)
+            else:
+                return self._optimizer.apply_gradients(*args, **kwargs)
+
+        def get_slot(self, *args, **kwargs):
+            """Calls this same method on the underlying optimizer."""
+            return self._optimizer.get_slot(*args, **kwargs)
+
+        def get_slot_names(self, *args, **kwargs):
+            """Calls this same method on the underlying optimizer."""
+            return self._optimizer.get_slot_names(*args, **kwargs)
+
+        def variables(self, *args, **kwargs):
+            """Calls this same method on the underlying optimizer."""
+            return self._optimizer.variables(*args, **kwargs)
 
 
 if hasattr(tf, 'GradientTape'):
@@ -271,7 +300,7 @@ if hasattr(tf, 'GradientTape'):
                             if grad is not None else grad
                             for grad in grads]
 
-            self._push_pull_grads = tf.contrib.eager.defun(push_pull_grads)
+            self._push_pull_grads = push_pull_grads
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
@@ -282,33 +311,33 @@ if hasattr(tf, 'GradientTape'):
                 return gradients
 
 
-def DistributedGradientTape(gradtape, device_dense='', device_sparse='',
-                            compression=Compression.none, sparse_as_dense=False):
-    """An tape that wraps another tf.GradientTape, using an push_pull to
-    average gradient values before applying gradients to model weights.
-    Args:
-      gradtape:
-        GradientTape to use for computing gradients and applying updates.
-      device_dense:
-        Device to be used for dense tensors. Uses GPU by default.
-      device_sparse:
-        Device to be used for sparse tensors. Uses GPU by default.
-      compression:
-        Compression algorithm used during push_pull to reduce the amount
-        of data sent during the each parameter update step.  Defaults to
-        not using compression.
-      sparse_as_dense:
-        Treat all sparse gradients as dense tensors.  This can help improve
-        performance and memory utilization if the original sparse gradient
-        has high density.  Defaults to false.
-    """
-    cls = type(gradtape.__class__.__name__, (gradtape.__class__,),
-               dict(_DistributedGradientTape.__dict__))
-    if hasattr(gradtape, '_watch_accessed_variables'):
-        return cls(gradtape._tape, device_dense, device_sparse,
-                   compression, sparse_as_dense,
-                   gradtape._persistent, gradtape._watch_accessed_variables)
-    else:
-        return cls(gradtape._tape, device_dense, device_sparse,
-                   compression, sparse_as_dense,
-                   gradtape._persistent)
+    def DistributedGradientTape(gradtape, device_dense='', device_sparse='',
+                                compression=Compression.none, sparse_as_dense=False):
+        """An tape that wraps another tf.GradientTape, using an push_pull to
+        average gradient values before applying gradients to model weights.
+        Args:
+        gradtape:
+            GradientTape to use for computing gradients and applying updates.
+        device_dense:
+            Device to be used for dense tensors. Uses GPU by default.
+        device_sparse:
+            Device to be used for sparse tensors. Uses GPU by default.
+        compression:
+            Compression algorithm used during push_pull to reduce the amount
+            of data sent during the each parameter update step.  Defaults to
+            not using compression.
+        sparse_as_dense:
+            Treat all sparse gradients as dense tensors.  This can help improve
+            performance and memory utilization if the original sparse gradient
+            has high density.  Defaults to false.
+        """
+        cls = type(gradtape.__class__.__name__, (gradtape.__class__,),
+                dict(_DistributedGradientTape.__dict__))
+        if hasattr(gradtape, '_watch_accessed_variables'):
+            return cls(gradtape._tape, device_dense, device_sparse,
+                    compression, sparse_as_dense,
+                    gradtape._persistent, gradtape._watch_accessed_variables)
+        else:
+            return cls(gradtape._tape, device_dense, device_sparse,
+                    compression, sparse_as_dense,
+                    gradtape._persistent)

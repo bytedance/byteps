@@ -129,8 +129,12 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
     if root_rank != rank():
         if is_variable:
-            with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                return C_LIB.byteps_push_pull(tensor, name=name)
+            if hasattr(tf, 'assign_sub'):
+                with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                    return C_LIB.byteps_push_pull(tensor, name=name)
+            else:
+                with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
+                    return C_LIB.byteps_push_pull(tensor, name=name)
         else:
             with tf.device(tensor.device):
                 input_tensor = tf.zeros_like(tensor)
