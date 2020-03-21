@@ -529,6 +529,8 @@ bool RunPushLoopOnce() {
                 std::make_shared<decltype(compressed)>(compressed);
             // re-add to the queue
             auto &queue_list = task->queue_list;
+            BytePSGlobal::GetScheduledQueue(queue_list[0])
+                ->reset(task->key, BytePSGlobal::GetLocalSize());
             BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
           });
           t.detach();

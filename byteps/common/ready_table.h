@@ -32,6 +32,7 @@ class ReadyTable {
   // methods to access or modify the _ready_table
   bool IsKeyReady(uint64_t key);
   int AddReadyCount(uint64_t key);
+  int SetReadyCount(uint64_t key, int cnt);
   void ClearReadyCount(uint64_t key);
 
  private:
