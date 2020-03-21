@@ -36,6 +36,7 @@ class BytePSScheduledQueue {
   std::shared_ptr<TensorTableEntry> getTask(uint64_t key);
   uint32_t pendingSize();
   void reportFinish(int size);
+  void reset(uint64_t key, int cnt);
 
  private:
   // TODO: use priority queue or heap
