@@ -524,8 +524,7 @@ bool RunPushLoopOnce() {
                 << "Compressor Implementation Error "
                 << ", key=" << task->key << ", src_len=" << len
                 << ", compressed_len=" << compressed.size;
-            BPS_LOG(DEBUG) << "PUSH  with gradient compression. key="
-                           << task->key;
+
             task->compressed =
                 std::make_shared<decltype(compressed)>(compressed);
             // re-add to the queue
@@ -535,6 +534,8 @@ bool RunPushLoopOnce() {
           t.detach();
           return true;
         } else {
+          BPS_LOG(DEBUG) << "PUSH  with gradient compression. key="
+                         << task->key;
           data = task->compressed->data;
           len = task->compressed->size;
           task->compressed = nullptr;
