@@ -530,7 +530,7 @@ bool RunPushLoopOnce() {
             // re-add to the queue
             auto &queue_list = task->queue_list;
             BytePSGlobal::GetScheduledQueue(queue_list[0])
-                ->reset(task->key, BytePSGlobal::GetLocalSize());
+                ->reset(task->key, BytePSGlobal::GetLocalSize() - 1);
             BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
           });
           t.detach();
