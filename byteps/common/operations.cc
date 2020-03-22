@@ -183,6 +183,14 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
         << name << " output tensor size does not match";
   }
 
+  // add queue
+  if (BytePSGlobal::IsRootDevice() && !context.compressor_list.empty()) {
+    auto it = std::find(queue_list->begin(), queue_list->end(), PUSH);
+    it = queue_list->insert(it, COMPRESS); // before PUSH
+    it = std::find(queue_list->begin(), queue_list->end(), PULL);
+    queue_list->insert(it+1, DECOMPRESS); // after PULL
+  }
+
   std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
   e->tensor_name = name;
   e->context = &context;
