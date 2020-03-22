@@ -58,6 +58,7 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
         }
       }
       break;
+    case COMPRESS:
     case PUSH:
       if (BytePSGlobal::IsRootDevice()) {
         _rt = BytePSGlobal::GetPushTable();

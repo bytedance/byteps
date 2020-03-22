@@ -490,6 +490,47 @@ bool RunPcieReduceLoopOnce() {
   return true;
 }
 
+bool RunCompressLoopOnce() {
+  QueueType this_op = COMPRESS;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    BPS_CHECK(BytePSGlobal::IsRootDevice())
+        << "only root device should enter COMPRESS loop";
+    BPS_CHECK(task->compressor != nullptr);
+    BPS_CHECK(task->compressed == nullptr);
+
+    // spawn
+    std::thread t([task]() {
+      char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
+                                      task->offset);
+      int len = task->len;
+      int dtype = task->tensor->dtype();
+      compressor::ByteBuf grad{data, len}, compressed;
+      task->compressor->Compress(grad, dtype, compressed);
+      BPS_CHECK_LE(compressed.size, len)
+          << "Compressor Implementation Error "
+          << ", key=" << task->key << ", src_len=" << len
+          << ", compressed_len=" << compressed.size;
+
+      task->compressed = std::make_shared<decltype(compressed)>(compressed);
+
+      // restore rt
+      auto &queue_list = task->queue_list;
+      BytePSGlobal::GetScheduledQueue(queue_list[1])
+          ->reset(task->key, BytePSGlobal::GetLocalSize() - 1);
+
+      FinishOrProceed(task);
+    });
+    t.detach();
+
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+
+  return true;
+}
+
 bool RunPushLoopOnce() {
   QueueType this_op = PUSH;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -510,38 +551,12 @@ bool RunPushLoopOnce() {
       // get metadata
       const int dtype = task->tensor->dtype();
 
-      // do compression async
-      if (task->compressor) {
-        if (!task->compressed) {
-          std::thread t([task]() {
-            char *data = const_cast<char *>(
-                static_cast<const char *>(task->cpubuff) + task->offset);
-            int len = task->len;
-            int dtype = task->tensor->dtype();
-            compressor::ByteBuf grad{data, len}, compressed;
-            task->compressor->Compress(grad, dtype, compressed);
-            BPS_CHECK_LE(compressed.size, len)
-                << "Compressor Implementation Error "
-                << ", key=" << task->key << ", src_len=" << len
-                << ", compressed_len=" << compressed.size;
-
-            task->compressed =
-                std::make_shared<decltype(compressed)>(compressed);
-            // re-add to the queue
-            auto &queue_list = task->queue_list;
-            BytePSGlobal::GetScheduledQueue(queue_list[0])
-                ->reset(task->key, BytePSGlobal::GetLocalSize() - 1);
-            BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
-          });
-          t.detach();
-          return true;
-        } else {
-          BPS_LOG(DEBUG) << "PUSH  with gradient compression. key="
-                         << task->key;
-          data = task->compressed->data;
-          len = task->compressed->size;
-          task->compressed = nullptr;
-        }
+      // use compressed data/len
+      if (task->compressed) {
+        BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
+        data = task->compressed->data;
+        len = task->compressed->size;
+        task->compressed = nullptr;
       }
 
       // false means not to delete data when SArray is deleted
@@ -595,6 +610,37 @@ bool RunPullLoopOnce() {
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
+  return true;
+}
+
+bool RunDecompressLoopOnce() {
+  QueueType this_op = DECOMPRESS;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    BPS_CHECK(BytePSGlobal::IsRootDevice())
+        << "only root device should enter DECOMPRESS loop";
+    BPS_CHECK(task->compressor != nullptr);
+
+    // spawn
+    std::thread t([task]() {
+      char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
+                                      task->offset);
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
+      auto len = pskv.lens[0];
+      compressor::ByteBuf compressed{data, len}, decompressed{data, task->len};
+      int dtype = task->tensor->dtype();
+      task->compressor->Decompress(compressed, dtype, decompressed);
+      BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
+
+      FinishOrProceed(task);
+    });
+    t.detach();
+
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+
   return true;
 }
 
@@ -653,18 +699,6 @@ bool RunRootCopyHost2DeviceLoopOnce() {
     auto key = task->key;
     int local_rank = BytePSGlobal::GetLocalRank();
     int local_size = BytePSGlobal::GetLocalSize();
-
-    // do decompression
-    if (task->compressor) {
-      char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
-                                      task->offset);
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
-      auto len = pskv.lens[0];
-      compressor::ByteBuf compressed{data, len}, decompressed{data, task->len};
-      int dtype = task->tensor->dtype();
-      task->compressor->Decompress(compressed, dtype, decompressed);
-      BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
-    }
 
     if (local_size > 1) {
       // notify non-root devices
@@ -771,6 +805,12 @@ void CopyDevice2HostLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
+void CompressLoop() {
+  while (RunCompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 void PushLoop() {
   while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -779,6 +819,12 @@ void PushLoop() {
 
 void PullLoop() {
   while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void DecompressLoop() {
+  while (RunDecompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
