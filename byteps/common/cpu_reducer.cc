@@ -44,7 +44,7 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
-    _num_threads = 4;
+    _num_threads = 1;
   }
   return;
 }
