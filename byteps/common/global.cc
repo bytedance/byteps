@@ -213,7 +213,7 @@ void BytePSGlobal::Init() {
   }
 
   if (_is_root_device) {
-    size_t pool_size = 4;
+    size_t pool_size = 8;
     if (getenv("BYTEPS_THREADPOOL_SIZE")) {
       pool_size = atoi(getenv("BYTEPS_THREADPOOL_SIZE"));
     }
