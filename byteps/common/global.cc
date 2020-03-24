@@ -82,6 +82,7 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
+std::shared_ptr<ThreadPool> _thread_pool;
 
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
 unsigned int BytePSGlobal::_built_in_hash_coefficient;
@@ -209,6 +210,14 @@ void BytePSGlobal::Init() {
     _push_table = new ReadyTable(_local_size - 1, "PUSH");
   } else {
     _copy_table = new ReadyTable(1, "COPY");
+  }
+
+  if (_is_root_device) {
+    size_t pool_size = 4;
+    if (getenv("BYTEPS_THREADPOOL_SIZE")) {
+      pool_size = atoi(getenv("BYTEPS_THREADPOOL_SIZE"));
+    }
+    _thread_pool.reset(new ThreadPool(pool_size));
   }
 
   // ReadyTable for cross-PCIe-switch reduce

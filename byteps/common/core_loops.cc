@@ -501,7 +501,7 @@ bool RunCompressLoopOnce() {
     BPS_CHECK(task->compressed == nullptr);
 
     // spawn
-    std::thread t([task]() {
+    BytePSGlobal::GetThreadPool()->enqueue([task]() {
       char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
                                       task->offset);
       int len = task->len;
@@ -522,7 +522,6 @@ bool RunCompressLoopOnce() {
 
       FinishOrProceed(task);
     });
-    t.detach();
 
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -623,7 +622,7 @@ bool RunDecompressLoopOnce() {
     BPS_CHECK(task->compressor != nullptr);
 
     // spawn
-    std::thread t([task]() {
+    BytePSGlobal::GetThreadPool()->enqueue([task]() {
       char *data = const_cast<char *>(static_cast<const char *>(task->cpubuff) +
                                       task->offset);
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
@@ -635,7 +634,6 @@ bool RunDecompressLoopOnce() {
 
       FinishOrProceed(task);
     });
-    t.detach();
 
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
