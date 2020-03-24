@@ -274,6 +274,8 @@ def main():
             std_r=std_rgb[0],
             std_g=std_rgb[1],
             std_b=std_rgb[2],
+            num_parts=nworker,
+            part_index=rank
         )
         return train_data, val_data, batch_fn
 
