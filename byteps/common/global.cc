@@ -352,6 +352,7 @@ void BytePSGlobal::Shutdown() {
   // reset state, ignore profiling state
   BPS_LOG(DEBUG) << "Clear BytePS state";
   _threads.clear();
+  joined_thread_cnt = 0;
   _name_to_cxt.clear();
   _server_accumulated_len.clear();
   _total_accumulated_len = 0;
