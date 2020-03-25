@@ -155,20 +155,14 @@ def main():
             ctx = [ctx]
         net.initialize(mx.init.Xavier(), ctx=ctx)
 
-        train_dataset = gluon.data.vision.CIFAR100(train=True)
-        length = len(train_dataset)
-        begin = length * int(float(rank) / nworker)
-        end = length * int(float(rank+1) / nworker)
         train_data = gluon.data.DataLoader(
-            train_dataset[begin:end].transform_first(transform_train),
+            gluon.data.vision.CIFAR100(train=True).shard(
+                nworker, rank).transform_first(transform_train),
             batch_size=batch_size, shuffle=True, last_batch='discard', num_workers=num_workers)
 
-        val_dataset = gluon.data.vision.CIFAR100(train=False)
-        length = len(val_dataset)
-        begin = length * int(float(rank) / nworker)
-        end = length * int(float(rank+1) / nworker)
         val_data = gluon.data.DataLoader(
-            val_dataset[begin:end].transform_first(transform_test),
+            gluon.data.vision.CIFAR100(train=False).shard(
+                nworker, rank).transform_first(transform_test),
             batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
         params = net.collect_params()
@@ -238,14 +232,14 @@ def main():
 
             if rank == 0:
                 logger.info('[Epoch %d] training: %s=%f' %
-                            (epoch, name, acc))
+                             (epoch, name, acc))
                 logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
-                            (epoch, throughput, time.time()-tic))
+                             (epoch, throughput, time.time()-tic))
 
             name, val_acc = test(ctx, val_data)
             if rank == 0:
                 logger.info('[Epoch %d] validation: %s=%f' %
-                            (epoch, name, val_acc))
+                             (epoch, name, val_acc))
 
             train_history.update([1-acc, 1-val_acc])
             train_history.plot(save_path='%s/%s_history.png' %
