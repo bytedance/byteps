@@ -184,7 +184,7 @@ def main():
             del optimizer_params["momentum"]
 
         compression = bps.Compression.fp16 if opt.fp16_pushpull else bps.Compression.none
-        trainer = bps.DistributedOptimizer(params,
+        trainer = bps.DistributedTrainer(params,
                                            optimizer, optimizer_params, compression=compression)
         metric = mx.metric.Accuracy()
         train_metric = mx.metric.Accuracy()
