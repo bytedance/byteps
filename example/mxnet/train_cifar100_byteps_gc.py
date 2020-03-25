@@ -58,6 +58,8 @@ def parse_args():
                         help='resume training from the model')
     parser.add_argument('--save-plot-dir', type=str, default='.',
                         help='the path to save the history plot')
+    parser.add_argument('--logging-file', type=str, default='train_cifar100.log',
+                        help='name of training log file')
     # additional arguments for gradient compression
     parser.add_argument('--compressor', type=str, default='',
                         help='which compressor')
@@ -75,6 +77,16 @@ def parse_args():
 
 def main():
     opt = parse_args()
+
+    filehandler = logging.FileHandler(opt.logging_file)
+    streamhandler = logging.StreamHandler()
+
+    logger = logging.getLogger('')
+    logger.setLevel(logging.INFO)
+    logger.addHandler(filehandler)
+    logger.addHandler(streamhandler)
+
+    logger.info(opt)
 
     bps.init()
 
@@ -112,9 +124,6 @@ def main():
         save_period = 0
 
     plot_path = opt.save_plot_dir
-
-    logging.basicConfig(level=logging.INFO)
-    logging.info(opt)
 
     transform_train = transforms.Compose([
         gcv_transforms.RandomCrop(32, pad=4),
@@ -222,14 +231,14 @@ def main():
             throughput = int(batch_size * nworker * i / (time.time() - tic))
 
             if rank == 0:
-                logging.info('[Epoch %d] training: %s=%f' %
+                logger.info('[Epoch %d] training: %s=%f' %
                              (epoch, name, acc))
-                logging.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
+                logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
                              (epoch, throughput, time.time()-tic))
 
             name, val_acc = test(ctx, val_data)
             if rank == 0:
-                logging.info('[Epoch %d] validation: %s=%f' %
+                logger.info('[Epoch %d] validation: %s=%f' %
                              (epoch, name, val_acc))
 
             train_history.update([1-acc, 1-val_acc])
