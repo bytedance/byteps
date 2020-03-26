@@ -73,8 +73,8 @@ std::vector<std::string> BytePSGlobal::_declared_tensors;
 bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
-cudaStream_t* BytePSGlobal::_copy_device2host_stream;
-cudaStream_t* BytePSGlobal::_copy_host2device_stream;
+cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
+cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
@@ -319,8 +319,14 @@ void BytePSGlobal::Shutdown() {
     _ps = NULL;
   }
 
-  CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
-  CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+  if (_copy_device2host_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
+    _copy_device2host_stream = NULL;
+  }
+  if (_copy_host2device_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+    _copy_host2device_stream = NULL;
+  }
 
   if (_reduce_table) {
     delete _reduce_table;
