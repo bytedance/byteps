@@ -21,6 +21,8 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
+import pre_setup
+
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
@@ -271,7 +273,7 @@ def get_common_options(build_ext):
 
     # RDMA and NUMA libs
     LIBRARIES += ['numa']
-    
+
     # auto-detect rdma
     if has_rdma_header():
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
@@ -293,7 +295,7 @@ def get_common_options(build_ext):
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
     server_lib.include_dirs = options['INCLUDES']
-    server_lib.sources = ['byteps/server/server.cc', 
+    server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
                           'byteps/common/logging.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
@@ -785,12 +787,14 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
+        pre_setup.setup()
+
         make_option = ""
         # To resolve tf-gcc incompatibility
         has_cxx_flag = False
         glibcxx_flag = False
         if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
-            try: 
+            try:
                 import tensorflow as tf
                 make_option += 'ADD_CFLAGS="'
                 for flag in tf.sysconfig.get_compile_flags():
@@ -805,7 +809,7 @@ class custom_build_ext(build_ext):
 
         # To resolve torch-gcc incompatibility
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
-            try: 
+            try:
                 import torch
                 torch_flag = torch.compiled_with_cxx11_abi()
                 if has_cxx_flag:
@@ -828,8 +832,10 @@ class custom_build_ext(build_ext):
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
-                make_option += "USE_RDMA=1 "            
- 
+                make_option += "USE_RDMA=1 "
+
+            make_option += pre_setup.extra_make_option()
+
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
