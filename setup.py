@@ -21,6 +21,8 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
+import pre_setup
+
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
@@ -781,17 +783,11 @@ def build_torch_extension(build_ext, options, torch_version):
         pytorch_lib.__dict__[k] = v
     build_ext.build_extension(pytorch_lib)
 
-def execute_cmd(cmd):
-    make_process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr, shell=True)
-    make_process.communicate()
-    if make_process.returncode:
-        raise DistutilsSetupError('An ERROR occured while running the command: \n' +
-            cmd + '\n Exit code: {0}'.format(make_process.returncode))
 
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
-        execute_cmd(os.environ.get('BYTEPS_PRE_SETUP_SCRIPT', ''))
+        pre_setup.setup()
 
         make_option = ""
         # To resolve tf-gcc incompatibility
@@ -838,7 +834,8 @@ class custom_build_ext(build_ext):
             if has_rdma_header():
                 make_option += "USE_RDMA=1 "
 
-            make_option += os.environ.get('BYTEPS_EXTRA_MAKE_OPTION', '')
+            make_option += pre_setup.extra_make_option()
+
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
