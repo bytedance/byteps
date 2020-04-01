@@ -102,8 +102,17 @@ class BytePSCommSocket : public BytePSComm {
     if ((_root == _local_rank) && _listen_thread) {
       _listen_thread->join();
     }
-    close(_recv_fd);
     close(_send_fd);
+    close(_recv_fd);
+
+    auto fd_path = _send_path + std::to_string(_local_rank);
+    if (!std::remove(fd_path.c_str())) {
+      BPS_LOG(DEBUG) << "Clear socket " << fd_path;
+    }
+    fd_path = _recv_path + std::to_string(_local_rank);
+    if (!std::remove(fd_path.c_str())) {
+      BPS_LOG(DEBUG) << "Clear socket " << fd_path;
+    }
 
     BPS_LOG(DEBUG) << "Clear BytePSCommSocket"
                    << " (rank=" << _local_rank << ")";
