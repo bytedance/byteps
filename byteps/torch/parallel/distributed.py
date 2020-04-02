@@ -256,6 +256,10 @@ class DistributedDataParallel(Module):
 
         # broadcast parameters
 #        bps.torch.broadcast_parameters(named_parameters, root_rank=0)
+        module_states = list(self.module.state_dict().values())
+        if len(module_states) > 0:
+            bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
+
 
     def forward(self, *inputs, **kwargs):
         return self.module(*inputs, **kwargs)
