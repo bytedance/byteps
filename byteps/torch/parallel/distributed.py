@@ -350,9 +350,9 @@ class DistributedDataParallel(Module):
 #            print(threading.get_ident(), "1 new handle ", handle)
 #            if last one then sync.self.synchronize() will be triggerred only
 #            once
-            if grad_count == self._num_grads:
+#            if grad_count == self._num_grads:
 #                print(threading.get_ident(), "1 last handle ", handle)
-                self.synchronize()
+#                self.synchronize()
         return hook
 
 # needs mod
@@ -372,7 +372,7 @@ class DistributedDataParallel(Module):
         for p, (handle, _) in self._handles.items():
 #            print(threading.get_ident(), "handle", handle)
             output = synchronize(handle)
-            if output is not None:
+#            if output is not None:
 #                print(threading.get_ident(), "1 removed handle ", handle)
             if not self._enable_async:
 #                print("output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
