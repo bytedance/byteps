@@ -9,91 +9,35 @@ import byteps as bps
 from byteps.torch.compression import Compression
 from torch.cuda._utils import _get_device_index
 
-import threading
-import logging
-
-logging.basicConfig(format="%(threadName)s:%(message)s")
-# Gets or creates a logger
-logger = logging.getLogger(__name__)
-
-# set log level
-logger.setLevel(logging.DEBUG)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-#formatter = logging.Formatter(threading.currentThread().getName() + " - %(levelname)s - %(message)s")
-formatter = logging.Formatter("%(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
 class DistributedDataParallel(Module):
     r"""Implements distributed data parallelism that is based on
-    ``torch.distributed`` package at the module level.
+    byteps push-pull.
 
-    This container parallelizes the application of the given module by
-    splitting the input across the specified devices by chunking in the batch
-    dimension. The module is replicated on each machine and each device, and
-    each such replica handles a portion of the input. During the backwards
-    pass, gradients from each node are averaged.
+    This container parallelizes the application of the given module by splitting
+    the input across multiple devices, and each device handles a portion of the
+    input. During the backwards pass, gradients from each node are averaged.
 
-    The batch size should be larger than the number of GPUs used locally.
+    ``DistributedDataParallel`` can be used in the following way:
 
-    See also: :ref:`distributed-basics` and :ref:`cuda-nn-dataparallel-instead`.
-    The same constraints on input as in :class:`torch.nn.DataParallel` apply.
+    Single-Process Single-GPU
 
-    Creation of this class requires that ``torch.distributed`` to be already
-    initialized, by calling :func:`torch.distributed.init_process_group`.
-
-    ``DistributedDataParallel`` can be used in the following two ways:
-
-    (1) Single-Process Multi-GPU
-
-    In this case, a single process will be
-    spawned on each host/node and each process will operate on all the GPUs
-    of the node where it's running. To use ``DistributedDataParallel`` in
-    this way, you can simply construct the model as the following:
-
-        >>> torch.distributed.init_process_group(backend="nccl")
-        >>> model = DistributedDataParallel(model) # device_ids will include all GPU devices by default
-
-    (2) Multi-Process Single-GPU
-
-    This is the highly recommended way to use ``DistributedDataParallel``, with
-    multiple processes, each of which operates on a single GPU. This is
-    currently the fastest approach to do data parallel training using PyTorch
-    and applies to both single-node(multi-GPU) and multi-node data
-    parallel training. It is proven to be significantly faster than
-    :class:`torch.nn.DataParallel` for single-node multi-GPU data
-    parallel training.
+    This is currently the only way to use ``DistributedDataParallel``, with
+    multiple processes, each of which operates on a single GPU.
 
     Here is how to use it: on each host with N GPUs, you should spawn up N
-    processes, while ensuring that each process individually works on a single GPU
-    from 0 to N-1. Therefore, it is your job to ensure that your training script
-    operates on a single given GPU by calling:
+    processes, while ensuring that each process individually works on a single
+    GPU from 0 to N-1. Therefore, it is your job to ensure that your training
+    script operates on a single given GPU by calling:
 
         >>> torch.cuda.set_device(i)
 
     where i is from 0 to N-1. In each process, you should refer the following
     to construct this module:
 
-        >>> torch.distributed.init_process_group(backend='nccl', world_size=4, init_method='...')
-        >>> model = DistributedDataParallel(model, device_ids=[i], output_device=i)
+        >>> model = DistributedDataParallel(model, device_ids=[i])
 
     In order to spawn up multiple processes per node, you can use either
     ``torch.distributed.launch`` or ``torch.multiprocessing.spawn``
-
-    .. note:: ``nccl`` backend is currently the fastest and
-        highly recommended backend to be used with Multi-Process Single-GPU
-        distributed training and this applies to both single-node and multi-node
-        distributed training
-
-    .. note:: This module also supports mixed-precision distributed training.
-        This means that your model can have different types of parameters such
-        as mixed types of fp16 and fp32, the gradient reduction on these
-        mixed types of parameters will just work fine.
-        Also note that ``nccl`` backend is currently the fastest and highly
-        recommended backend for fp16/fp32 mixed-precision training.
 
     .. note:: If you use ``torch.save`` on one process to checkpoint the module,
         and ``torch.load`` on some other processes to recover it, make sure that
@@ -102,7 +46,7 @@ class DistributedDataParallel(Module):
         where the module was saved from.
 
     .. warning::
-        This module works only with the ``gloo`` and ``nccl`` backends.
+        This module works only with the ``device_ids`` containing one entry.
 
     .. warning::
         Constructor, forward method, and differentiation of the output (or a
@@ -116,29 +60,12 @@ class DistributedDataParallel(Module):
         Same applies to buffers.
 
     .. warning::
-        This module assumes all parameters are registered in the model of each
-        distributed processes are in the same order. The module itself will
-        conduct gradient all-reduction following the reverse order of the
-        registered parameters of the model. In other words, it is users'
-        responsibility to ensure that each distributed process has the exact
-        same model and thus the exact same parameter registration order.
-
-    .. warning::
         This module assumes all buffers and gradients are dense.
 
     .. warning::
         This module doesn't work with :func:`torch.autograd.grad` (i.e. it will
         only work if gradients are to be accumulated in ``.grad`` attributes of
         parameters).
-
-    .. warning::
-
-        If you plan on using this module with a ``nccl`` backend or a ``gloo``
-        backend (that uses Infiniband), together with a DataLoader that uses
-        multiple workers, please change the multiprocessing start method to
-        ``forkserver`` (Python 3 only) or ``spawn``. Unfortunately
-        Gloo (that uses Infiniband) and NCCL2 are not fork safe, and you will
-        likely experience deadlocks if you don't change this setting.
 
     .. warning::
         Forward and backward hooks defined on :attr:`module` and its submodules
@@ -160,83 +87,50 @@ class DistributedDataParallel(Module):
         Parameters are never broadcast between processes. The module performs
         an all-reduce step on gradients and assumes that they will be modified
         by the optimizer in all processes in the same way. Buffers
-        (e.g. BatchNorm stats) are broadcast from the module in process of rank
-        0, to all other replicas in the system in every iteration.
+        (e.g. BatchNorm stats) are broadcast from the module in rank 0 to all
+        other replicas in the system in every iteration.
+
+    .. note::
+        Some models have branches, part of the model is skipped during the
+        forward pass. In that case it's required to call the
+        DistributedDataParallel.synchronize() after loss.backward(), e.g:
+
+            >>> model = DistributedDataParallel(model, device_ids=[i])
+            >>> output = model(data)
+            >>> loss = F.nll_loss(output, target)
+            >>> loss.backward()
+            >>> model.synchronize()
+            >>> optimizer.step()
 
     Args:
         module (Module): module to be parallelized
         device_ids (list of int or torch.device): CUDA devices. This should
-                   only be provided when the input module resides on a single
-                   CUDA device. For single-device modules, the ``i``th
-                   :attr:`module` replica is placed on ``device_ids[i]``. For
-                   multi-device modules and CPU modules, device_ids must be None
-                   or an empty list, and input data for the forward pass must be
-                   placed on the correct device. (default: all devices for
-                   single-device modules)
-        output_device (int or torch.device): device location of output for
-                      single-device CUDA modules. For multi-device modules and
-                      CPU modules, it must be None, and the module itself
-                      dictates the output location. (default: device_ids[0] for
-                      single-device modules)
+                   contain only one entry. The `module` replica is placed on
+                   ``device_ids[0]``.
         broadcast_buffers (bool): flag that enables syncing (broadcasting) buffers of
                           the module at beginning of the forward function.
                           (default: ``True``)
-        process_group: the process group to be used for distributed data
-                       all-reduction. If ``None``, the default process group, which
-                       is created by ```torch.distributed.init_process_group```,
-                       will be used. (default: ``None``)
-        bucket_cap_mb: DistributedDataParallel will bucket parameters into
-                       multiple buckets so that gradient reduction of each
-                       bucket can potentially overlap with backward computation.
-                       :attr:`bucket_cap_mb` controls the bucket size in MegaBytes (MB)
-                       (default: 25)
-        find_unused_parameters (bool): Traverse the autograd graph of all tensors
-                                       contained in the return value of the wrapped
-                                       module's ``forward`` function.
-                                       Parameters that don't receive gradients as
-                                       part of this graph are preemptively marked
-                                       as being ready to be reduced. Note that all
-                                       ``forward`` outputs that are derived from
-                                       module parameters must participate in
-                                       calculating loss and later the gradient
-                                       computation. If they don't, this wrapper will
-                                       hang waiting for autograd to produce gradients
-                                       for those parameters. Any outputs derived from
-                                       module parameters that are otherwise unused can
-                                       be detached from the autograd graph using
-                                       ``torch.Tensor.detach``. (default: ``False``)
-        check_reduction: when setting to ``True``, it enables DistributedDataParallel
-                         to automatically check if the previous iteration's
-                         backward reductions were successfully issued at the
-                         beginning of every iteration's forward function.
-                         You normally don't need this option enabled unless you
-                         are observing weird behaviors such as different ranks
-                         are getting different gradients, which should not
-                         happen if DistributedDataParallel is correctly used.
-                         (default: ``False``)
 
     Attributes:
         module (Module): the module to be parallelized
 
     Example::
 
-        >>> torch.distributed.init_process_group(backend='nccl', world_size=4, init_method='...')
-        >>> net = torch.nn.DistributedDataParallel(model, pg)
+        >>> net = torch.nn.DistributedDataParallel(model, device_ids=[2])
     """
     def __init__(self, module, device_ids=None,
-            output_device=None, dim=0, broadcast_buffers=True,
-            process_group=None, bucket_cap_mb=25,
-            find_unused_parameters=False,
-            check_reduction=False,
+            broadcast_buffers=True,
             compression=Compression.none
             ):
         super(DistributedDataParallel, self).__init__()
 
+        assert device_ids and len(device_ids) == 1, (
+                "DistributedDataParallel device_ids contain exactlyone entry,"
+                " but got {}.").format(device_ids)
         self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
         self.broadcast_buffers = broadcast_buffers
         self.require_forward_param_sync = True
-#        self.module = self.patchSyncBatchNorm(module)
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
@@ -280,13 +174,10 @@ class DistributedDataParallel(Module):
         for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
 
-        # broadcast parameters
-#        bps.torch.broadcast_parameters(named_parameters, root_rank=0)
+        # broadcast model state
         module_states = list(self.module.state_dict().values())
         if len(module_states) > 0:
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
-        self. _passing_sync_batchnorm_handle()
-
 
     def forward(self, *inputs, **kwargs):
         if self.require_forward_param_sync:
@@ -295,36 +186,11 @@ class DistributedDataParallel(Module):
 
     def _sync_params(self):
         with torch.no_grad():
-            # module buffer sync
+            # sync module buffers
             if self.broadcast_buffers and len(self.modules_buffers[0]) > 0:
-#                print("xbxbxbgxbxb about to broadcast_buffers")
-#                if not self.training:
-#                    print("xbxbxbgxbxb skipping broadcast_buffers")
-#                    return
                 # Synchronize buffers across processes.
                 # The process with rank 0 is considered the authoritative copy.
-#                self._distributed_broadcast_coalesced(
-#                    self.modules_buffers[0],
-#                    self.broadcast_bucket_size)
                 bps.torch.broadcast_parameters(self.modules_buffers[0], root_rank=0)
-
-    @contextmanager
-    def no_sync(self):
-        r"""
-        A context manager to disable gradient synchronizations across DDP
-        processes. Within this context, gradients will be accumulated on module
-        variables, which will later be synchronized in the first
-        forward-backward pass exiting the context.
-
-        Example::
-
-            >>> ddp = torch.nn.DistributedDataParallel(model, pg)
-            >>> with ddp.no_sync():
-            ...   for input in inputs:
-            ...     ddp(input).backward()  # no synchronization, accumulate grads
-            ... ddp(another_input).backward()  # synchronize grads
-        """
-        pass
 
     def _register_hooks(self):
         for _, p in self.module.named_parameters():
@@ -347,8 +213,6 @@ class DistributedDataParallel(Module):
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
-            # todo: need to make a new function which calls synchronize on the
-            # last parameter
             handle, grad_count = byteps_push_pull_group(tensor_compressed, average=True,
                     name="Gradient."+name)
         return handle, ctx, grad_count
@@ -371,81 +235,25 @@ class DistributedDataParallel(Module):
         def hook(*ignore):
             handle, ctx = None, None
             handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
-#            handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
-#            print(threading.get_ident(), "1 new handle ", handle)
-#            if last one then sync.self.synchronize() will be triggerred only
-#            once
+            # sync if we have processed all gradients
             if grad_count == self._num_grads:
-#                print(threading.get_ident(), "1 last handle ", handle)
                 self.synchronize()
         return hook
 
-# needs mod
     def synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
             handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
             self._handles[p] = (handle, ctx)
-#            print(" 2 new handle ", handle)
 
         for p, value in self._handles.items():
             handle, ctx = value
             if handle is None:
                 handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
                 self._handles[p] = (handle, ctx)
-#                print(" 3 new handle ", handle)
-#        print("xxxxxxxx num_handles_to_sync: ", len(self._handles), "self._num_grads: ", self._num_grads)
         for p, (handle, _) in self._handles.items():
-#            print(threading.get_ident(), "handle", handle)
             output = synchronize(handle)
-#            if output is not None:
-#                print(threading.get_ident(), "1 removed handle ", handle)
             if not self._enable_async:
-#                print("output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
-#                print(threading.get_ident(), "output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
-
-    def patchSyncBatchNorm(self, module):
-        '''Recursively replace all SyncBatchNorm layers.
-
-        Args:
-            module[torch.nn.Module]. Network
-        '''
-#        print("xxxxxxxxx inside patching, type: ", type(module))
-#        if isinstance(module, torch.nn.modules.batchnorm.SyncBatchNorm):
-        if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
-#            print("xxx Found target, replacing")
-            sync_bn = bps.torch.parallel.batchnorm.SyncBatchNorm(module.num_features, module.eps, module.momentum,
-                                             module.affine, module.track_running_stats,
-                                             None #process_group
-                                             )
-            sync_bn.running_mean = module.running_mean
-            sync_bn.running_var = module.running_var
-            if module.affine:
-#                sync_bn.weight = module.weight.clone().detach()
-#                sync_bn.bias = module.bias.clone().detach()
-                sync_bn.weight = module.weight
-                sync_bn.bias = module.bias
-            sync_bn._specify_ddp_gpu_num(len(self.device_ids) if self.device_ids else 1)
-            return sync_bn
-        else:
-            for name, child_module in module.named_children():
-                setattr(module, name, self.patchSyncBatchNorm(child_module))
-            return module
-
-    def _passing_sync_batchnorm_handle(self):
-        for layer in self.module.modules():
-            if isinstance(layer, torch.nn.modules.SyncBatchNorm):
-                assert self.is_cuda, "SyncBatchNorm layers only work with CUDA modules"
-                layer._specify_ddp_gpu_num(
-                    len(self.device_ids) if self.device_ids else 1)
-
-#    def _passing_sync_batchnorm_handle(self):
-#        for dev_idx, module in enumerate(module_copies):
-#            for layer in module.modules():
-#                if isinstance(layer, torch.nn.modules.SyncBatchNorm):
-#                    assert self.is_cuda, "SyncBatchNorm layers only work with CUDA modules"
-#                    layer._specify_ddp_gpu_num(
-#                        len(self.device_ids) if self.device_ids else 1)

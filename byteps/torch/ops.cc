@@ -26,7 +26,6 @@
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
-#include <iostream>
 
 namespace byteps {
 namespace torch {
@@ -107,6 +106,7 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
 }
 
 void SetNumGrads(int num_grads) {
+  std::lock_guard<std::mutex> lock(mutex_);
   num_grads_ = num_grads;
   grad_count_ = 0;
   return;
@@ -127,8 +127,10 @@ void WaitAndClear(int handle) {
   ThrowIfError(*status);
 }
 
-pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string& name, int version, int priority) {
+pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor,
+                                    ::torch::Tensor output, int average,
+                                    const std::string& name, int version,
+                                    int priority) {
   ThrowIfError(common::CheckInitialized());
 
   auto handle = handle_manager.AllocateHandle();
@@ -139,7 +141,8 @@ pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor outp
   if (context.initialized) {
     StartTask(tensor, output, average, tensor_name, version, priority, handle);
   } else {
-    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
+    std::thread t(StartTask, tensor, output, average, tensor_name, version,
+                  priority, handle);
     t.detach();
   }
 
@@ -148,14 +151,11 @@ pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor outp
     grad_count_++;
     curr_count = grad_count_;
     if (grad_count_ == num_grads_) {
-//      WaitAndClear(handle);
       grad_count_ = 0;
     }
   }
 
-//  std::cout << "inside CXX handle: " << handle << " current count: " << curr_count << std::endl;
   return pybind11::make_tuple(handle, curr_count);
-//  return handle;
 }
 
 PYBIND11_MODULE(c_lib, m) {

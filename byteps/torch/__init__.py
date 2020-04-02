@@ -257,7 +257,7 @@ def broadcast_parameters(params, root_rank):
         params = sorted(params.items())
     elif isinstance(params, list):
         # support both named_parameters() and regular parameters()
-        params = [p if isinstance(p, tuple) else ("", p) for p in params]
+        params = [p if isinstance(p, tuple) else (None, p) for p in params]
     else:
         raise ValueError('invalid params of type: %s' % type(params))
 
@@ -268,7 +268,10 @@ def broadcast_parameters(params, root_rank):
         if rank() != root_rank:
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
-        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        if name:
+            handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        else:
+            handle = byteps_push_pull(p, average=False)
         synchronize(handle)
 
 

@@ -31,7 +31,9 @@ namespace torch {
 using namespace byteps::common;
 
 std::mutex mutex_;
+/* total number of gradients to push-pull */
 size_t num_grads_;
+/* number of push-pulls that have been triggered */
 size_t grad_count_;
 
 #define PUSHPULL_H(torch_Tensor, THTensor)                         \
