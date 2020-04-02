@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from byteps.torch.ops import size, local_size, rank, local_rank
 import byteps as bps
 from byteps.torch.compression import Compression
+from torch.cuda._utils import _get_device_index
 
 import threading
 import logging
@@ -231,16 +232,13 @@ class DistributedDataParallel(Module):
             ):
         super(DistributedDataParallel, self).__init__()
 
+        self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
+#        self.module = self.patchSyncBatchNorm(module)
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
         self._num_grads = 1
-        if size() > 1:
-            self._register_hooks()
-            named_params = self.module.named_parameters()
-            self._num_grads = sum(p.requires_grad for _, p in named_params)
-            byteps_torch_set_num_grads(self._num_grads)
 
         self._compression = compression
         self._enable_async = False
@@ -266,6 +264,12 @@ class DistributedDataParallel(Module):
             self._parameter_names = {v: 'push_pull.noname.%s' % i
                                      for param_group in self.param_groups
                                      for i, v in enumerate(param_group['params'])}
+        if size() > 1:
+            self._register_hooks()
+            named_params = self.module.named_parameters()
+            self._num_grads = sum(p.requires_grad for _, p in named_params)
+            byteps_torch_set_num_grads(self._num_grads)
+
         # declare tensors
         for name in sorted(self._parameter_names.values()):
             declare("Gradient."+name)
@@ -278,6 +282,7 @@ class DistributedDataParallel(Module):
         module_states = list(self.module.state_dict().values())
         if len(module_states) > 0:
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
+        self. _passing_sync_batchnorm_handle()
 
 
     def forward(self, *inputs, **kwargs):
@@ -348,7 +353,8 @@ class DistributedDataParallel(Module):
     def _make_hook(self, p, num_grads):
         def hook(*ignore):
             handle, ctx = None, None
-            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
+#            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
+            handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
 #            print(threading.get_ident(), "1 new handle ", handle)
 #            if last one then sync.self.synchronize() will be triggerred only
@@ -372,6 +378,7 @@ class DistributedDataParallel(Module):
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
 #                print(" 3 new handle ", handle)
+#        print("xxxxxxxx num_handles_to_sync: ", len(self._handles), "self._num_grads: ", self._num_grads)
         for p, (handle, _) in self._handles.items():
 #            print(threading.get_ident(), "handle", handle)
             output = synchronize(handle)
@@ -382,3 +389,46 @@ class DistributedDataParallel(Module):
 #                print(threading.get_ident(), "output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
+
+    def patchSyncBatchNorm(self, module):
+        '''Recursively replace all SyncBatchNorm layers.
+
+        Args:
+            module[torch.nn.Module]. Network
+        '''
+#        print("xxxxxxxxx inside patching, type: ", type(module))
+#        if isinstance(module, torch.nn.modules.batchnorm.SyncBatchNorm):
+        if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
+#            print("xxx Found target, replacing")
+            sync_bn = bps.torch.parallel.batchnorm.SyncBatchNorm(module.num_features, module.eps, module.momentum,
+                                             module.affine, module.track_running_stats,
+                                             None #process_group
+                                             )
+            sync_bn.running_mean = module.running_mean
+            sync_bn.running_var = module.running_var
+            if module.affine:
+#                sync_bn.weight = module.weight.clone().detach()
+#                sync_bn.bias = module.bias.clone().detach()
+                sync_bn.weight = module.weight
+                sync_bn.bias = module.bias
+            sync_bn._specify_ddp_gpu_num(len(self.device_ids) if self.device_ids else 1)
+            return sync_bn
+        else:
+            for name, child_module in module.named_children():
+                setattr(module, name, self.patchSyncBatchNorm(child_module))
+            return module
+
+    def _passing_sync_batchnorm_handle(self):
+        for layer in self.module.modules():
+            if isinstance(layer, torch.nn.modules.SyncBatchNorm):
+                assert self.is_cuda, "SyncBatchNorm layers only work with CUDA modules"
+                layer._specify_ddp_gpu_num(
+                    len(self.device_ids) if self.device_ids else 1)
+
+#    def _passing_sync_batchnorm_handle(self):
+#        for dev_idx, module in enumerate(module_copies):
+#            for layer in module.modules():
+#                if isinstance(layer, torch.nn.modules.SyncBatchNorm):
+#                    assert self.is_cuda, "SyncBatchNorm layers only work with CUDA modules"
+#                    layer._specify_ddp_gpu_num(
+#                        len(self.device_ids) if self.device_ids else 1)
