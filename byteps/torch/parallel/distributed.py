@@ -3,8 +3,8 @@ from torch.nn.modules import Module
 from byteps.torch.ops import push_pull_group_sync_inplace as byteps_push_pull_group
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import poll, synchronize, declare, byteps_torch_set_num_grads
-from contextlib import contextmanager
 from byteps.torch.ops import size, local_size, rank, local_rank
+from contextlib import contextmanager
 import byteps as bps
 from byteps.torch.compression import Compression
 from torch.cuda._utils import _get_device_index
@@ -334,9 +334,6 @@ class DistributedDataParallel(Module):
                 p_tmp = p.expand_as(p)
                 grad_acc = p_tmp.grad_fn.next_functions[0][0]
                 grad_acc.register_hook(self._make_hook(p, self._num_grads))
-#                p_tmp.grad_fn.register_hook(self._make_hook(p, self._num_grads))
-#                grad_acc = p_tmp.grad_fn
-#                grad_acc.register_hook(self._make_hook(p, self._num_grads))
                 self._grad_accs.append(grad_acc)
 
     def _push_pull_grad_group_sync(self, p, num_grads_):
@@ -373,29 +370,29 @@ class DistributedDataParallel(Module):
     def _make_hook(self, p, num_grads):
         def hook(*ignore):
             handle, ctx = None, None
-#            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
-            handle, ctx = self._push_pull_grad_async(p)
+            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
+#            handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
 #            print(threading.get_ident(), "1 new handle ", handle)
 #            if last one then sync.self.synchronize() will be triggerred only
 #            once
-#            if grad_count == self._num_grads:
+            if grad_count == self._num_grads:
 #                print(threading.get_ident(), "1 last handle ", handle)
-#                self.synchronize()
+                self.synchronize()
         return hook
 
 # needs mod
     def synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
-            handle, ctx = self._push_pull_grad_async(p)
+            handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
             self._handles[p] = (handle, ctx)
 #            print(" 2 new handle ", handle)
 
         for p, value in self._handles.items():
             handle, ctx = value
             if handle is None:
-                handle, ctx = self._push_pull_grad_async(p)
+                handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
                 self._handles[p] = (handle, ctx)
 #                print(" 3 new handle ", handle)
 #        print("xxxxxxxx num_handles_to_sync: ", len(self._handles), "self._num_grads: ", self._num_grads)

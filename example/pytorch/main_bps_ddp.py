@@ -82,7 +82,6 @@ best_acc1 = 0
 
 
 def main():
-#    torch.set_printoptions(threshold=10000)
     args = parser.parse_args()
     bps.init()
 
@@ -112,7 +111,6 @@ def main():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-#        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
         args.gpu = bps.local_rank()
         main_worker(args.gpu, ngpus_per_node, args)
     else:
@@ -134,8 +132,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-#        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-#                                world_size=args.world_size, rank=args.rank)
+
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
@@ -157,24 +154,6 @@ def main_worker(gpu, ngpus_per_node, args):
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = DDP(model, device_ids=[args.gpu])
-        else:
-            xxxxxxxxxxxxxxxx
-            model.cuda()
-            # DistributedDataParallel will divide and allocate batch_size to all
-            # available GPUs if device_ids are not set
-            model = DDP(model)
-    elif args.gpu is not None:
-        xxxxxxxxxxxxxxxxxxxx
-        torch.cuda.set_device(args.gpu)
-        model = model.cuda(args.gpu)
-    else:
-        xxxxxxxxxxxxxxx
-        # DataParallel will divide and allocate batch_size to all available GPUs
-        if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
-            model.features = torch.nn.DataParallel(model.features)
-            model.cuda()
-        else:
-            model = torch.nn.DataParallel(model).cuda()
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
@@ -205,7 +184,6 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-#    bps.broadcast_optimizer_state(optimizer, root_rank=0)
     cudnn.benchmark = True
 
     # Data loading code
@@ -224,18 +202,14 @@ def main_worker(gpu, ngpus_per_node, args):
         ]))
 
     if args.distributed:
-#        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         train_sampler = torch.utils.data.distributed.DistributedSampler(
                 train_dataset, num_replicas=bps.size(), rank=bps.rank())
     else:
         train_sampler = None
 
-#    print("XXX rank: ", bps.rank(), " past training sampler dataloader num workers: ", args.workers)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-#        num_workers=args.workers, pin_memory=True, drop_last=True, sampler=train_sampler)
-#    print("XXX rank: ", bps.rank(), " past training loader")
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
@@ -259,7 +233,6 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
-#        bps.broadcast_parameters(model.state_dict(), root_rank=0)
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
 
@@ -274,7 +247,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
-#                'optimizer' : optimizer.state_dict(),
+                'optimizer' : optimizer.state_dict(),
             }, is_best)
 
 
@@ -289,16 +262,11 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         [batch_time, data_time, losses, top1, top5],
         prefix="Epoch: [{}]".format(epoch))
 
-    print("XXX rank: ", bps.rank(), "batch size: ", args.batch_size, "num of train minibatches: ", len(train_loader))
     # switch to train mode
     model.train()
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
-#        if i > 10:
-#            continue
-#        if i == 0:
-#            print("XXX rank: ", bps.rank(), " inside training loop")
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -319,45 +287,15 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
-        model.synchronize()
+#        model.synchronize()
 
-#        with open('rank-' + str(bps.rank()) + '-out.txt', 'w') as f:
-#            print('Filename:', filename, file=f)
-#
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank())
-#            for name, ten in model.named_parameters():
-#                print("name: ", name, "tensor: ", ten, file=f)
-#            for ten in model.state_dict():
-#                print("tensor: ", ten, file=f)
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
         optimizer.step()
-#        bps.broadcast_parameters(model.state_dict(), root_rank=0)
-#        pram_dict = {name: ten.clone() for name, ten in model.named_parameters()}
-#        bps.broadcast_parameters(param_dict, root_rank=0)
-#        with open('rank-' + str(bps.rank()) + '-updated-out.txt', 'w') as f:
-#
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank())
-#            for name, ten in model.named_parameters(recurse=True):
-#                print("name: ", name, "shape: ", ten.shape, "tensor: ", ten, file=f)
-#                print("tensor: ", name, file=f)
-#            for name in model.state_dict():
-#                print("name: ", name, "tensor: ", model.state_dict()[name], file=f)
-#                print("name: ", name, "tensor: ", model.state_dict()[name].name, file=f)
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
-        with open('rank-' + str(bps.rank()) + '-updated-out-with-content.txt', 'w') as f:
-
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww start", file=f)
-            for name in model.state_dict():
-                print("name: ", name, "tensor: ", model.state_dict()[name], file=f)
-                print("name: ", name, "tensor: ", model.state_dict()[name].name, file=f)
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
         if i % args.print_freq == 0:
-            print("training rank: ", bps.rank(), end=" ")
             progress.display(i)
 
 
@@ -371,33 +309,12 @@ def validate(val_loader, model, criterion, args):
         [batch_time, losses, top1, top5],
         prefix='Test: ')
 
-    print("XXX rank: ", bps.rank(), "batch size: ", args.batch_size, "num of val minibatches: ", len(val_loader))
     # switch to evaluate mode
     model.eval()
 
     with torch.no_grad():
         end = time.time()
-        f = open('rank-' + str(bps.rank()) + '-validation-data.txt', 'w')
-        with open('rank-' + str(bps.rank()) + '-model-state_dict-before-validation.txt', 'w') as f_model:
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww start", file=f_model)
-            for name in model.state_dict():
-                print("name: ", name, "tensor: ", model.state_dict()[name], file=f_model)
-                print("name: ", name, "tensor: ", model.state_dict()[name].name, file=f_model)
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f_model)
-
         for i, (images, target) in enumerate(val_loader):
-#            if i > 10:
-#                continue
-#            print(type(images))
-#            with open('rank-' + str(bps.rank()) + '-validation-data.txt', 'w') as f:
-#
-#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank(), file=f)
-#                print("tensor: ", images, file=f)
-#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww", file=f)
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank(), "iter: ", i, file=f)
-            print("images: ", images, file=f)
-            print("target: ", target, file=f)
-            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww", file=f)
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
@@ -417,7 +334,6 @@ def validate(val_loader, model, criterion, args):
             end = time.time()
 
             if i % args.print_freq == 0:
-                print("validation rank: ", bps.rank(), end=" ")
                 progress.display(i)
 
         # TODO: this should also be done with the ProgressMeter
