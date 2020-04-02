@@ -75,12 +75,12 @@ def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     _handle_map[handle] = (tensor, output)
     return handle
 
-def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0, num_grads):
+def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0):
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_group_function_factory, tensor)
     handle = getattr(c_lib, function)(tensor, output, average,
                                       name.encode() if name is not None else _NULL,
-                                      version, priority, num_grads)
+                                      version, priority)
     _handle_map[handle] = (tensor, output)
     return handle
 
@@ -173,8 +173,8 @@ def push_pull_async_inplace(tensor, average=True, name=None, version=0, priority
     """
     return _do_push_pull_async(tensor, tensor, average, name, version, priority)
 
-def push_pull_group_sync_inplace(tensor, average=True, name=None, version=0, priority=0, num_grads=2):
-    return _do_push_pull_group_sync(tensor, tensor, average, name, version, priority, num_grads)
+def push_pull_group_sync_inplace(tensor, average=True, name=None, version=0, priority=0):
+    return _do_push_pull_group_sync(tensor, tensor, average, name, version, priority)
 
 def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0):
     """
@@ -215,6 +215,9 @@ def declare(name):
     c_lib.byteps_torch_declare_tensor(name.encode())
     return 0
 
+def byteps_torch_set_num_grads(num_grads_):
+    c_lib.byteps_torch_set_num_grads(num_grads_)
+    return 0
 
 def synchronize(handle):
     """

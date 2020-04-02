@@ -10,7 +10,7 @@ import byteps.torch as bps
 import timeit
 import numpy as np
 import os, sys
-from byteps.torchparallel import DistributedDataParallel as DDP
+from byteps.torch.parallel import DistributedDataParallel as DDP
 
 # Benchmark settings
 parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
@@ -60,7 +60,7 @@ if args.cuda:
 
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
-model = DDP(model, device_ids=[gpu])
+model = DDP(model, device_ids=[bps.local_rank()])
 # BytePS: (optional) compression algorithm.
 #compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 

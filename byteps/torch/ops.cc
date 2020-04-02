@@ -22,6 +22,7 @@
 
 #include "../common/operations.h"
 #include "adapter.h"
+#include "ops.h"
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
@@ -110,6 +111,21 @@ void SetNumGrads(int num_grads) {
   return;
 }
 
+int PollHandle(int handle) { return handle_manager.PollHandle(handle) ? 1 : 0; }
+
+void DeclareTensor(const std::string& name) {
+  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+  common::IsTensorDeclared(tensor_name);
+}
+
+void WaitAndClear(int handle) {
+  while (!handle_manager.PollHandle(handle)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  auto status = handle_manager.ReleaseHandle(handle);
+  ThrowIfError(*status);
+}
+
 int DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int average,
                const std::string& name, int version, int priority) {
   ThrowIfError(common::CheckInitialized());
@@ -135,21 +151,6 @@ int DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int aver
   return handle;
 }
 
-int PollHandle(int handle) { return handle_manager.PollHandle(handle) ? 1 : 0; }
-
-void DeclareTensor(const std::string& name) {
-  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
-  common::IsTensorDeclared(tensor_name);
-}
-
-void WaitAndClear(int handle) {
-  while (!handle_manager.PollHandle(handle)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  auto status = handle_manager.ReleaseHandle(handle);
-  ThrowIfError(*status);
-}
-
 PYBIND11_MODULE(c_lib, m) {
   // push_pull
   m.def("byteps_torch_push_pull_async_torch_IntTensor", &DoPushPull);
@@ -173,11 +174,11 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_async_torch_cuda_FloatTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_DoubleTensor", &DoPushPull);
 
-  m.def("byteps_torch_push_pull_group_sync_cuda_IntTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_cuda_LongTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_cuda_HalfTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_cuda_FloatTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_cuda_DoubleTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_IntTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_LongTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_FloatTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_DoubleTensor", &DoPushPullGroupSync);
 #endif
 
   // basics

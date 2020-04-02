@@ -1,5 +1,11 @@
+import torch
+from torch.nn.modules import Module
 from byteps.torch.ops import push_pull_group_sync_inplace as byteps_push_pull
-from byteps.torch.ops import poll, synchronize, declare
+from byteps.torch.ops import poll, synchronize, declare, byteps_torch_set_num_grads
+from contextlib import contextmanager
+from byteps.torch.ops import size, local_size, rank, local_rank
+import byteps as bps
+from byteps.torch.compression import Compression
 
 class DistributedDataParallel(Module):
     r"""Implements distributed data parallelism that is based on
@@ -201,20 +207,26 @@ class DistributedDataParallel(Module):
             output_device=None, dim=0, broadcast_buffers=True,
             process_group=None, bucket_cap_mb=25,
             find_unused_parameters=False,
-            check_reduction=False):
+            check_reduction=False,
+            compression=Compression.none
+            ):
         super(DistributedDataParallel, self).__init__()
 
         self.module = module
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
+        self._num_grads = 1
         if size() > 1:
             self._register_hooks()
             named_params = self.module.named_parameters()
-            num_grads = sum(p.requires_grad for _, p in named_params)
-            byteps_torch_set_num_grads(num_grads)
+            self._num_grads = sum(p.requires_grad for _, p in named_params)
+            byteps_torch_set_num_grads(self._num_grads)
 
+        self._compression = compression
+        self._enable_async = False
         named_parameters = self.module.named_parameters()
+        named_parameters = list(named_parameters)
         if len(named_parameters) > 0:
             if isinstance(named_parameters[0][1], torch.Tensor):
                 if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
@@ -243,7 +255,7 @@ class DistributedDataParallel(Module):
             declare("Parameter."+name)
 
         # broadcast parameters
-        bps.broadcast_parameters(self.module.named_parameters(), root_rank=0)
+#        bps.torch.broadcast_parameters(named_parameters, root_rank=0)
 
     def forward(self, *inputs, **kwargs):
         return self.module(*inputs, **kwargs)
@@ -273,10 +285,10 @@ class DistributedDataParallel(Module):
                 self._requires_update.add(p)
                 p_tmp = p.expand_as(p)
                 grad_acc = p_tmp.grad_fn.next_functions[0][0]
-                grad_acc.register_hook(self._make_hook(p, num_grads))
+                grad_acc.register_hook(self._make_hook(p, self._num_grads))
                 self._grad_accs.append(grad_acc)
 
-    def _push_pull_grad_group_sync(self, p, num_grads):
+    def _push_pull_grad_group_sync(self, p, num_grads_):
         if self._is_tensor_instance:
             name = self._parameter_names.get(p.__hash__())
         else:
@@ -289,23 +301,13 @@ class DistributedDataParallel(Module):
             tensor_compressed, ctx = self._compression.compress(tensor)
             # todo: need to make a new function which calls synchronize on the
             # last parameter
-            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name, num_grads)
+            handle = byteps_push_pull(tensor_compressed, average=True,
+                    name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p, num_grads):
         def hook(*ignore):
-            if p in self._handles and self._handles[p][0] is not None:
-                if self._push_pull_delay[p] <= 0:
-                    raise AssertionError(
-                        "Gradients were computed more than "
-                        "backward_passes_per_step times before call "
-                        "to step(). Increase backward_passes_per_step to "
-                        "accumulate gradients locally.")
-            assert not p.grad.requires_grad
-            assert self._push_pull_delay[p] > 0
             handle, ctx = None, None
-            self._push_pull_delay[p] -= 1
-            if self._push_pull_delay[p] == 0:
-                handle, ctx = self._push_pull_grad_group_sync(p, num_grads)
+            handle, ctx = self._push_pull_grad_group_sync(p, num_grads)
             self._handles[p] = (handle, ctx)
         return hook
