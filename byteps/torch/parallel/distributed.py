@@ -307,7 +307,10 @@ class DistributedDataParallel(Module):
                 p.grad = p.data.new(p.size()).zero_()
                 self._requires_update.add(p)
                 p_tmp = p.expand_as(p)
-                grad_acc = p_tmp.grad_fn.next_functions[0][0]
+#                grad_acc = p_tmp.grad_fn.next_functions[0][0]
+#                grad_acc.register_hook(self._make_hook(p, self._num_grads))
+#                p_tmp.grad_fn.register_hook(self._make_hook(p, self._num_grads))
+                grad_acc = p_tmp.grad_fn
                 grad_acc.register_hook(self._make_hook(p, self._num_grads))
                 self._grad_accs.append(grad_acc)
 
