@@ -14,13 +14,12 @@ model = DistributedDataParallel(model, device_ids=[i])
 output = model(data)
 loss = F.nll_loss(output, target)
 loss.backward()
-model.synchronize()
 optimizer.step()
 ```
 
 Some models have branches, part of the model is skipped during the forward
 pass. In that case it's required to call the
-DistributedDataParallel.synchronize() after loss.backward(), e.g:
+DistributedDataParallel.synchronize() function after loss.backward(), e.g:
 
 ```python
 # ddp_example.py
