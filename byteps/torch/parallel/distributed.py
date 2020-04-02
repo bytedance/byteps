@@ -1,4 +1,5 @@
 from byteps.torch.ops import push_pull_group_sync_inplace as byteps_push_pull
+from byteps.torch.ops import poll, synchronize, declare
 
 class DistributedDataParallel(Module):
     r"""Implements distributed data parallelism that is based on
@@ -201,18 +202,51 @@ class DistributedDataParallel(Module):
             process_group=None, bucket_cap_mb=25,
             find_unused_parameters=False,
             check_reduction=False):
+        super(DistributedDataParallel, self).__init__()
+
         self.module = module
+        self._handles = {}
+        self._grad_accs = []
+        self._requires_update = set()
         if size() > 1:
             self._register_hooks()
             named_params = self.module.named_parameters()
             num_grads = sum(p.requires_grad for _, p in named_params)
             byteps_torch_set_num_grads(num_grads)
+
+        named_parameters = self.module.named_parameters()
+        if len(named_parameters) > 0:
+            if isinstance(named_parameters[0][1], torch.Tensor):
+                if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
+                    raise ValueError('named_parameters should consistently be a sequence of '
+                                     'tuples (name, torch.Tensor)')
+                self._is_tensor_instance = True
+                # there is an issue when using torch.Tensor as key, so use its hash instead
+                # https://github.com/pytorch/pytorch/issues/7733
+                self._parameter_names = {v.__hash__(): k for k, v
+                                         in sorted(named_parameters)}
+                self._tensor_list = [tensor for name, tensor in named_parameters]
+            else:
+                self._is_tensor_instance = False
+                self._parameter_names = {v: k for k, v
+                                         in sorted(named_parameters)}
+        else:
+            self._is_tensor_instance = False
+            self._parameter_names = {v: 'push_pull.noname.%s' % i
+                                     for param_group in self.param_groups
+                                     for i, v in enumerate(param_group['params'])}
+        # declare tensors
+        for name in sorted(self._parameter_names.values()):
+            declare("Gradient."+name)
+        # We use two loops for load-balancing
+        for name in sorted(self._parameter_names.values()):
+            declare("Parameter."+name)
+
         # broadcast parameters
         bps.broadcast_parameters(self.module.named_parameters(), root_rank=0)
 
-
     def forward(self, *inputs, **kwargs):
-        pass
+        return self.module(*inputs, **kwargs)
 
     @contextmanager
     def no_sync(self):
