@@ -257,7 +257,7 @@ def broadcast_parameters(params, root_rank):
         params = sorted(params.items())
     elif isinstance(params, list):
         # support both named_parameters() and regular parameters()
-        params = [p if isinstance(p, tuple) else (None, p) for p in params]
+        params = [p if isinstance(p, tuple) else ("", p) for p in params]
     else:
         raise ValueError('invalid params of type: %s' % type(params))
 

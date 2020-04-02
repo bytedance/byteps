@@ -377,15 +377,27 @@ def validate(val_loader, model, criterion, args):
 
     with torch.no_grad():
         end = time.time()
+        f = open('rank-' + str(bps.rank()) + '-validation-data.txt', 'w')
+        with open('rank-' + str(bps.rank()) + '-model-state_dict-before-validation.txt', 'w') as f_model:
+            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww start", file=f_model)
+            for name in model.state_dict():
+                print("name: ", name, "tensor: ", model.state_dict()[name], file=f_model)
+                print("name: ", name, "tensor: ", model.state_dict()[name].name, file=f_model)
+            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f_model)
+
         for i, (images, target) in enumerate(val_loader):
 #            if i > 10:
 #                continue
 #            print(type(images))
 #            with open('rank-' + str(bps.rank()) + '-validation-data.txt', 'w') as f:
 #
-#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank())
+#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank(), file=f)
 #                print("tensor: ", images, file=f)
-#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
+#                print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww", file=f)
+            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww rank: ", bps.rank(), "iter: ", i, file=f)
+            print("images: ", images, file=f)
+            print("target: ", target, file=f)
+            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww", file=f)
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)

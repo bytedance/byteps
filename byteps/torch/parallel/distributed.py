@@ -234,12 +234,15 @@ class DistributedDataParallel(Module):
 
         self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
+        self.broadcast_buffers = broadcast_buffers
+        self.require_forward_param_sync = True
 #        self.module = self.patchSyncBatchNorm(module)
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
         self._num_grads = 1
 
+        self.modules_buffers = [list(self.module.buffers())]
         self._compression = compression
         self._enable_async = False
         named_parameters = self.module.named_parameters()
@@ -286,7 +289,24 @@ class DistributedDataParallel(Module):
 
 
     def forward(self, *inputs, **kwargs):
+        if self.require_forward_param_sync:
+            self._sync_params()
         return self.module(*inputs, **kwargs)
+
+    def _sync_params(self):
+        with torch.no_grad():
+            # module buffer sync
+            if self.broadcast_buffers and len(self.modules_buffers[0]) > 0:
+#                print("xbxbxbgxbxb about to broadcast_buffers")
+#                if not self.training:
+#                    print("xbxbxbgxbxb skipping broadcast_buffers")
+#                    return
+                # Synchronize buffers across processes.
+                # The process with rank 0 is considered the authoritative copy.
+#                self._distributed_broadcast_coalesced(
+#                    self.modules_buffers[0],
+#                    self.broadcast_bucket_size)
+                bps.torch.broadcast_parameters(self.modules_buffers[0], root_rank=0)
 
     @contextmanager
     def no_sync(self):
