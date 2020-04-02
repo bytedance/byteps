@@ -26,6 +26,7 @@
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
+#include <iostream>
 
 namespace byteps {
 namespace torch {
@@ -126,13 +127,15 @@ void WaitAndClear(int handle) {
   ThrowIfError(*status);
 }
 
-int DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int average,
+pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int average,
                const std::string& name, int version, int priority) {
   ThrowIfError(common::CheckInitialized());
 
   auto handle = handle_manager.AllocateHandle();
   std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
   auto& context = common::GetContextFromName(tensor_name);
+  int curr_count;
+
   if (context.initialized) {
     StartTask(tensor, output, average, tensor_name, version, priority, handle);
   } else {
@@ -143,12 +146,16 @@ int DoPushPullGroupSync(::torch::Tensor tensor, ::torch::Tensor output, int aver
   {
     std::lock_guard<std::mutex> lock(mutex_);
     grad_count_++;
+    curr_count = grad_count_;
     if (grad_count_ == num_grads_) {
-      WaitAndClear(handle);
+//      WaitAndClear(handle);
       grad_count_ = 0;
     }
   }
-  return handle;
+
+//  std::cout << "inside CXX handle: " << handle << " current count: " << curr_count << std::endl;
+  return pybind11::make_tuple(handle, curr_count);
+//  return handle;
 }
 
 PYBIND11_MODULE(c_lib, m) {

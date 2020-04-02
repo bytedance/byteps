@@ -1,11 +1,30 @@
 import torch
 from torch.nn.modules import Module
-from byteps.torch.ops import push_pull_group_sync_inplace as byteps_push_pull
+from byteps.torch.ops import push_pull_group_sync_inplace as byteps_push_pull_group
+from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import poll, synchronize, declare, byteps_torch_set_num_grads
 from contextlib import contextmanager
 from byteps.torch.ops import size, local_size, rank, local_rank
 import byteps as bps
 from byteps.torch.compression import Compression
+
+import threading
+import logging
+
+logging.basicConfig(format="%(threadName)s:%(message)s")
+# Gets or creates a logger
+logger = logging.getLogger(__name__)
+
+# set log level
+logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+#formatter = logging.Formatter(threading.currentThread().getName() + " - %(levelname)s - %(message)s")
+formatter = logging.Formatter("%(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 class DistributedDataParallel(Module):
     r"""Implements distributed data parallelism that is based on
@@ -305,13 +324,58 @@ class DistributedDataParallel(Module):
             tensor_compressed, ctx = self._compression.compress(tensor)
             # todo: need to make a new function which calls synchronize on the
             # last parameter
-            handle = byteps_push_pull(tensor_compressed, average=True,
+            handle, grad_count = byteps_push_pull_group(tensor_compressed, average=True,
                     name="Gradient."+name)
+        return handle, ctx, grad_count
+
+    def _push_pull_grad_async(self, p):
+        if self._is_tensor_instance:
+            name = self._parameter_names.get(p.__hash__())
+        else:
+            name = self._parameter_names.get(p)
+        if self._enable_async:
+            # the real handle will be created in step()
+            handle, ctx = None, None
+        else:
+            tensor = p.grad
+            tensor_compressed, ctx = self._compression.compress(tensor)
+            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p, num_grads):
         def hook(*ignore):
             handle, ctx = None, None
-            handle, ctx = self._push_pull_grad_group_sync(p, num_grads)
+            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
             self._handles[p] = (handle, ctx)
+#            print(threading.get_ident(), "1 new handle ", handle)
+#            if last one then sync.self.synchronize() will be triggerred only
+#            once
+            if grad_count == self._num_grads:
+#                print(threading.get_ident(), "1 last handle ", handle)
+                self.synchronize()
         return hook
+
+# needs mod
+    def synchronize(self):
+        missing_p = self._requires_update - set(self._handles.keys())
+        for p in missing_p:
+            handle, ctx = self._push_pull_grad_async(p)
+            self._handles[p] = (handle, ctx)
+#            print(" 2 new handle ", handle)
+
+        for p, value in self._handles.items():
+            handle, ctx = value
+            if handle is None:
+                handle, ctx = self._push_pull_grad_async(p)
+                self._handles[p] = (handle, ctx)
+#                print(" 3 new handle ", handle)
+        for p, (handle, _) in self._handles.items():
+#            print(threading.get_ident(), "handle", handle)
+            output = synchronize(handle)
+            if output is not None:
+                print(threading.get_ident(), "1 removed handle ", handle)
+            if not self._enable_async:
+#                print("output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
+                print(threading.get_ident(), "output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
+                p.grad.set_(self._compression.decompress(output, ctx))
+        self._handles.clear()

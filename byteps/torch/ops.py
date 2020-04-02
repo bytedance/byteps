@@ -22,6 +22,7 @@ from distutils.version import LooseVersion
 
 # Load all the necessary PyTorch C types.
 import torch
+import threading
 
 # PyTorch must be >= 1.0.0 (including nightly builds)
 # This should be guaranteed by setup.py
@@ -76,13 +77,15 @@ def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     return handle
 
 def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0):
+#    print(threading.get_ident(), "1 here _do_push_pull_group_sync", name)
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_group_function_factory, tensor)
-    handle = getattr(c_lib, function)(tensor, output, average,
+    handle, curr_count = getattr(c_lib, function)(tensor, output, average,
                                       name.encode() if name is not None else _NULL,
                                       version, priority)
     _handle_map[handle] = (tensor, output)
-    return handle
+#    print(threading.get_ident(), "1 new handle in _handle_map", handle)
+    return handle, curr_count
 
 
 def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
@@ -230,6 +233,7 @@ def synchronize(handle):
         An output tensor of the operation.
     """
     if handle not in _handle_map:
+#        print("handle ", handle, " not in _handle_map")
         return
     c_lib.byteps_torch_wait_and_clear(handle)
     _, output = _handle_map.pop(handle)
