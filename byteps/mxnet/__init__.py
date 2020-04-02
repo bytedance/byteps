@@ -23,7 +23,7 @@ import mxnet as mx
 import os
 
 from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
-from byteps.mxnet.ops import init, shutdown
+from byteps.mxnet.ops import init, shutdown, suspend, resume
 from byteps.mxnet.ops import size, local_size, rank, local_rank
 
 parameter_index = 0

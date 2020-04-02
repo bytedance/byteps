@@ -36,6 +36,12 @@ void byteps_lazy_init();
 // C interface to shut down byteps.
 void byteps_shutdown();
 
+// C interface to restart byteps.
+void byteps_resume(int num_workers, int num_servers);
+
+// C interface to suspend byteps.
+void byteps_suspend();
+
 // C interface to get index of current byteps process.
 // Returns -1 if byteps is not initialized.
 int byteps_rank();

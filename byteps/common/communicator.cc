@@ -78,6 +78,8 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
 
   // we assume _local_size (i.e., # GPU) is consistent on all workers
   *rank = (*local_rank) + (*worker_id) * (*local_size);
+  // force setting global rank
+  *rank = getenv("BYTEPS_GLOBAL_RANK") ? atoi(getenv("BYTEPS_GLOBAL_RANK")) : *rank;
   *size = num_worker * (*local_size);
 
   _rank = *rank;

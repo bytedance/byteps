@@ -22,7 +22,7 @@ from __future__ import print_function
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
-from byteps.tensorflow.ops import init, shutdown
+from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.util import _executing_eagerly
 

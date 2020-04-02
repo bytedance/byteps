@@ -69,10 +69,12 @@ ReadyTable* BytePSGlobal::_copy_table;
 bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 
+std::vector<std::string> BytePSGlobal::_declared_tensors;
+bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
-cudaStream_t* BytePSGlobal::_copy_device2host_stream;
-cudaStream_t* BytePSGlobal::_copy_host2device_stream;
+cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
+cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
@@ -256,7 +258,7 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
       // init low-level ps implementation
       _ps = new ps::KVWorker<char>(0, 0);
       ps::StartAsync(0, "byteps\0");
-      if (!ps::Postoffice::Get()->is_recovery()) {
+      if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
         ps::Postoffice::Get()->Barrier(
             0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
@@ -294,6 +296,7 @@ void BytePSGlobal::Shutdown() {
     if (_threads[i]->joinable()) {
       _threads[i]->join();
       delete _threads[i];
+      _threads[i] = NULL;
     }
   }
 
@@ -305,38 +308,64 @@ void BytePSGlobal::Shutdown() {
   for (size_t i = 0; i < QueueNum; i++) {
     if (_queues[i]) {
       delete _queues[i];
+      _queues[i] = NULL;
     }
   }
 
   if (_ps) {
-    ps::Finalize(0, false);
+    // shutdown _ps and wait for the completion acks of other workers/servers
+    ps::Finalize(0, true);
     delete _ps;
+    _ps = NULL;
   }
 
-  CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
-  CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+  if (_copy_device2host_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
+    _copy_device2host_stream = NULL;
+  }
+  if (_copy_host2device_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+    _copy_host2device_stream = NULL;
+  }
 
   if (_reduce_table) {
     delete _reduce_table;
+    _reduce_table = NULL;
   }
   if (_pcie_reduce_table) {
     delete _pcie_reduce_table;
+    _pcie_reduce_table = NULL;
   }
   if (_broadcast_table) {
     delete _broadcast_table;
+    _broadcast_table = NULL;
   }
   if (_push_table) {
     delete _push_table;
+    _push_table = NULL;
   }
 
   if (_copy_table) {
     delete _copy_table;
+    _copy_table = NULL;
   }
 
   _basic_comm.reset();
   _shm_obj.reset();
   _cpu_reducer.reset();
   _nccl_manager.reset();
+
+  // reset state, ignore profiling state
+  BPS_LOG(DEBUG) << "Clear BytePS state";
+  _threads.clear();
+  joined_thread_cnt = 0;
+  _name_to_cxt.clear();
+  _server_accumulated_len.clear();
+  _total_accumulated_len = 0;
+  ps_kv_.clear();
+  next_key_ = 0;
+  _initialized = false;
+  _should_shutdown = false;
 
   BPS_LOG(DEBUG) << "Shutdown BytePS: all BytePS resources has been cleaned"
                  << " (rank=" << _local_rank << ")";
@@ -353,6 +382,9 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
 bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+      _declared_tensors.push_back(name);
+    }
     _name_to_cxt[name].initialized = false;
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
     _name_to_cxt[name].declared_key = (ps::Key)next_key_++;
@@ -363,6 +395,13 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
     return false;
   }
   return true;
+}
+
+void BytePSGlobal::ReDeclareTensor() {
+  for (auto name: _declared_tensors) {
+    BPS_LOG(DEBUG) << "Redeclare tensor " << name;
+    BytePSGlobal::IsTensorDeclared(name);
+  }
 }
 
 // Append for communication traces
@@ -416,7 +455,7 @@ void BytePSGlobal::Who2beOutput(const std::string& name) {
 bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name2end.find(name) != _name2end.end()) << "Output tensor must been registered to recorder first";
-  //  _output_counter decreases by 1 to confirm the arrival of this tensro
+  //  _output_counter decreases by 1 to confirm the arrival of this tensor
   _output_counter -= 1;
   if (_output_counter == 0) return true;
   else return false;

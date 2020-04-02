@@ -82,6 +82,10 @@ class BytePSGlobal {
   static ps::KVWorker<char>* GetOrInitPS();
 
   static bool IsTensorDeclared(const std::string& name);
+  static void ReDeclareTensor();
+  static bool IsResuming() { return _is_resuming; }
+  static void SetResumingFlag(bool flag) {_is_resuming = flag; }
+
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
@@ -154,6 +158,8 @@ class BytePSGlobal {
   static ps::KVWorker<char>* _ps;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+  static std::vector<std::string> _declared_tensors;
+  static bool _is_resuming;
 
   static std::unordered_map<std::string, int> _name2end;
   static int _output_counter;
