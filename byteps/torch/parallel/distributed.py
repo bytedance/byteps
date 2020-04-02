@@ -373,9 +373,9 @@ class DistributedDataParallel(Module):
 #            print(threading.get_ident(), "handle", handle)
             output = synchronize(handle)
             if output is not None:
-                print(threading.get_ident(), "1 removed handle ", handle)
+#                print(threading.get_ident(), "1 removed handle ", handle)
             if not self._enable_async:
 #                print("output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
-                print(threading.get_ident(), "output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
+#                print(threading.get_ident(), "output", output, "ctx", ctx, "decompress", self._compression.decompress(output, ctx))
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
