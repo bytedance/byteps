@@ -35,4 +35,4 @@ optimizer.step()
 ```
 
 To run the program, use bpslaunch to launch one process for each device you
-wish to use. Refer to the [running]](./running.md) document for how to use bpslaunch.
+wish to use. Refer to the [running](./running.md) document for how to use bpslaunch.
