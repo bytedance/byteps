@@ -9,7 +9,7 @@ ARG BYTEPS_GIT_LINK=https://github.com/bytedance/byteps
 ARG BYTEPS_BRANCH=master
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update 
+RUN apt-get update
 RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
         build-essential \
         tzdata \

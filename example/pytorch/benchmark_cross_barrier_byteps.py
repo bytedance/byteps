@@ -12,24 +12,24 @@ import os
 import byteps.torch.cross_barrier as bps
 
 """
-This example shows how to enable barrier crossing on top of BytePS in PyTorch. Note that you can use BytePS without 
+This example shows how to enable barrier crossing on top of BytePS in PyTorch. Note that you can use BytePS without
 crossing barrier at all.
 
 Crossing barrier enables overlapping gradient push-pull with both backward computation and forward computation, while
-maintaining correct dependencies, e.g., the forward computation of a layer will not start until the parameter of this 
-layer is updated. Hence it can further improves training performance beyond BytePS. See the paper 
+maintaining correct dependencies, e.g., the forward computation of a layer will not start until the parameter of this
+layer is updated. Hence it can further improves training performance beyond BytePS. See the paper
 https://dl.acm.org/citation.cfm?id=3359642 for more details.
 
-To use it, just change the import statement and add two more arugments (i.e., model, num_steps) when wrapping the Torch 
+To use it, just change the import statement and add two more arugments (i.e., model, num_steps) when wrapping the Torch
 optimizer, as shown below:
 ```
 import byteps.torch.cross_barrier as bps
 optimizer = bps.CrossBarrier(model, optimizer, named_parameters, compression, backward_passes_per_step, num_steps)
 ```
-So far we support SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for 
+So far we support SGD, Adam and RMSprop optimizers. Please submit a ticket if you need support for
 any other optimizers.
 
-To see performance gain, the system parameters should be properly set, including BYTEPS_PARTITION_BYTES and 
+To see performance gain, the system parameters should be properly set, including BYTEPS_PARTITION_BYTES and
 BYTEPS_SCHEDULING_CREDIT.
 """
 

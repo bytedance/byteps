@@ -193,7 +193,7 @@ class BytePSGlobal {
   static uint64_t _sample_key;
 
   static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
-  
+
   static int _pagesize;
   static int DivUp(int x, int y) { return (x + y - 1) / y; }
   static int RoundUp(int x, int y) { return DivUp(x, y) * y; }

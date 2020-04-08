@@ -102,7 +102,7 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
 
             # push delta weight, and pull weight back to the same tensor
             self._do_push_pull_param(index, weight)
-            
+
         else:
             self._do_push_pull(index, grad)
             self._optimizer.update_multi_precision(index, weight, grad, state)

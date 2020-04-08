@@ -72,7 +72,7 @@ struct BytePSEngineMessage {
   void* src;
   size_t len;
   BytePSEngineOperation ops;
-  ps::KVPairs<char> sarray; // to temporarily hold it and auto release 
+  ps::KVPairs<char> sarray; // to temporarily hold it and auto release
   ps::KVMeta req_meta;
 };
 
@@ -97,8 +97,8 @@ std::mutex pullresp_mu_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
 std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
 
-// push & pull flag 
-std::vector<std::mutex> flag_mu_; 
+// push & pull flag
+std::vector<std::mutex> flag_mu_;
 std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
 std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
 std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
@@ -108,14 +108,14 @@ std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 std::mutex handle_mu_;
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
 
-// address map 
+// address map
 std::mutex store_mu_;
-std::unordered_map<uint64_t, BytePSArray> store_; 
+std::unordered_map<uint64_t, BytePSArray> store_;
 
 // hash function
 std::mutex hash_mu_;
 std::unordered_map<uint64_t, size_t> hash_cache_;
-std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread 
+std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread
 
 // global knob
 uint64_t timestamp_ = 0;
