@@ -80,7 +80,7 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                     << " tensor: " << task->tensor_name
                     << " task->key:" << task->key
                     << " type:" << this_op;
-                            
+
     task->context->part_comm_time[task->key][this_op].back()->dur = (long long)(us.count()) - _ts;
   }
 
@@ -102,7 +102,7 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
       task->callback(Status::OK());
-      //* Add for profiling communication events     
+      //* Add for profiling communication events
       if (task->context->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)
                     << " tensor: " << task->tensor_name

@@ -65,10 +65,10 @@ python3 setup.py install
 ```
 
 Notes for above two options:
-- BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet. 
+- BytePS assumes that you have already installed one or more of the following frameworks: TensorFlow / PyTorch / MXNet.
 - BytePS depends on CUDA and NCCL. You should specify the NCCL path with `export BYTEPS_NCCL_HOME=/path/to/nccl`. By default it points to `/usr/local/nccl`.
 - The installation requires gcc>=4.9. If you are working on CentOS/Redhat and have gcc<4.9, you can try `yum install devtoolset-7` before everything else. In general, we recommend using gcc 4.9 for best compatibility ([an example](https://github.com/bytedance/byteps/blob/3fba75def0d81c1d3225f8f397cc985200f57de7/docker/Dockerfile.mxnet#L72-L80) to pin gcc).
-- RDMA support: During setup, the script will automatically detect the RDMA header file. If you want to use RDMA, make sure your RDMA environment has been properly installed and tested before install ([an example](https://github.com/bytedance/byteps/blob/3fba75def0d81c1d3225f8f397cc985200f57de7/docker/Dockerfile.mxnet#L29-L33) for Ubuntu-18.04). 
+- RDMA support: During setup, the script will automatically detect the RDMA header file. If you want to use RDMA, make sure your RDMA environment has been properly installed and tested before install ([an example](https://github.com/bytedance/byteps/blob/3fba75def0d81c1d3225f8f397cc985200f57de7/docker/Dockerfile.mxnet#L29-L33) for Ubuntu-18.04).
 
 
 ## Use BytePS in Your Code

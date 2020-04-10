@@ -113,7 +113,7 @@ void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
     BPSCommTime *ret = new BPSCommTime;
     ret->start_t = (long long)(us.count());
     ret->key = task->key;
-    ret->type = this_op; 
+    ret->type = this_op;
     context->part_comm_time[task->key][this_op].push(ret);
   }
 }

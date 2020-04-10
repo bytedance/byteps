@@ -82,7 +82,7 @@ int CpuReducer::sum(void* dst, void* src, size_t len, DataType dtype) {
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
   return 0;
-}  
+}
 
 template <typename T>
 int CpuReducer::_sum(T* dst, T* src, size_t len) {

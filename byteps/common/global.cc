@@ -117,7 +117,7 @@ void BytePSGlobal::Init() {
                     &_my_role);
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
-  
+
   // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
@@ -138,7 +138,7 @@ void BytePSGlobal::Init() {
   if (_is_distributed_job) {
     BPS_CHECK(getenv("DMLC_NUM_SERVER"))
         << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
-    
+
     // set hash function
     _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
     _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE")) : false;
@@ -408,7 +408,7 @@ void BytePSGlobal::ReDeclareTensor() {
 void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
   if (_is_trace == 1) {
     // Enable trace, check the start and end step
-    BPS_CHECK(_start_step >= 1 && _end_step > _start_step) 
+    BPS_CHECK(_start_step >= 1 && _end_step > _start_step)
                 << "BYTEPS_TRACE_START_STEP must be larger than 1, "
                 << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
     if(ctxt->step_cnt == _start_step-1){
@@ -420,7 +420,7 @@ void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
         std::thread _t(BytePSGlobal::OutputTraces);
         _t.detach();
       }
-    } 
+    }
   } else {
     ctxt->profile_flag = false;
   }
@@ -470,7 +470,7 @@ void BytePSGlobal::OutputTraces(){
   file << "{" << std::endl;
   file << "    \"traceEvents\": [" << std::endl;
   auto first = true;
-  for(std::unordered_map<std::string, int>::iterator iter = _name2end.begin(); 
+  for(std::unordered_map<std::string, int>::iterator iter = _name2end.begin();
     iter != _name2end.end(); iter++){
     BPSContext *ctxt = &_name_to_cxt[iter->first];
     while (ctxt->comm_time.size() > 0) {
@@ -492,7 +492,7 @@ void BytePSGlobal::OutputTraces(){
           BPSCommTime *ret = _part_comm_time_queue.front();
           if (!first) file << ",\n";
           else first = false;
-          BytePSGlobal::EmitTrace(&file, ret, ctxt); 
+          BytePSGlobal::EmitTrace(&file, ret, ctxt);
           _part_comm_time_queue.pop();
         }
         type2part_comm_time.erase(type);
@@ -515,15 +515,15 @@ uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   size_t num_server_noncolocate = num_server_total-num_worker_total;
   size_t num_server_colocate = num_worker_total;
 
-  // The bound should be larger than num_server_total 
-  // in order to cover each server, but it also 
+  // The bound should be larger than num_server_total
+  // in order to cover each server, but it also
   // cannot be too large because it might cause unbalance
   auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 101;
-  BPS_CHECK_GE(bound, num_server_total); 
-  auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) / 
+  BPS_CHECK_GE(bound, num_server_total);
+  auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) /
                   ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
-  BPS_CHECK_LE(ratio, 1) 
-      << "number of (non-colocate servers) > number of (worker)" 
+  BPS_CHECK_LE(ratio, 1)
+      << "number of (non-colocate servers) > number of (worker)"
       << ", which is not permitted in the mixed mode";
   BPS_CHECK_GE(ratio, 0);
   auto threshold = ratio * bound;
@@ -549,7 +549,7 @@ uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   uint64_t hash = 5381;
   int c;
   while ((c = *str)) { // hash(i) = hash(i-1) * 33 ^ str[i]
-    hash = ((hash << 5) + hash) + c; 
+    hash = ((hash << 5) + hash) + c;
     str++;
   }
   return hash;
@@ -587,7 +587,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     } else if (!_hash_knob.compare(std::string("sdbm"))) {
       server = Hash_SDBM(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("mixed"))) {
-      BPS_CHECK(_mixed_mode) 
+      BPS_CHECK(_mixed_mode)
           << "mixed mode should also set: BYTEPS_ENABLE_MIXED_MODE";
       server = Hash_Mixed_Mode(key);
       CHECK_LT(server, num_servers);
@@ -595,12 +595,12 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
                    << "must be one of [naive, built_in, djb2, sdbm]";
     }
-    
+
     _server_accumulated_len[server] += len;
     _total_accumulated_len += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
-                   << _server_accumulated_len[server] 
+                   << _server_accumulated_len[server]
                    << " (" << (100.0 * _server_accumulated_len[server] / _total_accumulated_len)
                    << "%)";
 

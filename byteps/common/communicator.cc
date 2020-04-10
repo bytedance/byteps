@@ -202,7 +202,7 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
                    << ", signal=" << message.signal << ", key=" << message.key
                    << ", myrank=" << _local_rank;
   }
-  BPS_LOG(DEBUG) << "listen thread joined" 
+  BPS_LOG(DEBUG) << "listen thread joined"
                  << " (rank=" << _local_rank << ")";
 }
 

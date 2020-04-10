@@ -23,13 +23,13 @@ The key here is to make sure the following:
 
 If you are using RDMA, this should be sufficient. However, with TCP and >=25Gbps networks, it's possible that BytePS cannot fully utilize the bandwidth because a single TCP connection usually cannot run up to 25Gbps.
 
-To address this, you can try running more BytePS server instances on the server machines. For example, you can try running two server instances per server machines. This effectively doubles the number of TCP connections and should be sufficient for 25Gbps networks. For 40Gbps/50Gbps networks, you need three server instances per server machine, and so on. 
+To address this, you can try running more BytePS server instances on the server machines. For example, you can try running two server instances per server machines. This effectively doubles the number of TCP connections and should be sufficient for 25Gbps networks. For 40Gbps/50Gbps networks, you need three server instances per server machine, and so on.
 
 ### No additional CPU servers
 
-When you don't have additional CPU servers, then for each physical machine, you should launch a worker and a server process. We call this *co-locate* mode, and the resource consumption is the same with Horovod (no additional servers). 
+When you don't have additional CPU servers, then for each physical machine, you should launch a worker and a server process. We call this *co-locate* mode, and the resource consumption is the same with Horovod (no additional servers).
 
-If you are using TCP, you will probably get near-identical performance with Horovod-TCP. However, if you are using RDMA, you can set `BYTEPS_ENABLE_IPC=1` to enable the IPC communication between the co-located worker and server. And eventually you will get higher end-to-end performance than Horovod. 
+If you are using TCP, you will probably get near-identical performance with Horovod-TCP. However, if you are using RDMA, you can set `BYTEPS_ENABLE_IPC=1` to enable the IPC communication between the co-located worker and server. And eventually you will get higher end-to-end performance than Horovod.
 
 ## The expected performance
 

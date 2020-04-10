@@ -15,11 +15,11 @@ You can reproduce the results using the Dockerfiles and example scripts we provi
 
 ## PCIe + RDMA
 
-Note: here we present the *worse case scenario* of BytePS, i.e., 100Gbps RDMA + no NVLinks. 
+Note: here we present the *worse case scenario* of BytePS, i.e., 100Gbps RDMA + no NVLinks.
 
 We get below results on machines that are based on PCIe-switch architecture -- 4 GPUs under one PCIe switch, and each machine contains two PCIe switches.
 The machines are inter-connected by 100 Gbps RoCEv2 networks.
-In this case, BytePS outperforms Horovod (NCCL) by 7% for Resnet50, and 17% for VGG16. 
+In this case, BytePS outperforms Horovod (NCCL) by 7% for Resnet50, and 17% for VGG16.
 
 ![perf_rdma_pcie_resnet50](https://user-images.githubusercontent.com/13852819/68925125-57b64d80-07bd-11ea-9f72-d108cf4294ad.png)
 

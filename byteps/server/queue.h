@@ -30,7 +30,7 @@ namespace server {
  */
 class PriorityQueue {
  public:
-  PriorityQueue(bool is_schedule) { 
+  PriorityQueue(bool is_schedule) {
     enable_schedule_ = is_schedule;
     if (enable_schedule_) {
       std::make_heap(queue_.begin(), queue_.end(),
@@ -50,8 +50,8 @@ class PriorityQueue {
     mu_.lock();
     queue_.push_back(std::move(new_value));
     if (enable_schedule_) {
-      ++push_cnt_[new_value.key]; 
-      std::push_heap(queue_.begin(), queue_.end(), 
+      ++push_cnt_[new_value.key];
+      std::push_heap(queue_.begin(), queue_.end(),
         [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
           return ComparePriority(a, b);
         }
@@ -69,7 +69,7 @@ class PriorityQueue {
     std::unique_lock<std::mutex> lk(mu_);
     cond_.wait(lk, [this]{return !queue_.empty();});
     if (enable_schedule_) {
-      std::pop_heap(queue_.begin(), queue_.end(), 
+      std::pop_heap(queue_.begin(), queue_.end(),
         [this](const BytePSEngineMessage& a, const BytePSEngineMessage& b) {
           return ComparePriority(a, b);
         }
@@ -77,7 +77,7 @@ class PriorityQueue {
       *value = queue_.back();
       queue_.pop_back();
     } else {
-      *value = std::move(queue_.front());	
+      *value = std::move(queue_.front());
       queue_.erase(queue_.begin());
     }
   }

@@ -16,7 +16,7 @@ And `server_hosts` should be:
 10.0.0.5
 ```
 
-Finally, start the distributed ssh launcher by:  
+Finally, start the distributed ssh launcher by:
 
 ```
 python dist_launcher.py --worker-hostfile worker_hosts --server-hostfile server_hosts \
