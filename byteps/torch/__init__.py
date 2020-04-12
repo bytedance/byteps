@@ -84,6 +84,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
+        self._should_sync = True
         if size() > 1:
             self._register_hooks()
 
@@ -169,6 +170,14 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
+    
+    @contextmanager
+    def skip_synchronize(self):
+        self._should_sync = False
+        try:
+            yield
+        finally:
+            self._should_sync = True
 
     def step(self, closure=None):
         if self._enable_async:
@@ -178,6 +187,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 old_weight_map[p] = p.data.clone().detach()
             # update
             loss = super(self.__class__, self).step(closure)
+            
+            # skip sync if calling skip_synchronize
+            if not self._should_sync: 
+                return loss
 
             for p, (h, _) in self._handles.items():
                 # get the diff for each weight (in-place)
@@ -195,7 +208,9 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             self.synchronize()
             return loss
         else:
-            self.synchronize()
+            # skip sync if calling skip_synchronize
+            if self._should_sync:
+                self.synchronize()
             return super(self.__class__, self).step(closure)
 
 
