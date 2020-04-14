@@ -170,7 +170,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
-    
+
     @contextmanager
     def skip_synchronize(self):
         self._should_sync = False
@@ -187,10 +187,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 old_weight_map[p] = p.data.clone().detach()
             # update
             loss = super(self.__class__, self).step(closure)
-            
-            # skip sync if calling skip_synchronize
-            if not self._should_sync: 
-                return loss
 
             for p, (h, _) in self._handles.items():
                 # get the diff for each weight (in-place)
@@ -204,6 +200,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
                     _, ctx = self._compression.compress(p)
                     self._handles[p] = (handle, ctx)
+
+            # skip sync if calling skip_synchronize
+            if not self._should_sync:
+                return loss
 
             self.synchronize()
             return loss
