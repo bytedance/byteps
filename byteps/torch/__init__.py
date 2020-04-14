@@ -173,6 +173,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
     @contextmanager
     def skip_synchronize(self):
+        if self._enable_async:
+            raise AssertionError("skip_synchronize cannot be used in async training")
         self._should_sync = False
         try:
             yield
@@ -200,10 +202,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
                     _, ctx = self._compression.compress(p)
                     self._handles[p] = (handle, ctx)
-
-            # skip sync if calling skip_synchronize
-            if not self._should_sync:
-                return loss
 
             self.synchronize()
             return loss
