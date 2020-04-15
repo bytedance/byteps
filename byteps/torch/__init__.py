@@ -170,9 +170,11 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
-    
+
     @contextmanager
     def skip_synchronize(self):
+        if self._enable_async:
+            raise AssertionError("skip_synchronize cannot be used in async training")
         self._should_sync = False
         try:
             yield
@@ -187,10 +189,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 old_weight_map[p] = p.data.clone().detach()
             # update
             loss = super(self.__class__, self).step(closure)
-            
-            # skip sync if calling skip_synchronize
-            if not self._should_sync: 
-                return loss
 
             for p, (h, _) in self._handles.items():
                 # get the diff for each weight (in-place)
