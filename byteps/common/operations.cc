@@ -291,7 +291,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
-    CUDA_CALL(cudaHostRegister(cpubuff, size, cudaHostRegisterMapped));
+    cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
+    if (e != cudaSuccess) {
+      BPS_LOG(INFO) << cudaGetErrorString(e) 
+                    << " (You may ignore this if your program continues)";
+    }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
   }
 
