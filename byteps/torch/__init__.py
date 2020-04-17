@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
+
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import push_pull
