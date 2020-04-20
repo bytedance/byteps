@@ -684,9 +684,9 @@ def build_mx_extension(build_ext, options):
     else:
         mxnet_lib.define_macros += [('MSHADOW_USE_CUDA', '0')]
     if is_mx_mkldnn():
-        mxnet_mpi_lib.define_macros += [('MXNET_USE_MKLDNN', '1')]
+        mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '1')]
     else:
-        mxnet_mpi_lib.define_macros += [('MXNET_USE_MKLDNN', '0')]  
+        mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '0')]  
     mxnet_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
 
     # use MXNet's DMLC headers first instead of ps-lite's
