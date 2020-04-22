@@ -166,7 +166,7 @@ def main():
     num_batches = num_training_samples // (batch_size*nworker)
 
     lr_scheduler = LRSequential([
-        LRScheduler('linear', base_lr=0, target_lr=opt.lr * nworker,
+        LRScheduler('linear', base_lr=opt.warmup_lr, target_lr=opt.lr * nworker,
                     nepochs=opt.warmup_epochs, iters_per_epoch=num_batches),
         LRScheduler(opt.lr_mode, base_lr=opt.lr * nworker, target_lr=0,
                     nepochs=opt.num_epochs - opt.warmup_epochs,
