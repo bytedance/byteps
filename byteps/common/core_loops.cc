@@ -753,5 +753,82 @@ void NonRootCopyHost2DeviceLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
+bool RunGlobalReduceScatterLoopOnce() {
+  QueueType this_op = GLOBAL_RECUCESCATTER;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+
+  if (task) {
+    BPS_CHECK(BytePSGlobal::IsRootDevice());
+    BPS_CHECK(task->cpubuff);
+    auto offset = task->offset;
+    auto len = task->len;
+    auto data = const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
+    // get metadata
+    const int dtype = task->tensor->dtype();
+
+    // false means not to delete data when SArray is deleted
+    ps::SArray<char> vals_push(data, len, false);
+
+    int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+    auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
+    // push the entire tensor
+    BytePSGlobal::GetPS()->ZPush(pskv.keys, vals_push, pskv.lens, cmd, [](){});
+
+    auto num_worker = BytePSGlobal::GetNumWorker();
+    auto worker_id = BytePSGlobal::GetWorkerID();
+    BPS_CHECK_EQ(len % num_worker, 0); // need to make sure it is partitionable
+    auto len_partition = len / num_worker;
+    auto vals_pull = new ps::SArray<char>(data + worker_id * len_partition, len_partition, false);
+    
+    SArray<char> pull_lens_sarray;
+    void *p = malloc(sizeof(int));
+    memcpy(p, &len_partition, sizeof(int));
+    pull_lens_sarray.reset((char *) p, sizeof(int), [p](void *) { free(p); });
+
+    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals_pull, pull_lens_sarray, cmd,
+                                 [vals_pull, task, q]() {
+                                   delete vals_pull;
+                                   FinishOrProceed(task);
+                                 });
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunGlobalAllGatherLoopOnce() {
+  QueueType this_op = GLOBAL_ALLGATHER;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+
+  if (task) {
+    // do something here
+    FinishOrProceed(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+// typically used for sparse training
+void GlobalReduceScatterLoop() { 
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunGlobalReduceScatterLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+// typically used for sparse training
+void GlobalAllGatherLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunGlobalAllGatherLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 }  // namespace common
 }  // namespace byteps

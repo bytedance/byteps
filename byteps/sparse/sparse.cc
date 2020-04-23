@@ -1,4 +1,4 @@
-// Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Bytedance Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,43 +13,18 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_CORE_LOOPS_H
-#define BYTEPS_CORE_LOOPS_H
+#include "sparse.h"
 
 namespace byteps {
-namespace common {
+namespace sparse {
 
-void CoordinateReduceLoop();
+void BytepsReduceScatter(const void* sendbuff, void* recvbuff, size_t count) {
 
-void CoordinateBroadcastLoop();
+}
 
-void CoordinatePushLoop();
+void BytepsAllGather(const void* sendbuff, void* recvbuff, size_t count) {
 
-void PcieReduceLoop();
+}
 
-void RootNcclLoop();
-
-void NonRootNcclLoop();
-
-void SyncNcclLoop();
-
-void CopyDevice2HostLoop();
-
-void PushLoop();
-
-void PullLoop();
-
-void RootCopyHost2DeviceLoop();
-
-void NonRootCopyListenLoop();
-
-void NonRootCopyHost2DeviceLoop();
-
-void GlobalReduceScatterLoop();
-
-void GlobalAllGatherLoop();
-
-}  // namespace common
-}  // namespace byteps
-
-#endif  // BYTEPS_CORE_LOOPS_H
+} // namespace sparse
+} // namespace byteps 
