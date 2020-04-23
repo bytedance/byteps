@@ -768,26 +768,30 @@ bool RunGlobalReduceScatterLoopOnce() {
     // get metadata
     const int dtype = task->tensor->dtype();
 
-    // false means not to delete data when SArray is deleted
+    /**
+     * Push: push the entire tensor (length = L)
+     */
     ps::SArray<char> vals_push(data, len, false);
-
     int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
     auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
-    // push the entire tensor
     BytePSGlobal::GetPS()->ZPush(pskv.keys, vals_push, pskv.lens, cmd, [](){});
 
+    /**
+     * Pull: pull the reduce-scattered result (length = L / global_size)
+     */
     auto num_worker = BytePSGlobal::GetNumWorker();
     auto worker_id = BytePSGlobal::GetWorkerID();
-    BPS_CHECK_EQ(len % num_worker, 0); // need to make sure it is partitionable
+    BPS_CHECK_EQ(len % num_worker, 0); // make sure it is equally partitionable
     auto len_partition = len / num_worker;
     auto vals_pull = new ps::SArray<char>(data + worker_id * len_partition, len_partition, false);
     
-    SArray<char> pull_lens_sarray;
+    // create funtional sarray of new lens
+    SArray<char> lens_pull;
     void *p = malloc(sizeof(int));
     memcpy(p, &len_partition, sizeof(int));
-    pull_lens_sarray.reset((char *) p, sizeof(int), [p](void *) { free(p); });
+    lens_pull.reset((char *) p, sizeof(int), [p](void *) { free(p); });
 
-    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals_pull, pull_lens_sarray, cmd,
+    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals_pull, lens_pull, cmd,
                                  [vals_pull, task, q]() {
                                    delete vals_pull;
                                    FinishOrProceed(task);
@@ -804,8 +808,40 @@ bool RunGlobalAllGatherLoopOnce() {
   auto task = q->getTask();
 
   if (task) {
-    // do something here
-    FinishOrProceed(task);
+    BPS_CHECK(task->cpubuff);
+    auto offset = task->offset;
+    auto len = task->len;
+    auto data =
+        const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
+    /**
+     * Push: push the 1/n tensor
+     */
+    const int dtype = task->output->dtype();
+    int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+    auto vals_push = new ps::SArray<char>(data, len, false);
+    auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
+
+    BytePSGlobal::GetPS()->ZPush(pskv.keys, vals_push, pskv.lens, cmd, [](){});
+
+    /**
+     * Pull: pull the 1 tensor
+     */
+    auto num_worker = BytePSGlobal::GetNumWorker();
+    auto worker_id = BytePSGlobal::GetWorkerID();
+
+    // create funtional sarray of new lens
+    SArray<char> lens_pull;
+    void *p = malloc(sizeof(int));
+    auto new_len = len * worker_id;
+    memcpy(p, &new_len, sizeof(int));
+    lens_pull.reset((char *) p, sizeof(int), [p](void *) { free(p); });
+
+    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals_pull, lens_pull, cmd,
+                                 [vals_pull, task, q]() {
+                                   delete vals_pull;
+                                   FinishOrProceed(task);
+                                 });
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
