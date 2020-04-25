@@ -4,9 +4,7 @@ cache: pip
 jobs:
   include:
     - python: 2.7
-      env: PY=2.7
     - python: 3.7
-      env: PY=3.7
 env:
   - CUDA=10.1.105-1 CUDA_APT=10-1 CUDA_SHORT=10.1 UBUNTU_VERSION=ubuntu1804
 before_install:
@@ -23,8 +21,7 @@ before_install:
   - export CUDA_HOME=/usr/local/cuda-${CUDA_SHORT}
   - export LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
   - export PATH=${CUDA_HOME}/bin:${PATH}
-  - pip install mxnet-cu101 tensorflow-gpu torch torchvision
-  - if [[ ${PY} == 2.7 ]]; then pip install future; fi
+  - pip install future mxnet-cu101 tensorflow-gpu torch torchvision
 install:
   - export BYTEPS_CUDA_HOME=${CUDA_HOME}
   - python setup.py install
