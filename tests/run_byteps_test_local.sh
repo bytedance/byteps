@@ -3,10 +3,10 @@
 path="`dirname $0`"
 
 echo "Launch scheduler"
-./run_byteps_server_local.sh scheduler 
+sh $path/run_byteps_server_local.sh scheduler 
 
 echo "Launch server"
-./run_byteps_server_local.sh server
+sh $path/run_byteps_server_local.sh server
 
 export PATH=~/.local/bin:$PATH
 export NVIDIA_VISIBLE_DEVICES=0
@@ -20,7 +20,7 @@ export BYTEPS_FORCE_DISTRIBUTED=1
 
 if [ "$TEST_TYPE" == "mxnet" ]; then
   echo "TEST MXNET ..."
-  bpslaunch python3 $path/test_mxnet.py $@
+  bpslaunch python $path/test_mxnet.py $@
 elif [ "$TEST_TYPE" == "keras" ]; then
   echo "TEST KERAS ..."
   python $path/test_tensorflow_keras.py $@
