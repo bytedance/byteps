@@ -905,6 +905,7 @@ class custom_build_ext(build_ext):
             try:
                 build_tf_extension(self, options)
                 built_plugins.append(True)
+                print('INFO: Tensorflow extension is built successfully.')
             except:
                 if not int(os.environ.get('BYTEPS_WITH_TENSORFLOW', 0)):
                     print('INFO: Unable to build TensorFlow plugin, will skip it.\n\n'
