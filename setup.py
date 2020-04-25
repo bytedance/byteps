@@ -768,8 +768,10 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
 
 
 def build_torch_extension(build_ext, options, torch_version):
+    pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
+                             else flag for flag in options['COMPILE_FLAGS']]
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
-                              extra_compile_args=options['COMPILE_FLAGS'])
+                              extra_compile_args=pytorch_compile_flags)
     if not have_cuda and check_macro(options['MACROS'], 'HAVE_CUDA'):
         raise DistutilsPlatformError(
             'byteps build with GPU support was requested, but this PyTorch '
@@ -807,7 +809,7 @@ def build_torch_extension(build_ext, options, torch_version):
                                                        'byteps/torch/cuda_util.cc',
                                                        'byteps/torch/adapter.cc',
                                                        'byteps/torch/handle_manager.cc'],
-                         extra_compile_args=options['COMPILE_FLAGS'],
+                         extra_compile_args=pytorch_compile_flags,
                          extra_link_args=options['LINK_FLAGS'],
                          extra_objects=options['EXTRA_OBJECTS'],
                          library_dirs=options['LIBRARY_DIRS'],

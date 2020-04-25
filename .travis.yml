@@ -1,9 +1,12 @@
 dist: bionic
 language: python
 cache: pip
-python:
-  - "2.7"
-  - "3.7"
+jobs:
+  include:
+    - python: 2.7
+      before_install: 
+        - pip install future
+    - python: 3.7
 env:
   - CUDA=10.1.105-1 CUDA_APT=10-1 CUDA_SHORT=10.1 UBUNTU_VERSION=ubuntu1804 NCCL=1.0.0-1
 before_install:
@@ -16,7 +19,7 @@ before_install:
   - sudo dpkg -i ${NCCL_REPO}
 install:
   - sudo apt update -qq
-  - sudo apt install -y cuda libnccl2 libnccl-dev libnuma-dev
+  - sudo apt install -y cuda-10-1 libnccl2 libnccl-dev libnuma-dev
   - sudo apt clean
   - CUDA_HOME=/usr/local/cuda-${CUDA_SHORT}
   - LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
