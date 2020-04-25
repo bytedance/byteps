@@ -16,7 +16,13 @@ class PropagatingThread(threading.Thread):
     def run(self):
         self.exc = None
         try:
-            self.ret = self._target(*self._args, **self._kwargs)
+            if hasattr(self, '_Thread__target'):
+                #  python 2.x
+                self.ret = self._Thread__target(
+                    *self._Thread__args, **self._Thread__kwargs)
+            else:
+                # python 3.x
+                self.ret = self._target(*self._args, **self._kwargs)
         except BaseException as e:
             self.exc = e
 
