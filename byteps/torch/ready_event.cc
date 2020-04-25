@@ -14,7 +14,7 @@
 // limitations under the License.
 // =============================================================================
 
-#if HAVE_GPU
+#if HAVE_CUDA
 #if TORCH_VERSION >= 1005000000
 #include <c10/cuda/CUDAException.h>
 #include <c10/cuda/CUDAStream.h>
@@ -31,7 +31,7 @@
 #include "ready_event.h"
 
 #if TORCH_VERSION < 1005000000
-#if HAVE_GPU
+#if HAVE_CUDA
 extern THCState* state;
 #endif
 #endif
@@ -39,7 +39,7 @@ extern THCState* state;
 namespace byteps {
 namespace torch {
 
-#if HAVE_GPU
+#if HAVE_CUDA
 struct ReadyEventRegistry {
   std::unordered_map<int, std::queue<cudaEvent_t>> cuda_events;
   std::mutex mutex;
@@ -104,7 +104,7 @@ std::shared_ptr<ReadyEvent> RecordReadyEvent(int device) {
   if (device == CPU_DEVICE_ID) {
     return std::shared_ptr<ReadyEvent>();
   } else {
-#if HAVE_GPU
+#if HAVE_CUDA
     return std::make_shared<TorchReadyEvent>(device);
 #else
     throw std::logic_error(
