@@ -20,11 +20,11 @@
 namespace byteps {
 namespace sparse {
 
-void BytepsReduceScatter(const void* sendbuff, void* recvbuff, size_t count);
+void BytepsReduceScatter(const void* sendbuff, void* recvbuff, size_t count, char* name);
 
-void BytepsAllGather(const void* sendbuff, void* recvbuff, size_t count);
+void BytepsAllGather(const void* sendbuff, void* recvbuff, size_t count, char* name);
 
-void BytepsAll2All(const void* sendbuff, void* recvbuff, size_t count);
+void BytepsAll2All(const void* sendbuff, void* recvbuff, size_t count, char* name);
 
 } // namespace sparse
 } // namespace byteps 

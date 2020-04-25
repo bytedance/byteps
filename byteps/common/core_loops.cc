@@ -783,10 +783,11 @@ bool RunGlobalReduceScatterLoopOnce() {
     auto worker_id = BytePSGlobal::GetWorkerID();
     BPS_CHECK_EQ(len % num_worker, 0); // make sure it is equally partitionable
     auto len_partition = len / num_worker;
-    auto vals_pull = new ps::SArray<char>(data + worker_id * len_partition, len_partition, false);
+    auto vals_pull = new ps::SArray<char>(task->output + worker_id * len_partition, len_partition, false);
     
     // create funtional sarray of new lens
     SArray<char> lens_pull;
+    lens_pull.CopyFrom(&len_partition, sizeof(int));
     void *p = malloc(sizeof(int));
     memcpy(p, &len_partition, sizeof(int));
     lens_pull.reset((char *) p, sizeof(int), [p](void *) { free(p); });
@@ -815,7 +816,7 @@ bool RunGlobalAllGatherLoopOnce() {
         const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
 
     /**
-     * Push: push the 1/n tensor
+     * Push: push the small tensor to gather a large one
      */
     const int dtype = task->output->dtype();
     int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
@@ -825,15 +826,15 @@ bool RunGlobalAllGatherLoopOnce() {
     BytePSGlobal::GetPS()->ZPush(pskv.keys, vals_push, pskv.lens, cmd, [](){});
 
     /**
-     * Pull: pull the 1 tensor
+     * Pull: pull the large tensor
      */
     auto num_worker = BytePSGlobal::GetNumWorker();
-    auto worker_id = BytePSGlobal::GetWorkerID();
+    auto new_len = len * num_worker;
+    auto vals_pull = new ps::SArray<char>(task->output, new_len, false);
 
     // create funtional sarray of new lens
     SArray<char> lens_pull;
     void *p = malloc(sizeof(int));
-    auto new_len = len * worker_id;
     memcpy(p, &new_len, sizeof(int));
     lens_pull.reset((char *) p, sizeof(int), [p](void *) { free(p); });
 

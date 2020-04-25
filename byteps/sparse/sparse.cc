@@ -14,12 +14,38 @@
 // =============================================================================
 
 #include "sparse.h"
+#include "../common/operations.h"
 
 namespace byteps {
 namespace sparse {
 
-void BytepsReduceScatter(const void* sendbuff, void* recvbuff, size_t count) {
+void BytepsReduceScatter(const void* sendbuff, void* recvbuff, size_t count, char* name) {
+  std::string tensor_name = std:string(name);
+  auto& context = common::GetContextFromName(tensor_name);
 
+  auto byteps_input = sendbuff;
+  auto byteps_output = recvbuff;
+
+  common::InitTensor(context, count,
+                      (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(byteps_input->data())
+                      : nullptr);
+
+  auto queue_list = common::GetSparseQueueList(device);
+  std::shared_ptr<ReadyEvent> ready_event; // empty placeholder
+
+  auto enqueue_result = 
+      common::EnqueueTensor(
+          context, 
+          byteps_input, 
+          byteps_output,
+          ready_event,
+          device, 
+          0, // priority 
+          0, // version
+          [](const Status& status) mutable {}, // empty callback for now
+          queue_list);
+  
 }
 
 void BytepsAllGather(const void* sendbuff, void* recvbuff, size_t count) {
