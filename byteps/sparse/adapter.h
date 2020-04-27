@@ -17,24 +17,23 @@
 #define BYTEPS_SPARSE_ADAPTER_H
 
 #include "../common/common.h"
-#include "nccl.h"
+#include "cuda_util.h"
 
 namespace byteps {
 namespace sparse {
 
 using namespace byteps::common;
 
-template <class T>
 class GeneralTensor : public Tensor {
  public:
-  GeneralTensor(T* tensor, ncclDataType_t datatype, size_t size);
+  GeneralTensor(void* tensor, ncclDataType_t datatype, size_t size);
   virtual const DataType dtype() const override;
   virtual const TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;
 
  protected:
-  T* tensor_;
+  void* tensor_;
   ncclDataType_t nccl_datatype_;
   size_t size_;
 };

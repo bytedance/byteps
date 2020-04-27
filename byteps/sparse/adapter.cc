@@ -14,13 +14,15 @@
 // =============================================================================
 
 #include "adapter.h"
-#include "cuda_util.h"
 
 namespace byteps {
 namespace sparse {
 
-template <class T>
-GeneralTensor::GeneralTensor(T* tensor, ncclDataType_t datatype, size_t size) : tensor_(tensor), nccl_datatype_(datatype), size_(size) {}
+GeneralTensor::GeneralTensor(void* tensor, ncclDataType_t datatype, size_t size) { 
+  tensor_ = tensor;
+  nccl_datatype_ = datatype;
+  size_ = size;
+}
 
 const DataType GeneralTensor::dtype() const {
   switch (nccl_datatype_) {

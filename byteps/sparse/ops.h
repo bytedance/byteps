@@ -23,23 +23,6 @@ namespace sparse {
 
 using namespace byteps::common;
 
-#define PUSHPULL_H(torch_Tensor, THTensor)                         \
-  extern "C" int byteps_torch_push_pull_async_##torch_Tensor(      \
-      THTensor* tensor, THTensor* output, int average, char* name, \
-      int version, int priority);
-
-PUSHPULL_H(torch_IntTensor, THIntTensor)
-PUSHPULL_H(torch_LongTensor, THLongTensor)
-PUSHPULL_H(torch_FloatTensor, THFloatTensor)
-PUSHPULL_H(torch_DoubleTensor, THDoubleTensor)
-
-#if HAVE_CUDA
-PUSHPULL_H(torch_cuda_IntTensor, THCudaIntTensor)
-PUSHPULL_H(torch_cuda_LongTensor, THCudaLongTensor)
-PUSHPULL_H(torch_cuda_FloatTensor, THCudaTensor)
-PUSHPULL_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
-#endif
-
 extern "C" int byteps_torch_poll(int handle);
 extern "C" void byteps_torch_wait_and_clear(int handle);
 extern "C" void byteps_torch_declare_tensor(char* name);

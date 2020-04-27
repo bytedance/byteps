@@ -104,27 +104,6 @@ void WaitAndClear(int handle) {
   ThrowIfError(*status);
 }
 
-PYBIND11_MODULE(c_lib, m) {
-  // push_pull
-  m.def("byteps_torch_push_pull_async_torch_IntTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_LongTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_HalfTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_FloatTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_DoubleTensor", &DoPushPull);
-
-#if HAVE_CUDA
-  m.def("byteps_torch_push_pull_async_torch_cuda_IntTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_cuda_LongTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_cuda_HalfTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_cuda_FloatTensor", &DoPushPull);
-  m.def("byteps_torch_push_pull_async_torch_cuda_DoubleTensor", &DoPushPull);
-#endif
-
-  // basics
-  m.def("byteps_torch_poll", &PollHandle);
-  m.def("byteps_torch_wait_and_clear", &WaitAndClear);
-  m.def("byteps_torch_declare_tensor", &DeclareTensor);
-}
 
 }  // namespace sparse
 }  // namespace byteps

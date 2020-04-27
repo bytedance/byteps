@@ -821,13 +821,6 @@ def build_torch_extension(build_ext, options, torch_version):
 
 
 def build_sparse_extension(build_ext, options):
-    sparse_lib.define_macros = options['MACROS']
-    sparse_lib.include_dirs = options['INCLUDES']
-    sparse_lib.extra_compile_args = options['COMPILE_FLAGS'] 
-    sparse_lib.extra_link_args = options['LINK_FLAGS']
-    sparse_lib.extra_objects = options['EXTRA_OBJECTS']
-    sparse_lib.library_dirs = options['LIBRARY_DIRS']
-
     cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
     options['MACROS'] += [('HAVE_CUDA', '1')]
     options['INCLUDES'] += cuda_include_dirs
@@ -836,6 +829,10 @@ def build_sparse_extension(build_ext, options):
 
     sparse_lib.define_macros = options['MACROS']
     sparse_lib.include_dirs = options['INCLUDES']
+    sparse_lib.extra_compile_args = options['COMPILE_FLAGS'] 
+    sparse_lib.extra_link_args = options['LINK_FLAGS']
+    sparse_lib.extra_objects = options['EXTRA_OBJECTS']
+    sparse_lib.library_dirs = options['LIBRARY_DIRS']
     sparse_lib.sources = options['SOURCES'] + \
         ['byteps/sparse/adapter.cc',
          'byteps/sparse/cuda_util.cc',
@@ -1027,7 +1024,7 @@ setup(
         'Programming Language :: Python :: Implementation :: PyPy'
         'Operating System :: POSIX :: Linux'
     ],
-    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib],
+    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib, sparse_lib],
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,

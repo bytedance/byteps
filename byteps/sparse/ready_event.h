@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "../common/common.h"
+#include "../common/logging.h"
 
 namespace byteps {
 namespace sparse {
@@ -43,7 +44,7 @@ class GeneralReadyEvent : public ReadyEvent {
 };
 #endif
 
-std::shared_ptr<ReadyEvent> RecordReadyEvent(int device);
+std::shared_ptr<ReadyEvent> RecordReadyEvent(int device, cudaStream_t stream);
 
 }  // namespace sparse
 }  // namespace byteps
