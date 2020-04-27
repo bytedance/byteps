@@ -1,4 +1,4 @@
-// Copyright 2020 Bytedance Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 ByteDance, Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,15 +13,35 @@
 // limitations under the License.
 // =============================================================================
 
+#ifndef BYTEPS_SPARSE_HANDLE_MANAGER_H
+#define BYTEPS_SPARSE_HANDLE_MANAGER_H
 
-#ifndef BYTEPS_SPARSE_H
-#define BYTEPS_SPARSE_H
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+
+#include "../common/common.h"
 
 namespace byteps {
 namespace sparse {
 
+using namespace byteps::common;
 
-} // namespace sparse
-} // namespace byteps 
+class HandleManager {
+ public:
+  int AllocateHandle();
+  void MarkDone(int handle, const Status& status);
+  bool PollHandle(int handle);
+  std::shared_ptr<Status> ReleaseHandle(int handle);
 
-#endif  // BYTEPS_SPARSE_H
+ private:
+  std::atomic_int last_handle_;
+  std::unordered_map<int, std::shared_ptr<Status>> results_;
+  std::mutex mutex_;
+};
+
+}  // namespace sparse
+}  // namespace byteps
+
+#endif  // BYTEPS_SPARSE_HANDLE_MANAGER_H

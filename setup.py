@@ -27,6 +27,7 @@ server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
 mxnet_lib = Extension('byteps.mxnet.c_lib', [])
 pytorch_lib = Extension('byteps.torch.c_lib', [])
+sparse_lib = Extension('byteps.sparse.c_lib', [])
 
 # Package meta-data.
 NAME = 'byteps'
@@ -819,6 +820,34 @@ def build_torch_extension(build_ext, options, torch_version):
     build_ext.build_extension(pytorch_lib)
 
 
+def build_sparse_extension(build_ext, options):
+    sparse_lib.define_macros = options['MACROS']
+    sparse_lib.include_dirs = options['INCLUDES']
+    sparse_lib.extra_compile_args = options['COMPILE_FLAGS'] 
+    sparse_lib.extra_link_args = options['LINK_FLAGS']
+    sparse_lib.extra_objects = options['EXTRA_OBJECTS']
+    sparse_lib.library_dirs = options['LIBRARY_DIRS']
+
+    cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(build_ext, options['COMPILE_FLAGS'])
+    options['MACROS'] += [('HAVE_CUDA', '1')]
+    options['INCLUDES'] += cuda_include_dirs
+    options['LIBRARY_DIRS'] += cuda_lib_dirs
+    options['LIBRARIES'] += ['cudart']
+
+    sparse_lib.define_macros = options['MACROS']
+    sparse_lib.include_dirs = options['INCLUDES']
+    sparse_lib.sources = options['SOURCES'] + \
+        ['byteps/sparse/adapter.cc',
+         'byteps/sparse/cuda_util.cc',
+         'byteps/sparse/handle_manager.cc',
+         'byteps/sparse/ops.cc',
+         'byteps/sparse/ready_event.cc',
+         'byteps/sparse/sparse.cc'
+         ]
+    sparse_lib.libraries = options['LIBRARIES']
+
+    build_ext.build_extension(sparse_lib)
+
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
@@ -942,6 +971,19 @@ class custom_build_ext(build_ext):
                     raise
             finally:
                 os.system("rm -rf " + cuda_stub_path + "/libcuda.so.1")
+
+        if not int(os.environ.get('BYTEPS_WITHOUT_SPARSE', 0)):
+            try:
+                build_sparse_extension(self, options)
+                built_plugins.append(True)
+                print('INFO: Sparse extension has been built successfully.')
+            except:
+                if not int(os.environ.get('BYTEPS_WITHOUT_SPARSE', 0)):
+                    print('INFO: Unable to build Sparse plugin, will skip it.\n\n'
+                          '%s' % traceback.format_exc())
+                    built_plugins.append(False)
+                else:
+                    raise
 
         if not built_plugins:
             print('INFO: Only server module is built.')

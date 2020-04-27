@@ -1,4 +1,4 @@
-// Copyright 2020 Bytedance Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 ByteDance, Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,12 +13,24 @@
 // limitations under the License.
 // =============================================================================
 
-#include "sparse.h"
-#include "../common/operations.h"
+#ifndef BYTEPS_SPARSE_CUDA_UTIL_H
+#define BYTEPS_SPARSE_CUDA_UTIL_H
+
+#include "../common/common.h"
 
 namespace byteps {
 namespace sparse {
 
+class with_device {
+ public:
+  with_device(int device);
+  ~with_device();
 
-} // namespace sparse
-} // namespace byteps 
+ private:
+  int restore_device_ = CPU_DEVICE_ID;
+};
+
+}  // namespace sparse
+}  // namespace byteps
+
+#endif  // BYTEPS_SPARSE_CUDA_UTIL_H
