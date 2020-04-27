@@ -25,5 +25,8 @@ before_install:
 install:
   - export BYTEPS_CUDA_HOME=${CUDA_HOME}
   - python setup.py install
+  - cd 3rdparty/ps-lite && make -j && cd -
 script:
-  - TEST_TYPE=mxnet tests/run_byteps_test_local.sh
+  - 3rdparty/ps-lite/tests/local_multi_workers.sh 1 1 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
+  - 3rdparty/ps-lite/tests/local_multi_workers.sh 2 2 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
+  - 3rdparty/ps-lite/tests/local_multi_workers.sh 4 4 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
