@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import warnings
 import mxnet as mx
+import mxnet.ndarray as nd
 import os
 
 from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
@@ -200,7 +201,8 @@ class DistributedTrainer(mx.gluon.Trainer):
         # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
         # function. Normalizing it by BytePS size, which is equivalent to performing
         # average in push_pull, has better performance.
-        self._scale /= size()
+        # self._scale /= size()
+        self._bps_size = size()
         self.root_rank = root_rank
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
@@ -211,16 +213,25 @@ class DistributedTrainer(mx.gluon.Trainer):
                 )
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
+    def step(self, batch_size, ignore_stale_grad=False):
+        self._scale = batch_size
+        super(DistributedTrainer, self).step(batch_size, ignore_stale_grad)
+
     def _allreduce_grads(self):
+        # update lr
+        if rank() == 0:
+            with open("lr", 'w') as f:
+                f.write(str(self.learning_rate))
+        
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
-                compressed, ctx = self._compression.compress(
-                    param.list_grad()[0])
+                # grad /= (batch_size * num_workers)
+                nd._internal._mul_scalar(
+                    param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
+                compressed, ctx = self._compression.compress(param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                param._grad[0] = self._compression.decompress(compressed, ctx) 
-                
-        
+                param._grad[0] = self._compression.decompress(compressed, ctx)
 
     def _init_params(self):
         tensors = []
