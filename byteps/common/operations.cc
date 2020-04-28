@@ -410,25 +410,5 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
   return queue_list;
 }
 
-std::shared_ptr<std::vector<QueueType>> GetSparseQueueList() {
-  auto queue_list = std::make_shared<std::vector<QueueType>>();
-
-  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-    queue_list->push_back(REDUCE);
-  } else {
-    queue_list->push_back(COORDINATE_REDUCE);
-    queue_list->push_back(REDUCE);
-  }
-
-  // Copy from GPU to CPU
-  if (BytePSGlobal::IsDistributed()) {
-    queue_list->push_back(COPYD2H);
-  }
-  
-  queue_list->push_back(GLOBAL_RECUCESCATTER);
-  
-  return queue_list;
-}
-
 }  // namespace common
 }  // namespace byteps

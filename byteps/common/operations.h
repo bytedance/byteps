@@ -78,8 +78,6 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
 
-std::shared_ptr<std::vector<QueueType>> GetSparseQueueList();
-
 }  // namespace common
 }  // namespace byteps
 

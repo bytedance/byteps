@@ -45,10 +45,6 @@ void NonRootCopyListenLoop();
 
 void NonRootCopyHost2DeviceLoop();
 
-void GlobalReduceScatterLoop();
-
-void GlobalAllGatherLoop();
-
 }  // namespace common
 }  // namespace byteps
 
