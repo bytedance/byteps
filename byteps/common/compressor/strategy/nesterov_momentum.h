@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_VANILLA_MOM_H
-#define BYTEPS_COMPRESS_VANILLA_MOM_H
+#ifndef BYTEPS_COMPRESS_NESTEROV_MOM_H
+#define BYTEPS_COMPRESS_NESTEROV_MOM_H
 
 #include "../momentum.h"
 
