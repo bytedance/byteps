@@ -258,7 +258,7 @@ def get_common_options(build_ext):
                'byteps/common/compressor/strategy/randomk.cc',
                'byteps/common/compressor/strategy/topk.cc',
                'byteps/common/compressor/strategy/vanilla_error_feedback.cc',
-               'byteps/common/compressor/strategy/vanilla_momentum.cc']
+               'byteps/common/compressor/strategy/nesterov_momentum.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + \
