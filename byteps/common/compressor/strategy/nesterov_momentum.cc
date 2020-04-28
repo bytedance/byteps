@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "vanilla_momentum.h"
+#include "nesterov_momentum.h"
 
 #include "../../logging.h"
 
