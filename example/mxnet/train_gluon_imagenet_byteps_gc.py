@@ -492,16 +492,15 @@ def main():
             train_metric_name, train_metric_score = train_metric.get()
             throughput = int(batch_size * nworker * i / (time.time() - tic))
 
-            if rank == 0:
-                logger.info('[Epoch %d] training: %s=%f' %
-                            (epoch, train_metric_name, train_metric_score))
-                logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
-                            (epoch, throughput, time.time()-tic))
+            logger.info('[Epoch %d] training: %s=%f' %
+                        (epoch, train_metric_name, train_metric_score))
+            logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
+                        (epoch, throughput, time.time()-tic))
 
             err_top1_val, err_top5_val = test(ctx, val_data)
-            if rank == 0:
-                logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
-                            (epoch, err_top1_val, err_top5_val))
+            
+            logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
+                        (epoch, err_top1_val, err_top5_val))
 
             if err_top1_val < best_val_score:
                 best_val_score = err_top1_val
