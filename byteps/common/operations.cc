@@ -192,7 +192,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     if (err == cudaSuccess) {
       BPS_LOG(DEBUG) << name << " cpu address has changed, so it is pinned again.";
     }
-    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), input->data(), 0));
+    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
   }
 
   e->cpubuff = context.cpubuff;
