@@ -31,10 +31,15 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
       std::unique_ptr<BaseCompressor> compressor_ptr);
   virtual ~VanillaErrorFeedbackCompressor();
 
+  virtual void Init(size_t aligned_size);
+
  protected:
   void UpdateGradient(ByteBuf grad, int dtype) override;
 
   void UpdateError(ByteBuf corrected, int dtype, ByteBuf compressed) override;
+ 
+ private:
+  float _pre_lr, _cur_lr;
 };
 }  // namespace compressor
 }  // namespace common

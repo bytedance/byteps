@@ -281,33 +281,13 @@ int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
 template <typename T1, typename T2>
 size_t CpuReducer::_sign(T1* dst, const T2* src, size_t len) {
   static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
-  const size_t end = sizeof(T1) - 1, reduced_len = len / sizeof(T1);
-  char* psrc;
-  // extract sign bit
 
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < reduced_len; ++i) {
-    psrc = reinterpret_cast<char*>(const_cast<T2*>(src + i));
-
-#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN ||                 \
-    defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || \
-    defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) ||       \
-    defined(__MIBSEB__)
-    // big-endian target architecture
-    dst[i] = (psrc[0] & 0x80) >> 7;
-
-#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN ||         \
-    defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) ||                   \
-    defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || \
-    defined(__MIPSEL) || defined(__MIPSEL__)
-    // little-endian target architecture
-    dst[i] = (psrc[end] & 0x80) >> 7;
-#else
-#error "Unknown endian"
-#endif
+  for (size_t i = 0; i < len / sizeof(T1); ++i) {
+    dst[i] = src[i] < 0;
   }
 
-  return reduced_len;
+  return len / sizeof(T1);
 }
 
 float CpuReducer::norm1(const void* src, size_t len, DataType dtype) {

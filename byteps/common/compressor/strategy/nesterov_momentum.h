@@ -22,11 +22,11 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-class VanillaMomentumCompressor : public Momentum {
+class NesterovMomentumCompressor : public Momentum {
  public:
-  VanillaMomentumCompressor(std::unique_ptr<BaseCompressor> compressor_ptr,
+  NesterovMomentumCompressor(std::unique_ptr<BaseCompressor> compressor_ptr,
                             float mu);
-  virtual ~VanillaMomentumCompressor();
+  virtual ~NesterovMomentumCompressor();
 
  protected:
   void UpdateMom(ByteBuf grad, int dtype) override;

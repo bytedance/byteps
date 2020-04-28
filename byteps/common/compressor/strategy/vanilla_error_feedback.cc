@@ -42,21 +42,21 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
 
 VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 
-#ifndef BYTEPS_BUILDING_SERVER
-// worker version decompressor
-void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
-  int local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
-  this->_cpu_reducer->sum(grad.data, _error.get(), grad.data, grad.size,
-                          static_cast<DataType>(dtype), 1.0 / local_size);
+void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
+  ErrorFeedback::Init(aligned_size);
+  _pre_lr = _cur_lr = 0.0;
 }
-#else
-// server version decompressor
+
 void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
-  int num_workers = atoi(getenv("DMLC_NUM_WORKER"));
-  this->_cpu_reducer->sum(grad.data, _error.get(), grad.data, grad.size,
-                          static_cast<DataType>(dtype), 1.0 / num_workers);
+  std::ifstream fin("lr");
+  if (fin.is_open()) {
+    fin >> _cur_lr;
+  }
+  fin.close();
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+                          static_cast<DataType>(dtype), (_pre_lr / _cur_lr));
+  _pre_lr = _cur_lr;
 }
-#endif
 
 void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
                                                  ByteBuf compressed) {

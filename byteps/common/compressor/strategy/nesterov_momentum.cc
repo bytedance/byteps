@@ -22,7 +22,7 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
-    "vanilla_momentum",
+    "nesterov_momentum",
     [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
       // register cpr
       auto kwargs_clone = kwargs;
@@ -34,24 +34,24 @@ CompressorRegistry::Register reg(
       BPS_CHECK_NE(iter, kwargs.end()) << "momentum \mu is not defined";
       float mu = std::stof(iter->second);
       BPS_LOG(DEBUG) << "with momentum";
-      return std::unique_ptr<VanillaMomentumCompressor>(
-          new VanillaMomentumCompressor(std::move(compressor_ptr), mu));
+      return std::unique_ptr<NesterovMomentumCompressor>(
+          new NesterovMomentumCompressor(std::move(compressor_ptr), mu));
     });
 }
 
-VanillaMomentumCompressor::VanillaMomentumCompressor(
+NesterovMomentumCompressor::NesterovMomentumCompressor(
     std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
     : Momentum(std::move(compressor_ptr), mu){};
 
-VanillaMomentumCompressor::~VanillaMomentumCompressor() = default;
+NesterovMomentumCompressor::~NesterovMomentumCompressor() = default;
 
-void VanillaMomentumCompressor::UpdateMom(ByteBuf grad, int dtype) {
+void NesterovMomentumCompressor::UpdateMom(ByteBuf grad, int dtype) {
   // m_t = \mu * m_{t-1} + g_t
   this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
                           static_cast<DataType>(dtype), _mu);
 }
 
-void VanillaMomentumCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+void NesterovMomentumCompressor::UpdateGradient(ByteBuf grad, int dtype) {
   // p_t = \mu m_t + g_t
   this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
                           static_cast<DataType>(dtype), _mu);
