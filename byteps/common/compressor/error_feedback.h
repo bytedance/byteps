@@ -36,7 +36,7 @@ class ErrorFeedback : public BaseCompressor {
    * \brief Allocate encoding buffer for compression.
    * \param aligned_size aligned size
    */
-  virtual void Init(size_t aligned_size) final;
+  virtual void Init(size_t aligned_size);
 
   /*!
    * \brief Compress function
@@ -45,7 +45,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) final;
+  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed);
 
   /*!
    * \brief Decompress function
@@ -55,7 +55,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param decompressed decompressed tensor
    */
   virtual void Decompress(ByteBuf compressed, int dtype,
-                          ByteBuf& decompressed) final;
+                          ByteBuf& decompressed);
 
  protected:
   /*!
