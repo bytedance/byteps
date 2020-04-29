@@ -15,6 +15,7 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include "vanilla_error_feedback.h"
 #include "../../logging.h"
