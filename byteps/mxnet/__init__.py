@@ -14,19 +14,19 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
+import os
+import struct
 import warnings
+
 import mxnet as mx
 import mxnet.ndarray as nd
-import os
 
-from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
-from byteps.mxnet.ops import init, shutdown, suspend, resume
-from byteps.mxnet.ops import size, local_size, rank, local_rank
 from byteps.mxnet.compression import Compression
+from byteps.mxnet.ops import (byteps_declare_tensor, byteps_push_pull, init,
+                              local_rank, local_size, rank, resume, shutdown,
+                              size, suspend)
 
 parameter_index = 0
 
@@ -198,6 +198,8 @@ class DistributedTrainer(mx.gluon.Trainer):
         super(DistributedTrainer, self).__init__(
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
+        self._f = open("lr.s", "wb")
+        self._f.truncate(4)
         # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
         # function. Normalizing it by BytePS size, which is equivalent to performing
         # average in push_pull, has better performance.
@@ -213,6 +215,9 @@ class DistributedTrainer(mx.gluon.Trainer):
                 )
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
+    def __del__(self):
+        self._f.close()
+
     def step(self, batch_size, ignore_stale_grad=False):
         self._scale = batch_size
         super(DistributedTrainer, self).step(batch_size, ignore_stale_grad)
@@ -220,9 +225,11 @@ class DistributedTrainer(mx.gluon.Trainer):
     def _allreduce_grads(self):
         # update lr
         if local_rank() == 0:
-            with open("lr", 'w') as f:
-                f.write(str(self.learning_rate))
-        
+            self._f.seek(0)
+            ba = struct.pack("f", self.learning_rate)
+            self._f.write(ba)
+            self._f.flush()
+
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
                 # grad /= (batch_size * num_workers)
