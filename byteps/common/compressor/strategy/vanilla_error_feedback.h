@@ -41,7 +41,7 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  private:
   double _pre_lr, _cur_lr;
   int _fd;
-  char* _mm;
+  void* _mm;
 };
 }  // namespace compressor
 }  // namespace common
