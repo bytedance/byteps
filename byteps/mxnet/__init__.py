@@ -219,7 +219,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
     def _allreduce_grads(self):
         # update lr
-        if rank() == 0:
+        if local_rank() == 0:
             with open("lr", 'w') as f:
                 f.write(str(self.learning_rate))
         
