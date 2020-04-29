@@ -402,7 +402,7 @@ def main():
                     setattr(
                         param, "byteps_compressor_onebit_enable_scale", opt.onebit_scaling)
                 if opt.compress_momentum:
-                    setattr(param, "byteps_momentum_type", "vanilla")
+                    setattr(param, "byteps_momentum_type", "nesterov")
                     setattr(param, "byteps_momentum_mu", opt.momentum)
 
         if opt.compress_momentum:
