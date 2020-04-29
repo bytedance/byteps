@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "vanilla_error_feedback.h"
 #include "../../logging.h"
@@ -49,10 +50,9 @@ void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
   ErrorFeedback::Init(aligned_size);
   _pre_lr = _cur_lr = 0.0;
   _fd = open("lr.s", O_RDONLY);
-  BPS_CHECK(_fd > 0) << "open lr.s failed";
-  BPS_CHECK_GE(ftruncate(_fd, 4), 0) << "ftruncate failed";
+  BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
   void* ptr = mmap(0, 4, PROT_READ, MAP_SHARED, _fd, 0);
-  BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed";
+  BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed, errno=" << strerror(errno);
   _mm = ptr;
 }
 
