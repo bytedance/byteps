@@ -39,7 +39,7 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
   void UpdateError(ByteBuf corrected, int dtype, ByteBuf compressed) override;
  
  private:
-  float _pre_lr, _cur_lr;
+  double _pre_lr, _cur_lr;
   int _fd;
   void* _mm;
 };
