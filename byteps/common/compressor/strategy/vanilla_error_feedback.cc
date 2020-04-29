@@ -44,7 +44,10 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
     std::unique_ptr<BaseCompressor> compressor_ptr)
     : ErrorFeedback(std::move(compressor_ptr)) {}
 
-VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
+VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() {
+  munmap(_mm, 4);
+  close(_fd);
+}
 
 void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
   ErrorFeedback::Init(aligned_size);
