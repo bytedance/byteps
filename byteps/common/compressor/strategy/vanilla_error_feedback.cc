@@ -13,8 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include "vanilla_error_feedback.h"
+#include <fcntl.h>
+#include <sys/mman.h>
 
+#include "vanilla_error_feedback.h"
 #include "../../logging.h"
 
 namespace byteps {
@@ -45,14 +47,16 @@ VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
 void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
   ErrorFeedback::Init(aligned_size);
   _pre_lr = _cur_lr = 0.0;
+  _fd = open("lr.s", O_RDONLY);
+  BPS_CHECK(_fd > 0) << "open lr.s failed";
+  void* ptr = mmap(0, 20, PROT_READ, MAP_SHARED, _fd, 0);
+  BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed";
+  _mm = static_cast<char*>(ptr);
 }
 
 void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
-  std::ifstream fin("lr");
-  if (fin.is_open()) {
-    fin >> _cur_lr;
-  }
-  fin.close();
+  _cur_lr = std::stof(_mm);
+  BPS_LOG(INFO) << "lr=" << _cur_lr;
   this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
                           static_cast<DataType>(dtype), (_pre_lr / _cur_lr));
   _pre_lr = _cur_lr;
