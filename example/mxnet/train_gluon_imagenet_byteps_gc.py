@@ -168,7 +168,7 @@ def main():
     lr_scheduler = LRSequential([
         LRScheduler('linear', base_lr=opt.warmup_lr, target_lr=opt.lr * nworker / bps.local_size(),
                     nepochs=opt.warmup_epochs, iters_per_epoch=num_batches),
-        LRScheduler(opt.lr_mode, base_lr=opt.lr * nworker /bps.local_size(), target_lr=0,
+        LRScheduler(opt.lr_mode, base_lr=opt.lr * nworker / bps.local_size(), target_lr=0,
                     nepochs=opt.num_epochs - opt.warmup_epochs,
                     iters_per_epoch=num_batches,
                     step_epoch=lr_decay_epoch,
@@ -407,6 +407,7 @@ def main():
 
         if opt.compress_momentum:
             del optimizer_params['momentum']
+
         compression = bps.Compression.fp16 if opt.fp16_pushpull else bps.Compression.none
         trainer = bps.DistributedTrainer(
             params, optimizer, optimizer_params, compression=compression)
@@ -483,10 +484,10 @@ def main():
 
                 if opt.log_interval and not (i+1) % opt.log_interval:
                     train_metric_name, train_metric_score = train_metric.get()
-                    logger.info('Epoch[%d] Batch [%d]\tSpeed: %f samples/sec\t%s=%f\tlr=%f' % (
+                    logger.info('Epoch[%d] Batch [%d]\tSpeed: %f samples/sec\t%s=%f\tlr=%f\ttime=%f' % (
                                 epoch, i, batch_size*nworker *
                                 opt.log_interval/(time.time()-btic),
-                                train_metric_name, train_metric_score, trainer.learning_rate))
+                                train_metric_name, train_metric_score, trainer.learning_rate, time.time()-btic))
                     btic = time.time()
 
             train_metric_name, train_metric_score = train_metric.get()
@@ -498,7 +499,7 @@ def main():
                         (epoch, throughput, time.time()-tic))
 
             err_top1_val, err_top5_val = test(ctx, val_data)
-            
+
             logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
                         (epoch, err_top1_val, err_top5_val))
 
