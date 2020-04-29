@@ -141,7 +141,7 @@ for name, param in params.items():
     if args.scaling:
         setattr(param, "byteps_compressor_onebit_enable_scale", args.scaling)
     if args.compress_momentum:
-        setattr(param, "byteps_momentum_type", "vanilla")
+        setattr(param, "byteps_momentum_type", "nesterov")
         setattr(param, "byteps_momentum_mu", args.momentum)
 
 
