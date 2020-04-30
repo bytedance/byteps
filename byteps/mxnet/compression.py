@@ -76,7 +76,7 @@ class WeightDecayMomentum(Compressor):
 
     def compress(self, tensor):
         """Returns the tensor unmodified."""
-        return self.compressor.compress(tensor), None
+        return self.compressor.compress(tensor)
 
     def decompress(self, tensor, ctx):
         """Returns the tensor added with additional momentum for wd
