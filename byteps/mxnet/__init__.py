@@ -313,9 +313,9 @@ class DistributedTrainer(mx.gluon.Trainer):
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
-                compressed, ctx = self._compression.compress(param_arrays[0])
+                # compressed, ctx = self._compression.compress(param_arrays[0])
                 byteps_push_pull(compressed, version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                param.set_data(self._compression.decompress(compressed, ctx))
+                # param.set_data(self._compression.decompress(compressed, ctx))
 
         self._params_to_init = tensors
