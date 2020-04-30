@@ -190,9 +190,14 @@ def main():
     if opt.last_gamma:
         kwargs['last_gamma'] = True
 
-    optimizer = 'sgd'
+    if opt.compressor:
+        optimizer = 'sgd'
+    else:
+        optimizer = 'nag'
+
     optimizer_params = {'wd': opt.wd,
                         'momentum': opt.momentum, 'lr_scheduler': lr_scheduler}
+
     if opt.dtype != 'float32':
         optimizer_params['multi_precision'] = True
 
