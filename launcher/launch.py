@@ -155,6 +155,7 @@ def worker(local_rank, local_size, command, allocation=None):
                 numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
             numa = numa.strip(',') + ' '
             command = numa + command
+            print("Command: %s\n" % command)
         else:
             print("Warning: numactl not found. try `sudo apt-get install numactl`.")
 
