@@ -100,10 +100,10 @@ class Compression(object):
     """Optional gradient compression algorithm used during push_pull."""
 
     """Do not compress the gradients. This is the default."""
-    none = NoneCompressor
+    none = NoneCompressor()
 
     """Compress all floating point gradients to 16-bit."""
-    fp16 = FP16Compressor
+    fp16 = FP16Compressor()
 
     """Additional Momentum for weight decay. This is only for 1bit. This is a wrapper."""
     wdmom = WeightDecayMomentum
