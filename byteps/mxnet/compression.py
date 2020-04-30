@@ -56,8 +56,6 @@ class FP16Compressor(Compressor):
 
     def decompress(self, tensor, ctx):
         """Upcasts the tensor to the initialization dtype."""
-        if isinstance(ctx, tuple):
-            ctx = ctx[0]
         tensor_decompressed = tensor
         dtype = ctx
         if 'float' in str(dtype):
@@ -78,17 +76,14 @@ class WeightDecayMomentum(Compressor):
         """Returns the tensor unmodified."""
         return self.compressor.compress(tensor)
 
-    def decompress(self, tensor, ctx):
+    def decompress(self, tensor, ctx, x=None):
         """Returns the tensor added with additional momentum for wd
             m_t = \mu * m_{t-1} + wd * x_t
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
         """
-        if isinstance(ctx, tuple) and len(ctx) == 2:
-            x, ctx = ctx[0], ctx[1]
-        else:
-            raise ValueError(
-                "Invalid input. ctx should be tuple with 2 elements.")
-
+        if x is None:
+            return self.compressor.decompress(tensor, ctx)
+        
         tmp = self.wd * x
         self.mom += tmp
         nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
