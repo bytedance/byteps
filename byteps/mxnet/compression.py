@@ -84,6 +84,9 @@ class WeightDecayMomentum(Compressor):
         if x is None:
             return self.compressor.decompress(tensor, ctx)
         
+        if self.mom is None:
+            self.mom = nd.zeros_like(tensor)
+        
         tmp = self.wd * x
         self.mom += tmp
         nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
