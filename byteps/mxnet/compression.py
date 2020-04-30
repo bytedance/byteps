@@ -69,6 +69,7 @@ class WeightDecayMomentum(Compressor):
     def __init__(self, compressor, mu, wd):
         self.compressor = compressor
         self.mom = None
+        self.cache = None
         self.mu = mu
         self.wd = wd
 
@@ -86,11 +87,12 @@ class WeightDecayMomentum(Compressor):
         
         if self.mom is None:
             self.mom = nd.zeros_like(tensor)
+            self.cache = nd.zeros_like(tensor)
         
-        tmp = self.wd * x
-        self.mom += tmp
+        nd._internal._mul_scalar(x, self.wd, out=self.cache)
+        self.mom += self.cache 
         nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
-        tensor += self.mom + tmp
+        tensor += self.mom + self.cache 
         return self.compressor.decompress(tensor, ctx)
 
 
