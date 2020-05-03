@@ -22,11 +22,11 @@ import mxnet.ndarray as nd
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
 
-    def compress(self, tensor):
+    def compress(self, tensor, *args, **kwargs):
         """Compresses a tensor and returns it with the context needed to decompress it."""
         pass
 
-    def decompress(self, tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Decompress the tensor with the given context."""
         pass
 
@@ -34,11 +34,11 @@ class Compressor(object):
 class NoneCompressor(Compressor):
     """Default no-op compression."""
 
-    def compress(self, tensor):
+    def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
         return tensor, None
 
-    def decompress(self, tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Returns the tensor unmodified."""
         return tensor
 
@@ -46,7 +46,7 @@ class NoneCompressor(Compressor):
 class FP16Compressor(Compressor):
     """Compress all floating point gradients to 16-bit."""
 
-    def compress(self, tensor):
+    def compress(self, tensor, *args, **kwargs):
         """Downcasts the tensor to 16-bit."""
         tensor_compressed = tensor
         if 'float' in str(self, tensor.dtype):
@@ -54,7 +54,7 @@ class FP16Compressor(Compressor):
             tensor_compressed = tensor.astype('float16', copy=False)
         return tensor_compressed, tensor.dtype
 
-    def decompress(self, tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Upcasts the tensor to the initialization dtype."""
         tensor_decompressed = tensor
         dtype = ctx
@@ -73,17 +73,19 @@ class WeightDecayMomentum(Compressor):
         self.mu = mu
         self.wd = wd
 
-    def compress(self, tensor):
+    def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
         return self.compressor.compress(tensor)
 
-    def decompress(self, tensor, ctx, x=None):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Returns the tensor added with additional momentum for wd
             m_t = \mu * m_{t-1} + wd * x_t
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
         """
-        if x is None:
+        if "x" not in kwargs:
             return self.compressor.decompress(tensor, ctx)
+
+        x = kwargs["x"]
         
         if self.mom is None:
             self.mom = nd.zeros_like(tensor)
