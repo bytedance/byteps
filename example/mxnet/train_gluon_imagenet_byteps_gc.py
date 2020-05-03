@@ -398,24 +398,15 @@ def main():
                 v.wd_mult = 0.0
 
         params = net.collect_params()
-        if opt.compressor:
-            for _, param in params.items():
-                setattr(param, "byteps_compressor_type", opt.compressor)
-                if opt.ef:
-                    setattr(param, "byteps_error_feedback_type", opt.ef)
-                if opt.onebit_scaling:
-                    setattr(
-                        param, "byteps_compressor_onebit_enable_scale", opt.onebit_scaling)
-                if opt.compress_momentum:
-                    setattr(param, "byteps_momentum_type", "nesterov")
-                    setattr(param, "byteps_momentum_mu", opt.momentum)
 
-        if opt.compress_momentum:
-            del optimizer_params['momentum']
-
-        compression = bps.Compression.fp16 if opt.fp16_pushpull else bps.Compression.none
         trainer = bps.DistributedTrainer(
-            params, optimizer, optimizer_params, compression=compression)
+            params, optimizer, optimizer_params, {
+                "compressor": opt.compressor,
+                "ef": opt.ef,
+                "momentum": opt.momentum,
+                "scaling": opt.scaling
+            })
+
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)
 
