@@ -24,7 +24,12 @@ namespace {
 CompressorRegistry::Register reg(
     "onebit_compressor", [](const kwargs_t& kwargs) {
       BPS_LOG(DEBUG) << "Register Onebit Compressor";
-      if (kwargs.find("compressor_onebit_enable_scale") != kwargs.end()) {
+      bool scaled = false;
+      auto iter = kwargs.find("compressor_onebit_scaling");
+      if (iter != kwargs.end() && iter->second == "true") {
+        scaled = true;
+      }
+      if (scaled) {
         return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
       }
       return std::unique_ptr<BaseCompressor>(new OnebitCompressor());

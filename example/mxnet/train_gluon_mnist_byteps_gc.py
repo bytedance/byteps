@@ -132,29 +132,17 @@ model.hybridize()
 
 params = model.collect_params()
 
-for name, param in params.items():
-    assert isinstance(param, mx.gluon.Parameter)
-    if args.compressor:
-        setattr(param, "byteps_compressor_type", args.compressor)
-    if args.ef:
-        setattr(param, "byteps_error_feedback_type", args.ef)
-    if args.scaling:
-        setattr(param, "byteps_compressor_onebit_enable_scale", args.scaling)
-    if args.compress_momentum:
-        setattr(param, "byteps_momentum_type", "nesterov")
-        setattr(param, "byteps_momentum_mu", args.momentum)
-
-
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
 optimizer_params = {'momentum': args.momentum,
                     'learning_rate': args.lr * num_workers}
 
-if args.compress_momentum or args.momentum == 0.0:
-    del optimizer_params['momentum']
-
-compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 trainer = bps.DistributedTrainer(
-    params, "sgd", optimizer_params, compression=compression)
+    params, "sgd", optimizer_params, {
+        "compressor": args.compressor,
+        "ef": args.ef,
+        "momentum": args.momentum, 
+        "scaling": args.scaling
+    })
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()

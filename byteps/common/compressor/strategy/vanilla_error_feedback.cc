@@ -26,11 +26,11 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
-    "vanilla_error_feedback",
+    "vanilla_ef",
     [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
       // register cpr
       auto kwargs_clone = kwargs;
-      kwargs_clone.erase("error_feedback_type");
+      kwargs_clone.erase("ef_type");
       auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
       BPS_CHECK_NE(compressor_ptr, nullptr);
 
