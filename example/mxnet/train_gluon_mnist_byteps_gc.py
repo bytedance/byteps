@@ -40,6 +40,8 @@ parser.add_argument('--j', type=int, default=2,
                     help='number of cpu processes for dataloader')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='learning rate (default: 0.01)')
+parser.add_argument('--wd', type=float, default=0.0001,
+                    help='weight decay rate. default is 0.0001.')
 parser.add_argument('--momentum', type=float, default=0.9,
                     help='SGD momentum (default: 0.9)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
