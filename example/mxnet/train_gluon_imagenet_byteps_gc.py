@@ -397,15 +397,15 @@ def main():
             for k, v in net.collect_params('.*beta|.*gamma|.*bias').items():
                 v.wd_mult = 0.0
 
-        params = net.collect_params()
+        compression_params = {
+            "compressor": opt.compressor,
+            "ef": opt.ef,
+            "momentum": opt.momentum,
+            "scaling": opt.scaling
+        }
 
         trainer = bps.DistributedTrainer(
-            params, optimizer, optimizer_params, {
-                "compressor": opt.compressor,
-                "ef": opt.ef,
-                "momentum": opt.momentum,
-                "scaling": opt.scaling
-            })
+            net.collect_params(), optimizer, optimizer_params, compression_params)
 
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)

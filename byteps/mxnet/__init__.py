@@ -189,11 +189,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         `{'compressor': 'onebit', 'ef': 'vanilla', 'momentum': 'nesterov', 'scaling': true}`.
         All compressor accept 'compressor', 'ef'. See each compressor's constructor for a list 
         of additional supported arguments
-    compression_register_func : func
-        User defined gradient compression register
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, compression_params=None, compression_register_func=None):
+    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, compression_params=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
@@ -204,10 +202,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
-        # user defined register function
-        if compression_register_func:
-            self._register_compressor = compression_register_func
-        self._register_compressor(
+        self._compression = self._register_compressor(
             params, optimizer_params, compression_params)
 
         super(DistributedTrainer, self).__init__(
@@ -241,16 +236,16 @@ class DistributedTrainer(mx.gluon.Trainer):
         optimizer_params : dict
         compression_params : dict
         """
-        self._compression = Compression.none
+        compression = Compression.none
         if not compression_params:
-            return 
+            return compression
         
         if "fp16" in compression_params:
-            self._compression = Compression.fp16
+            compression = Compression.fp16
 
         if "compressor" not in compression_params:
             warnings.warn("Compressor is not defined")
-            return 
+            return compression
 
         check_list = ["compressor", "ef", "momentum"]
 
@@ -281,6 +276,8 @@ class DistributedTrainer(mx.gluon.Trainer):
         # change
         if "momentum" in compression_params:
             del optimizer_params['momentum']
+
+        return compression
 
     def step(self, batch_size, ignore_stale_grad=False):
         self._scale = batch_size

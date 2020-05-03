@@ -136,13 +136,15 @@ params = model.collect_params()
 optimizer_params = {'momentum': args.momentum,
                     'learning_rate': args.lr * num_workers}
 
+compression_params = {
+    "compressor": args.compressor,
+    "ef": args.ef,
+    "momentum": args.momentum,
+    "scaling": args.scaling
+}
+
 trainer = bps.DistributedTrainer(
-    params, "sgd", optimizer_params, {
-        "compressor": args.compressor,
-        "ef": args.ef,
-        "momentum": args.momentum, 
-        "scaling": args.scaling
-    })
+    params, "sgd", optimizer_params, compression_params)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
