@@ -405,7 +405,7 @@ def main():
         }
 
         trainer = bps.DistributedTrainer(
-            net.collect_params(), optimizer, optimizer_params, compression_params)
+            net.collect_params(), optimizer, optimizer_params, compression_params=compression_params)
 
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)
