@@ -181,23 +181,33 @@ class DistributedTrainer(mx.gluon.Trainer):
         Key-word arguments to be passed to optimizer constructor. For example,
         `{'learning_rate': 0.1}`. All optimizers accept learning_rate, wd (weight decay),
         clip_gradient, and lr_scheduler. See each optimizer's
-        constructor for a list of additional supported arguments.
+        constructor for a list of additional supported arguments
+    root_rank : int
+        rank of root
+    compression_params : dict
+        Key-word arguments to be passed to gradient compression constructor. For example, 
+        `{'compressor': 'onebit', 'ef': 'vanilla', 'momentum': 'nesterov', 'scaling': true}`.
+        All compressor accept 'compressor', 'ef'. See each compressor's constructor for a list 
+        of additional supported arguments
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, compression=Compression.none):
+    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, compression_params=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
-        self._compression = compression
+
         param_list = []
         if isinstance(params, mx.gluon.ParameterDict):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
+        self._compression = self._register_compressor(
+            params, optimizer_params, compression_params)
+
         super(DistributedTrainer, self).__init__(
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
-        
+
         if local_rank() == 0:
             self._f = open("lr.s", "wb")
             self._f.truncate(8)
@@ -218,6 +228,56 @@ class DistributedTrainer(mx.gluon.Trainer):
 
     def __del__(self):
         self._f.close()
+
+    def _register_compressor(self, params, optimizer_params, compression_params):
+        """Register compressor for BytePS
+
+        params : mx.gluon.ParameterDict 
+        optimizer_params : dict
+        compression_params : dict
+        """
+        compression = Compression.none
+        if not compression_params:
+            return compression
+
+        if "fp16" in compression_params:
+            compression = Compression.fp16
+
+        if "compressor" not in compression_params:
+            warnings.warn("Compressor is not defined")
+            return compression
+
+        check_list = ["compressor", "ef", "momentum"]
+
+        for _, param in params.items():
+            # generic
+            for item in check_list:
+                if item in compression_params:
+                    if isinstance(compression_params[item], str):
+                        setattr(param, "byteps_%s_type" %
+                                item, compression_params[item])
+                    else:
+                        raise TypeError("%s should be str" % item)
+
+            # need parameter
+            compressor = compression_params["compressor"]
+            if compressor == "onebit":
+                setattr(param, "byteps_compressor_onebit_scaling", str(
+                    compression_params.get("scaling", False)))
+            elif compressor == "topk" or compressor == "randomk" or compressor == "multibit":
+                # raise KeyError if 'k' is not found
+                setattr(param, "byteps_compressor_k",
+                        compression_params["k"])
+
+            if "momentum" in compression_params:
+                setattr(param, "byteps_momentum_mu",
+                        optimizer_params["momentum"])
+
+        # change
+        if "momentum" in compression_params:
+            del optimizer_params['momentum']
+
+        return compression
 
     def step(self, batch_size, ignore_stale_grad=False):
         self._scale = batch_size

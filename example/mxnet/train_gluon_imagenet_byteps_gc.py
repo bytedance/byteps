@@ -116,14 +116,15 @@ def parse_args():
     # additional arguments for gradient compression
     parser.add_argument('--compressor', type=str, default='',
                         help='which compressor')
-    parser.add_argument('--ef', type=str, default=None,
-                        help='enable error-feedback')
+    parser.add_argument('--ef', type=str, default='',
+                        help='which error-feedback')
+    parser.add_argument('--compress-momentum', type=str, default='',
+                        help='which compress momentum')
     parser.add_argument('--onebit-scaling', action='store_true', default=False,
                         help='enable scaling for onebit compressor')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
-    parser.add_argument('--compress-momentum', action='store_true', default=False,
-                        help='enable compress momentum.')
+
     opt = parser.parse_args()
     return opt
 
@@ -397,25 +398,16 @@ def main():
             for k, v in net.collect_params('.*beta|.*gamma|.*bias').items():
                 v.wd_mult = 0.0
 
-        params = net.collect_params()
-        if opt.compressor:
-            for _, param in params.items():
-                setattr(param, "byteps_compressor_type", opt.compressor)
-                if opt.ef:
-                    setattr(param, "byteps_error_feedback_type", opt.ef)
-                if opt.onebit_scaling:
-                    setattr(
-                        param, "byteps_compressor_onebit_enable_scale", opt.onebit_scaling)
-                if opt.compress_momentum:
-                    setattr(param, "byteps_momentum_type", "nesterov")
-                    setattr(param, "byteps_momentum_mu", opt.momentum)
+        compression_params = {
+            "compressor": opt.compressor,
+            "ef": opt.ef,
+            "momentum": opt.compress_momentum,
+            "scaling": opt.scaling
+        }
 
-        if opt.compress_momentum:
-            del optimizer_params['momentum']
-
-        compression = bps.Compression.fp16 if opt.fp16_pushpull else bps.Compression.none
         trainer = bps.DistributedTrainer(
-            params, optimizer, optimizer_params, compression=compression)
+            net.collect_params(), optimizer, optimizer_params, compression_params=compression_params)
+
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)
 
