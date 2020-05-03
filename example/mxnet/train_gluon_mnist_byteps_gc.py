@@ -144,7 +144,7 @@ compression_params = {
 }
 
 trainer = bps.DistributedTrainer(
-    params, "sgd", optimizer_params, compression_params)
+    params, "sgd", optimizer_params, compression_params=compression_params)
 
 # Create loss function and train metric
 loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()

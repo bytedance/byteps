@@ -201,12 +201,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         if isinstance(params, mx.gluon.ParameterDict):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
-        print(compression_params)
-        
+
         self._compression = self._register_compressor(
             params, optimizer_params, compression_params)
-        
-        print(optimizer_params)
 
         super(DistributedTrainer, self).__init__(
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
@@ -227,7 +224,6 @@ class DistributedTrainer(mx.gluon.Trainer):
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
                 )
-                print("params of %d:" % i, byteps_params)
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
     def __del__(self):
@@ -243,7 +239,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         compression = Compression.none
         if not compression_params:
             return compression
-        
+
         if "fp16" in compression_params:
             compression = Compression.fp16
 
