@@ -45,15 +45,15 @@ parser.add_argument('--momentum', type=float, default=0.9,
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disable training on GPU (default: False)')
 parser.add_argument('--compressor', type=str, default='',
-                    help='onebit compressor')
+                    help='which compressor')
 parser.add_argument('--ef', type=str, default=None,
-                    help='ef')
+                    help='which error feedback')
+parser.add_argument('--compress-momentum', type=str, default='',
+                    help='which compress momentum')
 parser.add_argument('--scaling', action='store_true', default=False,
                     help='enable scaling for onebit compressor')
 parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                     help='use fp16 compression during pushpull')
-parser.add_argument('--compress-momentum', action='store_true', default=False,
-                    help='enable compress momentum.')
 args = parser.parse_args()
 
 if not args.no_cuda:
@@ -139,7 +139,7 @@ optimizer_params = {'momentum': args.momentum,
 compression_params = {
     "compressor": args.compressor,
     "ef": args.ef,
-    "momentum": args.momentum,
+    "momentum": args.compress_momentum,
     "scaling": args.scaling
 }
 
