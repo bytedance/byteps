@@ -26,8 +26,8 @@ CompressorRegistry::Register reg(
       BPS_LOG(DEBUG) << "Register Onebit Compressor";
       bool scaled = false;
       auto iter = kwargs.find("compressor_onebit_scaling");
-      if (iter != kwargs.end() && iter->second == "true") {
-        scaled = true;
+      if (iter != kwargs.end()) {
+        if (iter->second == "true" || iter->second == "True") scaled = true;
       }
       if (scaled) {
         return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
