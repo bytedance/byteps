@@ -1,3 +1,10 @@
+# this example is adapted from the official PyTorch example: https://github.com/pytorch/examples/blob/69d2798ec7fb4f87b320a1848203da5346675b95/imagenet/main.py
+# example usage:
+#
+#  bpslaunch python train_imagenet_resnet_byteps_ddp.py -a resnet18 --dist-url 'tcp://127.0.0.1:12345' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 /path/to/imagenet/training/data/
+#
+# see this page for a more detailed explanation: https://github.com/pytorch/examples/tree/69d2798ec7fb4f87b320a1848203da5346675b95/imagenet
+
 import argparse
 import os
 import random
