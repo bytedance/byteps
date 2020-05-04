@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import copy
 import os
 import struct
 import warnings
@@ -221,7 +222,8 @@ class DistributedTrainer(mx.gluon.Trainer):
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
             if param.grad_req != 'null':
-                self._intra_compressors.append(self._intra_compressor.copy())
+                self._intra_compressors.append(
+                    copy.deepcopy(self._intra_compressor))
                 byteps_params = dict(
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
@@ -304,7 +306,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 # grad /= (batch_size * num_workers)
                 nd._internal._mul_scalar(
                     param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
-                compressed, ctx = self._intra_compressors[i].compress(param._grad[0])
+                compressed, ctx = self._intra_compressors[i].compress(
+                    param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
                 param._grad[0] = self._intra_compressors[i].decompress(
