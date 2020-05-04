@@ -272,7 +272,7 @@ class DistributedDataParallel(Module):
     def synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
-            handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
+            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, self._num_grads)
             self._handles[p] = (handle, ctx)
 
         for p, value in self._handles.items():
