@@ -1,3 +1,5 @@
+# DistributedDataParallel
+
 BytePS Distributed Data Parallel module is compatible with PyTorch Distributed
 Data Parallel for the most part. Instead of using PyTorch communication
 backends, it uses BytePS push-pull for gradients reduction between nodes.
