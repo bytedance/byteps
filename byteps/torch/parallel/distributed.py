@@ -131,7 +131,7 @@ class DistributedDataParallel(Module):
         self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
         self.broadcast_buffers = broadcast_buffers
-        self.require_forward_param_sync = True
+        self.require_forward_param_sync = broadcast_buffers
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
