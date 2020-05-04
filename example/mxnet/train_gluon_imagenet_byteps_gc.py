@@ -402,7 +402,7 @@ def main():
             "compressor": opt.compressor,
             "ef": opt.ef,
             "momentum": opt.compress_momentum,
-            "scaling": opt.scaling
+            "scaling": opt.onebit_scaling
         }
 
         trainer = bps.DistributedTrainer(
