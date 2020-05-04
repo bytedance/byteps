@@ -307,7 +307,6 @@ class DistributedTrainer(mx.gluon.Trainer):
                 compressed, ctx = self._intra_compressors[i].compress(param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                print("param._data[0].shape ", param._data[0].shape)
                 param._grad[0] = self._intra_compressors[i].decompress(
                     compressed, ctx, x=param._data[0])
 
