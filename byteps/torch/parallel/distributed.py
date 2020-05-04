@@ -175,33 +175,6 @@ class DistributedDataParallel(Module):
         for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
 
-#        param_name_set = set([name for name, tensor in self.module.named_parameters()])
-#        self._named_buffers = {k: v for k, v in self.module.state_dict().items() if k not in param_name_set}
-
-#        with open('rank-' + str(os.getpid()) + '-model-state-dict.txt', 'w') as f_model:
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww start", file=f_model)
-#            for name in self.module.state_dict():
-#                print("name: ", name, "tensor: ", self.module.state_dict()[name], file=f_model)
-##                print("name: ", name, file=f_model)
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f_model)
-#        with open('rank-' + str(os.getpid()) + '-model-named-buffers.txt', 'w') as f_model:
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww buffer start", file=f_model)
-#            for name, tensor in self._named_buffers.items():
-#                print("name: ", name, "tensor: ", tensor, file=f_model)
-##                print("name: ", name, file=f_model)
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f_model)
-#        with open('rank-' + str(os.getpid()) + '-model-named-parameters.txt', 'w') as f_model:
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww buffer start", file=f_model)
-#            for name, tensor in self.module.named_parameters().items():
-#                print("name: ", name, "tensor: ", tensor, file=f_model)
-##                print("name: ", name, file=f_model)
-#            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww end", file=f_model)
-#        os.exit(1)
-
-        # declare tensors
-#        for name in sorted(self._named_buffers.keys()):
-#            declare("Parameter."+name)
-
         # broadcast model state
         module_states = list(self.module.state_dict().values())
         if len(module_states) > 0:
@@ -218,8 +191,6 @@ class DistributedDataParallel(Module):
             if self.broadcast_buffers and len(self.modules_buffers[0]) > 0:
                 # Synchronize buffers across processes.
                 # The process with rank 0 is considered the authoritative copy.
-#                bps.torch.broadcast_parameters(self.modules_buffers[0], root_rank=0)
-#                bps.torch.broadcast_parameters(self._named_buffers, root_rank=0)
                 bps.torch.broadcast_parameters(list(self.module.named_buffers()), root_rank=0)
 
     def _register_hooks(self):
