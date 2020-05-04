@@ -220,7 +220,7 @@ class DistributedDataParallel(Module):
                 # The process with rank 0 is considered the authoritative copy.
 #                bps.torch.broadcast_parameters(self.modules_buffers[0], root_rank=0)
 #                bps.torch.broadcast_parameters(self._named_buffers, root_rank=0)
-                bps.torch.broadcast_parameters(self.module.named_buffers(), root_rank=0)
+                bps.torch.broadcast_parameters(list(self.module.named_buffers()), root_rank=0)
 
     def _register_hooks(self):
         for _, p in self.module.named_parameters():
