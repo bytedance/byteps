@@ -135,7 +135,7 @@ model.hybridize()
 params = model.collect_params()
 
 # BytePS: create DistributedTrainer, a subclass of gluon.Trainer
-optimizer_params = {'momentum': args.momentum,
+optimizer_params = {'momentum': args.momentum, 'wd': args.wd,
                     'learning_rate': args.lr * num_workers}
 
 compression_params = {
