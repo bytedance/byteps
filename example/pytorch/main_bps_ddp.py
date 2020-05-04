@@ -72,6 +72,8 @@ parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--print_freq', default=10, type=int,
                     help='print frequency')
+parser.add_argument('--no_broadcast_buffers', dest='broadcast_buffers',
+                    action='store_false', help='broadcast_buffers')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -153,7 +155,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = DDP(model, device_ids=[args.gpu])
+            model = DDP(model, device_ids=[args.gpu], broadcast_buffers=args.broadcast_buffers)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
