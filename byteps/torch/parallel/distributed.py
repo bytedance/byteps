@@ -175,8 +175,9 @@ class DistributedDataParallel(Module):
         for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
 
-        param_name_set = set([name for name, tensor in self.module.named_parameters()])
-        self._named_buffers = {k: v for k, v in self.module.state_dict().items() if k not in param_name_set}
+#        param_name_set = set([name for name, tensor in self.module.named_parameters()])
+#        self._named_buffers = {k: v for k, v in self.module.state_dict().items() if k not in param_name_set}
+
 #        with open('rank-' + str(os.getpid()) + '-model-state-dict.txt', 'w') as f_model:
 #            print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww start", file=f_model)
 #            for name in self.module.state_dict():
@@ -198,8 +199,8 @@ class DistributedDataParallel(Module):
 #        os.exit(1)
 
         # declare tensors
-        for name in sorted(self._named_buffers.keys()):
-            declare("Parameter."+name)
+#        for name in sorted(self._named_buffers.keys()):
+#            declare("Parameter."+name)
 
         # broadcast model state
         module_states = list(self.module.state_dict().values())
@@ -218,7 +219,8 @@ class DistributedDataParallel(Module):
                 # Synchronize buffers across processes.
                 # The process with rank 0 is considered the authoritative copy.
 #                bps.torch.broadcast_parameters(self.modules_buffers[0], root_rank=0)
-                bps.torch.broadcast_parameters(self._named_buffers, root_rank=0)
+#                bps.torch.broadcast_parameters(self._named_buffers, root_rank=0)
+                bps.torch.broadcast_parameters(self.module.named_buffers(), root_rank=0)
 
     def _register_hooks(self):
         for _, p in self.module.named_parameters():
