@@ -26,7 +26,9 @@ namespace sparse {
 
 #define MAX_CUDA_DEVICES (32)
 
-static std::vector<void*> cudaBuffers_;
+static std::vector<void*> _cudaBuffers;
+static ps::KVWorker<char>* _ps;
+static void* _cpuBuffer;
 
 typedef struct shmStruct_st {
   size_t nprocesses;
