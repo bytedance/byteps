@@ -23,9 +23,9 @@ namespace sparse {
 
 using namespace byteps::common;
 
-extern "C" int byteps_torch_poll(int handle);
-extern "C" void byteps_torch_wait_and_clear(int handle);
-extern "C" void byteps_torch_declare_tensor(char* name);
+extern "C" int byteps_poll(int handle);
+extern "C" void byteps_wait_and_clear(int handle);
+extern "C" void byteps_declare_tensor(char* name);
 
 }  // namespace sparse
 }  // namespace byteps

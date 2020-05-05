@@ -17,9 +17,31 @@
 #ifndef BYTEPS_SPARSE_H
 #define BYTEPS_SPARSE_H
 
+#include <vector>
+#include <cuda_runtime.h>
+#include "ops.h"
+
 namespace byteps {
 namespace sparse {
 
+#define MAX_CUDA_DEVICES (32)
+
+static std::vector<void*> cudaBuffers_;
+
+typedef struct shmStruct_st {
+  size_t nprocesses;
+  int devices[MAX_CUDA_DEVICES];
+  cudaIpcMemHandle_t memHandle[MAX_CUDA_DEVICES];
+  cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
+} shmStruct;
+
+void InitBytepsSparse(std::vector<void*>& cudaBuffer);
+
+void ShutdownBytepsSparse();
+
+void BytepsGather();
+
+void BytepsScatter();
 
 } // namespace sparse
 } // namespace byteps 
