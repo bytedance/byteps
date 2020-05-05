@@ -39,9 +39,9 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer);
 
 void ShutdownBytepsSparse();
 
-void BytepsGather(int rank, int len, cudaStream_t stream);
+void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
 
-void BytepsScatter();
+void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
 
 } // namespace sparse
 } // namespace byteps 
