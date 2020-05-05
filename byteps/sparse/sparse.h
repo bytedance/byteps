@@ -39,7 +39,7 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer);
 
 void ShutdownBytepsSparse();
 
-void BytepsGather();
+void BytepsGather(int rank, int len, cudaStream_t stream);
 
 void BytepsScatter();
 

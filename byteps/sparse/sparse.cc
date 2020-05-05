@@ -19,7 +19,7 @@
 namespace byteps {
 namespace sparse {
 
-void InitBytepsSparse(std::vector<void*>& cudaBuffer) {
+void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
   BytePSGlobal::Init();
 
   // Init IPC stuff
@@ -32,8 +32,8 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer) {
               );  
   memset((void *)shm, 0, sizeof(*shm));
 
-  auto devCount = BytePSGlobal::GetLocalSize();
-  for (i = 0; i < devCount; i++) {
+  auto localSize = BytePSGlobal::GetLocalSize();
+  for (i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
 
@@ -88,6 +88,33 @@ void ShutdownBytepsSparse() {
   BytePSGlobal::Shutdown();
 }
 
+void BytepsGather(int rank, int len, cudaStream_t stream) {
+  // auto globalSize = BytePSGlobal::GetGlobalSize();
+  // auto totalLen = len * globalSize;
+  void* baseDstPtr = cudaBuffers_[rank];
+  
+  // Gather from local peer GPUs on the same worker
+  auto localSize = BytePSGlobal::GetLocalSize();
+  for (int i = 0; i < localSize; i++) {
+    if (rank == i) continue; // skip memcpy from myself to myself
+    void* baseSrcPtr = cudaBuffers_[i];
+    void* srcPtr = baseSrcPtr + len * i;
+    void* dstPtr = baseDstPtr + len * rank;
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, src, i, len, stream));
+  }
+
+  // Gather from other distributed workers
+  if (BytePSGlobal::IsDistributed()) {
+    auto ps = BytePSGlobal::GetOrInitPS();
+    auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
+    ps::SArray<char> vals(baseDstPtr, len, false);
+    int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
+    // TODO (ymjiang): remove the sync
+    ps->Wait(ps->ZPull(pskv.keys, vals, pskv.lens, cmd));
+  }
+  // TODO (ymjiang): remove the sync 
+  CUDA_CALL(cudaStreamSynchronize(stream));
+}
 
 } // namespace sparse
 } // namespace byteps 
