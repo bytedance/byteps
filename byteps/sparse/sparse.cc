@@ -111,16 +111,21 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
 
   // Gather from other distributed workers
   if (BytePSGlobal::IsDistributed()) {
+    std::vector<int> ts;
+    auto valLen = len * localSize;
     auto workerNum = BytePSGlobal::GetNumWorker();
     auto cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue;
       auto key = i;
-      auto valLen = len * localSize;
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
       // need to use cpu buffer
       ps::SArray<char> vals(_cpuBuffer + valLen * i, valLen, false);
-      _ps->Wait(_ps->ZPull(pskv.keys, vals, pskv.lens, cmd));
+      ts.push_back(_ps->ZPull(pskv.keys, vals, pskv.lens, cmd));
+    }
+    for (auto t : ts) _ps->Wait(t);
+    for (int i = 0; i < workerNum; i++) {
+      if (i == workerID) continue; 
       CUDA_CALL(cudaMemcpyAsync(
           _cudaBuffers[rank] + valLen * i, _cpuBuffer + valLen * i, 
           valLen, cudaMemcpyHostToDevice, stream));
@@ -133,6 +138,7 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
 void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
   auto input_tensor = std::make_shared<GeneralTensor>(tensor, datatype, len);
   auto dtype = input_tensor->dtype();
+  auto workerID = BytePSGlobal::GetWorkerID();
 
   void* baseSrcPtr = _cudaBuffers[rank];
   
@@ -151,18 +157,31 @@ void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
 
   // Scatter to other distributed workers
   if (BytePSGlobal::IsDistributed()) {
+    // Copy to host memory
     auto workerNum = BytePSGlobal::GetNumWorker();
+    auto valLen = len / workerNum;
+    for (int i = 0; i < workerNum; i++) {
+      if (i == workerID) continue; 
+      CUDA_CALL(cudaMemcpyAsync(
+          _cpuBuffer + valLen * i, _cudaBuffers[rank] + valLen * i,
+          valLen, cudaMemcpyDeviceToHost, stream));
+    }
+    CUDA_CALL(cudaStreamSynchronize(stream));
+
+    std::vector<int> ts;
     auto cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue;
       auto key = i;
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
-      ps::SArray<char> vals(_cpuBuffer + len * i, len, false);
-      _ps->Wait(_ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
+      // need to use cpu buffer
+      ps::SArray<char> vals(_cpuBuffer + valLen * i, valLen, false);
+      ts.push_back(_ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
     }
+    for (auto t : ts) _ps->Wait(t);
+  } else {
+    CUDA_CALL(cudaStreamSynchronize(stream));
   }
-  // TODO (ymjiang): remove the sync 
-  CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
 } // namespace sparse
