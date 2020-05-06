@@ -20,6 +20,8 @@
 #include <vector>
 #include <cuda_runtime.h>
 #include "ops.h"
+#include "adapter.h"
+#include "ps/ps.h"
 
 namespace byteps {
 namespace sparse {

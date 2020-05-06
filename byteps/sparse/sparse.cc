@@ -33,7 +33,7 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
   memset((void *)shm, 0, sizeof(*shm));
 
   auto localSize = BytePSGlobal::GetLocalSize();
-  for (i = 0; i < localSize; i++) {
+  for (int i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
 
@@ -60,7 +60,7 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
 
   // Allocate memory and an event for each process and fill 
   // the shared memory buffer with the IPC handles 
-  for (i = 0; i < shm->nprocesses; i++) {
+  for (size_t i = 0; i < shm->nprocesses; i++) {
     cudaEvent_t event;
     CUDA_CALL(cudaSetDevice(
         shm->devices[i]));
@@ -94,19 +94,19 @@ void ShutdownBytepsSparse() {
 
 
 void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
-  auto input_tensor = std::make_shared<GeneralTensor>(tensor, datatype, len);
-  auto dtype = input_tensor->dtype();
+  // auto input_tensor = std::make_shared<GeneralTensor>(_cudaBuffers[rank], datatype, len);
+  // auto dtype = input_tensor->dtype();
   
   // Gather from local peer GPUs on the same worker
   auto localSize = BytePSGlobal::GetLocalSize();
   auto workerID = BytePSGlobal::GetWorkerID();
-  void* baseDstPtr = _cudaBuffers[rank] + len * workerID;
+  void* baseDstPtr = (void*) ((char*)_cudaBuffers[rank] + len * workerID);
   for (int i = 0; i < localSize; i++) {
     if (rank == i) continue; // skip memcpy from myself to myself
-    void* baseSrcPtr = _cudaBuffers[i] + len * workerID;
-    void* srcPtr = baseSrcPtr + len * i;
-    void* dstPtr = baseDstPtr + len * i;
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, src, i, len, stream));
+    void* baseSrcPtr = (void*)((char*)_cudaBuffers[i] + len * workerID);
+    void* srcPtr = (void*)((char*)baseSrcPtr + len * i);
+    void* dstPtr = (void*)((char*)baseDstPtr + len * i);
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, len, stream));
   }
 
   // Gather from other distributed workers
@@ -114,20 +114,19 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
     std::vector<int> ts;
     auto valLen = len * localSize;
     auto workerNum = BytePSGlobal::GetNumWorker();
-    auto cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue;
       auto key = i;
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
       // need to use cpu buffer
-      ps::SArray<char> vals(_cpuBuffer + valLen * i, valLen, false);
-      ts.push_back(_ps->ZPull(pskv.keys, vals, pskv.lens, cmd));
+      ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
+      ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
     }
     for (auto t : ts) _ps->Wait(t);
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue; 
       CUDA_CALL(cudaMemcpyAsync(
-          _cudaBuffers[rank] + valLen * i, _cpuBuffer + valLen * i, 
+          (void*)((char*)_cudaBuffers[rank] + valLen * i), (void*)((char*)_cpuBuffer + valLen * i), 
           valLen, cudaMemcpyHostToDevice, stream));
     }
   }
@@ -136,47 +135,46 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
 
 
 void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
-  auto input_tensor = std::make_shared<GeneralTensor>(tensor, datatype, len);
-  auto dtype = input_tensor->dtype();
+  // auto input_tensor = std::make_shared<GeneralTensor>(_cudaBuffers[rank], datatype, len);
+  // auto dtype = input_tensor->dtype();
   auto workerID = BytePSGlobal::GetWorkerID();
 
   void* baseSrcPtr = _cudaBuffers[rank];
   
   // Scatter to local peer GPUs on the same worker
   auto localSize = BytePSGlobal::GetLocalSize();
-  auto globalSize = BytePSGlobal::GetGlobalSize();
+  auto workerNum = BytePSGlobal::GetNumWorker();
+  auto globalSize = workerNum * localSize;
   // Assume the len is partitionable 
   auto unitLen = len / globalSize;
   for (int i = 0; i < localSize; i++) {
     if (rank == i) continue; // skip memcpy from myself to myself
     void* baseDstPtr = _cudaBuffers[i];
-    void* srcPtr = baseSrcPtr + unitLen * i;
-    void* dstPtr = baseDstPtr + unitLen * i;
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, src, i, unitLen, stream));
+    void* srcPtr = (void*)((char*)baseSrcPtr + unitLen * i);
+    void* dstPtr = (void*)((char*)baseDstPtr + unitLen * i);
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, unitLen, stream));
   }
 
   // Scatter to other distributed workers
   if (BytePSGlobal::IsDistributed()) {
     // Copy to host memory
-    auto workerNum = BytePSGlobal::GetNumWorker();
     auto valLen = len / workerNum;
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue; 
       CUDA_CALL(cudaMemcpyAsync(
-          _cpuBuffer + valLen * i, _cudaBuffers[rank] + valLen * i,
+          (void*)((char*)_cpuBuffer + valLen * i), (void*)((char*)_cudaBuffers[rank] + valLen * i),
           valLen, cudaMemcpyDeviceToHost, stream));
     }
     CUDA_CALL(cudaStreamSynchronize(stream));
 
     std::vector<int> ts;
-    auto cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue;
       auto key = i;
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
       // need to use cpu buffer
-      ps::SArray<char> vals(_cpuBuffer + valLen * i, valLen, false);
-      ts.push_back(_ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
+      ts.push_back(_ps->ZPush(pskv.keys, vals, pskv.lens));
     }
     for (auto t : ts) _ps->Wait(t);
   } else {
