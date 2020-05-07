@@ -19,9 +19,9 @@
 namespace byteps {
 namespace sparse {
 
-void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
+void InitBytepsSparse(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size) {
   BytePSGlobal::Init();
-
+  BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   // Init IPC stuff
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
   auto shm = (volatile shmStruct*) 
@@ -54,9 +54,9 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
   }
   BPS_CHECK(shm->nprocesses > 0) 
       << "No cuda device suppported";
-  BPS_CHECK_EQ(shm->nprocesses, cudaBuffer.size())
+  BPS_CHECK_EQ(shm->nprocesses, embedBuffers.size())
       << "Shared memory processes: " << shm->nprocesses 
-      << ", cuda buffers: " << cudaBuffer.size();
+      << ", send buffers: " << embedBuffers.size();
 
   // Allocate memory and an event for each process and fill 
   // the shared memory buffer with the IPC handles 
@@ -65,13 +65,17 @@ void InitBytepsSparse(std::vector<void*>& cudaBuffer, int size) {
     CUDA_CALL(cudaSetDevice(
         shm->devices[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
-        (cudaIpcMemHandle_t *)&shm->memHandle[i], cudaBuffer[i]));
+        (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
+    CUDA_CALL(cudaIpcGetMemHandle(
+        (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
     CUDA_CALL(cudaEventCreate(
         &event, cudaEventDisableTiming | cudaEventInterprocess));
     CUDA_CALL(cudaIpcGetEventHandle(
         (cudaIpcEventHandle_t *)&shm->eventHandle[i], event));
     
-    _cudaBuffers.push_back(cudaBuffer[i]); // store the buffers 
+    // store the buffers 
+    _embedBuffers.push_back(embedBuffers[i]); 
+    _denseBuffers.push_back(denseBuffers[i]);
   }
 
   // Need a continous CPU buffer for all GPUs
@@ -94,16 +98,13 @@ void ShutdownBytepsSparse() {
 
 
 void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
-  // auto input_tensor = std::make_shared<GeneralTensor>(_cudaBuffers[rank], datatype, len);
-  // auto dtype = input_tensor->dtype();
-  
   // Gather from local peer GPUs on the same worker
   auto localSize = BytePSGlobal::GetLocalSize();
   auto workerID = BytePSGlobal::GetWorkerID();
-  void* baseDstPtr = (void*) ((char*)_cudaBuffers[rank] + len * workerID);
+  void* baseDstPtr = (void*) ((char*)_denseBuffers[rank] + len * workerID);
   for (int i = 0; i < localSize; i++) {
     if (rank == i) continue; // skip memcpy from myself to myself
-    void* baseSrcPtr = (void*)((char*)_cudaBuffers[i] + len * workerID);
+    void* baseSrcPtr = (void*)((char*)_embedBuffers[i] + len * workerID);
     void* srcPtr = (void*)((char*)baseSrcPtr + len * i);
     void* dstPtr = (void*)((char*)baseDstPtr + len * i);
     CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, len, stream));
@@ -126,7 +127,7 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue; 
       CUDA_CALL(cudaMemcpyAsync(
-          (void*)((char*)_cudaBuffers[rank] + valLen * i), (void*)((char*)_cpuBuffer + valLen * i), 
+          (void*)((char*)_denseBuffers[rank] + valLen * i), (void*)((char*)_cpuBuffer + valLen * i), 
           valLen, cudaMemcpyHostToDevice, stream));
     }
   }
@@ -135,11 +136,9 @@ void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
 
 
 void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
-  // auto input_tensor = std::make_shared<GeneralTensor>(_cudaBuffers[rank], datatype, len);
-  // auto dtype = input_tensor->dtype();
   auto workerID = BytePSGlobal::GetWorkerID();
 
-  void* baseSrcPtr = _cudaBuffers[rank];
+  void* baseSrcPtr = _denseBuffers[rank];
   
   // Scatter to local peer GPUs on the same worker
   auto localSize = BytePSGlobal::GetLocalSize();
@@ -149,7 +148,7 @@ void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
   auto unitLen = len / globalSize;
   for (int i = 0; i < localSize; i++) {
     if (rank == i) continue; // skip memcpy from myself to myself
-    void* baseDstPtr = _cudaBuffers[i];
+    void* baseDstPtr = _embedBuffers[i];
     void* srcPtr = (void*)((char*)baseSrcPtr + unitLen * i);
     void* dstPtr = (void*)((char*)baseDstPtr + unitLen * i);
     CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, unitLen, stream));
@@ -162,7 +161,7 @@ void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue; 
       CUDA_CALL(cudaMemcpyAsync(
-          (void*)((char*)_cpuBuffer + valLen * i), (void*)((char*)_cudaBuffers[rank] + valLen * i),
+          (void*)((char*)_cpuBuffer + valLen * i), (void*)((char*)_denseBuffers[rank] + valLen * i),
           valLen, cudaMemcpyDeviceToHost, stream));
     }
     CUDA_CALL(cudaStreamSynchronize(stream));

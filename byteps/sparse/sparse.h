@@ -21,25 +21,27 @@
 #include <cuda_runtime.h>
 #include "ops.h"
 #include "adapter.h"
-#include "ps/ps.h"
+#include "../../3rdparty/ps-lite/include/ps/ps.h"
 
 namespace byteps {
 namespace sparse {
 
 #define MAX_CUDA_DEVICES (32)
 
-static std::vector<void*> _cudaBuffers;
+static std::vector<void*> _embedBuffers;
+static std::vector<void*> _denseBuffers;
 static ps::KVWorker<char>* _ps;
 static void* _cpuBuffer;
 
 typedef struct shmStruct_st {
   size_t nprocesses;
   int devices[MAX_CUDA_DEVICES];
-  cudaIpcMemHandle_t memHandle[MAX_CUDA_DEVICES];
+  cudaIpcMemHandle_t embedMemHandle[MAX_CUDA_DEVICES];
+  cudaIpcMemHandle_t denseMemHandle[MAX_CUDA_DEVICES];
   cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
 } shmStruct;
 
-void InitBytepsSparse(std::vector<void*>& cudaBuffer);
+void InitBytepsSparse(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size);
 
 void ShutdownBytepsSparse();
 
