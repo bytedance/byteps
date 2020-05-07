@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import copy
 import os
 import struct
 import warnings
@@ -202,7 +203,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
-        self._compression = self._register_compressor(
+        self._intra_compressor = self._register_compressor(
             params, optimizer_params, compression_params)
 
         super(DistributedTrainer, self).__init__(
@@ -217,9 +218,12 @@ class DistributedTrainer(mx.gluon.Trainer):
         # self._scale /= size()
         self._bps_size = size()
         self.root_rank = root_rank
+        self._intra_compressors = {}
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
             if param.grad_req != 'null':
+                self._intra_compressors[i] = copy.deepcopy(
+                    self._intra_compressor)
                 byteps_params = dict(
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
@@ -236,16 +240,16 @@ class DistributedTrainer(mx.gluon.Trainer):
         optimizer_params : dict
         compression_params : dict
         """
-        compression = Compression.none
+        intra_compressor = Compression.none
         if not compression_params:
-            return compression
+            return intra_compressor
 
         if "fp16" in compression_params:
-            compression = Compression.fp16
+            intra_compressor = Compression.fp16
 
         if "compressor" not in compression_params:
             warnings.warn("Compressor is not defined")
-            return compression
+            return intra_compressor
 
         check_list = ["compressor", "ef", "momentum"]
 
@@ -275,9 +279,15 @@ class DistributedTrainer(mx.gluon.Trainer):
 
         # change
         if "momentum" in compression_params:
+            # 1bit compressor use an additional momentum for weight decay
+            if compressor == "onebit" and "wd" in optimizer_params:
+                intra_compressor = Compression.wdmom(
+                    intra_compressor, optimizer_params["momentum"], optimizer_params["wd"])
+                del optimizer_params["wd"]
+
             del optimizer_params['momentum']
 
-        return compression
+        return intra_compressor
 
     def step(self, batch_size, ignore_stale_grad=False):
         self._scale = batch_size
@@ -296,10 +306,12 @@ class DistributedTrainer(mx.gluon.Trainer):
                 # grad /= (batch_size * num_workers)
                 nd._internal._mul_scalar(
                     param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
-                compressed, ctx = self._compression.compress(param._grad[0])
+                compressed, ctx = self._intra_compressors[i].compress(
+                    param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
-                param._grad[0] = self._compression.decompress(compressed, ctx)
+                param._grad[0] = self._intra_compressors[i].decompress(
+                    compressed, ctx, x=param._data[0])
 
     def _init_params(self):
         tensors = []
@@ -312,9 +324,9 @@ class DistributedTrainer(mx.gluon.Trainer):
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
-                compressed, ctx = self._compression.compress(param_arrays[0])
-                byteps_push_pull(compressed, version=0, priority=0,
+                # compressed, ctx = self._compression.compress(param_arrays[0])
+                byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                param.set_data(self._compression.decompress(compressed, ctx))
+                # param.set_data(self._compression.decompress(compressed, ctx))
 
         self._params_to_init = tensors

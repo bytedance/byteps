@@ -16,47 +16,45 @@
 """Gradient compression algorithms."""
 
 import mxnet
+import mxnet.ndarray as nd
 
 
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
-    @staticmethod
-    def compress(tensor):
+
+    def compress(self, tensor, *args, **kwargs):
         """Compresses a tensor and returns it with the context needed to decompress it."""
         pass
 
-    @staticmethod
-    def decompress(tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Decompress the tensor with the given context."""
         pass
 
 
 class NoneCompressor(Compressor):
     """Default no-op compression."""
-    @staticmethod
-    def compress(tensor):
+
+    def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
         return tensor, None
 
-    @staticmethod
-    def decompress(tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Returns the tensor unmodified."""
         return tensor
 
 
 class FP16Compressor(Compressor):
     """Compress all floating point gradients to 16-bit."""
-    @staticmethod
-    def compress(tensor):
+
+    def compress(self, tensor, *args, **kwargs):
         """Downcasts the tensor to 16-bit."""
         tensor_compressed = tensor
-        if 'float' in str(tensor.dtype):
+        if 'float' in str(self, tensor.dtype):
             # Only allow compression from other floating point types
             tensor_compressed = tensor.astype('float16', copy=False)
         return tensor_compressed, tensor.dtype
 
-    @staticmethod
-    def decompress(tensor, ctx):
+    def decompress(self, tensor, ctx, *args, **kwargs):
         """Upcasts the tensor to the initialization dtype."""
         tensor_decompressed = tensor
         dtype = ctx
@@ -65,11 +63,49 @@ class FP16Compressor(Compressor):
         return tensor_decompressed
 
 
+class WeightDecayMomentum(Compressor):
+    """For 1bit compression."""
+
+    def __init__(self, compressor, mu, wd):
+        self.compressor = compressor
+        self.mom = None
+        self.cache = None
+        self.mu = mu
+        self.wd = wd
+
+    def compress(self, tensor, *args, **kwargs):
+        """Returns the tensor unmodified."""
+        return self.compressor.compress(tensor)
+
+    def decompress(self, tensor, ctx, *args, **kwargs):
+        """Returns the tensor added with additional momentum for wd
+            m_t = \mu * m_{t-1} + wd * x_t
+            x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
+        """
+        if "x" not in kwargs:
+            return self.compressor.decompress(tensor, ctx)
+
+        x = kwargs["x"]
+        
+        if self.mom is None:
+            self.mom = nd.zeros_like(tensor)
+            self.cache = nd.zeros_like(tensor)
+
+        nd._internal._mul_scalar(x, self.wd, out=self.cache)
+        self.mom += self.cache 
+        nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
+        tensor += self.mom + self.cache 
+        return self.compressor.decompress(tensor, ctx)
+
+
 class Compression(object):
     """Optional gradient compression algorithm used during push_pull."""
 
     """Do not compress the gradients. This is the default."""
-    none = NoneCompressor
+    none = NoneCompressor()
 
     """Compress all floating point gradients to 16-bit."""
-    fp16 = FP16Compressor
+    fp16 = FP16Compressor()
+
+    """Additional Momentum for weight decay. This is only for 1bit. This is a wrapper."""
+    wdmom = WeightDecayMomentum
