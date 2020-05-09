@@ -160,7 +160,6 @@ void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
 
 void OnebitCompressor::Decompress(ByteBuf compressed, int dtype,
                                   ByteBuf& decompressed) {
-  float scale;
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
   Unpacking(decompressed.data, compressed.data, compressed.size, dtype);
 }

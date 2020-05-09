@@ -109,9 +109,8 @@ void BytePSServerEngineThread(int i) {
       if (msg.ops == ALL_RECV) {
         // 2. no compress
         auto& updates = update_buf_[msg.key];
-        auto stored = GetStore(msg.key);
-        updates.merged.tensor = stored->tensor;
-        updates.merged.len = stored->len;
+        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+        updates.merged.len = msg.len;
       }
     }
 

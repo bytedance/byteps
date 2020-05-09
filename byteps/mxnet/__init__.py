@@ -222,7 +222,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
             if param.grad_req != 'null':
-                self._intra_compressors[i] = copy.deepcopy(
+                self._intra_compressors[i] = copy.copy(
                     self._intra_compressor)
                 byteps_params = dict(
                     filter(lambda attr: attr[0].startswith(
@@ -307,11 +307,11 @@ class DistributedTrainer(mx.gluon.Trainer):
                 nd._internal._mul_scalar(
                     param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
                 compressed, ctx = self._intra_compressors[i].compress(
-                    param._grad[0])
+                    param._grad[0], x=param._data[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
                 param._grad[0] = self._intra_compressors[i].decompress(
-                    compressed, ctx, x=param._data[0])
+                    compressed, ctx)
 
     def _init_params(self):
         tensors = []
@@ -324,9 +324,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
-                # compressed, ctx = self._compression.compress(param_arrays[0])
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                # param.set_data(self._compression.decompress(compressed, ctx))
 
         self._params_to_init = tensors
