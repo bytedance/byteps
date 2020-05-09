@@ -66,7 +66,7 @@ class FP16Compressor(Compressor):
 
 class WeightDecayMomentum(Compressor):
     """For 1bit compression."""
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    pool = concurrent.futures.ThreadPoolExecutor()
 
     def __init__(self, compressor, mu, wd):
         self.compressor = compressor
