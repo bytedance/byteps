@@ -17,8 +17,6 @@
 #include "global.h"
 #endif
 
-#include <omp.h>
-
 #include <cmath>
 
 #include "cpu_reducer.h"
@@ -44,7 +42,7 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
-    _num_threads = 1;
+    _num_threads = 4;
   }
   return;
 }
@@ -249,16 +247,17 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 }
 
 int CpuReducer::copy(void* dst, const void* src, size_t len) {
-  auto in = reinterpret_cast<const float*>(src);
-  auto out = reinterpret_cast<float*>(dst);
-#pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len / 4; ++i) {
-    out[i] = in[i];
-  }
-  if (len % 4) {
-    std::memcpy(out + len / 4, in + len / 4, len % 4);
-  }
-  return 0;
+//   auto in = reinterpret_cast<const float*>(src);
+//   auto out = reinterpret_cast<float*>(dst);
+// #pragma omp parallel for simd num_threads(_num_threads)
+//   for (size_t i = 0; i < len / 4; ++i) {
+//     out[i] = in[i];
+//   }
+//   if (len % 4) {
+//     std::memcpy(out + len / 4, in + len / 4, len % 4);
+//   }
+//   return 0;
+  std::memcpy(dst, src, len);
 }
 
 int CpuReducer::sign(void* dst, const void* src, size_t len, DataType dtype) {
