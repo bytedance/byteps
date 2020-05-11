@@ -41,13 +41,13 @@ typedef struct shmStruct_st {
   cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
 } shmStruct;
 
-void InitBytepsSparse(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size);
+extern "C" void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size);
 
-void ShutdownBytepsSparse();
+extern "C" void byteps_sparse_shutdown();
 
-void BytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
+extern "C" void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
 
-void BytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
+extern "C" void byteps_scatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
 
 } // namespace sparse
 } // namespace byteps 
