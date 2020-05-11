@@ -18,7 +18,7 @@ import mxnet
 import mxnet.ndarray as nd
 
 from multiprocessing import Process, Queue, TimeoutError
-
+from multiprocessing.queues import Empty
 
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
@@ -101,6 +101,7 @@ class WeightDecayMomentum(Compressor):
 
         x = kwargs["x"]
         self.task_queue.put(x)
+        print("put")
         return self.compressor.compress(tensor)
 
     def decompress(self, tensor, ctx, *args, **kwargs):
@@ -110,6 +111,9 @@ class WeightDecayMomentum(Compressor):
         """
         try:
             tensor += self.done_queue.get(timeout=0.1)
+            print("get")
+        except Empty:
+            print("empty for wd-momentum")
         except TimeoutError:
             print("timeout for wd-momentum")
         return self.compressor.decompress(tensor, ctx)
