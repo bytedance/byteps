@@ -86,7 +86,7 @@ class WeightDecayMomentum(Compressor):
         cache = None
         for i, x in iter(input.get, 'STOP'):
             if mom is None:
-                print(x.context)
+                print("after", x.context)
                 mom = nd.zeros_like(x)
                 cache = nd.zeros_like(x)
 
@@ -102,6 +102,7 @@ class WeightDecayMomentum(Compressor):
             return self.compressor.compress(tensor)
 
         x = kwargs["x"]
+        print("before", x.context)
         self.task_queue.put((self.cnt, x))
         self.cnt += 1
         return self.compressor.compress(tensor)
