@@ -86,6 +86,7 @@ class WeightDecayMomentum(Compressor):
         cache = None
         for i, x in iter(input.get, 'STOP'):
             if mom is None:
+                print(x.context)
                 mom = nd.zeros_like(x)
                 cache = nd.zeros_like(x)
 
