@@ -71,6 +71,7 @@ class WeightDecayMomentum(Compressor):
         self.compressor = compressor
         self.mu = mu
         self.wd = wd
+        self.cnt = 0
         self.task_queue = Queue()
         self.done_queue = Queue()
         Process(target=self._worker, args=(
@@ -83,7 +84,7 @@ class WeightDecayMomentum(Compressor):
     def _worker(wd, mu, input, output):
         mom = None
         cache = None
-        for x in iter(input.get, 'STOP'):
+        for i, x in iter(input.get, 'STOP'):
             if mom is None:
                 mom = nd.zeros_like(x)
                 cache = nd.zeros_like(x)
@@ -100,8 +101,8 @@ class WeightDecayMomentum(Compressor):
             return self.compressor.compress(tensor)
 
         x = kwargs["x"]
-        self.task_queue.put(x)
-        print("put")
+        self.task_queue.put((self.cnt, x))
+        self.cnt += 1
         return self.compressor.compress(tensor)
 
     def decompress(self, tensor, ctx, *args, **kwargs):
@@ -111,7 +112,6 @@ class WeightDecayMomentum(Compressor):
         """
         try:
             tensor += self.done_queue.get(timeout=0.1)
-            print("get")
         except Empty:
             print("empty for wd-momentum")
         except TimeoutError:
