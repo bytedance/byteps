@@ -17,7 +17,7 @@
 import mxnet
 import mxnet.ndarray as nd
 
-import concurrent.futures
+from multiprocessing import Process, Queue, TimeoutError
 
 
 class Compressor(object):
@@ -66,21 +66,33 @@ class FP16Compressor(Compressor):
 
 class WeightDecayMomentum(Compressor):
     """For 1bit compression."""
-    pool = concurrent.futures.ThreadPoolExecutor()
 
     def __init__(self, compressor, mu, wd):
         self.compressor = compressor
-        self.mom = None
-        self.cache = None
         self.mu = mu
         self.wd = wd
+        self.task_queue = Queue()
+        self.done_queue = Queue()
+        Process(target=self._worker, args=(
+            self.mu, self.wd, self.task_queue, self.done_queue)).start()
+
+    def __del__(self):
+        self.task_queue.put('STOP')
 
     @staticmethod
-    def _wd_mom(x, mom, cache, wd, mu):
-        nd._internal._mul_scalar(x, wd, out=cache)
-        mom += cache
-        nd._internal._mul_scalar(mom, mu, out=mom)
-        cache += mom
+    def _worker(wd, mu, input, output):
+        mom = None
+        cache = None
+        for x in iter(input.get, 'STOP'):
+            if mom is None:
+                mom = nd.zeros_like(x)
+                cache = nd.zeros_like(x)
+
+            nd._internal._mul_scalar(x, wd, out=cache)
+            mom += cache
+            nd._internal._mul_scalar(mom, mu, out=mom)
+            cache += mom
+            output.put(cache)
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
@@ -88,13 +100,7 @@ class WeightDecayMomentum(Compressor):
             return self.compressor.compress(tensor)
 
         x = kwargs["x"]
-
-        if self.mom is None:
-            self.mom = nd.zeros_like(x)
-            self.cache = nd.zeros_like(x)
-
-        self.future = self.pool.submit(
-            self._wd_mom, x, self.mom, self.cache, self.wd, self.mu)
+        self.task_queue.put(x)
         return self.compressor.compress(tensor)
 
     def decompress(self, tensor, ctx, *args, **kwargs):
@@ -103,9 +109,8 @@ class WeightDecayMomentum(Compressor):
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
         """
         try:
-            self.future.result(timeout=0.1)
-            tensor += self.cache
-        except concurrent.futures.TimeoutError:
+            tensor += self.done_queue.get(timeout=0.1)
+        except TimeoutError:
             print("timeout for wd-momentum")
         return self.compressor.decompress(tensor, ctx)
 
