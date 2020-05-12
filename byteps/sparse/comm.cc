@@ -20,6 +20,12 @@
 namespace byteps {
 namespace sparse {
 
+int BytePSSparseComm::_local_size;
+int BytePSSparseComm::_num_worker;
+int BytePSSparseComm::_worker_id;
+int BytePSSparseComm::_global_size;
+std::shared_ptr<byteps::common::BytePSSharedMemory> BytePSSparseComm::_shm_obj;
+
 void BytePSSparseComm::InitComm() {
   BPS_CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
   BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";

@@ -27,7 +27,9 @@ namespace common {
 
 void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
                                            uint64_t key, size_t size) {
+#ifndef BYTEPS_BUILDING_SPARSE
   size = BytePSGlobal::RoundUpToPageSize(size);
+#endif 
   std::string shm_name(prefix);
   shm_name += std::to_string(key);
   int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);

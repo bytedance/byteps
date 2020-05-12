@@ -829,7 +829,8 @@ def build_sparse_extension(build_ext, options):
 
     sparse_lib.define_macros = options['MACROS']
     sparse_lib.include_dirs = options['INCLUDES']
-    sparse_lib.extra_compile_args = options['COMPILE_FLAGS'] 
+    sparse_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
+                                    ['-DBYTEPS_BUILDING_SPARSE']
     sparse_lib.extra_link_args = options['LINK_FLAGS']
     sparse_lib.extra_objects = options['EXTRA_OBJECTS']
     sparse_lib.library_dirs = options['LIBRARY_DIRS']
