@@ -17,8 +17,9 @@
 import mxnet
 import mxnet.ndarray as nd
 
-from multiprocessing import Process, Queue, TimeoutError
-from multiprocessing.queues import Empty
+import threading
+from queue import Queue, Empty
+
 
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
@@ -74,8 +75,8 @@ class WeightDecayMomentum(Compressor):
         self.cnt = 0
         self.task_queue = Queue()
         self.done_queue = Queue()
-        Process(target=self._worker, args=(
-            self.mu, self.wd, self.task_queue, self.done_queue)).start()
+        threading.Thread(target=self._worker, args=(
+            self.mu, self.wd, self.task_queue, self.done_queue), daemon=True).start()
 
     def __del__(self):
         self.task_queue.put('STOP')
