@@ -47,9 +47,9 @@ extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<v
 
 extern "C" void bytepsSparseShutdown();
 
-extern "C" void bytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
+extern "C" void bytepsGather(int rank, int len, cudaStream_t stream);
 
-extern "C" void bytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream);
+extern "C" void bytepsScatter(int rank, int len, cudaStream_t stream);
 
 } // namespace sparse
 } // namespace byteps 

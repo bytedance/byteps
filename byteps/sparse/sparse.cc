@@ -96,7 +96,7 @@ void bytepsSparseShutdown() {
 }
 
 
-void bytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
+void bytepsGather(int rank, int len, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
   auto localSize = BytePSSparseComm::GetLocalSize();
   auto workerID = BytePSSparseComm::GetWorkerID();
@@ -134,7 +134,7 @@ void bytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t strea
 }
 
 
-void bytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
+void bytepsScatter(int rank, int len, cudaStream_t stream) {
   auto workerID = BytePSSparseComm::GetWorkerID();
 
   void* baseSrcPtr = _denseBuffers[rank];
