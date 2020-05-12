@@ -20,10 +20,10 @@ namespace byteps {
 namespace sparse {
 
 void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size) {
-  BytePSGlobal::Init();
+  BytePSSparseComm::InitComm();
   BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   // Init IPC stuff
-  auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+  auto shm_obj = BytePSSparseComm::GetSharedMemoryObj();
   auto shm = (volatile shmStruct*) 
               shm_obj->openSharedMemory(
               std::string("BytePS_Sparse_ShM_"), 
@@ -32,7 +32,7 @@ void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& de
               );  
   memset((void *)shm, 0, sizeof(*shm));
 
-  auto localSize = BytePSGlobal::GetLocalSize();
+  auto localSize = BytePSSparseComm::GetLocalSize();
   for (int i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
@@ -83,7 +83,7 @@ void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& de
       &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
 
   // Launch ps-lite if needs distributed training
-  if (BytePSGlobal::IsDistributed()) {
+  if (BytePSSparseComm::IsDistributed()) {
     // Init worker
     _ps = new ps::KVWorker<char>(0, 0);
     ps::StartAsync(0, "byteps\0");
@@ -93,14 +93,13 @@ void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& de
 } 
 
 void byteps_sparse_shutdown() {
-  BytePSGlobal::Shutdown();
 }
 
 
 void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
-  auto localSize = BytePSGlobal::GetLocalSize();
-  auto workerID = BytePSGlobal::GetWorkerID();
+  auto localSize = BytePSSparseComm::GetLocalSize();
+  auto workerID = BytePSSparseComm::GetWorkerID();
   void* baseDstPtr = (void*) ((char*)_denseBuffers[rank] + len * workerID);
   for (int i = 0; i < localSize; i++) {
     if (rank == i) continue; // skip memcpy from myself to myself
@@ -111,10 +110,10 @@ void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
   }
 
   // Gather from other distributed workers
-  if (BytePSGlobal::IsDistributed()) {
+  if (BytePSSparseComm::IsDistributed()) {
     std::vector<int> ts;
     auto valLen = len * localSize;
-    auto workerNum = BytePSGlobal::GetNumWorker();
+    auto workerNum = BytePSSparseComm::GetNumWorker();
     for (int i = 0; i < workerNum; i++) {
       if (i == workerID) continue;
       auto key = i;
@@ -136,13 +135,13 @@ void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
 
 
 void byteps_scatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
-  auto workerID = BytePSGlobal::GetWorkerID();
+  auto workerID = BytePSSparseComm::GetWorkerID();
 
   void* baseSrcPtr = _denseBuffers[rank];
   
   // Scatter to local peer GPUs on the same worker
-  auto localSize = BytePSGlobal::GetLocalSize();
-  auto workerNum = BytePSGlobal::GetNumWorker();
+  auto localSize = BytePSSparseComm::GetLocalSize();
+  auto workerNum = BytePSSparseComm::GetNumWorker();
   auto globalSize = workerNum * localSize;
   // Assume the len is partitionable 
   auto unitLen = len / globalSize;
@@ -155,7 +154,7 @@ void byteps_scatter(int rank, int len, ncclDataType_t datatype, cudaStream_t str
   }
 
   // Scatter to other distributed workers
-  if (BytePSGlobal::IsDistributed()) {
+  if (BytePSSparseComm::IsDistributed()) {
     // Copy to host memory
     auto valLen = len / workerNum;
     for (int i = 0; i < workerNum; i++) {

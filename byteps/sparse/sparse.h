@@ -21,7 +21,8 @@
 #include <cuda_runtime.h>
 #include "ops.h"
 #include "adapter.h"
-#include "../../3rdparty/ps-lite/include/ps/ps.h"
+#include "comm.h"
+#include "ps/ps.h"
 
 namespace byteps {
 namespace sparse {
@@ -32,6 +33,7 @@ static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
 static ps::KVWorker<char>* _ps;
 static void* _cpuBuffer;
+
 
 typedef struct shmStruct_st {
   size_t nprocesses;
