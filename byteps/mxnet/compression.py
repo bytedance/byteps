@@ -81,7 +81,7 @@ class WeightDecayMomentum(Compressor):
         self.task_queue.put('STOP')
 
     @staticmethod
-    def _worker(wd, mu, input, output):
+    def _worker(mu, wd, input, output):
         mom = None
         cache = None
         for x, _ in iter(input.get, 'STOP'):
