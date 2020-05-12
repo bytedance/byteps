@@ -68,7 +68,7 @@ class FP16Compressor(Compressor):
 class WeightDecayMomentum(Compressor):
     """For 1bit compression."""
 
-    def __init__(self, compressor, mu, wd):
+    def __init__(self, compressor, mu, wd, *args, **kwargs):
         self.compressor = compressor
         self.mu = mu
         self.wd = wd
@@ -129,3 +129,12 @@ class Compression(object):
 
     """Additional Momentum for weight decay. This is only for 1bit. This is a wrapper."""
     wdmom = WeightDecayMomentum
+
+
+# if __name__ == "__main__":
+#     x = WeightDecayMomentum(Compression.none, 0.9, 1e-4)
+#     import copy
+#     print(x.__dict__)
+#     y = type(x)(**x.__dict__)
+#     print(y.__dict__)
+#     print(x.task_queue is y.task_queue)
