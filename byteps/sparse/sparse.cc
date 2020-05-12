@@ -19,7 +19,7 @@
 namespace byteps {
 namespace sparse {
 
-void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size) {
+void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size) {
   BytePSSparseComm::InitComm();
   BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   // Init IPC stuff
@@ -92,11 +92,11 @@ void byteps_sparse_init(std::vector<void*>& embedBuffers, std::vector<void*>& de
   }
 } 
 
-void byteps_sparse_shutdown() {
+void bytepsSparseShutdown() {
 }
 
 
-void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
+void bytepsGather(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
   auto localSize = BytePSSparseComm::GetLocalSize();
   auto workerID = BytePSSparseComm::GetWorkerID();
@@ -134,7 +134,7 @@ void byteps_gather(int rank, int len, ncclDataType_t datatype, cudaStream_t stre
 }
 
 
-void byteps_scatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
+void bytepsScatter(int rank, int len, ncclDataType_t datatype, cudaStream_t stream) {
   auto workerID = BytePSSparseComm::GetWorkerID();
 
   void* baseSrcPtr = _denseBuffers[rank];
