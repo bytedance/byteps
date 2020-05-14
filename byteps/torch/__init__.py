@@ -283,7 +283,10 @@ def broadcast_parameters(params, root_rank):
         if rank() != root_rank:
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
-        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        if name:
+            handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        else:
+            handle = byteps_push_pull(p, average=False)
         synchronize(handle)
 
 
