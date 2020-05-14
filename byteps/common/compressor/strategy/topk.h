@@ -30,7 +30,6 @@ namespace compressor {
  * 
  * sending the most significant entries of the stochastic gradient
  * 
- * \note this is a deterministic algorithm
  */
 class TopkCompressor : public BaseCompressor {
  public:

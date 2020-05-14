@@ -34,7 +34,6 @@ namespace compressor {
  * server: majority vote
  *    sign(\sum_i c_i)
  *
- * \note this is a deterministic algorithm.
  * \note 0 represents positive and 1 represents negative.
  */
 class OnebitCompressor : public BaseCompressor {
