@@ -23,20 +23,59 @@ namespace common {
 namespace compressor {
 
 /*!
- * \brief TODO
+ * \brief TopK Compressor
+ * 
+ * paper: Sparsified SGD with Memory
+ * https://arxiv.org/pdf/1809.07599.pdf
+ * 
+ * sending the most significant entries of the stochastic gradient
+ * 
+ * \note this is a deterministic algorithm
  */
 class TopkCompressor : public BaseCompressor {
  public:
   explicit TopkCompressor(int k);
   virtual ~TopkCompressor();
-
+  
+  /*!
+   * \brief Compress function
+   * 
+   * select topk entries and corresponding indices 
+   * 
+   * \note compare with absolute values
+   * 
+   * \param grad gradient tensor
+   * \param dtype data type
+   * \param compressed compressed tensor
+   */
   void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
 
+  /*!
+   * \brief Decompress function
+   * 
+   * fill a zero tensor with topk entries and corresponding indices 
+   * 
+   * \param compressed compressed tensor
+   * \param dtype data type
+   * \param decompressed decompressed tensor
+   */
   void Decompress(ByteBuf compressed, int dtype,
                   ByteBuf& decompressed) override;
 
  private:
+  size_t Packing(const void* src, size_t size, int dtype);
+
+  template <typename index_t, typename scalar_t>
+  size_t _Packing(index_t* dst, const scalar_t* src, size_t len);
+
+  size_t Unpacking(void* dst, const void* src, size_t size, int dtype);
+  
+  template <typename index_t, typename scalar_t>
+  size_t _Unpacking(scalar_t* dst, const index_t* src, size_t len);
+
+ private:
   int _k;
+  int _src_len;
 };
 }  // namespace compressor
 }  // namespace common

@@ -41,7 +41,7 @@ OnebitCompressor::OnebitCompressor(bool use_scale) : _use_scale(use_scale){};
 OnebitCompressor::~OnebitCompressor() = default;
 
 template <typename T>
-size_t _Packing(T* data, size_t len) {
+static size_t _Packing(T* data, size_t len) {
   constexpr int PACKING_SIZE = sizeof(T) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
@@ -56,7 +56,7 @@ size_t _Packing(T* data, size_t len) {
   return chunk_size * sizeof(T);
 }
 
-size_t Packing(void* data, size_t len, int dtype) {
+static size_t Packing(void* data, size_t len, int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
     case BYTEPS_UINT8:
@@ -96,7 +96,7 @@ void OnebitCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
 }
 
 template <typename T1, typename T2>
-size_t _Unpacking(T1* dst, const T2* src, size_t size) {
+static size_t _Unpacking(T1* dst, const T2* src, size_t size) {
   static_assert(sizeof(T1) == sizeof(T2), "T1 should be the same size as T2");
   constexpr int PACKING_SIZE = sizeof(T2) * 8;
   auto chunk_size = (size - sizeof(float)) / sizeof(T2);
@@ -118,7 +118,7 @@ size_t _Unpacking(T1* dst, const T2* src, size_t size) {
   return chunk_size;
 }
 
-size_t Unpacking(void* dst, const void* src, size_t len, int dtype) {
+static size_t Unpacking(void* dst, const void* src, size_t len, int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
       return _Unpacking(reinterpret_cast<int8_t*>(dst),

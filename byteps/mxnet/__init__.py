@@ -253,7 +253,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         for _, param in params.items():
             # generic
             for item in check_list:
-                if item in compression_params:
+                if item in compression_params and compression_params[item]:
                     if isinstance(compression_params[item], str):
                         setattr(param, "byteps_%s_type" %
                                 item, compression_params[item])

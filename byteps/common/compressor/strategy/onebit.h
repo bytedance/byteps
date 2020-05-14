@@ -55,13 +55,12 @@ class OnebitCompressor : public BaseCompressor {
   void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
 
   /*!
-   * \brief Decompress
+   * \brief Decompress function
    *
    * unpack from byte array to FP tensor
    *
    * \param compressed compressed tensor
    * \param dtype data type
-   * \param src_size uncompressed tensor size
    * \param decompressed decompressed tensor
    */
   void Decompress(ByteBuf compressed, int dtype,
