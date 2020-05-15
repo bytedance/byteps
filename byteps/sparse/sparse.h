@@ -31,9 +31,11 @@ namespace sparse {
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
+static std::vector<int> _bufferLengths; // slot num
+static std::vector<int> _offsets;
 static ps::KVWorker<char>* _ps;
 static void* _cpuBuffer;
-
+static int _denseBufferLength;
 
 typedef struct shmStruct_st {
   size_t nprocesses;
@@ -43,13 +45,13 @@ typedef struct shmStruct_st {
   cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
 } shmStruct;
 
-extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size);
+extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLength, int size);
 
 extern "C" void bytepsSparseShutdown();
 
-extern "C" void bytepsGather(int rank, int len, cudaStream_t stream);
+extern "C" void bytepsGather(int rank, cudaStream_t stream);
 
-extern "C" void bytepsScatter(int rank, int len, cudaStream_t stream);
+extern "C" void bytepsScatter(int rank, cudaStream_t stream);
 
 } // namespace sparse
 } // namespace byteps 

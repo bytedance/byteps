@@ -16,12 +16,17 @@
 #include "sparse.h"
 #include "../common/global.h"
 
+
 namespace byteps {
 namespace sparse {
 
-void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, int size) {
+void bytepsSparseInit(std::vector<void*>& embedBuffers, 
+                      std::vector<void*>& denseBuffers, 
+                      std::vector<int>& bufferLength, 
+                      int size) {
   BytePSSparseComm::InitComm();
   BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
+  BPS_CHECK_EQ(bufferLength.size(), denseBuffers.size());
   // Init IPC stuff
   auto shm_obj = BytePSSparseComm::GetSharedMemoryObj();
   auto shm = (volatile shmStruct*) 
@@ -58,6 +63,13 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& dens
       << "Shared memory processes: " << shm->nprocesses 
       << ", send buffers: " << embedBuffers.size();
 
+  // We need to manually we need to clear the containers because
+  // bytepsSparseInit() might be invoked multiple times
+  _embedBuffers.clear();
+  _denseBuffers.clear();
+  _bufferLengths.clear();
+  _offsets.clear();
+
   // Allocate memory and an event for each process and fill 
   // the shared memory buffer with the IPC handles 
   for (size_t i = 0; i < shm->nprocesses; i++) {
@@ -76,12 +88,28 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& dens
     // store the buffers 
     _embedBuffers.push_back(embedBuffers[i]); 
     _denseBuffers.push_back(denseBuffers[i]);
+    _bufferLengths.push_back(bufferLength[i]);
+
+    int offset = 0;
+    for (int j = 0; j < i; j++) {
+      offset += _bufferLengths[j] / localSize;
+    }
+    _offsets.push_back(offset);
   }
+  _denseBufferLength = size;
+
+  // Check buffer length
+  int accuml = 0;
+  for (int i = 0; i < localSize; i++) {
+    accuml += _bufferLengths[i] / localSize;
+  }
+  BPS_CHECK_EQ(accuml, _denseBufferLength) 
+      << accuml << " " << _denseBufferLength;
 
   // Need a continous CPU buffer for all GPUs
   CUDA_CALL(cudaHostAlloc(
       &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
-
+  
   // Launch ps-lite if needs distributed training
   if (BytePSSparseComm::IsDistributed()) {
     // Init worker
@@ -96,88 +124,82 @@ void bytepsSparseShutdown() {
 }
 
 
-void bytepsGather(int rank, int len, cudaStream_t stream) {
+void bytepsGather(int rank, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
   auto localSize = BytePSSparseComm::GetLocalSize();
   auto workerID = BytePSSparseComm::GetWorkerID();
-  void* baseDstPtr = (void*) ((char*)_denseBuffers[rank] + len * workerID);
+  void* baseDstPtr = (void*) _denseBuffers[rank];
   for (int i = 0; i < localSize; i++) {
-    if (rank == i) continue; // skip memcpy from myself to myself
-    void* baseSrcPtr = (void*)((char*)_embedBuffers[i] + len * workerID);
-    void* srcPtr = (void*)((char*)baseSrcPtr + len * i);
-    void* dstPtr = (void*)((char*)baseDstPtr + len * i);
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, len, stream));
+    void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
+    void* srcPtr = (void*) ((char*)baseSrcPtr + _bufferLengths[i] / localSize * rank);
+    void* dstPtr = (void*) ((char*)baseDstPtr + _offsets[i]);
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, _bufferLengths[i] / localSize, stream));
   }
 
-  // Gather from other distributed workers
-  if (BytePSSparseComm::IsDistributed()) {
-    std::vector<int> ts;
-    auto valLen = len * localSize;
-    auto workerNum = BytePSSparseComm::GetNumWorker();
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue;
-      auto key = i;
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
-      // need to use cpu buffer
-      ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
-      ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
-    }
-    for (auto t : ts) _ps->Wait(t);
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue; 
-      CUDA_CALL(cudaMemcpyAsync(
-          (void*)((char*)_denseBuffers[rank] + valLen * i), (void*)((char*)_cpuBuffer + valLen * i), 
-          valLen, cudaMemcpyHostToDevice, stream));
-    }
-  }
+  // // Gather from other distributed workers
+  // if (BytePSSparseComm::IsDistributed()) {
+  //   std::vector<int> ts;
+  //   auto valLen = len * localSize;
+  //   auto workerNum = BytePSSparseComm::GetNumWorker();
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue;
+  //     auto key = i;
+  //     auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
+  //     // need to use cpu buffer
+  //     ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
+  //     ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
+  //   }
+  //   for (auto t : ts) _ps->Wait(t);
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue; 
+  //     CUDA_CALL(cudaMemcpyAsync(
+  //         (void*)((char*)_denseBuffers[rank] + valLen * i), (void*)((char*)_cpuBuffer + valLen * i), 
+  //         valLen, cudaMemcpyHostToDevice, stream));
+  //   }
+  // }
+
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
 
-void bytepsScatter(int rank, int len, cudaStream_t stream) {
-  auto workerID = BytePSSparseComm::GetWorkerID();
-
-  void* baseSrcPtr = _denseBuffers[rank];
-  
-  // Scatter to local peer GPUs on the same worker
+void bytepsScatter(int rank, cudaStream_t stream) {
   auto localSize = BytePSSparseComm::GetLocalSize();
-  auto workerNum = BytePSSparseComm::GetNumWorker();
-  auto globalSize = workerNum * localSize;
-  // Assume the len is partitionable 
-  auto unitLen = len / globalSize;
+  auto workerID = BytePSSparseComm::GetWorkerID();
+  void* baseSrcPtr = (void*)_denseBuffers[rank];
   for (int i = 0; i < localSize; i++) {
-    if (rank == i) continue; // skip memcpy from myself to myself
-    void* baseDstPtr = _embedBuffers[i];
-    void* srcPtr = (void*)((char*)baseSrcPtr + unitLen * i);
-    void* dstPtr = (void*)((char*)baseDstPtr + unitLen * i);
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, unitLen, stream));
+    void* baseDstPtr = (void*) ((char*)_embedBuffers[i]);
+    void* srcPtr = (void*) ((char*)baseSrcPtr + _offsets[i]);
+    void* dstPtr = (void*) ((char*)baseDstPtr + _bufferLengths[i] / localSize * rank);
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, i, srcPtr, rank, _bufferLengths[i] / localSize, stream));
   }
+  CUDA_CALL(cudaStreamSynchronize(stream));
 
-  // Scatter to other distributed workers
-  if (BytePSSparseComm::IsDistributed()) {
-    // Copy to host memory
-    auto valLen = len / workerNum;
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue; 
-      CUDA_CALL(cudaMemcpyAsync(
-          (void*)((char*)_cpuBuffer + valLen * i), (void*)((char*)_denseBuffers[rank] + valLen * i),
-          valLen, cudaMemcpyDeviceToHost, stream));
-    }
-    CUDA_CALL(cudaStreamSynchronize(stream));
+  // // Scatter to other distributed workers
+  // if (BytePSSparseComm::IsDistributed()) {
+  //   // Copy to host memory
+  //   auto valLen = len / workerNum;
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue; 
+  //     CUDA_CALL(cudaMemcpyAsync(
+  //         (void*)((char*)_cpuBuffer + valLen * i), (void*)((char*)_denseBuffers[rank] + valLen * i),
+  //         valLen, cudaMemcpyDeviceToHost, stream));
+  //   }
+  //   CUDA_CALL(cudaStreamSynchronize(stream));
 
-    std::vector<int> ts;
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue;
-      auto key = i;
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
-      // need to use cpu buffer
-      ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
-      ts.push_back(_ps->ZPush(pskv.keys, vals, pskv.lens));
-    }
-    for (auto t : ts) _ps->Wait(t);
-  } else {
-    CUDA_CALL(cudaStreamSynchronize(stream));
-  }
+  //   std::vector<int> ts;
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue;
+  //     auto key = i;
+  //     auto &pskv = BytePSGlobal::EncodeDefaultKey(key, valLen);
+  //     // need to use cpu buffer
+  //     ps::SArray<char> vals((char*)_cpuBuffer + valLen * i, valLen, false);
+  //     ts.push_back(_ps->ZPush(pskv.keys, vals, pskv.lens));
+  //   }
+  //   for (auto t : ts) _ps->Wait(t);
+  // } else {
+  //   CUDA_CALL(cudaStreamSynchronize(stream));
+  // }
+
 }
 
 } // namespace sparse
