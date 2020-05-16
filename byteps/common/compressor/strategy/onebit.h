@@ -38,7 +38,7 @@ namespace compressor {
  */
 class OnebitCompressor : public BaseCompressor {
  public:
-  OnebitCompressor(bool use_scale=false);
+  OnebitCompressor(bool use_scale = false);
   virtual ~OnebitCompressor();
 
   /*!
@@ -64,6 +64,17 @@ class OnebitCompressor : public BaseCompressor {
    */
   void Decompress(ByteBuf compressed, int dtype,
                   ByteBuf& decompressed) override;
+
+ private:
+  size_t Packing(void* data, size_t len, int dtype);
+
+  template <typename scalar_t>
+  size_t PackingImpl(scalar_t* data, size_t len);
+
+  size_t Unpacking(void* dst, const void* src, size_t len, int dtype);
+
+  template <typename scalar_t, typename packing_t>
+  size_t UnpackingImpl(scalar_t* dst, const packing_t* src, size_t size);
 
  private:
   bool _use_scale;

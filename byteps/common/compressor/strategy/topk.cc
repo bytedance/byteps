@@ -43,7 +43,7 @@ TopkCompressor::TopkCompressor(int k) : _k(k){};
 TopkCompressor::~TopkCompressor() = default;
 
 template <typename index_t, typename scalar_t>
-size_t TopkCompressor::_Packing(index_t* dst, const scalar_t* src, size_t len) {
+size_t TopkCompressor::PackingImpl(index_t* dst, const scalar_t* src, size_t len) {
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
   BPS_CHECK_LE(this->_k, len / 2);
@@ -78,22 +78,22 @@ size_t TopkCompressor::_Packing(index_t* dst, const scalar_t* src, size_t len) {
 size_t TopkCompressor::Packing(const void* src, size_t size, int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
-      return _Packing(reinterpret_cast<int8_t*>(_buf.get()),
+      return PackingImpl(reinterpret_cast<int8_t*>(_buf.get()),
                       reinterpret_cast<const int8_t*>(src),
                       size / sizeof(int8_t));
     case BYTEPS_UINT8:
-      return _Packing(reinterpret_cast<uint8_t*>(_buf.get()),
+      return PackingImpl(reinterpret_cast<uint8_t*>(_buf.get()),
                       reinterpret_cast<const uint8_t*>(src),
                       size / sizeof(uint8_t));
     // case BYTEPS_FLOAT16:
     //   return _Packing(reinterpret_cast<int8_t*>(_buf.get()),
     //                   reinterpret_cast<const int8_t*>(src), size);
     case BYTEPS_FLOAT32:
-      return _Packing(reinterpret_cast<int32_t*>(_buf.get()),
+      return PackingImpl(reinterpret_cast<int32_t*>(_buf.get()),
                       reinterpret_cast<const float*>(src),
                       size / sizeof(int32_t));
     case BYTEPS_FLOAT64:
-      return _Packing(reinterpret_cast<int64_t*>(_buf.get()),
+      return PackingImpl(reinterpret_cast<int64_t*>(_buf.get()),
                       reinterpret_cast<const double*>(src),
                       size / sizeof(int64_t));
     default:
@@ -108,7 +108,7 @@ void TopkCompressor::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
 }
 
 template <typename index_t, typename scalar_t>
-size_t TopkCompressor::_Unpacking(scalar_t* dst, const index_t* src,
+size_t TopkCompressor::UnpackingImpl(scalar_t* dst, const index_t* src,
                                   size_t len) {
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
@@ -133,22 +133,22 @@ size_t TopkCompressor::Unpacking(void* dst, const void* src, size_t size,
                                  int dtype) {
   switch (dtype) {
     case BYTEPS_INT8:
-      return _Unpacking(reinterpret_cast<int8_t*>(dst),
+      return UnpackingImpl(reinterpret_cast<int8_t*>(dst),
                         reinterpret_cast<const int8_t*>(src),
                         size / sizeof(int8_t) / 2);
     case BYTEPS_UINT8:
-      return _Unpacking(reinterpret_cast<uint8_t*>(dst),
+      return UnpackingImpl(reinterpret_cast<uint8_t*>(dst),
                         reinterpret_cast<const uint8_t*>(src),
                         size / sizeof(uint8_t) / 2);
     // case BYTEPS_FLOAT16:
     //   return _Unpacking(reinterpret_cast<int8_t*>(_buf.get()),
     //                   reinterpret_cast<const int8_t*>(src), size);
     case BYTEPS_FLOAT32:
-      return _Unpacking(reinterpret_cast<float*>(dst),
+      return UnpackingImpl(reinterpret_cast<float*>(dst),
                         reinterpret_cast<const int32_t*>(src),
                         size / sizeof(float) / 2);
     case BYTEPS_FLOAT64:
-      return _Unpacking(reinterpret_cast<double*>(dst),
+      return UnpackingImpl(reinterpret_cast<double*>(dst),
                         reinterpret_cast<const int64_t*>(src),
                         size / sizeof(double) / 2);
     default:
