@@ -253,7 +253,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         for _, param in params.items():
             # generic
             for item in check_list:
-                if item in compression_params and compression_params[item]:
+                if compression_params.get(item):
                     if isinstance(compression_params[item], str):
                         setattr(param, "byteps_%s_type" %
                                 item, compression_params[item])
@@ -270,12 +270,12 @@ class DistributedTrainer(mx.gluon.Trainer):
                 setattr(param, "byteps_compressor_k",
                         compression_params["k"])
 
-            if "momentum" in compression_params:
+            if compression_params.get("momentum"):
                 setattr(param, "byteps_momentum_mu",
                         optimizer_params["momentum"])
 
         # change
-        if "momentum" in compression_params:
+        if compression_params.get("momentum"):
             # 1bit compressor use an additional momentum for weight decay
             if compressor == "onebit" and "wd" in optimizer_params:
                 intra_compressor = Compression.wdmom(
