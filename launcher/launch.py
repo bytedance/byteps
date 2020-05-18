@@ -68,6 +68,13 @@ def launch_bps():
     else:
         import byteps.server
 
+def launch_bps_sparse_server():
+    print("BytePS launching Sparse Server")
+    sys.stdout.flush()
+    import byteps.sparse
 
 if __name__ == "__main__":
-    launch_bps()
+    if int(os.environ.get("BYTEPS_LAUNCH_SPARSE", "0")) > 0:
+        launch_bps_sparse_server()
+    else:
+        launch_bps()
