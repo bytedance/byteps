@@ -38,6 +38,9 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   memset((void *)shm, 0, sizeof(*shm));
 
   auto localSize = BytePSSparseComm::GetLocalSize();
+  auto workerNum = BytePSSparseComm::GetNumWorker();
+  auto workerID = BytePSSparseComm::GetWorkerID();
+
   for (int i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
@@ -64,11 +67,16 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       << ", send buffers: " << embedBuffers.size();
 
   // We need to manually we need to clear the containers because
-  // bytepsSparseInit() might be invoked multiple times
+  // bytepsSparseInit() might be (unexpectedly) invoked multiple times
   _embedBuffers.clear();
   _denseBuffers.clear();
-  _bufferLengths.clear();
   _offsets.clear();
+
+  _bufferLengths.clear();
+  _bufferLengths.resize(workerNum);
+  for (int i = 0; i < workerNum; i++) {
+    _bufferLengths[i].resize(localSize);
+  }
 
   // Allocate memory and an event for each process and fill 
   // the shared memory buffer with the IPC handles 
@@ -85,14 +93,14 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     CUDA_CALL(cudaIpcGetEventHandle(
         (cudaIpcEventHandle_t *)&shm->eventHandle[i], event));
     
-    // store the buffers 
+    // Store the buffers 
     _embedBuffers.push_back(embedBuffers[i]); 
     _denseBuffers.push_back(denseBuffers[i]);
-    _bufferLengths.push_back(bufferLength[i]);
+    _bufferLengths[workerID][i] = bufferLength[i]; // local buffer length
 
     int offset = 0;
-    for (int j = 0; j < i; j++) {
-      offset += _bufferLengths[j] / localSize;
+    for (size_t j = 0; j < i; j++) {
+      offset += _bufferLengths[workerID][j] / localSize;
     }
     _offsets.push_back(offset);
   }
@@ -101,7 +109,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Check buffer length
   int accuml = 0;
   for (int i = 0; i < localSize; i++) {
-    accuml += _bufferLengths[i] / localSize;
+    accuml += _bufferLengths[workerID][i] / localSize;
   }
   BPS_CHECK_EQ(accuml, _denseBufferLength) 
       << accuml << " " << _denseBufferLength;
@@ -110,14 +118,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   CUDA_CALL(cudaHostAlloc(
       &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
   
-  // Launch ps-lite if needs distributed training
-  if (BytePSSparseComm::IsDistributed()) {
-    // Init worker
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
-    ps::Postoffice::Get()->Barrier(0, 
-        ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-  }
+  // Global coordination of the bufferLengths 
+  // which is equivalent to all-gather 
 } 
 
 void bytepsSparseShutdown() {
@@ -131,9 +133,9 @@ void bytepsGather(int rank, cudaStream_t stream) {
   void* baseDstPtr = (void*) _denseBuffers[rank];
   for (int i = 0; i < localSize; i++) {
     void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
-    void* srcPtr = (void*) ((char*)baseSrcPtr + _bufferLengths[i] / localSize * rank);
+    void* srcPtr = (void*) ((char*)baseSrcPtr + _bufferLengths[workerID][i] / localSize * rank);
     void* dstPtr = (void*) ((char*)baseDstPtr + _offsets[i]);
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, _bufferLengths[i] / localSize, stream));
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, _bufferLengths[workerID][i] / localSize, stream));
   }
 
   // // Gather from other distributed workers
@@ -169,8 +171,8 @@ void bytepsScatter(int rank, cudaStream_t stream) {
   for (int i = 0; i < localSize; i++) {
     void* baseDstPtr = (void*) ((char*)_embedBuffers[i]);
     void* srcPtr = (void*) ((char*)baseSrcPtr + _offsets[i]);
-    void* dstPtr = (void*) ((char*)baseDstPtr + _bufferLengths[i] / localSize * rank);
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, i, srcPtr, rank, _bufferLengths[i] / localSize, stream));
+    void* dstPtr = (void*) ((char*)baseDstPtr + _bufferLengths[workerID][i] / localSize * rank);
+    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, i, srcPtr, rank, _bufferLengths[workerID][i] / localSize, stream));
   }
   CUDA_CALL(cudaStreamSynchronize(stream));
 

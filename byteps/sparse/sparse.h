@@ -22,7 +22,6 @@
 #include "ops.h"
 #include "adapter.h"
 #include "comm.h"
-#include "ps/ps.h"
 
 namespace byteps {
 namespace sparse {
@@ -31,7 +30,7 @@ namespace sparse {
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
-static std::vector<int> _bufferLengths; // slot num
+static std::vector<std::vector<int>> _bufferLengths; 
 static std::vector<int> _offsets;
 static ps::KVWorker<char>* _ps;
 static void* _cpuBuffer;

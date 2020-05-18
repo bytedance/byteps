@@ -841,7 +841,8 @@ def build_sparse_extension(build_ext, options):
          'byteps/sparse/ops.cc',
          'byteps/sparse/ready_event.cc',
          'byteps/sparse/sparse.cc',
-         'byteps/sparse/comm.cc'
+         'byteps/sparse/comm.cc',
+         'byteps/sparse/sparse_server.cc'
          ]
     sparse_lib.libraries = options['LIBRARIES']
 

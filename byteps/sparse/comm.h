@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "../common/shared_memory.h"
+#include "ps/ps.h"
 
 namespace byteps {
 namespace sparse {
@@ -27,6 +28,8 @@ class BytePSSparseComm {
   static bool IsDistributed() { return _num_worker > 1; }
   static std::shared_ptr<byteps::common::BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; } 
   static void InitComm();
+  static ps::KVWorker<char>* GetPS() { return _ps; }
+  static void AllGather(std::vector<std::vector<int>> src);
 
  private:
   static int _local_size;
@@ -34,6 +37,7 @@ class BytePSSparseComm {
   static int _worker_id;
   static int _num_worker;
   static std::shared_ptr<byteps::common::BytePSSharedMemory> _shm_obj;
+  static ps::KVWorker<char>* _ps;
 
 }; // class BytePSSparseComm
 

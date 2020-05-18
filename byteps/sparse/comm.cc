@@ -25,6 +25,7 @@ int BytePSSparseComm::_num_worker;
 int BytePSSparseComm::_worker_id;
 int BytePSSparseComm::_global_size;
 std::shared_ptr<byteps::common::BytePSSharedMemory> BytePSSparseComm::_shm_obj;
+ps::KVWorker<char>* BytePSSparseComm::_ps;
 
 void BytePSSparseComm::InitComm() {
   BPS_CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
@@ -43,8 +44,65 @@ void BytePSSparseComm::InitComm() {
 
   // Init shared memory object
   _shm_obj = std::make_shared<byteps::common::BytePSSharedMemory>(); 
+  
+  // Launch ps-lite if needs distributed training
+  if (BytePSSparseComm::IsDistributed()) {
+    // Init worker
+    _ps = new ps::KVWorker<char>(0, 0);
+    ps::StartAsync(0, "byteps\0");
+    ps::Postoffice::Get()->Barrier(0, 
+        ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+  }
+}
+
+void BytePSSparseComm::AllGather(std::vector<std::vector<int>> src) {
+  auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+  const int numServers = krs.size();
+  int rank = BytePSSparseComm::GetWorkerID();
+  BPS_CHECK_EQ(numServers, (int)src.size()) << numServers << " " << src.size();
+
+  // Prepare vals
+  std::vector<ps::SArray<char>> psVals(numServers);
+  for (int i = 0; i < numServers; i++) {
+    ps::SArray<char> tmp((char*)src[i].data(), numServers * sizeof(int), false);
+    psVals[i] = tmp;
+  }
+  
+  // Prepare keys and lens
+  std::vector<ps::SArray<ps::Key>> psKeys; 
+  std::vector<ps::SArray<int>> psLens; 
+  for (int i = 0; i < numServers; i++) {
+    int server = i;
+    std::vector<ps::Key> tmp1(1, (ps::Key)krs[server].begin() + server);
+    ps::SArray<ps::Key> keys(tmp1);
+    psKeys.push_back(keys);
+
+    std::vector<int> tmp2(1, (int)src.size() * sizeof(int));
+    ps::SArray<int> lens(tmp2);
+    psLens.push_back(lens);
+  }
+
+  // Push myself
+  { 
+    int server = rank;
+    auto keys = psKeys[server];
+    auto vals = psVals[server];
+    auto lens = psLens[server];
+    _ps->Wait(_ps->ZPush(keys, vals, lens));
+  }
+
+  // Pull from others
+  for (int i = 0; i < numServers; i++) {
+    if (i == rank) continue; // skip myself
+    int server = i;
+    auto keys = psKeys[server];
+    auto vals = psVals[server];
+    auto lens = psLens[server];
+    _ps->Wait(_ps->ZPull(keys, &vals, &lens));
+  }
 
 }
+
 
 } // namespace sparse
 } // namespace byteps 
