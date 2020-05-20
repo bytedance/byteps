@@ -29,6 +29,7 @@ from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.util import _executing_eagerly
+from . import distribute
 
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
