@@ -16,6 +16,10 @@
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import os
 import warnings
 
@@ -25,7 +29,6 @@ from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.util import _executing_eagerly
-# from horovod.tensorflow.util import _executing_eagerly, _make_subgraph, _cache
 
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
@@ -273,7 +276,7 @@ if _LegacyOptimizer is not None:
         def variables(self, *args, **kwargs):
             """Calls this same method on the underlying optimizer."""
             return self._optimizer.variables(*args, **kwargs)
-#x2682marklinexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 def DistributedOptimizer(optimizer, name=None, use_locking=False, device_dense='',
                          device_sparse='', compression=Compression.none,
                          sparse_as_dense=False, backward_passes_per_step=1,
