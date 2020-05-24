@@ -304,11 +304,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     if (e != cudaSuccess) {
       BPS_LOG(INFO) << cudaGetErrorString(e) 
                     << " (You may ignore this if your program continues)";
-      BPS_LOG(DEBUG) << name << "  here";
     }
-    BPS_LOG(DEBUG) << name << " here";
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
-    BPS_LOG(DEBUG) << name << " here";
   }
 
   // We always allocate our own cpu buffer

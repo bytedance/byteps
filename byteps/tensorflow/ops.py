@@ -24,6 +24,8 @@ import re
 import os
 import ctypes
 from enum import Enum
+import random
+import string
 
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -99,14 +101,10 @@ def _normalize_name(name):
     """Normalizes operation name to TensorFlow rules."""
     return re.sub('[^a-zA-Z0-9_]', '_', name)
 
-import random
-import string
-
 def randomString(stringLength=16):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
-seq = 1
 def _push_pull(tensor, scope='', name=None):
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
@@ -116,7 +114,6 @@ def _push_pull(tensor, scope='', name=None):
       A tensor of the same shape and type as `tensor`, summed across all
       processes.
     """
-    global seq
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
@@ -129,18 +126,11 @@ def _push_pull(tensor, scope='', name=None):
     if not name:
         name = ''
     full_name = scope + name
-    full_name = full_name.encode("ascii")
-    aug_name = scope + name
-    if not aug_name:
-        aug_name = "empty_name_" + randomString()
-        seq += 1
-
-    aug_name_ascii = aug_name.encode("ascii")
-    print("xxxxxx aug_name: ", aug_name)
-    print("xxxxxx  1 tensor.device", tensor.device)
-    # TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(aug_name_ascii))
-    return C_LIB.byteps_push_pull(tensor, name=name, input_name = aug_name)
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
 @ops.RegisterGradient('BytePSPushPull')
@@ -165,7 +155,6 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
       A tensor of the same shape and type as `tensor`, with the value broadcasted
       from root rank.
     """
-    global seq
     # Broadcast is implemented as push + pull after zero-ing non-root tensors
     if name is None and not _executing_eagerly():
         name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
@@ -179,36 +168,25 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     if not name:
         name = ''
     full_name = scope + name
-    full_name = full_name.encode("ascii")
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
 
-    aug_name = scope + name
-    if not aug_name:
-        # aug_name = "empty_name_" + str(seq)
-        aug_name = "empty_name_" + randomString()
-        seq += 1
-    aug_name_ascii = aug_name.encode("ascii")
-    # TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(aug_name_ascii))
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     if root_rank != rank():
         if is_variable:
             if hasattr(tf, 'assign_sub'):
                 with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                    print("xxxxxx here 1 aug_name: ", aug_name)
                     return C_LIB.byteps_push_pull(tensor, name=name)
             else:
                 with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
-                    print("xxxxxx here 2 aug_name: ", aug_name)
-                    print("xxxxxx here 2 tensor.device", tensor.device)
-                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = aug_name)
+                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
         else:
             with tf.device(tensor.device):
                 input_tensor = tf.zeros_like(tensor)
-            print("xxxxxx here 3 aug_name: ", aug_name)
-            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = aug_name)
+            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name)
     else:
-        print("xxxxxx here 4 aug_name: ", aug_name)
-        print("xxxxxx here 4 tensor.device", tensor.device)
-        return C_LIB.byteps_push_pull(tensor, name=name, input_name = aug_name)
+        return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
 @ops.RegisterGradient('BytePSBroadcast')
