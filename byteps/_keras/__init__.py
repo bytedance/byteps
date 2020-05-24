@@ -83,7 +83,7 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
 
 
 def _eval(backend, op_or_result):
-    if pbs._executing_eagerly():
+    if bps._executing_eagerly():
         return op_or_result
     else:
         return backend.get_session().run(op_or_result)
