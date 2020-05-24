@@ -68,5 +68,5 @@ model.compile(loss=tf.keras.losses.categorical_crossentropy,
               experimental_run_tf_function=False)
 model.fit(data, target, epochs=10, steps_per_epoch=16, callbacks=callbacks)
 
-test_loss, test_acc = model.evaluate(data, target, verbose=2)
+test_loss, test_acc, test_topk = model.evaluate(data, target, verbose=2, steps=16)
 print('\nTest accuracy:', test_acc)
