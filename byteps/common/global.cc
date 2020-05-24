@@ -577,7 +577,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     const int num_servers = krs.size();
     BPS_CHECK_GT(num_servers, 0);
     // send it to a single random picked server
-    int server;
+    int server = 0;
     if (!_hash_knob.compare(std::string("naive"))) {
       server = Hash_Naive(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("built_in"))) {

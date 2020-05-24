@@ -17,7 +17,7 @@
 import tensorflow as tf
 import byteps.tensorflow.keras as bps
 
-tf.compat.v1.disable_eager_execution()
+# tf.compat.v1.disable_eager_execution()
 
 # byteps: initialize byteps.
 bps.init()
