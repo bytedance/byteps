@@ -33,8 +33,8 @@ from byteps.tensorflow import rank
 from byteps.tensorflow import local_rank
 from byteps.tensorflow import Compression
 
-from byteps.keras import callbacks
 import byteps._keras as _impl
+from byteps.tensorflow.keras import callbacks
 
 
 def DistributedOptimizer(optimizer, name=None,
@@ -49,10 +49,8 @@ def DistributedOptimizer(optimizer, name=None,
         name: Optional name prefix for the operations created when applying
               gradients. Defaults to "Distributed" followed by the provided
               optimizer type.
-        device_dense: Device to be used for dense tensors. Uses GPU by default
-                      if BytePS was build with BYTEPS_GPU_ALLREDUCE.
-        device_sparse: Device to be used for sparse tensors. Uses GPU by default
-                       if BytePS was build with BYTEPS_GPU_ALLGATHER.
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
         compression: Compression algorithm used to reduce the amount of data
                      sent and received by each worker node.  Defaults to not
                      using compression.

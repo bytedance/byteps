@@ -152,8 +152,7 @@ if _SessionRunHook is not None and _get_default_graph is not None:
               root_rank:
                 Rank that will send data, other ranks will receive data.
               device:
-                Device to be used for broadcasting. Uses GPU by default
-                if BytePS was build with BYTEPS_GPU_BROADCAST.
+                Device to be used for broadcasting. Uses GPU by default.
             """
             super(BroadcastGlobalVariablesHook, self).__init__()
             self.root_rank = root_rank
@@ -307,7 +306,7 @@ def DistributedOptimizer(optimizer, name=None, use_locking=False, device_dense='
         performance and memory utilization if the original sparse gradient
         has high density.  Defaults to false.
       backward_passes_per_step:
-        Number of backward passes to perform before calling hvd.allreduce.
+        Number of backward passes to perform before calling bps.push_pull
         This allows accumulating updates over multiple mini-batches before
         reducing and applying them.
       op:

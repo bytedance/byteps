@@ -6,7 +6,7 @@ import numpy as np
 import timeit
 
 import tensorflow as tf
-import byteps.keras as bps
+import byteps.tensorflow.keras as bps
 from tensorflow.keras import applications
 
 tf.compat.v1.disable_eager_execution()

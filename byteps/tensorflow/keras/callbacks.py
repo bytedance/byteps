@@ -40,8 +40,7 @@ class BroadcastGlobalVariablesCallback(_impl.BroadcastGlobalVariablesCallbackImp
         global variables from root rank to all other processes during initialization.
         Args:
             root_rank: Rank that will send data, other ranks will receive data.
-            device: Device to be used for broadcasting. Uses GPU by default
-                    if BytePS was build with BYTEPS_GPU_BROADCAST.
+            device: Device to be used for broadcasting. Uses GPU by default.
         """
         super(BroadcastGlobalVariablesCallback, self).__init__(K, root_rank, device)
 
@@ -60,8 +59,7 @@ class MetricAverageCallback(_impl.MetricAverageCallbackImpl, keras.callbacks.Cal
         Construct a new MetricAverageCallback that will average metrics
         across all processes at the end of the epoch.
         Args:
-            device: Device to be used for allreduce. Uses GPU by default
-                    if BytePS was build with BYTEPS_GPU_ALLREDUCE.
+            device: Device to be used for push_pull. Uses GPU by default.
         """
         super(MetricAverageCallback, self).__init__(K, device)
 

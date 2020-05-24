@@ -14,6 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 
+import warnings
+
 import byteps.tensorflow as bps
 import tensorflow as tf
 
@@ -69,7 +71,7 @@ class MetricAverageCallbackImpl(object):
         for metric, value in sorted(logs.items()):
             if bps._executing_eagerly():
                 reduced_logs[metric] = \
-                    bps.allreduce(self.backend.constant(value, name=metric)).numpy()
+                    bps.push_pull(self.backend.constant(value, name=metric)).numpy()
             else:
                 if metric not in self.variables:
                     self.variables[metric], self.push_pull_ops[metric] = \
@@ -172,7 +174,7 @@ class LearningRateScheduleCallbackImpl(object):
 
 class LearningRateWarmupCallbackImpl(LearningRateScheduleCallbackImpl):
     def __init__(self, backend, warmup_epochs=5, momentum_correction=True, steps_per_epoch=None,
-                 verbose=0, *args):
+                 verbose=0, initial_lr=None, *args):
         def multiplier(epoch):
             # Adjust epoch to produce round numbers at the end of each epoch, so that TensorBoard
             # learning rate graphs look better.
