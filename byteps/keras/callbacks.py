@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import keras
-import keras.backend as K
+from tensorflow import keras
+import tensorflow.keras.backend as K
 
 from byteps._keras import callbacks as _impl
 

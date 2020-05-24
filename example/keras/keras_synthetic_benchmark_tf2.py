@@ -9,6 +9,8 @@ import tensorflow as tf
 import byteps.keras as bps
 from tensorflow.keras import applications
 
+tf.compat.v1.disable_eager_execution()
+
 # Benchmark settings
 parser = argparse.ArgumentParser(description='TensorFlow Synthetic Benchmark',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -64,7 +66,7 @@ model.compile(loss=tf.keras.losses.categorical_crossentropy,
               optimizer=opt,
               metrics=['accuracy', 'top_k_categorical_accuracy'],
               experimental_run_tf_function=False)
-model.fit(data, target, epochs=10, callbacks=callbacks)
+model.fit(data, target, epochs=10, steps_per_epoch=16, callbacks=callbacks)
 
 test_loss, test_acc = model.evaluate(data, target, verbose=2)
 print('\nTest accuracy:', test_acc)
