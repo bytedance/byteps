@@ -16,26 +16,30 @@
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import os
+import warnings
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.util import _executing_eagerly
+# from horovod.tensorflow.util import _executing_eagerly, _make_subgraph, _cache
 
 import tensorflow as tf
-import os, sys
 from tensorflow.python.ops import control_flow_ops
 
-def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
-              compression=Compression.none, enable_async=False):
+def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
+              compression=Compression.none, op=None, enable_async=False):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
     Arguments:
         tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
                 The shape of the input must be identical across all ranks.
+        average:
+            .. warning:: .. deprecated
+
+                Use `op` instead. Will be removed.
+
         scope: the graph name scope
         average: If True, computes the average over all ranks.
                  Otherwise, computes the sum over all ranks.
@@ -44,14 +48,21 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
         compression: Compression algorithm used to reduce the amount of data
                      sent and received by each worker node.  Defaults to not
                      using compression.
+        op: The reduction operation to combine tensors across different ranks.
+            Defaults to Average if None is given.
+
     Returns:
         A tensor of the same shape and type as `tensor`, summed across all
         processes.
     """
+    op = handle_average_backwards_compatibility(op, average)
+    # Averaging happens in framework code, so translate that to Sum for the actual call
+    true_op = Sum if op == Average else op
+
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
+        summed_tensor_compressed = _allreduce(tensor_compressed, op=true_op)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
             _div = tf.div if hasattr(tf, 'div') else tf.math.divide
@@ -62,15 +73,31 @@ def push_pull(tensor, scope='', average=True, device_dense='', device_sparse='',
     return new_tensor
 
 
-def broadcast_global_variables(root_rank, scope=''):
-    """Broadcasts all global variables from root rank to all other processes.
-    Arguments:
-        root_rank: rank of the process from which global variables will be broadcasted
-        to all other processes.
-        scope: the graph name scope
-    """
-    return broadcast_variables(tf.global_variables(), root_rank, scope)
+try:
+    _global_variables = tf.global_variables
+except AttributeError:
+    try:
+        _global_variables = tf.compat.v1.global_variables
+    except AttributeError:
+        _global_variables = None
 
+if _global_variables is not None:
+    def broadcast_global_variables(root_rank):
+        """Broadcasts all global variables from root rank to all other processes.
+
+        **NOTE:** deprecated in TensorFlow 2.0.
+
+        Arguments:
+            root_rank: rank of the process from which global variables will be broadcasted
+                       to all other processes.
+        """
+        if _executing_eagerly():
+            raise RuntimeError(
+                "bps.broadcast_global_variables() does not support eager execution. "
+                "Please use `bps.broadcast_variables(<model/optimizer variables>)` instead."
+            )
+
+        return broadcast_variables(_global_variables(), root_rank)
 
 def broadcast_variables(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
@@ -105,17 +132,21 @@ if _SessionRunHook is not None and _get_default_graph is not None:
         """
         SessionRunHook that will broadcast all global variables from root rank
         to all other processes during initialization.
+
         This is necessary to ensure consistent initialization of all workers when
         training is started with random weights or restored from a checkpoint.
+
+        **NOTE:** deprecated in TensorFlow 2.0.
         """
 
         def __init__(self, root_rank, device=''):
             """Construct a new BroadcastGlobalVariablesHook that will broadcast all
             global variables from root rank to all other processes during initialization.
+
             Args:
-            root_rank:
+              root_rank:
                 Rank that will send data, other ranks will receive data.
-            device:
+              device:
                 Device to be used for broadcasting. Uses GPU by default
                 if BytePS was build with BYTEPS_GPU_BROADCAST.
             """
@@ -144,42 +175,16 @@ except AttributeError:
         _LegacyOptimizer = None
 
 if _LegacyOptimizer is not None:
-    class DistributedOptimizer(_LegacyOptimizer):
+    class _DistributedOptimizer(_LegacyOptimizer):
         """An optimizer that wraps another tf.Optimizer, using an push_pull to
         average gradient values before applying gradients to model weights."""
 
         def __init__(self, optimizer, name=None, use_locking=False, device_dense='',
                     device_sparse='', compression=Compression.none,
-                    sparse_as_dense=False):
-            """Construct a new DistributedOptimizer, which uses another optimizer
-            under the hood for computing single-process gradient values and
-            applying gradient updates after the gradient values have been averaged
-            across all the BytePS ranks.
-            Args:
-            optimizer:
-                Optimizer to use for computing gradients and applying updates.
-            name:
-                Optional name prefix for the operations created when applying
-                gradients. Defaults to "Distributed" followed by the provided
-                optimizer type.
-            use_locking:
-                Whether to use locking when updating variables.
-                See Optimizer.__init__ for more info.
-            device_dense:
-                Device to be used for dense tensors. Uses GPU by default.
-            device_sparse:
-                Device to be used for sparse tensors. Uses GPU by default.
-            compression:
-                Compression algorithm used during push_pull to reduce the amount
-                of data sent during the each parameter update step.  Defaults to
-                not using compression.
-            sparse_as_dense:
-                Treat all sparse gradients as dense tensors.  This can help improve
-                performance and memory utilization if the original sparse gradient
-                has high density.  Defaults to false.
-            """
+                    sparse_as_dense=False, op=Average):
             if name is None:
                 name = "Distributed{}".format(type(optimizer).__name__)
+            super(_DistributedOptimizer, self).__init__(name=name, use_locking=use_locking)
 
             self._optimizer = optimizer
             self._device_dense = device_dense
@@ -212,9 +217,6 @@ if _LegacyOptimizer is not None:
                 self._push_pull_grads = tf.contrib.eager.defun(push_pull_grads)
             else:
                 self._push_pull_grads = push_pull_grads
-
-            super(DistributedOptimizer, self).__init__(
-                name=name, use_locking=use_locking)
 
         def compute_gradients(self, *args, **kwargs):
             """Compute gradients of all trainable variables.
@@ -267,17 +269,77 @@ if _LegacyOptimizer is not None:
         def variables(self, *args, **kwargs):
             """Calls this same method on the underlying optimizer."""
             return self._optimizer.variables(*args, **kwargs)
+#x2682marklinexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+def DistributedOptimizer(optimizer, name=None, use_locking=False, device_dense='',
+                         device_sparse='', compression=Compression.none,
+                         sparse_as_dense=False, backward_passes_per_step=1,
+                         op=Average):
+    """Construct a new DistributedOptimizer, which uses another optimizer
+    under the hood for computing single-process gradient values and
+    applying gradient updates after the gradient values have been combined
+    across all the BytePS ranks.
+
+    Args:
+      optimizer:
+        Optimizer to use for computing gradients and applying updates.
+      name:
+        Optional name prefix for the operations created when applying
+        gradients. Defaults to "Distributed" followed by the provided
+        optimizer type.
+      use_locking:
+        Whether to use locking when updating variables.
+        See Optimizer.__init__ for more info.
+      device_dense:
+        Device to be used for dense tensors. Uses GPU by default.
+      device_sparse:
+        Device to be used for sparse tensors. Uses GPU by default.
+      compression:
+        Compression algorithm used during push_pull to reduce the amount
+        of data sent during each parameter update step.  Defaults to
+        not using compression.
+      sparse_as_dense:
+        Treat all sparse gradients as dense tensors.  This can help improve
+        performance and memory utilization if the original sparse gradient
+        has high density.  Defaults to false.
+      backward_passes_per_step:
+        Number of backward passes to perform before calling hvd.allreduce.
+        This allows accumulating updates over multiple mini-batches before
+        reducing and applying them.
+      op:
+        The reduction operation to use when combining gradients across
+        different ranks.
+    """
+    if isinstance(optimizer, _LegacyOptimizer):
+        if op == Adasum:
+            raise ValueError('op == Adasum is not supported yet with ')
+        else:
+            if backward_passes_per_step > 1:
+                raise ValueError('backward_passes_per_step>1 is not supported yet with '
+                                 'op != Adasum')
+            return _DistributedOptimizer(optimizer, name, use_locking, device_dense,
+                                        device_sparse, compression, sparse_as_dense, op)
+    elif isinstance(optimizer, tf.keras.optimizers.Optimizer):
+        if op == Adasum:
+            raise ValueError('op == Adasum is not supported yet with Keras')
+        if backward_passes_per_step > 1:
+            raise ValueError('backward_passes_per_step > 1 is not supported yet with Keras')
+        import byteps.tensorflow.keras as bps_k
+        return bps_k.DistributedOptimizer(optimizer, name, device_dense, device_sparse,
+                                          compression, sparse_as_dense)
+    else:
+        raise ValueError('Provided optimizer doesn\'t inherit from either legacy '
+                         'TensorFlow or Keras optimizer: %s' % optimizer)
 
 
 if hasattr(tf, 'GradientTape'):
     class _DistributedGradientTape(tf.GradientTape):
-
-        def __init__(self, tape, device_dense, device_sparse,
-                     compression, sparse_as_dense, persistent=False, watch_accessed_variables=True):
+        def __init__(self, tape, device_dense, device_sparse, compression, sparse_as_dense, op,
+                     persistent=False, watch_accessed_variables=True):
             if hasattr(tape, '_watch_accessed_variables'):
                 super(self.__class__, self).__init__(persistent, watch_accessed_variables)
             else:
                 super(self.__class__, self).__init__(persistent)
+
             self._tape = tape
             self._persistent = persistent
             self._watch_accessed_variables = watch_accessed_variables
@@ -312,32 +374,35 @@ if hasattr(tf, 'GradientTape'):
 
 
     def DistributedGradientTape(gradtape, device_dense='', device_sparse='',
-                                compression=Compression.none, sparse_as_dense=False):
+                                compression=Compression.none, sparse_as_dense=False,
+                                op=Average):
         """An tape that wraps another tf.GradientTape, using an push_pull to
         average gradient values before applying gradients to model weights.
         Args:
-        gradtape:
+          gradtape:
             GradientTape to use for computing gradients and applying updates.
-        device_dense:
+          device_dense:
             Device to be used for dense tensors. Uses GPU by default.
-        device_sparse:
+          device_sparse:
             Device to be used for sparse tensors. Uses GPU by default.
-        compression:
+          compression:
             Compression algorithm used during push_pull to reduce the amount
             of data sent during the each parameter update step.  Defaults to
             not using compression.
-        sparse_as_dense:
+          sparse_as_dense:
             Treat all sparse gradients as dense tensors.  This can help improve
             performance and memory utilization if the original sparse gradient
             has high density.  Defaults to false.
+          op:
+            The reduction operation to use when combining gradients across
+            different ranks.
         """
         cls = type(gradtape.__class__.__name__, (gradtape.__class__,),
-                dict(_DistributedGradientTape.__dict__))
+                   dict(_DistributedGradientTape.__dict__))
         if hasattr(gradtape, '_watch_accessed_variables'):
-            return cls(gradtape._tape, device_dense, device_sparse,
-                    compression, sparse_as_dense,
-                    gradtape._persistent, gradtape._watch_accessed_variables)
+            return cls(gradtape._tape, device_dense, device_sparse, compression,
+                       sparse_as_dense, op, gradtape._persistent,
+                       gradtape._watch_accessed_variables)
         else:
-            return cls(gradtape._tape, device_dense, device_sparse,
-                    compression, sparse_as_dense,
-                    gradtape._persistent)
+            return cls(gradtape._tape, device_dense, device_sparse, compression,
+                       sparse_as_dense, op, gradtape._persistent)

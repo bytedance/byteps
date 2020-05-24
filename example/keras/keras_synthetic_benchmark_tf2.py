@@ -53,8 +53,12 @@ model = getattr(applications, args.model)(weights=None)
 opt = tf.keras.optimizers.Adam(0.01)
 opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt, loss_scale="dynamic")
 opt = bps.DistributedOptimizer(opt)
+
 model.compile(loss=tf.keras.losses.categorical_crossentropy,
               optimizer=opt,
               metrics=['accuracy', 'top_k_categorical_accuracy'],
               experimental_run_tf_function=False)
 model.fit(data, target, epochs=10)
+
+test_loss, test_acc = model.evaluate(data, target, verbose=2)
+print('\nTest accuracy:', test_acc)
