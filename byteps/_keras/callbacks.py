@@ -70,8 +70,9 @@ class MetricAverageCallbackImpl(object):
         # to ensure consistent order.
         for metric, value in sorted(logs.items()):
             if bps._executing_eagerly():
-                reduced_logs[metric] = \
-                    bps.push_pull(self.backend.constant(value, name=metric)).numpy()
+                with tf.device(self.device):
+                    reduced_logs[metric] = \
+                        bps.push_pull(self.backend.constant(value, name=metric)).numpy()
             else:
                 if metric not in self.variables:
                     self.variables[metric], self.push_pull_ops[metric] = \

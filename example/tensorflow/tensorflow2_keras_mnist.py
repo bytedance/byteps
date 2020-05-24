@@ -67,13 +67,13 @@ callbacks = [
     # byteps: broadcast initial variable states from rank 0 to all other processes.
     # This is necessary to ensure consistent initialization of all workers when
     # training is started with random weights or restored from a checkpoint.
-    bps.callbacks.BroadcastGlobalVariablesCallback(0),
+    bps.callbacks.BroadcastGlobalVariablesCallback(0, device="GPU:0"),
 
     # byteps: average metrics among workers at the end of every epoch.
     #
     # Note: This callback must be in the list before the ReduceLROnPlateau,
     # TensorBoard or other metrics-based callbacks.
-    bps.callbacks.MetricAverageCallback(),
+    bps.callbacks.MetricAverageCallback(device="GPU:0"),
 
     # byteps: using `lr = 1.0 * bps.size()` from the very beginning leads to worse final
     # accuracy. Scale the learning rate `lr = 1.0` ---> `lr = 1.0 * bps.size()` during
