@@ -23,6 +23,7 @@ from __future__ import print_function
 import re
 import os
 import ctypes
+from enum import Enum
 
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -63,6 +64,35 @@ local_rank = _basics.local_rank
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
+
+def get_average_backwards_compatibility_fun(reduce_ops):
+    """
+    Handle backwards compatibility between the old average and the new op parameters.
+    Old code using the average parameter (e.g. bps.PushPull(tensor, average=False))
+    gets unchanged behavior, but mixing old and new is disallowed (e.g. no
+    bps.PushPull(tensor, average=False, op=bps.Adasum)).
+    """
+    def impl(op, average):
+        if op != None:
+            if average != None:
+                raise ValueError('The op parameter supersedes average. Please provide only one of them.')
+            return op
+        elif average != None:
+            warnings.warn('Parameter `average` has been replaced with `op` and will be removed',
+                          DeprecationWarning)
+            return reduce_ops.Average if average else reduce_ops.Sum
+        else:
+            return reduce_ops.Average
+    return impl
+
+class ReduceOps(Enum):
+    # This value should never appear past framework code, as
+    # averaging is taken care of there.
+    Average = "Average"
+    Sum = "Sum"
+    Adsum = "Adsum"
+
+handle_average_backwards_compatibility = get_average_backwards_compatibility_fun(ReduceOps)
 
 
 def _normalize_name(name):

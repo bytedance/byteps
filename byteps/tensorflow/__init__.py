@@ -23,6 +23,7 @@ from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
+from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.util import _executing_eagerly
 # from horovod.tensorflow.util import _executing_eagerly, _make_subgraph, _cache
 
@@ -66,12 +67,12 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _allreduce(tensor_compressed, op=true_op)
+        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
             _div = tf.div if hasattr(tf, 'div') else tf.math.divide
             new_tensor = (_div(summed_tensor, byteps_size)
-                          if average else summed_tensor)
+                          if op == Average else summed_tensor)
         else: # no need to average for async training
             new_tensor = summed_tensor
     return new_tensor
