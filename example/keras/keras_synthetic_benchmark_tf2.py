@@ -48,6 +48,12 @@ else:
 data = tf.random.uniform([args.batch_size, 224, 224, 3])
 target = tf.random.uniform([args.batch_size, 1], minval=0, maxval=999, dtype=tf.int64)
 
+callbacks = [
+    # BytePS: broadcast initial variable states from rank 0 to all other processes.
+    # This is necessary to ensure consistent initialization of all workers when
+    # training is started with random weights or restored from a checkpoint.
+    bps.callbacks.BroadcastGlobalVariablesCallback(0),
+]
 # Set up standard model.
 model = getattr(applications, args.model)(weights=None)
 opt = tf.keras.optimizers.Adam(0.01)
@@ -58,7 +64,7 @@ model.compile(loss=tf.keras.losses.categorical_crossentropy,
               optimizer=opt,
               metrics=['accuracy', 'top_k_categorical_accuracy'],
               experimental_run_tf_function=False)
-model.fit(data, target, epochs=10)
+model.fit(data, target, epochs=10, callbacks=callbacks)
 
 test_loss, test_acc = model.evaluate(data, target, verbose=2)
 print('\nTest accuracy:', test_acc)
