@@ -29,6 +29,10 @@ from byteps.tensorflow.util import _executing_eagerly
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 
+Average = "Average"
+Sum = "Sum"
+Adasum = "Adasum"
+
 def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
               compression=Compression.none, op=None, enable_async=False):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
