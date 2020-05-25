@@ -1,22 +1,22 @@
-import byteps.mxnet as bps
-from gluoncv.utils import makedirs, LRSequential, LRScheduler
-from gluoncv.model_zoo import get_model
-from gluoncv.data import imagenet
 import argparse
-import time
 import logging
-import os
 import math
+import os
+import subprocess
+import time
 
-import numpy as np
-import mxnet as mx
 import gluoncv as gcv
-from mxnet import gluon, nd
+import mxnet as mx
+import numpy as np
+from gluoncv.data import imagenet
+from gluoncv.model_zoo import get_model
+from gluoncv.utils import LRScheduler, LRSequential, makedirs
 from mxnet import autograd as ag
-from mxnet.gluon import nn
+from mxnet import gluon, nd
 from mxnet.gluon.data.vision import transforms
 
-import gluoncv as gcv
+import byteps.mxnet as bps
+
 gcv.utils.check_version('0.6.0')
 
 
@@ -134,7 +134,14 @@ def parse_args():
 def main():
     opt = parse_args()
 
-    filehandler = logging.FileHandler(opt.logging_file)
+    bps.init()
+    gpu_name = subprocess.check_output(
+        ['nvidia-smi', '--query-gpu=gpu_name', '--format=csv'])
+    gpu_name = gpu_name.decode('utf8').split('\n')[-2]
+    gpu_name = '-'.join(gpu_name.split())
+    filename = "imagenet-%d-%s-%s.log" % (bps.size(),
+                                          gpu_name, opt.logging_file)
+    filehandler = logging.FileHandler(filename)
     streamhandler = logging.StreamHandler()
 
     logger = logging.getLogger('')
@@ -143,8 +150,6 @@ def main():
     logger.addHandler(streamhandler)
 
     logger.info(opt)
-
-    bps.init()
 
     batch_size = opt.batch_size
     classes = 1000
@@ -409,7 +414,8 @@ def main():
         }
 
         trainer = bps.DistributedTrainer(
-            net.collect_params(), optimizer, optimizer_params, compression_params=compression_params)
+            net.collect_params(), optimizer, optimizer_params,
+            compression_params=compression_params)
 
         if opt.resume_states is not '':
             trainer.load_states(opt.resume_states)
@@ -428,6 +434,7 @@ def main():
 
         best_val_score = 1
 
+        bps.byteps_declare_tensor("acc")
         for epoch in range(opt.resume_epoch, opt.num_epochs):
             tic = time.time()
             if opt.use_rec:
@@ -493,15 +500,23 @@ def main():
             train_metric_name, train_metric_score = train_metric.get()
             throughput = int(batch_size * nworker * i / (time.time() - tic))
 
-            logger.info('[Epoch %d] training: %s=%f' %
-                        (epoch, train_metric_name, train_metric_score))
             logger.info('[Epoch %d] speed: %d samples/sec\ttime cost: %f' %
                         (epoch, throughput, time.time()-tic))
 
             err_top1_val, err_top5_val = test(ctx, val_data)
 
-            logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
-                        (epoch, err_top1_val, err_top5_val))
+            acc = mx.nd.array([train_metric_score, err_top1_val, err_top5_val],
+                              ctx=ctx[0])
+            bps.byteps_push_pull(acc, name="acc", is_average=False)
+            acc /= bps.size()
+            train_metric_score, err_top1_val, err_top5_val = acc[0].asscalar(
+            ), acc[1].asscalar(), acc[2].asscalar()
+
+            if bps.rank() == 0:
+                logger.info('[Epoch %d] training: %s=%f' %
+                            (epoch, train_metric_name, train_metric_score))
+                logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
+                            (epoch, err_top1_val, err_top5_val))
 
             if err_top1_val < best_val_score:
                 best_val_score = err_top1_val
