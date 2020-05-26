@@ -108,7 +108,7 @@ def main():
     gpu_name = '-'.join(gpu_name.split())
     filename = "cifar100-%d-%s-%s.log" % (bps.size(),
                                           gpu_name, opt.logging_file)
-    filehandler = logging.FileHandler(filename, mode='w')
+    filehandler = logging.FileHandler(filename)
     streamhandler = logging.StreamHandler()
 
     logger = logging.getLogger('')

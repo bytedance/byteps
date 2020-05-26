@@ -78,7 +78,7 @@ gpu_name = subprocess.check_output(
 gpu_name = gpu_name.decode('utf8').split('\n')[-2]
 gpu_name = '-'.join(gpu_name.split())
 filename = "mnist-%d-%s-%s.log" % (bps.size(), gpu_name, args.logging_file)
-filehandler = logging.FileHandler(filename, mode='w')
+filehandler = logging.FileHandler(filename)
 streamhandler = logging.StreamHandler()
 
 logger = logging.getLogger('')
