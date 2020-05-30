@@ -25,26 +25,25 @@ Momentum::Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
 Momentum::~Momentum() = default;
 
 void Momentum::Init(size_t aligned_size) {
-    _compressor_ptr->Init(aligned_size);
-    _mom.reset(new char[aligned_size]);
-    memset(_mom.get(), 0, aligned_size);
-    _cpu_reducer.reset(new CpuReducer(nullptr));
+  _compressor_ptr->Init(aligned_size);
+  _mom.reset(new char[aligned_size]);
+  memset(_mom.get(), 0, aligned_size);
+  _cpu_reducer.reset(new CpuReducer(nullptr));
 }
 
-void Momentum::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
+void Momentum::Compress(tensor_t grad, tensor_t& compressed) {
   // m_t = \mu * m_{t-1} + g_t
-  UpdateMom(grad, dtype);
+  UpdateMom(grad);
 
   // p_t = \mu m_t + g_t
-  UpdateGradient(grad, dtype);
+  UpdateGradient(grad);
 
   // compress
-  _compressor_ptr->Compress(grad, dtype, compressed);
+  _compressor_ptr->Compress(grad, compressed);
 }
 
-void Momentum::Decompress(ByteBuf compressed, int dtype,
-                               ByteBuf& decompressed) {
-  _compressor_ptr->Decompress(compressed, dtype, decompressed);
+void Momentum::Decompress(tensor_t compressed, tensor_t& decompressed) {
+  _compressor_ptr->Decompress(compressed, decompressed);
 }
 
 }  // namespace compressor

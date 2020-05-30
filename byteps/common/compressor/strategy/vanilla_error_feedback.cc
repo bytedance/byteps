@@ -13,12 +13,13 @@
 // limitations under the License.
 // =============================================================================
 
+#include "vanilla_error_feedback.h"
+
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <errno.h>
 
-#include "vanilla_error_feedback.h"
 #include "../../logging.h"
 
 namespace byteps {
@@ -59,20 +60,14 @@ void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
   _pre_lr = _cur_lr = *reinterpret_cast<double*>(_mm);
 }
 
-void VanillaErrorFeedbackCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+void VanillaErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   _cur_lr = *reinterpret_cast<double*>(_mm);
   this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
-                          static_cast<DataType>(dtype), (_pre_lr / _cur_lr));
+                          static_cast<DataType>(grad.dtype),
+                          (_pre_lr / _cur_lr));
   _pre_lr = _cur_lr;
 }
 
-void VanillaErrorFeedbackCompressor::UpdateError(ByteBuf corrected, int dtype,
-                                                 ByteBuf compressed) {
-  ByteBuf decompressed{_error.get(), corrected.size};
-  Decompress(compressed, dtype, decompressed);
-  this->_cpu_reducer->sum(_error.get(), corrected.data, decompressed.data,
-                          corrected.size, static_cast<DataType>(dtype), -1.0);
-}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

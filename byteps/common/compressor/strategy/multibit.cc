@@ -41,13 +41,12 @@ MultibitCompressor::MultibitCompressor(int k) : _k(k){};
 
 MultibitCompressor::~MultibitCompressor() = default;
 
-void MultibitCompressor::Compress(ByteBuf grad, int dtype,
-                                  ByteBuf& compressed) {
+void MultibitCompressor::Compress(tensor_t grad, tensor_t& compressed) {
   // TOOD
 }
 
-void MultibitCompressor::Decompress(ByteBuf compressed, int dtype,
-                                    ByteBuf& decompressed) {
+void MultibitCompressor::Decompress(tensor_t compressed,
+                                    tensor_t& decompressed) {
   // TODO
 }
 }  // namespace compressor

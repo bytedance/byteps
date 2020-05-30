@@ -34,10 +34,8 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
   virtual void Init(size_t aligned_size);
 
  protected:
-  void UpdateGradient(ByteBuf grad, int dtype) override;
-
-  void UpdateError(ByteBuf corrected, int dtype, ByteBuf compressed) override;
- 
+  void UpdateGradient(tensor_t grad) override;
+  
  private:
   double _pre_lr, _cur_lr;
   int _fd;

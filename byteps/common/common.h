@@ -43,7 +43,8 @@
 namespace byteps {
 namespace common {
 namespace compressor {
-struct ByteBuf;
+struct BPSTensor;
+typedef BPSTensor tensor_t;
 class BaseCompressor;
 class ErrorFeedback;
 }  // namespace compressor
@@ -258,7 +259,7 @@ struct TensorTableEntry {
   // Compressor
   std::shared_ptr<compressor::BaseCompressor> compressor;
   // Compressed
-  std::shared_ptr<compressor::ByteBuf> compressed;
+  std::shared_ptr<compressor::tensor_t> compressed;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 

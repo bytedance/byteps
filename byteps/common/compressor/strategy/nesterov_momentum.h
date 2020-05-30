@@ -29,8 +29,8 @@ class NesterovMomentumCompressor : public Momentum {
   virtual ~NesterovMomentumCompressor();
 
  protected:
-  void UpdateMom(ByteBuf grad, int dtype) override;
-  void UpdateGradient(ByteBuf grad, int dtype) override;
+  void UpdateMom(tensor_t grad) override;
+  void UpdateGradient(tensor_t grad) override;
 };
 
 }  // namespace compressor

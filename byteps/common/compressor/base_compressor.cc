@@ -41,8 +41,7 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
 std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
     const kwargs_t& kwargs) {
 #ifndef BYTEPS_BUILDING_SERVER
-  const std::string types[] = {"momentum_type", "ef_type",
-                                "compressor_type"};
+  const std::string types[] = {"momentum_type", "ef_type", "compressor_type"};
 #else
   // server do not need momentum
   const std::string types[] = {"ef_type", "compressor_type"};
@@ -67,6 +66,9 @@ void BaseCompressor::Init(size_t aligned_size) {
   _buf.reset(new char[aligned_size]);
   _cpu_reducer.reset(new CpuReducer(nullptr));
 }
+
+void BaseCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
+                                     tensor_t compressed) {}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

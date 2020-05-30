@@ -24,42 +24,49 @@ namespace compressor {
 
 /*!
  * \brief TopK Compressor
- * 
+ *
  * paper: Sparsified SGD with Memory
  * https://arxiv.org/pdf/1809.07599.pdf
- * 
+ *
  * sending the most significant entries of the stochastic gradient
- * 
+ *
  */
 class TopkCompressor : public BaseCompressor {
  public:
   explicit TopkCompressor(int k);
   virtual ~TopkCompressor();
-  
+
   /*!
    * \brief Compress function
-   * 
-   * select topk entries and corresponding indices 
-   * 
+   *
+   * select topk entries and corresponding indices
+   *
    * \note compare with absolute values
-   * 
+   *
    * \param grad gradient tensor
-   * \param dtype data type
    * \param compressed compressed tensor
    */
-  void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
+  void Compress(tensor_t grad, tensor_t& compressed) override;
 
   /*!
    * \brief Decompress function
-   * 
-   * fill a zero tensor with topk entries and corresponding indices 
-   * 
+   *
+   * fill a zero tensor with topk entries and corresponding indices
+   *
    * \param compressed compressed tensor
-   * \param dtype data type
    * \param decompressed decompressed tensor
    */
-  void Decompress(ByteBuf compressed, int dtype,
-                  ByteBuf& decompressed) override;
+  void Decompress(tensor_t compressed, tensor_t& decompressed) override;
+
+  /*!
+   * \brief help function for error feedback `UpdateError`
+   *
+   * \param corrected gradient corrected with error
+   * \param error error
+   * \param compressed compressed gradient
+   */
+  void FastUpdateError(tensor_t error, tensor_t corrected,
+                       tensor_t compressed) override;
 
  private:
   size_t Packing(const void* src, size_t size, int dtype);
@@ -67,14 +74,19 @@ class TopkCompressor : public BaseCompressor {
   template <typename index_t, typename scalar_t>
   size_t PackingImpl(index_t* dst, const scalar_t* src, size_t len);
 
-  size_t Unpacking(void* dst, const void* src, size_t size, int dtype);
-  
+  void Unpacking(void* dst, const void* src, size_t size, size_t src_size,
+                 int dtype);
+
   template <typename index_t, typename scalar_t>
-  size_t UnpackingImpl(scalar_t* dst, const index_t* src, size_t len);
+  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t len,
+                     size_t src_len);
+
+  template <typename index_t, typename scalar_t>
+  void FastUpdateErrorImpl(scalar_t* error, const index_t* compressed,
+                           size_t len);
 
  private:
   int _k;
-  int _src_len;
 };
 }  // namespace compressor
 }  // namespace common

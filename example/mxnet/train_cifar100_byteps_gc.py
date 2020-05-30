@@ -145,6 +145,17 @@ def main():
                     step_factor=lr_decay, power=2)
     ])
 
+    num_batches = 50000 // (opt.batch_size * nworker)
+    lr_scheduler = LRSequential([
+        LRScheduler('linear', base_lr=opt.warmup_lr, target_lr=opt.lr * nworker / bps.local_size(),
+                    nepochs=opt.warmup_epochs, iters_per_epoch=num_batches),
+        LRScheduler('step', base_lr=opt.lr * nworker / bps.local_size(), target_lr=0,
+                    nepochs=opt.num_epochs - opt.warmup_epochs,
+                    iters_per_epoch=num_batches,
+                    step_epoch=lr_decay_epoch,
+                    step_factor=lr_decay, power=2)
+    ])
+
     model_name = opt.model
     if model_name.startswith('cifar_wideresnet'):
         kwargs = {'classes': classes,

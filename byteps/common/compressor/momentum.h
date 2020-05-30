@@ -43,20 +43,17 @@ class Momentum : public BaseCompressor {
    * \brief Compress function
    *
    * \param grad gradient tensor
-   * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) final;
+  virtual void Compress(tensor_t grad, tensor_t& compressed) final;
 
   /*!
    * \brief Decompress function
    *
    * \param compressed compressed tensor
-   * \param dtype data type
    * \param decompressed decompressed tensor
    */
-  virtual void Decompress(ByteBuf compressed, int dtype,
-                          ByteBuf& decompressed) final;
+  virtual void Decompress(tensor_t compressed, tensor_t& decompressed) final;
 
  protected:
   /*!
@@ -65,19 +62,17 @@ class Momentum : public BaseCompressor {
    * m_t = \mu * m_{t-1} + g_t
    *
    * \param grad refers to gradient
-   * \param dtype type
    */
-  virtual void UpdateMom(ByteBuf grad, int dtype) = 0;
+  virtual void UpdateMom(tensor_t grad) = 0;
 
-    /*!
+  /*!
    * \brief Update gradient
    *
    * p_t = \mu m_t + g_t
    *
    * \param grad refers to gradient which adds momentum in place.
-   * \param dtype type
    */
-  virtual void UpdateGradient(ByteBuf grad, int dtype) = 0;
+  virtual void UpdateGradient(tensor_t grad) = 0;
 
  protected:
   std::unique_ptr<char[]> _mom;

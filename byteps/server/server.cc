@@ -88,10 +88,10 @@ void BytePSServerEngineThread(int i) {
     if (iter != compressor_map_.end()) {
       // compress
       if (msg.ops == ALL_RECV) {
-        common::compressor::ByteBuf grad{reinterpret_cast<char*>(msg.src),
-                                         msg.len},
+        common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
+                                          msg.len, msg.type.dtype),
             compressed;
-        iter->second->Compress(grad, msg.type.dtype, compressed);
+        iter->second->Compress(grad, compressed);
         // 1. compress
         auto& updates = update_buf_[msg.key];
         updates.merged.tensor = compressed.data;
@@ -99,10 +99,10 @@ void BytePSServerEngineThread(int i) {
       } else {  // decompress
         auto compressed_len = msg.sarray.lens[0];
         CHECK_LE(compressed_len, msg.len);
-        common::compressor::ByteBuf compressed{reinterpret_cast<char*>(msg.src),
-                                               compressed_len},
-            decompressed{nullptr, msg.len};
-        iter->second->Decompress(compressed, msg.type.dtype, decompressed);
+        common::compressor::tensor_t compressed(
+            reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype),
+            decompressed(nullptr, msg.len);
+        iter->second->Decompress(compressed, decompressed);
         msg.src = decompressed.data;
       }
     } else {

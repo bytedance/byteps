@@ -506,8 +506,8 @@ bool RunCompressLoopOnce() {
                                       task->offset);
       int len = task->len;
       int dtype = task->tensor->dtype();
-      compressor::ByteBuf grad{data, len}, compressed;
-      task->compressor->Compress(grad, dtype, compressed);
+      compressor::tensor_t grad(data, len, dtype), compressed;
+      task->compressor->Compress(grad, compressed);
       BPS_CHECK_LE(compressed.size, len)
           << "Compressor Implementation Error "
           << ", key=" << task->key << ", src_len=" << len
@@ -627,9 +627,10 @@ bool RunDecompressLoopOnce() {
                                       task->offset);
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
-      compressor::ByteBuf compressed{data, len}, decompressed{data, task->len};
       int dtype = task->tensor->dtype();
-      task->compressor->Decompress(compressed, dtype, decompressed);
+      compressor::tensor_t compressed(data, len, dtype),
+          decompressed(data, task->len);
+      task->compressor->Decompress(compressed, decompressed);
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
 
       FinishOrProceed(task);

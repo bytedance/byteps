@@ -30,19 +30,26 @@ void ErrorFeedback::Init(size_t aligned_size) {
   _cpu_reducer.reset(new CpuReducer(nullptr));
 }
 
-void ErrorFeedback::Compress(ByteBuf grad, int dtype, ByteBuf& compressed) {
+void ErrorFeedback::Compress(tensor_t grad, tensor_t& compressed) {
   // before: grad += error
-  UpdateGradient(grad, dtype);
+  UpdateGradient(grad);
+
+  // TODO: look strange
+  compressed.data = _error.get();
   // compress
-  _compressor_ptr->Compress(grad, dtype, compressed);
+  _compressor_ptr->Compress(grad, compressed);
 
-  UpdateError(grad, dtype, compressed);
+  UpdateError(grad, compressed);
 }
 
-void ErrorFeedback::Decompress(ByteBuf compressed, int dtype,
-                               ByteBuf& decompressed) {
-  _compressor_ptr->Decompress(compressed, dtype, decompressed);
+void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& decompressed) {
+  _compressor_ptr->Decompress(compressed, decompressed);
 }
+
+void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
+  _compressor_ptr->FastUpdateError({_error.get()}, corrected, compressed);
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

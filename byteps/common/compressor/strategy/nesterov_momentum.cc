@@ -45,16 +45,16 @@ NesterovMomentumCompressor::NesterovMomentumCompressor(
 
 NesterovMomentumCompressor::~NesterovMomentumCompressor() = default;
 
-void NesterovMomentumCompressor::UpdateMom(ByteBuf grad, int dtype) {
+void NesterovMomentumCompressor::UpdateMom(tensor_t grad) {
   // m_t = \mu * m_{t-1} + g_t
   this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(dtype), _mu);
+                          static_cast<DataType>(grad.dtype), _mu);
 }
 
-void NesterovMomentumCompressor::UpdateGradient(ByteBuf grad, int dtype) {
+void NesterovMomentumCompressor::UpdateGradient(tensor_t grad) {
   // p_t = \mu m_t + g_t
   this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(dtype), _mu);
+                          static_cast<DataType>(grad.dtype), _mu);
 }
 
 }  // namespace compressor

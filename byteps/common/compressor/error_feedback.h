@@ -42,20 +42,17 @@ class ErrorFeedback : public BaseCompressor {
    * \brief Compress function
    *
    * \param grad gradient tensor
-   * \param dtype data type
    * \param compressed compressed tensor
    */
-  virtual void Compress(ByteBuf grad, int dtype, ByteBuf& compressed);
+  virtual void Compress(tensor_t grad, tensor_t& compressed);
 
   /*!
    * \brief Decompress function
    *
    * \param compressed compressed tensor
-   * \param dtype data type
    * \param decompressed decompressed tensor
    */
-  virtual void Decompress(ByteBuf compressed, int dtype,
-                          ByteBuf& decompressed);
+  virtual void Decompress(tensor_t compressed, tensor_t& decompressed);
 
  protected:
   /*!
@@ -66,7 +63,7 @@ class ErrorFeedback : public BaseCompressor {
    * \param grad input gradient to be updated inplace
    * \param dtype type
    */
-  virtual void UpdateGradient(ByteBuf grad, int dtype) = 0;
+  virtual void UpdateGradient(tensor_t grad) = 0;
 
   /*!
    * \brief Update error
@@ -74,11 +71,9 @@ class ErrorFeedback : public BaseCompressor {
    * error = corrected_grad - decompressed
    *
    * \param corrected refers to gradient + error
-   * \param dtype type
    * \param compressed compressed tensor
    */
-  virtual void UpdateError(ByteBuf corrected, int dtype,
-                           ByteBuf compressed) = 0;
+  virtual void UpdateError(tensor_t corrected, tensor_t compressed);
 
  protected:
   std::unique_ptr<char[]> _error;

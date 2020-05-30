@@ -48,10 +48,9 @@ class OnebitCompressor : public BaseCompressor {
    * each bit represents a sign.
    *
    * \param grad gradient tensor
-   * \param dtype data type
    * \param compressed compressed tensor
    */
-  void Compress(ByteBuf grad, int dtype, ByteBuf& compressed) override;
+  void Compress(tensor_t grad, tensor_t& compressed) override;
 
   /*!
    * \brief Decompress function
@@ -59,22 +58,34 @@ class OnebitCompressor : public BaseCompressor {
    * unpack from byte array to FP tensor
    *
    * \param compressed compressed tensor
-   * \param dtype data type
    * \param decompressed decompressed tensor
    */
-  void Decompress(ByteBuf compressed, int dtype,
-                  ByteBuf& decompressed) override;
+  void Decompress(tensor_t compressed, tensor_t& decompressed) override;
+
+  /*!
+   * \brief help function for error feedback `UpdateError`
+   *
+   * \param corrected gradient corrected with error
+   * \param error error
+   * \param compressed compressed gradient
+   */
+  void FastUpdateError(tensor_t error, tensor_t corrected,
+                       tensor_t compressed) override;
 
  private:
-  size_t Packing(void* data, size_t len, int dtype);
+  size_t Packing(void* dst, const void* src, size_t len, int dtype);
 
-  template <typename scalar_t>
-  size_t PackingImpl(scalar_t* data, size_t len);
+  template <typename index_t, typename scalar_t>
+  size_t PackingImpl(index_t* dst, const scalar_t* src, size_t len);
 
-  size_t Unpacking(void* dst, const void* src, size_t len, int dtype);
+  void Unpacking(void* dst, const void* src, size_t len, int dtype);
 
-  template <typename scalar_t, typename packing_t>
-  size_t UnpackingImpl(scalar_t* dst, const packing_t* src, size_t size);
+  template <typename scalar_t, typename index_t>
+  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t size);
+
+  template <typename scalar_t, typename index_t>
+  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
+                           index_t* unpacked, float scale, size_t len);
 
  private:
   bool _use_scale;
