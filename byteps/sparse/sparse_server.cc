@@ -58,8 +58,12 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
   }
 }
 
-extern "C" void bytepsSparseServer() {
-    // init server instance
+void InitServer() {
+  sharedMemoryInfo info;
+  BPS_CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0);
+  auto shm = (volatile shmStruct *)info.addr;
+
+  // init ps-lite instance
   _byteps_server = new ps::KVServer<char>(0);
   _byteps_server->set_request_handle(BytepsSparseHandler<char>);
   ps::StartAsync(0, "byteps_server\0");
@@ -68,12 +72,20 @@ extern "C" void bytepsSparseServer() {
       ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
   }
 
+}
+
+void StopServer() {
   // clean the server resource
   ps::Finalize(0, true);
   if (_byteps_server) {
     delete _byteps_server;
     _byteps_server = nullptr;
   }
+}
+
+extern "C" void bytepsSparseServer() {
+  InitServer();
+  StopServer();
 }
 
 

@@ -19,6 +19,9 @@
 #include <cstdlib>
 #include <unistd.h>
 #include "ps/ps.h"
+#include "sparse.h"
+#include "util.h"
+#include "../common/global.h"
 
 namespace byteps {
 namespace sparse {

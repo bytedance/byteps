@@ -16,7 +16,6 @@
 #include "sparse.h"
 #include "../common/global.h"
 
-
 namespace byteps {
 namespace sparse {
 
@@ -27,14 +26,11 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   BytePSSparseComm::InitComm();
   BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   BPS_CHECK_EQ(bufferLength.size(), denseBuffers.size());
+  
   // Init IPC stuff
-  auto shm_obj = BytePSSparseComm::GetSharedMemoryObj();
-  auto shm = (volatile shmStruct*) 
-              shm_obj->openSharedMemory(
-              std::string("BytePS_Sparse_ShM_"), 
-              0, // key
-              sizeof(shmStruct)
-              );  
+  sharedMemoryInfo info;
+  BPS_CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
+  auto shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 
   auto localSize = BytePSSparseComm::GetLocalSize();
@@ -138,9 +134,9 @@ void bytepsGather(int rank, cudaStream_t stream) {
     CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, rank, srcPtr, i, _bufferLengths[workerID][i] / localSize, stream));
   }
 
-  // // Gather from other distributed workers
+  // Gather from other distributed workers
   // if (BytePSSparseComm::IsDistributed()) {
-  //   std::vector<int> ts;
+  //   std::vector<int> ts; // store the zpush timestamp
   //   auto valLen = len * localSize;
   //   auto workerNum = BytePSSparseComm::GetNumWorker();
   //   for (int i = 0; i < workerNum; i++) {

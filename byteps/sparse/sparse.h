@@ -22,11 +22,10 @@
 #include "ops.h"
 #include "adapter.h"
 #include "comm.h"
+#include "util.h"
 
 namespace byteps {
 namespace sparse {
-
-#define MAX_CUDA_DEVICES (32)
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
@@ -35,14 +34,6 @@ static std::vector<int> _offsets;
 static ps::KVWorker<char>* _ps;
 static void* _cpuBuffer;
 static int _denseBufferLength;
-
-typedef struct shmStruct_st {
-  size_t nprocesses;
-  int devices[MAX_CUDA_DEVICES];
-  cudaIpcMemHandle_t embedMemHandle[MAX_CUDA_DEVICES];
-  cudaIpcMemHandle_t denseMemHandle[MAX_CUDA_DEVICES];
-  cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
-} shmStruct;
 
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLength, int size);
 
