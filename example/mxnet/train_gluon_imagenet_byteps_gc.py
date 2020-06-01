@@ -434,7 +434,7 @@ def main():
 
         best_val_score = 1
 
-        bps.byteps_declare_tensor("acc")
+        # bps.byteps_declare_tensor("acc")
         for epoch in range(opt.resume_epoch, opt.num_epochs):
             tic = time.time()
             if opt.use_rec:
@@ -505,18 +505,18 @@ def main():
 
             err_top1_val, err_top5_val = test(ctx, val_data)
 
-            acc = mx.nd.array([train_metric_score, err_top1_val, err_top5_val],
-                              ctx=ctx[0])
-            bps.byteps_push_pull(acc, name="acc", is_average=False)
-            acc /= bps.size()
-            train_metric_score, err_top1_val, err_top5_val = acc[0].asscalar(
-            ), acc[1].asscalar(), acc[2].asscalar()
+            # acc = mx.nd.array([train_metric_score, err_top1_val, err_top5_val],
+            #                   ctx=ctx[0])
+            # bps.byteps_push_pull(acc, name="acc", is_average=False)
+            # acc /= bps.size()
+            # train_metric_score, err_top1_val, err_top5_val = acc[0].asscalar(
+            # ), acc[1].asscalar(), acc[2].asscalar()
 
-            if bps.rank() == 0:
-                logger.info('[Epoch %d] training: %s=%f' %
-                            (epoch, train_metric_name, train_metric_score))
-                logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
-                            (epoch, err_top1_val, err_top5_val))
+            # if bps.rank() == 0:
+            logger.info('[Epoch %d] training: %s=%f' %
+                        (epoch, train_metric_name, train_metric_score))
+            logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
+                        (epoch, err_top1_val, err_top5_val))
 
             if err_top1_val < best_val_score:
                 best_val_score = err_top1_val
