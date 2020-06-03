@@ -13,6 +13,9 @@
 // limitations under the License.
 // =============================================================================
 
+#ifndef BYTEPS_SPARSE_UTIL_H
+#define BYTEPS_SPARSE_UTIL_H
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -48,3 +51,5 @@ void sharedMemoryClose(sharedMemoryInfo *info);
 
 } // namespace sparse
 } // namespace byteps
+
+#endif // BYTEPS_SPARSE_UTIL_H

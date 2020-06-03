@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include "util.h"
+
 namespace byteps {
 namespace sparse {
 

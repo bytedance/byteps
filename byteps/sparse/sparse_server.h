@@ -16,12 +16,12 @@
 #ifndef BYTEPS_SPARSE_SERVER_H
 #define BYTEPS_SPARSE_SERVER_H
 
+#include <cuda_runtime.h>
 #include <cstdlib>
 #include <unistd.h>
-#include "ps/ps.h"
-#include "sparse.h"
-#include "util.h"
 #include "../common/global.h"
+#include "ps/ps.h"
+#include "util.h"
 
 namespace byteps {
 namespace sparse {

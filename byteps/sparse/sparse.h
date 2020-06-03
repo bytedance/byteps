@@ -30,18 +30,18 @@ namespace sparse {
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
 static std::vector<std::vector<int>> _bufferLengths; 
-static std::vector<int> _offsets;
+static std::vector<std::vector<int>> _offsets;
 static ps::KVWorker<char>* _ps;
-static void* _cpuBuffer;
+static std::vector<void*> _cpuBuffers;
 static int _denseBufferLength;
 
-extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLength, int size);
+extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLengths, int size);
 
 extern "C" void bytepsSparseShutdown();
 
-extern "C" void bytepsGather(int rank, cudaStream_t stream);
+extern "C" void bytepsGather(int local_rank, cudaStream_t stream);
 
-extern "C" void bytepsScatter(int rank, cudaStream_t stream);
+extern "C" void bytepsScatter(int local_rank, cudaStream_t stream);
 
 } // namespace sparse
 } // namespace byteps 
