@@ -1,3 +1,4 @@
+from __future__ import absolute_import, division, print_function
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
