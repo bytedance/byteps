@@ -1,4 +1,3 @@
-# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2017 Uber Technologies, Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-import keras
-import keras.backend as K
+import inspect
+
+import tensorflow as tf
+
+from distutils.version import LooseVersion
+if LooseVersion(tf.__version__) >= LooseVersion("1.4.0"):
+    from tensorflow import keras
+    from tensorflow.python.keras import backend as K
+else:
+    from tensorflow.contrib import keras
+    from tensorflow.contrib.keras import backend as K
 
 from byteps.tensorflow import init
 from byteps.tensorflow import shutdown
@@ -25,8 +33,8 @@ from byteps.tensorflow import rank
 from byteps.tensorflow import local_rank
 from byteps.tensorflow import Compression
 
-from byteps.keras import callbacks
 import byteps._keras as _impl
+from byteps.tensorflow.keras import callbacks
 
 
 def DistributedOptimizer(optimizer, name=None,
@@ -41,8 +49,8 @@ def DistributedOptimizer(optimizer, name=None,
         name: Optional name prefix for the operations created when applying
               gradients. Defaults to "Distributed" followed by the provided
               optimizer type.
-        device_dense: Device to be used for dense tensors. Uses GPU by default
-        device_sparse: Device to be used for sparse tensors. Uses GPU by default
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
         compression: Compression algorithm used to reduce the amount of data
                      sent and received by each worker node.  Defaults to not
                      using compression.

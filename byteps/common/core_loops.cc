@@ -134,7 +134,7 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
     // thread
     FinishOrProceed(task);
 
-    BytePSCommSignal sig;
+    BytePSCommSignal sig = PUSH_READY;
     std::shared_ptr<BytePSComm> comm;
 
     switch (this_op) {

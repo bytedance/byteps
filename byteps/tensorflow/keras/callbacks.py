@@ -1,4 +1,3 @@
-# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2018 Uber Technologies, Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-import keras
-import keras.backend as K
+import tensorflow as tf
+
+from distutils.version import LooseVersion
+if LooseVersion(tf.__version__) >= LooseVersion("1.4.0"):
+    from tensorflow import keras
+    from tensorflow.python.keras import backend as K
+else:
+    from tensorflow.contrib import keras
+    from tensorflow.contrib.keras import backend as K
 
 from byteps._keras import callbacks as _impl
 
