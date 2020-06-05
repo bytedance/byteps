@@ -212,33 +212,33 @@ void bytepsGather(int local_rank, cudaStream_t stream) {
   }
   CUDA_CALL(cudaStreamSynchronize(stream));
 
-  // Gather from other distributed workers
-  if (BytePSSparseComm::IsDistributed()) {
-    std::vector<int> ts; // store the zpush timestamp
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue;
-      void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
-      ps::Key key = i;
-      int len = _bufferLengths[i][j] / (localSize * workerNum);
-      auto &pskv = EncodeDefaultKey(key, len);
-      for (int j = 0; j < localSize; j++) {
-        ps::SArray<char> vals((char*)_cpuBuffers[i] + _offsets[i][j], len, false);
-        ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
-      }
-    }
-    for (auto t : ts) _ps->Wait(t);
+  // // Gather from other distributed workers
+  // if (BytePSSparseComm::IsDistributed()) {
+  //   std::vector<int> ts; // store the zpush timestamp
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue;
+  //     void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
+  //     ps::Key key = i;
+  //     int len = _bufferLengths[i][j] / (localSize * workerNum);
+  //     auto &pskv = EncodeDefaultKey(key, len);
+  //     for (int j = 0; j < localSize; j++) {
+  //       ps::SArray<char> vals((char*)_cpuBuffers[i] + _offsets[i][j], len, false);
+  //       ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
+  //     }
+  //   }
+  //   for (auto t : ts) _ps->Wait(t);
 
-    for (int i = 0; i < workerNum; i++) {
-      if (i == workerID) continue; 
-      for (int j = 0; j < localSize; j++) {
-        int len = _bufferLengths[i][j] / (localSize * workerNum);
-        CUDA_CALL(cudaMemcpyAsync(
-            (void*)((char*)_denseBuffers[local_rank] + _offsets[i][j]), 
-            (void*)((char*)_cpuBuffers[i] + _offsets[i][j]), 
-            len, cudaMemcpyHostToDevice, stream));
-      }
-    }
-  }
+  //   for (int i = 0; i < workerNum; i++) {
+  //     if (i == workerID) continue; 
+  //     for (int j = 0; j < localSize; j++) {
+  //       int len = _bufferLengths[i][j] / (localSize * workerNum);
+  //       CUDA_CALL(cudaMemcpyAsync(
+  //           (void*)((char*)_denseBuffers[local_rank] + _offsets[i][j]), 
+  //           (void*)((char*)_cpuBuffers[i] + _offsets[i][j]), 
+  //           len, cudaMemcpyHostToDevice, stream));
+  //     }
+  //   }
+  // }
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 

@@ -20,6 +20,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <cuda_runtime.h>
+#include <errno.h>
 
 namespace byteps {
 namespace sparse {
