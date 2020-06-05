@@ -1,6 +1,20 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Changelog for BytePS
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+0.2.4 (2020-06)
+------------------
+* Fix compatibility issue with tf2 + standalone keras
+* Add support for tensorflow.keras
+* Improve robustness of broadcast
+
+
+0.2.3 (2020-05)
+------------------
+* Add DistributedDataParallel module for PyTorch
+* Fix the problem of different CPU tensor using the same name
+* Add skip_synchronize api for PyTorch
+* Add the option for lazy/non-lazy init
+
 
 0.2.0 (2020-02)
 ------------------
