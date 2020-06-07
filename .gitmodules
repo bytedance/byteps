@@ -2,3 +2,7 @@
 	path = 3rdparty/ps-lite
 	url = https://github.com/bytedance/ps-lite
 	branch = byteps
+[submodule "3rdparty/gossip"]
+	path = 3rdparty/gossip
+	url = https://github.com/Funatiq/gossip
+	branch = master
