@@ -14,7 +14,6 @@
 // =============================================================================
 
 #include "sparse.h"
-#include "../common/logging.h"
 
 namespace byteps {
 namespace sparse {
@@ -30,12 +29,12 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
                       std::vector<int>& bufferLengths, 
                       int size) {
   BytePSSparseComm::InitComm();
-  BPS_CHECK_EQ(embedBuffers.size(), denseBuffers.size());
-  BPS_CHECK_EQ(bufferLengths.size(), denseBuffers.size());
+  CHECK_EQ(embedBuffers.size(), denseBuffers.size());
+  CHECK_EQ(bufferLengths.size(), denseBuffers.size());
   
   // Init IPC stuff
   sharedMemoryInfo info;
-  BPS_CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
+  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
   auto shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 
@@ -60,11 +59,11 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     }
 
     shm->devices[shm->nprocesses++] = i;
-    BPS_CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);
+    CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);
   }
-  BPS_CHECK(shm->nprocesses > 0) 
+  CHECK(shm->nprocesses > 0) 
       << "No cuda device suppported";
-  BPS_CHECK_EQ(shm->nprocesses, embedBuffers.size())
+  CHECK_EQ(shm->nprocesses, embedBuffers.size())
       << "Shared memory processes: " << shm->nprocesses 
       << ", send buffers: " << embedBuffers.size();
 
@@ -113,7 +112,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   for (int i = 0; i < localSize; i++) {
     accuml += _bufferLengths[workerID][i] / localSize;
   }
-  BPS_CHECK_EQ(accuml, _denseBufferLength) 
+  CHECK_EQ(accuml, _denseBufferLength) 
       << accuml << " " << _denseBufferLength;
 
   // Need a continous CPU buffer for each GPU
@@ -197,8 +196,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   std::string plan_file("all2all_plan.json");
   auto transfer_plan = parse_plan(plan_file.c_str());
   gossip::all2all::verify_plan(transfer_plan);
-  BPS_CHECK(transfer_plan.valid());
-  BPS_CHECK_EQ(transfer_plan.num_gpus(), localSize);
+  CHECK(transfer_plan.valid());
+  CHECK_EQ(transfer_plan.num_gpus(), localSize);
 
   gather_cxt_ = std::make_unique<gossip::context_t>(localSize);
   local_all2all_gather_ = std::make_unique<gossip::all2all_async_t>(*gather_cxt_, transfer_plan);

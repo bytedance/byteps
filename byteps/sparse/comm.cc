@@ -15,7 +15,6 @@
 
 #include <cstdlib>
 #include "comm.h"
-#include "../common/global.h"
 
 namespace byteps {
 namespace sparse {
@@ -24,13 +23,12 @@ int BytePSSparseComm::_local_size;
 int BytePSSparseComm::_num_worker;
 int BytePSSparseComm::_worker_id;
 int BytePSSparseComm::_global_size;
-std::shared_ptr<byteps::common::BytePSSharedMemory> BytePSSparseComm::_shm_obj;
 ps::KVWorker<char>* BytePSSparseComm::_ps;
 
 void BytePSSparseComm::InitComm() {
-  BPS_CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
-  BPS_CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
-  BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
+  CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
+  CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
+  CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
 
   _local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
   _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
@@ -42,8 +40,6 @@ void BytePSSparseComm::InitComm() {
   //     << ", num_worker=" << _num_worker
   //     << ", worker_id=" << _worker_id;
 
-  // Init shared memory object
-  _shm_obj = std::make_shared<byteps::common::BytePSSharedMemory>(); 
   
   // Launch ps-lite if needs distributed training
   if (BytePSSparseComm::IsDistributed()) {
@@ -59,7 +55,7 @@ void BytePSSparseComm::AllGather(std::vector<std::vector<int>> src) {
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
   const int numServers = krs.size();
   int rank = BytePSSparseComm::GetWorkerID();
-  BPS_CHECK_EQ(numServers, (int)src.size()) << numServers << " " << src.size();
+  CHECK_EQ(numServers, (int)src.size()) << numServers << " " << src.size();
 
   // Prepare vals
   std::vector<ps::SArray<char>> psVals(numServers);

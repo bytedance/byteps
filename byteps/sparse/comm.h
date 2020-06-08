@@ -13,7 +13,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "../common/shared_memory.h"
 #include "ps/ps.h"
 
 namespace byteps {
@@ -26,7 +25,6 @@ class BytePSSparseComm {
   static int GetWorkerID() { return _worker_id; }
   static int GetNumWorker() { return _num_worker; }
   static bool IsDistributed() { return _num_worker > 1; }
-  static std::shared_ptr<byteps::common::BytePSSharedMemory> GetSharedMemoryObj() { return _shm_obj; } 
   static void InitComm();
   static ps::KVWorker<char>* GetPS() { return _ps; }
   static void AllGather(std::vector<std::vector<int>> src);
@@ -36,7 +34,6 @@ class BytePSSparseComm {
   static int _global_size;
   static int _worker_id;
   static int _num_worker;
-  static std::shared_ptr<byteps::common::BytePSSharedMemory> _shm_obj;
   static ps::KVWorker<char>* _ps;
 
 }; // class BytePSSparseComm

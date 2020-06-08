@@ -22,11 +22,19 @@
 #include <unistd.h>
 #include <cuda_runtime.h>
 #include <errno.h>
+#include <ps/ps.h>
 
 namespace byteps {
 namespace sparse {
 
 #define MAX_CUDA_DEVICES (32)
+
+#define CUDA_CALL(func)                                          \
+  {                                                              \
+    cudaError_t e = (func);                                      \
+    CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading) \
+        << "CUDA: " << cudaGetErrorString(e);                    \
+  }
 
 static const char* bpsShmName = "BytePS_Sparse_ShM_";
 
