@@ -14,7 +14,7 @@
 // =============================================================================
 
 #include "sparse.h"
-#include "../common/global.h"
+#include "../common/logging.h"
 
 namespace byteps {
 namespace sparse {
@@ -49,13 +49,13 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
 
     // CUDA IPC is only supported on devices with unified addressing
     if (!prop.unifiedAddressing) {
-      BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
+      // BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
       continue;
     }
     // We require two processes accessing each device, so we need
     // to ensure exclusive or prohibited mode is not set
     if (prop.computeMode != cudaComputeModeDefault) {
-      BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
+      // BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
       continue;
     }
 
@@ -212,9 +212,9 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   for (int i = 0; i < localSize; i++) {
     srcs_gather_[i] = (float*) embedBuffers[i];
     dsts_gather_[i] = (float*) denseBuffers[i];
-    lens_gather_[i] = bufferLengths[workerID][i];
+    lens_gather_[i] = _bufferLengths[workerID][i];
     for (int j = 0; j < localSize; j++) {
-      table_gather_[i][j] = bufferLengths[workerID][j];
+      table_gather_[i][j] = _bufferLengths[workerID][j];
     }
   }
 

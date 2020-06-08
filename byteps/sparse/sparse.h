@@ -23,13 +23,11 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include "gossip/include/cudahelpers/cuda_helpers.cuh"
 #include "gossip/include/gossip.cuh"
+#include "gossip/include/cudahelpers/cuda_helpers.cuh"
 #include "gossip/include/plan_parser.hpp"
 #include "gossip/include/clipp/include/clipp.h"
 
-#include "ops.h"
-#include "adapter.h"
 #include "comm.h"
 #include "util.h"
 

@@ -3,6 +3,6 @@
 	url = https://github.com/bytedance/ps-lite
 	branch = byteps
 [submodule "3rdparty/gossip"]
-	path = 3rdparty/gossip
+	path = byteps/sparse/gossip
 	url = https://github.com/Funatiq/gossip
 	branch = master
