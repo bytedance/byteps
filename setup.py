@@ -835,15 +835,7 @@ def build_sparse_extension(build_ext, options):
     sparse_lib.extra_objects = options['EXTRA_OBJECTS']
     sparse_lib.library_dirs = options['LIBRARY_DIRS']
     sparse_lib.sources = options['SOURCES'] + \
-        ['byteps/sparse/adapter.cc',
-         'byteps/sparse/cuda_util.cc',
-         'byteps/sparse/handle_manager.cc',
-         'byteps/sparse/ops.cc',
-         'byteps/sparse/ready_event.cc',
-         'byteps/sparse/sparse.cc',
-         'byteps/sparse/comm.cc',
-         'byteps/sparse/sparse_server.cc',
-         'byteps/sparse/util.cc'
+        ['byteps/sparse/sparse_server.cc'
          ]
     sparse_lib.libraries = options['LIBRARIES']
 
