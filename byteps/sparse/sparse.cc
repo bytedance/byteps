@@ -192,6 +192,35 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     }
     _offsets[i].push_back(offset);
   }
+
+  // Prepare gossip communication
+  std::string plan_file("all2all_plan.json");
+  auto transfer_plan = parse_plan(plan_file.c_str());
+  gossip::all2all::verify_plan(transfer_plan);
+  BPS_CHECK(transfer_plan.valid());
+  BPS_CHECK_EQ(transfer_plan.num_gpus(), localSize);
+
+  gather_cxt_ = std::make_unique<gossip::context_t>(localSize);
+  local_all2all_gather_ = std::make_unique<gossip::all2all_async_t>(*gather_cxt_, transfer_plan);
+
+  srcs_gather_.resize(localSize);
+  dsts_gather_.resize(localSize);
+  lens_gather_.resize(localSize);
+  table_gather_.resize(localSize);
+  for (int i = 0; i < localSize; i++) table_gather_[i].resize(localSize);
+
+  for (int i = 0; i < localSize; i++) {
+    srcs_gather_[i] = (float*) embedBuffers[i];
+    dsts_gather_[i] = (float*) denseBuffers[i];
+    lens_gather_[i] = bufferLengths[workerID][i];
+    for (int j = 0; j < localSize; j++) {
+      table_gather_[i][j] = bufferLengths[workerID][j];
+    }
+  }
+
+  // all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
+  // all2all.sync();
+  // context->sync_hard();
 } 
 
 void bytepsSparseShutdown() {
