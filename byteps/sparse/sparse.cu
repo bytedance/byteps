@@ -125,61 +125,61 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
   
   // Start the pslite instance
-  if (!_ps) {
+  if (!_ps && BytePSSparseComm::IsDistributed()) {
     _ps = new ps::KVWorker<char>(0, 0);
     ps::StartAsync(0, "byteps_sparse\0");
     ps::Postoffice::Get()->Barrier(
         0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-  }
 
-  // Global coordination of the bufferLengths 
-  // which is equivalent to all-gather 
-  std::vector<ps::SArray<char>> bufferLenSarrays;
-  for (int i = 0; i < workerNum; i++) {
-    ps::SArray<char> tmp((char*)_bufferLengths[i].data(), 
-                      workerNum * sizeof(int), 
-                      false);
-    bufferLenSarrays.push_back(tmp);
-  }
+    // Global coordination of the bufferLengths 
+    // which is equivalent to all-gather 
+    std::vector<ps::SArray<char>> bufferLenSarrays;
+    for (int i = 0; i < workerNum; i++) {
+      ps::SArray<char> tmp((char*)_bufferLengths[i].data(), 
+                        workerNum * sizeof(int), 
+                        false);
+      bufferLenSarrays.push_back(tmp);
+    }
 
-  std::vector<ps::SArray<ps::Key>> tmpKeys;
-  std::vector<ps::SArray<int>> tmpLens;
-  auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
-  for (int key = 0; key < workerNum; key++) {
-    int server = key;
+    std::vector<ps::SArray<ps::Key>> tmpKeys;
+    std::vector<ps::SArray<int>> tmpLens;
+    auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+    for (int key = 0; key < workerNum; key++) {
+      int server = key;
 
-    std::vector<ps::Key> tmp1(1, krs[server].begin() + key);
-    ps::SArray<ps::Key> keys(tmp1);
-    tmpKeys.push_back(keys);
+      std::vector<ps::Key> tmp1(1, krs[server].begin() + key);
+      ps::SArray<ps::Key> keys(tmp1);
+      tmpKeys.push_back(keys);
 
-    std::vector<int> tmp2(1, workerNum * sizeof(int));
-    ps::SArray<int> lens(tmp2);
-    tmpLens.push_back(lens);
-  }
+      std::vector<int> tmp2(1, workerNum * sizeof(int));
+      ps::SArray<int> lens(tmp2);
+      tmpLens.push_back(lens);
+    }
 
-  // Push once to the associated server
-  {
-    int server = workerID;
-    auto keys = tmpKeys[server];
-    auto vals = bufferLenSarrays[server];
-    auto lens = tmpLens[server];
-    _ps->Wait(_ps->ZPush(keys, vals, lens));
-  }
+    // Push once to the associated server
+    {
+      int server = workerID;
+      auto keys = tmpKeys[server];
+      auto vals = bufferLenSarrays[server];
+      auto lens = tmpLens[server];
+      _ps->Wait(_ps->ZPush(keys, vals, lens));
+    }
 
-  // Call a barrier to sync across multiple workers. 
-  // In case that some workers finish push too fast, 
-  // and then pull from other workers too early
-  ps::Postoffice::Get()->Barrier(
-      0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+    // Call a barrier to sync across multiple workers. 
+    // In case that some workers finish push too fast, 
+    // and then pull from other workers too early
+    ps::Postoffice::Get()->Barrier(
+        0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
 
-  // Gather from other workers 
-  for (int key = 0; key < workerNum; key++) {
-    int server = key;
-    if (server == workerID) continue; // skip myself
-    auto keys = tmpKeys[server];
-    auto vals = bufferLenSarrays[server];
-    auto lens = tmpLens[server];
-    _ps->Wait(_ps->ZPull(keys, &vals, &lens));
+    // Gather from other workers 
+    for (int key = 0; key < workerNum; key++) {
+      int server = key;
+      if (server == workerID) continue; // skip myself
+      auto keys = tmpKeys[server];
+      auto vals = bufferLenSarrays[server];
+      auto lens = tmpLens[server];
+      _ps->Wait(_ps->ZPull(keys, &vals, &lens));
+    }
   }
 
   // Complete the _offsets table
@@ -193,7 +193,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
 
   // Prepare gossip communication
-  std::string plan_file("all2all_plan.json");
+  std::string plan_file("all2all_plan_0_1.json");
   auto transfer_plan = parse_plan(plan_file.c_str());
   gossip::all2all::verify_plan(transfer_plan);
   CHECK(transfer_plan.valid());
