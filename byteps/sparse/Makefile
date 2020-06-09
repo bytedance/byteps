@@ -39,13 +39,13 @@ sparse: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)
 				$(BUILD_DIR)/sparse.o \
 				--shared -o $(BUILD_DIR)/libbyteps.so
 
-$(BUILD_DIR)/sparse.o: $(BUILD_DIR) $(HEADERS) gossip/include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o sparse.h $(BUILD_DIR)/util.o $(BUILD_DIR)/comm.o
+$(BUILD_DIR)/sparse.o: $(BUILD_DIR) $(HEADERS) sparse.h sparse.cu gossip/include/plan_parser.hpp $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)/comm.o
 	$(NVCC) $(NVCCFLAGS) -c sparse.cu -o $(BUILD_DIR)/sparse.o
 
-$(BUILD_DIR)/util.o: util.h 
+$(BUILD_DIR)/util.o: util.h util.cc
 	$(NVCC) $(NVCCFLAGS) -c util.cc -o $(BUILD_DIR)/util.o 
 
-$(BUILD_DIR)/comm.o: comm.h 
+$(BUILD_DIR)/comm.o: comm.h comm.cc
 	$(NVCC) $(NVCCFLAGS) -c comm.cc -o $(BUILD_DIR)/comm.o 
 
 $(BUILD_DIR)/plan_parser.o: gossip/include/plan_parser.cpp gossip/include/plan_parser.hpp
