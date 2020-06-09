@@ -31,7 +31,7 @@ BUILD_DIR = build
 
 all: sparse
 
-sparse: $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)/comm.o $(BUILD_DIR)/sparse.o
+sparse: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)/comm.o $(BUILD_DIR)/sparse.o
 		$(NVCC) $(NVCCFLAGS) \
 				$(BUILD_DIR)/plan_parser.o \
 				$(BUILD_DIR)/util.o \
