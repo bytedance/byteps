@@ -17,40 +17,23 @@
 #ifndef BYTEPS_SPARSE_H
 #define BYTEPS_SPARSE_H
 
-#include <vector>
-#include <cuda_runtime.h>
-#include <iostream>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include "gossip/include/gossip.cuh"
-#include "gossip/include/cudahelpers/cuda_helpers.cuh"
-#include "gossip/include/plan_parser.hpp"
-#include "gossip/include/clipp/include/clipp.h"
-
-#include "common.h"
 #include "util.h"
+#include "common.h"
+#include "communicator.h"
 
 namespace byteps {
 namespace sparse {
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
-static std::vector<std::vector<size_t>> _bufferLengths; 
-static std::vector<std::vector<size_t>> _offsets;
+static std::vector<std::vector<size_t>> _embedBufferLens; 
 static ps::KVWorker<char>* _ps;
 static std::vector<void*> _cpuBuffers;
 static size_t _denseBufferLength;
-
-// Local gossip communication (gather)
-static std::unique_ptr<gossip::context_t> gather_cxt_;
-static std::unique_ptr<gossip::gather_t> gather_;
-static std::vector<float*> srcs_gather_;
-static std::vector<size_t> lens_gather_;
-static std::vector<std::vector<size_t>> table_gather_;
+static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 
 // The following are extern APIs
-extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLengths, int size);
+extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& embedBufferLens, int size);
 extern "C" void bytepsSparseShutdown();
 extern "C" void bytepsGather(int local_rank, cudaStream_t stream);
 extern "C" void bytepsScatter(int local_rank, cudaStream_t stream);

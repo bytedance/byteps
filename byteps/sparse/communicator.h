@@ -30,21 +30,23 @@
 namespace byteps {
 namespace sparse {
 
+
 class SparseComm {
  public:
   virtual void ExecAsync() = 0;
   virtual void Sync() = 0;
 }; // class SparseComm
 
+
 class LocalGatherComm : public SparseComm {
   using data_t = float;
 
  public:
-  LocalGatherComm(const char* planfile_name, const size_t num_gpu, const std::vector<data_t*>& srcs, 
+  LocalGatherComm(std::string& planfile_name, const size_t num_gpu, const std::vector<data_t*>& srcs, 
                   const std::vector<size_t>& srcs_lens, const std::vector<size_t>& send_counts,
                   data_t* dst, const size_t dst_len) : srcs_(srcs), srcs_lens_(srcs_lens),
                   send_counts_(send_counts), dst_(dst), dst_len_(dst_len) {
-    auto transfer_plan = parse_plan(planfile_name);
+    auto transfer_plan = parse_plan(planfile_name.c_str());
     gossip::gather::verify_plan(transfer_plan);
     CHECK(transfer_plan.valid());
     CHECK_EQ(transfer_plan.num_gpus(), num_gpu);
@@ -71,6 +73,7 @@ class LocalGatherComm : public SparseComm {
   size_t dst_len_; 
 
 }; // class LocalGatherComm 
+
 
 } // namespace sparse
 } // namespace byteps
