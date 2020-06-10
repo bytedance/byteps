@@ -45,7 +45,7 @@ size_t OnebitCompressor::PackingImpl(index_t* dst, const scalar_t* src,
                                      size_t len) {
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
-  constexpr size_t PACKING_SIZE = sizeof(scalar_t) * sizeof(char);
+  constexpr size_t PACKING_SIZE = sizeof(scalar_t) * 8;
 
   float scale = 1.0f;
   if (_use_scale) {
@@ -65,7 +65,9 @@ size_t OnebitCompressor::PackingImpl(index_t* dst, const scalar_t* src,
   size_t chunk_size = (len + padding_len) / PACKING_SIZE;
 
   auto ptr = reinterpret_cast<index_t*>(_buf.get());
-  for (int i = 0; i < PACKING_SIZE; ++i) {
+  int i = 0;
+  if ((void*)dst == (void*)ptr) i = 1;
+  for (; i < PACKING_SIZE; ++i) {
     for (int j = 0; j < chunk_size; ++j) {
       ptr[j] <<= 1;
       ptr[j] |= dst[i * chunk_size + j] & 0x01;
@@ -125,7 +127,7 @@ void OnebitCompressor::UnpackingImpl(scalar_t* dst, const index_t* src,
                                      size_t len) {
   static_assert(sizeof(scalar_t) == sizeof(index_t),
                 "scalar_t should be the same size as index_t");
-  constexpr size_t PACKING_SIZE = sizeof(index_t) * sizeof(char);
+  constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
 
   auto* pf = reinterpret_cast<const float*>(src + len);
   float scale = *pf;
