@@ -31,11 +31,11 @@ BUILD_DIR = build
 
 all: sparse
 
-sparse: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)/comm.o $(BUILD_DIR)/sparse.o
+sparse: $(BUILD_DIR) $(BUILD_DIR)/plan_parser.o $(BUILD_DIR)/util.o $(BUILD_DIR)/common.o $(BUILD_DIR)/sparse.o
 		$(NVCC) $(NVCCFLAGS) \
 				$(BUILD_DIR)/plan_parser.o \
 				$(BUILD_DIR)/util.o \
-				$(BUILD_DIR)/comm.o \
+				$(BUILD_DIR)/common.o \
 				$(BUILD_DIR)/sparse.o \
 				--shared -o $(BUILD_DIR)/libbyteps.so
 
@@ -45,8 +45,8 @@ $(BUILD_DIR)/sparse.o: $(BUILD_DIR) $(HEADERS) sparse.h sparse.cu gossip/include
 $(BUILD_DIR)/util.o: util.h util.cc
 	$(NVCC) $(NVCCFLAGS) -c util.cc -o $(BUILD_DIR)/util.o 
 
-$(BUILD_DIR)/comm.o: comm.h comm.cc
-	$(NVCC) $(NVCCFLAGS) -c comm.cc -o $(BUILD_DIR)/comm.o 
+$(BUILD_DIR)/common.o: common.h common.cc
+	$(NVCC) $(NVCCFLAGS) -c common.cc -o $(BUILD_DIR)/common.o 
 
 $(BUILD_DIR)/plan_parser.o: gossip/include/plan_parser.cpp gossip/include/plan_parser.hpp
 	$(NVCC) $(NVCCFLAGS) -c gossip/include/plan_parser.cpp  -o $(BUILD_DIR)/plan_parser.o

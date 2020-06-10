@@ -14,18 +14,18 @@
 // =============================================================================
 
 #include <cstdlib>
-#include "comm.h"
+#include "common.h"
 
 namespace byteps {
 namespace sparse {
 
-int BytePSSparseComm::_local_size;
-int BytePSSparseComm::_num_worker;
-int BytePSSparseComm::_worker_id;
-int BytePSSparseComm::_global_size;
-ps::KVWorker<char>* BytePSSparseComm::_ps;
+int BytePSSparseCommon::_local_size;
+int BytePSSparseCommon::_num_worker;
+int BytePSSparseCommon::_worker_id;
+int BytePSSparseCommon::_global_size;
+ps::KVWorker<char>* BytePSSparseCommon::_ps;
 
-void BytePSSparseComm::InitComm() {
+void BytePSSparseCommon::Init() {
   CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "error: env BYTEPS_LOCAL_SIZE not set";
   CHECK(getenv("DMLC_WORKER_ID")) << "error: env DMLC_WORKER_ID not set";
   CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
@@ -42,7 +42,7 @@ void BytePSSparseComm::InitComm() {
 
   
   // Launch ps-lite if needs distributed training
-  if (BytePSSparseComm::IsDistributed()) {
+  if (BytePSSparseCommon::IsDistributed()) {
     // Init worker
     _ps = new ps::KVWorker<char>(0, 0);
     ps::StartAsync(0, "byteps\0");
@@ -51,10 +51,10 @@ void BytePSSparseComm::InitComm() {
   }
 }
 
-void BytePSSparseComm::AllGather(std::vector<std::vector<int>> src) {
+void BytePSSparseCommon::AllGather(std::vector<std::vector<int>> src) {
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
   const int numServers = krs.size();
-  int rank = BytePSSparseComm::GetWorkerID();
+  int rank = BytePSSparseCommon::GetWorkerID();
   CHECK_EQ(numServers, (int)src.size()) << numServers << " " << src.size();
 
   // Prepare vals

@@ -28,7 +28,7 @@
 #include "gossip/include/plan_parser.hpp"
 #include "gossip/include/clipp/include/clipp.h"
 
-#include "comm.h"
+#include "common.h"
 #include "util.h"
 
 namespace byteps {
@@ -36,26 +36,18 @@ namespace sparse {
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
-static std::vector<std::vector<int>> _bufferLengths; 
-static std::vector<std::vector<int>> _offsets;
+static std::vector<std::vector<size_t>> _bufferLengths; 
+static std::vector<std::vector<size_t>> _offsets;
 static ps::KVWorker<char>* _ps;
 static std::vector<void*> _cpuBuffers;
-static int _denseBufferLength;
+static size_t _denseBufferLength;
 
 // Local gossip communication (gather)
 static std::unique_ptr<gossip::context_t> gather_cxt_;
-static std::unique_ptr<gossip::all2all_async_t> local_all2all_gather_;
+static std::unique_ptr<gossip::gather_t> gather_;
 static std::vector<float*> srcs_gather_;
-static std::vector<float*> dsts_gather_;
 static std::vector<size_t> lens_gather_;
 static std::vector<std::vector<size_t>> table_gather_;
-// Local gossip communication (scatter)
-static std::unique_ptr<gossip::context_t> scatter_cxt_;
-static std::unique_ptr<gossip::all2all_async_t> local_all2all_scatter_;
-static std::vector<float*> srcs_scatter_;
-static std::vector<float*> dsts_scatter_;
-static std::vector<size_t> lens_scatter_;
-static std::vector<std::vector<size_t>> table_scatter_;
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& bufferLengths, int size);

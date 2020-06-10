@@ -28,7 +28,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
                       std::vector<void*>& denseBuffers, 
                       std::vector<int>& bufferLengths, 
                       int size) {
-  BytePSSparseComm::InitComm();
+  BytePSSparseCommon::Init();
   CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   CHECK_EQ(bufferLengths.size(), denseBuffers.size());
   
@@ -38,9 +38,9 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   auto shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 
-  auto localSize = BytePSSparseComm::GetLocalSize();
-  auto workerNum = BytePSSparseComm::GetNumWorker();
-  auto workerID = BytePSSparseComm::GetWorkerID();
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerNum = BytePSSparseCommon::GetNumWorker();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
 
   for (int i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
@@ -125,7 +125,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
   
   // Start the pslite instance
-  if (!_ps && BytePSSparseComm::IsDistributed()) {
+  if (!_ps && BytePSSparseCommon::IsDistributed()) {
     _ps = new ps::KVWorker<char>(0, 0);
     ps::StartAsync(0, "byteps_sparse\0");
     ps::Postoffice::Get()->Barrier(
@@ -193,33 +193,28 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
 
   // Prepare gossip communication
-  std::string plan_file("all2all_plan_0_1.json");
+  std::string plan_file("gather_plan.json");
   auto transfer_plan = parse_plan(plan_file.c_str());
-  gossip::all2all::verify_plan(transfer_plan);
+  gossip::gather::verify_plan(transfer_plan);
   CHECK(transfer_plan.valid());
   CHECK_EQ(transfer_plan.num_gpus(), localSize);
 
   gather_cxt_ = std::make_unique<gossip::context_t>(localSize);
-  local_all2all_gather_ = std::make_unique<gossip::all2all_async_t>(*gather_cxt_, transfer_plan);
+  gather_ = std::make_unique<gossip::gather_t>(*gather_cxt_, transfer_plan);
 
   srcs_gather_.resize(localSize);
-  dsts_gather_.resize(localSize);
   lens_gather_.resize(localSize);
   table_gather_.resize(localSize);
   for (int i = 0; i < localSize; i++) table_gather_[i].resize(localSize);
 
   for (int i = 0; i < localSize; i++) {
     srcs_gather_[i] = (float*) embedBuffers[i];
-    dsts_gather_[i] = (float*) denseBuffers[i];
-    lens_gather_[i] = _bufferLengths[workerID][i];
+    lens_gather_[i] = _bufferLengths[workerID][i] / localSize;
     for (int j = 0; j < localSize; j++) {
-      table_gather_[i][j] = _bufferLengths[workerID][j];
+      table_gather_[i][j] = _bufferLengths[workerID][j] / localSize;
     }
   }
 
-  // all2all.execAsync(srcs, srcs_lens, dsts, dsts_lens, bufs, bufs_lens, table);
-  // all2all.sync();
-  // context->sync_hard();
 } 
 
 void bytepsSparseShutdown() {
@@ -228,52 +223,22 @@ void bytepsSparseShutdown() {
 
 void bytepsGather(int local_rank, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
-  auto localSize = BytePSSparseComm::GetLocalSize();
-  auto workerID = BytePSSparseComm::GetWorkerID();
-  auto workerNum = BytePSSparseComm::GetNumWorker();
-  void* baseDstPtr = (void*) _denseBuffers[local_rank];
-  for (int i = 0; i < localSize; i++) {
-    void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
-    void* srcPtr = (void*) ((char*)baseSrcPtr + _bufferLengths[workerID][i] / localSize * local_rank);
-    void* dstPtr = (void*) ((char*)baseDstPtr + _offsets[workerID][i]);
-    CUDA_CALL(cudaMemcpyPeerAsync(dstPtr, local_rank, srcPtr, i, _bufferLengths[workerID][i] / localSize, stream));
-  }
-  CUDA_CALL(cudaStreamSynchronize(stream));
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
+  auto workerNum = BytePSSparseCommon::GetNumWorker();
 
-  // // Gather from other distributed workers
-  // if (BytePSSparseComm::IsDistributed()) {
-  //   std::vector<int> ts; // store the zpush timestamp
-  //   for (int i = 0; i < workerNum; i++) {
-  //     if (i == workerID) continue;
-  //     void* baseSrcPtr = (void*) ((char*)_embedBuffers[i]);
-  //     ps::Key key = i;
-  //     int len = _bufferLengths[i][j] / (localSize * workerNum);
-  //     auto &pskv = EncodeDefaultKey(key, len);
-  //     for (int j = 0; j < localSize; j++) {
-  //       ps::SArray<char> vals((char*)_cpuBuffers[i] + _offsets[i][j], len, false);
-  //       ts.push_back(_ps->ZPull(pskv.keys, &vals, &pskv.lens));
-  //     }
-  //   }
-  //   for (auto t : ts) _ps->Wait(t);
+  if (local_rank != 0)  return;
 
-  //   for (int i = 0; i < workerNum; i++) {
-  //     if (i == workerID) continue; 
-  //     for (int j = 0; j < localSize; j++) {
-  //       int len = _bufferLengths[i][j] / (localSize * workerNum);
-  //       CUDA_CALL(cudaMemcpyAsync(
-  //           (void*)((char*)_denseBuffers[local_rank] + _offsets[i][j]), 
-  //           (void*)((char*)_cpuBuffers[i] + _offsets[i][j]), 
-  //           len, cudaMemcpyHostToDevice, stream));
-  //     }
-  //   }
-  // }
+  gather_->execAsync(srcs_gather_, _bufferLengths[workerID], lens_gather_, (float*)_denseBuffers[local_rank], (size_t)_denseBufferLength);
+  gather_->sync();
+
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
 
 void bytepsScatter(int local_rank, cudaStream_t stream) {
-  auto localSize = BytePSSparseComm::GetLocalSize();
-  auto workerID = BytePSSparseComm::GetWorkerID();
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
   void* baseSrcPtr = (void*)_denseBuffers[local_rank];
   for (int i = 0; i < localSize; i++) {
     void* baseDstPtr = (void*) ((char*)_embedBuffers[i]);
@@ -284,7 +249,7 @@ void bytepsScatter(int local_rank, cudaStream_t stream) {
   CUDA_CALL(cudaStreamSynchronize(stream));
 
   // // Scatter to other distributed workers
-  // if (BytePSSparseComm::IsDistributed()) {
+  // if (BytePSSparseCommon::IsDistributed()) {
   //   // Copy to host memory
   //   auto valLen = len / workerNum;
   //   for (int i = 0; i < workerNum; i++) {

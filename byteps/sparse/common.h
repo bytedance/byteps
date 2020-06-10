@@ -18,14 +18,14 @@
 namespace byteps {
 namespace sparse {
 
-class BytePSSparseComm {
+class BytePSSparseCommon {
  public:
   static int GetLocalSize() { return _local_size; }
   static int GetGlobalSize() { return _global_size; }
   static int GetWorkerID() { return _worker_id; }
   static int GetNumWorker() { return _num_worker; }
   static bool IsDistributed() { return _num_worker > 1; }
-  static void InitComm();
+  static void Init();
   static ps::KVWorker<char>* GetPS() { return _ps; }
   static void AllGather(std::vector<std::vector<int>> src);
 
@@ -36,7 +36,7 @@ class BytePSSparseComm {
   static int _num_worker;
   static ps::KVWorker<char>* _ps;
 
-}; // class BytePSSparseComm
+}; // class BytePSSparseCommon
 
 
 } // namespace sparse
