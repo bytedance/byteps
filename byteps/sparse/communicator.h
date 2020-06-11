@@ -53,13 +53,7 @@ class LocalGatherComm : public SparseComm {
 
     context_ = std::make_unique<gossip::context_t>(num_gpu);
     gather_ = std::make_unique<gossip::gather_t>(*context_, transfer_plan);
-
-    std::cout << "Required buffer sizes:" << std::endl;
     std::vector<size_t> bufs_lens_calc_gather = gather_->calcBufferLengths(send_counts_);
-    for (const auto& buf_len_calc : bufs_lens_calc_gather) {
-        std::cout << buf_len_calc << ' ';
-    }
-    std::cout << '\n' << std::endl;
 
     bufs_.resize(num_gpu);
     bufs_lens_.resize(num_gpu);
@@ -69,6 +63,10 @@ class LocalGatherComm : public SparseComm {
       cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
     } CUERR
     context_->sync_hard();
+  }
+
+  ~LocalGatherComm() {
+    for (auto buf : bufs_) cudaFree(buf); 
   }
   
   void ExecAsync() {
@@ -108,13 +106,7 @@ class LocalScatterComm : public SparseComm {
 
     context_ = std::make_unique<gossip::context_t>(num_gpu);
     scatter_ = std::make_unique<gossip::scatter_t>(*context_, transfer_plan);
-
-    std::cout << "Required buffer sizes:" << std::endl;
     std::vector<size_t> bufs_lens_calc_scatter = scatter_->calcBufferLengths(send_counts_);
-    for (const auto& buf_len_calc : bufs_lens_calc_scatter) {
-        std::cout << buf_len_calc << ' ';
-    }
-    std::cout << '\n' << std::endl;
 
     bufs_.resize(num_gpu);
     bufs_lens_.resize(num_gpu);
@@ -124,6 +116,10 @@ class LocalScatterComm : public SparseComm {
       cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
     } CUERR
     context_->sync_hard();
+  }
+
+  ~LocalScatterComm() {
+    for (auto buf : bufs_) cudaFree(buf); 
   }
   
   void ExecAsync() {
