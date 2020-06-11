@@ -196,6 +196,26 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         planfile_name, localSize, srcs, srcs_lens, send_counts, dst, dst_len);
   }
 
+  _local_scatter_comms.resize(localSize);
+  for (int i = 0; i < localSize; i++) {
+    
+    float* src = (float *)_denseBuffers[i];
+    size_t src_len = _denseBufferLength;
+    std::vector<float*> scatter_dsts(localSize);
+    std::vector<size_t> scatter_dsts_lens(localSize);
+    std::vector<size_t> scatter_send_counts(localSize);
+    for (int j = 0; j < localSize; j++) {
+      scatter_dsts[j] = (float*)_embedBuffers[j] + (i * _embedBufferLens[workerID][j] / localSize);
+      scatter_dsts_lens[j] = src_len / localSize;
+      scatter_send_counts[j] = src_len / localSize;
+    }
+
+    std::string planfile_name("scatter_plan_");
+    planfile_name += std::to_string(i) + std::string(".json");
+    _local_scatter_comms[i] = std::make_unique<LocalScatterComm>(
+        planfile_name, localSize, src, src_len, scatter_send_counts, scatter_dsts, scatter_dsts_lens);
+  }
+
 } 
 
 void bytepsSparseShutdown() {
@@ -220,6 +240,9 @@ void bytepsScatter(int local_rank, cudaStream_t stream) {
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerID = BytePSSparseCommon::GetWorkerID();
   void* baseSrcPtr = (void*)_denseBuffers[local_rank];
+
+  _local_scatter_comms[local_rank]->ExecAsync();
+  _local_scatter_comms[local_rank]->Sync();
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 

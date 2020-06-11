@@ -74,6 +74,42 @@ class LocalGatherComm : public SparseComm {
 
 }; // class LocalGatherComm 
 
+class LocalScatterComm : public SparseComm {
+  using data_t = float;
+
+ public:
+  LocalScatterComm(std::string& planfile_name, const size_t num_gpu, data_t* srcs, const size_t srcs_lens, 
+                  const std::vector<size_t>& send_counts, std::vector<data_t*> dst, const std::vector<size_t>& dst_len) : srcs_(srcs), srcs_lens_(srcs_lens),
+                  send_counts_(send_counts), dst_(dst), dst_len_(dst_len) {
+    auto transfer_plan = parse_plan(planfile_name.c_str());
+    gossip::scatter::verify_plan(transfer_plan);
+    CHECK(transfer_plan.valid());
+    CHECK_EQ(transfer_plan.num_gpus(), num_gpu);
+
+    context_ = std::make_unique<gossip::context_t>(num_gpu);
+    scatter_ = std::make_unique<gossip::scatter_t>(*context_, transfer_plan);
+  }
+  
+  void ExecAsync() {
+    scatter_->execAsync(srcs_, srcs_lens_, send_counts_, dst_, dst_len_);
+  }
+
+  void Sync() {
+    scatter_->sync();
+  }
+
+ private:
+  std::unique_ptr<gossip::context_t> context_;
+  std::unique_ptr<gossip::scatter_t> scatter_;
+  data_t* srcs_;
+  size_t srcs_lens_;
+  std::vector<size_t> send_counts_;
+  std::vector<data_t*> dst_;
+  std::vector<size_t> dst_len_;
+
+}; // class LocalScatterCom
+
+
 
 } // namespace sparse
 } // namespace byteps

@@ -31,6 +31,7 @@ static ps::KVWorker<char>* _ps;
 static std::vector<void*> _cpuBuffers;
 static size_t _denseBufferLength;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
+static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& embedBufferLens, int size);
