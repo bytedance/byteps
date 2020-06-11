@@ -79,7 +79,8 @@ class LocalScatterComm : public SparseComm {
 
  public:
   LocalScatterComm(std::string& planfile_name, const size_t num_gpu, data_t* srcs, const size_t srcs_lens, 
-                  const std::vector<size_t>& send_counts, std::vector<data_t*> dst, const std::vector<size_t>& dst_len) : srcs_(srcs), srcs_lens_(srcs_lens),
+                  const std::vector<size_t>& send_counts, std::vector<data_t*> dst, 
+                  const std::vector<size_t>& dst_len) : srcs_(srcs), srcs_lens_(srcs_lens),
                   send_counts_(send_counts), dst_(dst), dst_len_(dst_len) {
     auto transfer_plan = parse_plan(planfile_name.c_str());
     gossip::scatter::verify_plan(transfer_plan);
@@ -107,7 +108,7 @@ class LocalScatterComm : public SparseComm {
   std::vector<data_t*> dst_;
   std::vector<size_t> dst_len_;
 
-}; // class LocalScatterCom
+}; // class LocalScatterComm
 
 
 

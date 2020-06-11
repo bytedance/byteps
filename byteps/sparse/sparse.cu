@@ -178,7 +178,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Prepare gossip communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
-    if (i != 0) continue;
     std::vector<float*> srcs(localSize);
     std::vector<size_t> srcs_lens(localSize);
     std::vector<size_t> send_counts(localSize);
@@ -198,7 +197,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
 
   _local_scatter_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
-    
     float* src = (float *)_denseBuffers[i];
     size_t src_len = _denseBufferLength;
     std::vector<float*> scatter_dsts(localSize);
@@ -228,7 +226,6 @@ void bytepsGather(int local_rank, cudaStream_t stream) {
   auto workerID = BytePSSparseCommon::GetWorkerID();
   auto workerNum = BytePSSparseCommon::GetNumWorker();
 
-  if (local_rank > 0) return; // debug
   _local_gather_comms[local_rank]->ExecAsync();
   _local_gather_comms[local_rank]->Sync();
 
