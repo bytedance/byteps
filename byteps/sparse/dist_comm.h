@@ -13,30 +13,47 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_SPARSE_COMMUNICATOR_H
-#define BYTEPS_SPARSE_COMMUNICATOR_H
+#ifndef BYTEPS_DISTRIBUTED_COMMUNICATOR_H
+#define BYTEPS_DISTRIBUTED_COMMUNICATOR_H
 
-#include <vector>
-#include <cuda_runtime.h>
-#include <iostream>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include "gossip/include/gossip.cuh"
-#include "gossip/include/cudahelpers/cuda_helpers.cuh"
-#include "gossip/include/plan_parser.hpp"
-#include "ps/ps.h"
+#include "communicator.h"
 
 namespace byteps {
 namespace sparse {
 
-class SparseComm {
+class DistGatherComm : public SparseComm {
+  using data_t = float;
+
  public:
-  virtual void ExecAsync() = 0;
-  virtual void Sync() = 0;
-}; // class SparseComm
+
+  void ExecAsync() {
+
+  }
+
+  void Sync() {
+
+  }
+
+}; // class DistGatherComm 
+
+
+
+class DistScatterComm : public SparseComm {
+  using data_t = float;
+
+ public:
+
+  void ExecAsync() {
+
+  }
+
+  void Sync() {
+
+  }
+  
+}; // class DistScatterComm 
 
 } // namespace sparse
 } // namespace byteps
 
-#endif  // BYTEPS_SPARSE_COMMUNICATOR_H
+#endif  // BYTEPS_DISTRIBUTED_COMMUNICATOR_H

@@ -39,8 +39,7 @@ ALL_DEPEND_OBJECTS = $(BUILD_DIR)/plan_parser.o \
 					 $(BUILD_DIR)/common.o \
 					 $(BUILD_DIR)/cpu_reducer.o
 
-DEPEND_HEADERS = sparse.h communicator.h common.h util.h loop.h queue_exec.h cpu_reducer.h
-				 
+DEPEND_HEADERS = sparse.h communicator.h common.h util.h local_comm.h dist_comm.h loop.h queue_exec.h cpu_reducer.h
 
 .PHONY: all clean
 

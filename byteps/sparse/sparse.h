@@ -19,19 +19,20 @@
 
 #include "util.h"
 #include "common.h"
-#include "communicator.h"
-#include "loop.h"
+#include "local_comm.h"
+#include "dist_comm.h"
 #include "cpu_reducer.h"
 
 namespace byteps {
 namespace sparse {
 
+enum OP { GATHER, SCATTER };
+
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers; // For storing gathered embedding vectors for the dense layer to use.
 static std::vector<std::vector<size_t>> _embedBufferLens; 
-static ps::KVWorker<char>* _ps;
 static std::vector<void*> _cpuBuffers;
-static size_t _denseBufferLength;       // Unit in bytes.
+static size_t _denseBufferLen;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 
 // Buffers for dense layers when calling DenseReduceAsync
@@ -61,9 +62,10 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
                                             int sizeDenseDelta);
 
 extern "C" void bytepsSparseShutdown();
-extern "C" void bytepsGather(int local_rank, cudaStream_t stream);
-extern "C" void bytepsScatter(int local_rank, cudaStream_t stream);
-extern "C" void bytepsDenseReduceAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsGatherExecAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsScatterExecAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op);
 
 } // namespace sparse
 } // namespace byteps 
