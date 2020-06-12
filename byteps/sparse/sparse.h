@@ -49,10 +49,17 @@ static ::byteps::common::CpuReducer* _denseReducer;
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers,
                                  std::vector<void*>& denseBuffers,
                                  std::vector<int>& embedBufferLens,
-                                 std::vector<void*>& denseDeltaBeforeReduceBuffers,
-                                 std::vector<void*>& denseDeltaReducedBuffers,
-                                 int size,
-                                 int sizeDenseDelta);
+                                 int size);
+extern "C" void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
+                                      std::vector<void*>& denseDeltaAfterReduceBuffers,
+                                      int sizeDenseDelta);
+
+// This is not thread safe! The caller must make sure it's not called concurrently and from rank 0 to num_gpu-1.
+extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
+                                            void* denseDeltaBeforeReduceBuffer,
+                                            void* denseDeltaAfterReduceBuffer,
+                                            int sizeDenseDelta);
+
 extern "C" void bytepsSparseShutdown();
 extern "C" void bytepsGather(int local_rank, cudaStream_t stream);
 extern "C" void bytepsScatter(int local_rank, cudaStream_t stream);

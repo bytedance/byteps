@@ -33,14 +33,10 @@ namespace sparse {
 void bytepsSparseInit(std::vector<void*>& embedBuffers, 
                       std::vector<void*>& denseBuffers,
                       std::vector<int>& embedBufferLens,
-                      std::vector<void*>& denseDeltaBeforeReduceBuffers,
-                      std::vector<void*>& denseDeltaReducedBuffers,
-                      int size,
-                      int sizeDenseDelta) {
+                      int size) {
   BytePSSparseCommon::Init();
   CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   CHECK_EQ(embedBufferLens.size(), denseBuffers.size());
-  CHECK_EQ(denseDeltaBeforeReduceBuffers.size(), denseDeltaReducedBuffers.size());
 
   // Init IPC stuff
   sharedMemoryInfo info;
@@ -81,8 +77,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // bytepsSparseInit() might be (unexpectedly) invoked multiple times
   _embedBuffers.clear();
   _denseBuffers.clear();
-  _denseDeltaBeforeReduceBuffers.clear();
-  _denseDeltaAfterReduceBuffers.clear();
 
   _embedBufferLens.clear();
   _embedBufferLens.resize(workerNum);
@@ -100,11 +94,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
-
-    // CUDA_CALL(cudaIpcGetMemHandle(
-    //   (cudaIpcMemHandle_t *)&shm->denseDeltaBeforeReduceMemHandle[i], denseDeltaBeforeReduceBuffers[i]));
-    // CUDA_CALL(cudaIpcGetMemHandle(
-    //   (cudaIpcMemHandle_t *)&shm->denseDeltaAfterReduceMemHandle[i], denseDeltaAfterReduceBuffers[i]));
 
     CUDA_CALL(cudaEventCreate(
         &event, cudaEventDisableTiming | cudaEventInterprocess));
@@ -133,12 +122,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     CUDA_CALL(cudaHostAlloc(
         &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
     _cpuBuffers.push_back(_cpuBuffer);
-  }
-
-  // Similarly get CPU buffer for dense layer reduceasync
-  {
-    CUDA_CALL(cudaHostAlloc(
-        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
   }
 
   // Start the pslite instance
@@ -219,13 +202,115 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     _local_gather_comms[i] = std::make_unique<LocalGatherComm>(
         planfile_name, localSize, srcs, srcs_lens, send_counts, dst, dst_len);
   }
+} 
 
+
+void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
+                           std::vector<void*>& denseDeltaAfterReduceBuffers,
+                           int sizeDenseDelta) {
+
+  CHECK_EQ(denseDeltaBeforeReduceBuffers.size(), denseDeltaAfterReduceBuffers.size());
   _denseDeltaBufferLength = sizeDenseDelta;
+
+  // // Init IPC stuff
+  // sharedMemoryInfo info;
+  // CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
+  // auto shm = (volatile shmStruct *)info.addr;
+  // memset((void *)shm, 0, sizeof(*shm));
+
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerNum = BytePSSparseCommon::GetNumWorker();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
+
+  // for (int i = 0; i < localSize; i++) {
+  //   cudaDeviceProp prop;
+  //   CUDA_CALL(cudaGetDeviceProperties(&prop, i));
+
+  //   // CUDA IPC is only supported on devices with unified addressing
+  //   if (!prop.unifiedAddressing) {
+  //     // BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
+  //     continue;
+  //   }
+  //   // We require two processes accessing each device, so we need
+  //   // to ensure exclusive or prohibited mode is not set
+  //   if (prop.computeMode != cudaComputeModeDefault) {
+  //     // BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
+  //     continue;
+  //   }
+
+  //   shm->devices[shm->nprocesses++] = i;
+  //   CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);
+  // }
+
+  // CHECK(shm->nprocesses > 0) 
+  //     << "No cuda device suppported";
+  // CHECK_EQ(shm->nprocesses, embedBuffers.size())
+  //     << "Shared memory processes: " << shm->nprocesses 
+  //     << ", send buffers: " << embedBuffers.size();
+
+  // We need to manually we need to clear the containers because
+  // bytepsSparseInit() might be (unexpectedly) invoked multiple times
+  _denseDeltaBeforeReduceBuffers.clear();
+  _denseDeltaAfterReduceBuffers.clear();
+  for (size_t i = 0; i < localSize; i++) {
+    _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffers[i]); 
+    _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffers[i]);
+  }
+
+  // Allocate memory and an event for each process and fill 
+  // the shared memory buffer with the IPC handles 
+  // for (size_t i = 0; i < shm->nprocesses; i++) {
+  //   cudaEvent_t event;
+  //   CUDA_CALL(cudaSetDevice(
+  //       shm->devices[i]));
+
+  //   CUDA_CALL(cudaIpcGetMemHandle(
+  //     (cudaIpcMemHandle_t *)&shm->denseDeltaBeforeReduceMemHandle[i], denseDeltaBeforeReduceBuffers[i]));
+  //   CUDA_CALL(cudaIpcGetMemHandle(
+  //     (cudaIpcMemHandle_t *)&shm->denseDeltaAfterReduceMemHandle[i], denseDeltaAfterReduceBuffers[i]));
+
+  //   // Store the buffers 
+  //   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffers[i]); 
+  //   _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffers[i]);
+  // }
+
+  // Get CPU buffer for dense layer reduceasync
+  {
+    CUDA_CALL(cudaHostAlloc(
+        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+  }
 
   // Start the DenseReduce loop
   runDenseReduceLoop(_denseReduceLoop);
   _denseReducer = new ::byteps::common::CpuReducer(nullptr);
-} 
+}
+
+extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
+                                            void* denseDeltaBeforeReduceBuffer,
+                                            void* denseDeltaAfterReduceBuffer,
+                                            int sizeDenseDelta) {
+  assert((device_id < localSize) && "Device id must be within local gpu size.")
+  CHECK_EQ(denseDeltaBeforeReduceBuffer.size(), denseDeltaAfterReduceBuffer.size());
+
+  if (device_id == 0){
+    _denseDeltaBufferLength = sizeDenseDelta;
+    // Get CPU buffer for dense layer reduceasync
+    CUDA_CALL(cudaHostAlloc(
+        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+    // Start the DenseReduce loop
+    runDenseReduceLoop(_denseReduceLoop);
+    _denseReducer = new ::byteps::common::CpuReducer(nullptr);
+  } else{
+    CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta)
+  }
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerNum = BytePSSparseCommon::GetNumWorker();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
+
+  _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
+  _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffer);
+}
+
 
 void bytepsSparseShutdown() {
 }
