@@ -296,8 +296,10 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
                                             void* denseDeltaBeforeReduceBuffer,
                                             void* denseDeltaAfterReduceBuffer,
                                             int sizeDenseDelta) {
-  assert((device_id < localSize) && "Device id must be within local gpu size.")
-  CHECK_EQ(denseDeltaBeforeReduceBuffer.size(), denseDeltaAfterReduceBuffer.size());
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerNum = BytePSSparseCommon::GetNumWorker();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
+  assert((device_id < localSize) && "Device id must be within local gpu size.");
 
   if (device_id == 0){
     _denseDeltaBufferLength = sizeDenseDelta;
@@ -308,11 +310,8 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
     runDenseReduceLoop(_denseReduceLoop);
     _denseReducer = new ::byteps::common::CpuReducer(nullptr);
   } else{
-    CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta)
+    CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
   }
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerNum = BytePSSparseCommon::GetNumWorker();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
 
   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
   _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffer);

@@ -21,6 +21,7 @@
 #include "common.h"
 #include "local_comm.h"
 #include "dist_comm.h"
+#include "loop.h"
 #include "cpu_reducer.h"
 
 namespace byteps {
@@ -34,6 +35,7 @@ static std::vector<std::vector<size_t>> _embedBufferLens;
 static std::vector<void*> _cpuBuffers;
 static size_t _denseBufferLen;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
+static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
 
 // Buffers for dense layers when calling DenseReduceAsync
 static std::vector<void*> _denseDeltaBeforeReduceBuffers;   // In GPU
