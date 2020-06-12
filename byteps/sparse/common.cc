@@ -35,7 +35,7 @@ void BytePSSparseCommon::Init() {
   _worker_id = atoi(getenv("DMLC_WORKER_ID"));
   _global_size = _num_worker * _local_size;
 
-  // BPS_LOG(INFO) << "local_size=" << _local_size 
+  // LOG(INFO) << "local_size=" << _local_size 
   //     << ", global_size=" << _global_size
   //     << ", num_worker=" << _num_worker
   //     << ", worker_id=" << _worker_id;
@@ -51,7 +51,7 @@ void BytePSSparseCommon::Init() {
   }
 }
 
-void BytePSSparseCommon::AllGather(std::vector<std::vector<int>> src) {
+void BytePSSparseCommon::CoordinateDistBufferLens(std::vector<std::vector<int>> src) {
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
   const int numServers = krs.size();
   int rank = BytePSSparseCommon::GetWorkerID();

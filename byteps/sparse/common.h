@@ -27,7 +27,7 @@ class BytePSSparseCommon {
   static bool IsDistributed() { return _num_worker > 1; }
   static void Init();
   static ps::KVWorker<char>* GetPS() { return _ps; }
-  static void AllGather(std::vector<std::vector<int>> src);
+  static void CoordinateDistBufferLens(std::vector<std::vector<int>> src);
 
  private:
   static int _local_size;

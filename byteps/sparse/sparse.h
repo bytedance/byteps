@@ -25,22 +25,22 @@
 namespace byteps {
 namespace sparse {
 
+enum OP { GATHER, SCATTER };
+
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
 static std::vector<std::vector<size_t>> _embedBufferLens; 
-static ps::KVWorker<char>* _ps;
 static std::vector<void*> _cpuBuffers;
-static size_t _denseBufferLength;
+static size_t _denseBufferLen;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
-
-static std::vector<std::unique_ptr<DistGatherComm>>  _dist_gather_comms;
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& embedBufferLens, int size);
 extern "C" void bytepsSparseShutdown();
-extern "C" void bytepsGather(int local_rank, cudaStream_t stream);
-extern "C" void bytepsScatter(int local_rank, cudaStream_t stream);
+extern "C" void bytepsGatherExecAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsScatterExecAsync(int local_rank, cudaStream_t stream);
+extern "C" void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op);
 
 } // namespace sparse
 } // namespace byteps 
