@@ -71,7 +71,6 @@ void InitServer() {
     ps::Postoffice::Get()->Barrier(0,
       ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
   }
-
 }
 
 void StopServer() {

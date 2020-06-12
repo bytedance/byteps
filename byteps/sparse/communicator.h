@@ -53,24 +53,10 @@ class LocalGatherComm : public SparseComm {
 
     context_ = std::make_unique<gossip::context_t>(num_gpu);
     gather_ = std::make_unique<gossip::gather_t>(*context_, transfer_plan);
-    std::vector<size_t> bufs_lens_calc_gather = gather_->calcBufferLengths(send_counts_);
-
-    bufs_.resize(num_gpu);
-    bufs_lens_.resize(num_gpu);
-    for (int gpu = 0; gpu < num_gpu; ++gpu) {
-      bufs_lens_[gpu] = bufs_lens_calc_gather[gpu];
-      cudaSetDevice(context_->get_device_id(gpu));
-      cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
-    } CUERR
-    context_->sync_hard();
-  }
-
-  ~LocalGatherComm() {
-    for (auto buf : bufs_) cudaFree(buf); 
   }
   
   void ExecAsync() {
-    gather_->execAsync(srcs_, srcs_lens_, dst_, dst_len_, bufs_, bufs_lens_, send_counts_);
+    gather_->execAsync(srcs_, srcs_lens_, send_counts_, dst_, dst_len_);
   }
 
   void Sync() {
@@ -86,64 +72,7 @@ class LocalGatherComm : public SparseComm {
   data_t* dst_;
   size_t dst_len_; 
 
-  std::vector<data_t *> bufs_;
-  std::vector<size_t> bufs_lens_;
-
 }; // class LocalGatherComm 
-
-class LocalScatterComm : public SparseComm {
-  using data_t = float;
-
- public:
-  LocalScatterComm(std::string& planfile_name, const size_t num_gpu, data_t* src, const size_t src_len, 
-                  const std::vector<size_t>& send_counts, std::vector<data_t*> dsts, 
-                  const std::vector<size_t>& dsts_lens) : src_(src), src_len_(src_len),
-                  send_counts_(send_counts), dsts_(dsts), dsts_lens_(dsts_lens) {
-    auto transfer_plan = parse_plan(planfile_name.c_str());
-    gossip::scatter::verify_plan(transfer_plan);
-    CHECK(transfer_plan.valid());
-    CHECK_EQ(transfer_plan.num_gpus(), num_gpu);
-
-    context_ = std::make_unique<gossip::context_t>(num_gpu);
-    scatter_ = std::make_unique<gossip::scatter_t>(*context_, transfer_plan);
-    std::vector<size_t> bufs_lens_calc_scatter = scatter_->calcBufferLengths(send_counts_);
-
-    bufs_.resize(num_gpu);
-    bufs_lens_.resize(num_gpu);
-    for (int gpu = 0; gpu < num_gpu; ++gpu) {
-      bufs_lens_[gpu] = bufs_lens_calc_scatter[gpu];
-      cudaSetDevice(context_->get_device_id(gpu));
-      cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
-    } CUERR
-    context_->sync_hard();
-  }
-
-  ~LocalScatterComm() {
-    for (auto buf : bufs_) cudaFree(buf); 
-  }
-  
-  void ExecAsync() {
-    scatter_->execAsync(src_, src_len_, dsts_, dsts_lens_, bufs_, bufs_lens_, send_counts_);
-  }
-
-  void Sync() {
-    scatter_->sync();
-  }
-
- private:
-  std::unique_ptr<gossip::context_t> context_;
-  std::unique_ptr<gossip::scatter_t> scatter_;
-  data_t* src_;
-  size_t src_len_;
-  std::vector<size_t> send_counts_;
-  std::vector<data_t*> dsts_;
-  std::vector<size_t> dsts_lens_;
-
-  std::vector<data_t *> bufs_;
-  std::vector<size_t> bufs_lens_;
-
-}; // class LocalScatterComm
-
 
 
 } // namespace sparse

@@ -22,16 +22,26 @@ namespace sparse {
   embedBuffers: the addresses of all embedding buffers (could have variable length)
   denseBuffers: the addresses of all dense buffers (the length should be identical)
   embedBufferLens: the length of the embedding buffers (could have variable length)
+  denseDeltaBeforeReduceBuffers: the addresses of all dense layer delta before reduce buffers
+                                 (the length should be identical)
+  denseDeltaReducedBuffers: the addresses of all dense layer delta after reduce buffers
+                            (the length should be identical)  
   size: the length of a dense buffer (in bytes), it is equivalent for all GPUs
+  sizeDenseDelta: the length of a dense layer Delta buffer for reduceasync (in bytes), 
+                  it is equivalent for all GPUs
  */
 void bytepsSparseInit(std::vector<void*>& embedBuffers, 
-                      std::vector<void*>& denseBuffers, 
-                      std::vector<int>& embedBufferLens, 
-                      int size) {
+                      std::vector<void*>& denseBuffers,
+                      std::vector<int>& embedBufferLens,
+                      std::vector<void*>& denseDeltaBeforeReduceBuffers,
+                      std::vector<void*>& denseDeltaReducedBuffers,
+                      int size,
+                      int sizeDenseDelta) {
   BytePSSparseCommon::Init();
   CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   CHECK_EQ(embedBufferLens.size(), denseBuffers.size());
-  
+  CHECK_EQ(denseDeltaBeforeReduceBuffers.size(), denseDeltaReducedBuffers.size());
+
   // Init IPC stuff
   sharedMemoryInfo info;
   CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
@@ -71,6 +81,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // bytepsSparseInit() might be (unexpectedly) invoked multiple times
   _embedBuffers.clear();
   _denseBuffers.clear();
+  _denseDeltaBeforeReduceBuffers.clear();
+  _denseDeltaAfterReduceBuffers.clear();
 
   _embedBufferLens.clear();
   _embedBufferLens.resize(workerNum);
@@ -88,6 +100,12 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
+
+    // CUDA_CALL(cudaIpcGetMemHandle(
+    //   (cudaIpcMemHandle_t *)&shm->denseDeltaBeforeReduceMemHandle[i], denseDeltaBeforeReduceBuffers[i]));
+    // CUDA_CALL(cudaIpcGetMemHandle(
+    //   (cudaIpcMemHandle_t *)&shm->denseDeltaAfterReduceMemHandle[i], denseDeltaAfterReduceBuffers[i]));
+
     CUDA_CALL(cudaEventCreate(
         &event, cudaEventDisableTiming | cudaEventInterprocess));
     CUDA_CALL(cudaIpcGetEventHandle(
@@ -116,7 +134,13 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
     _cpuBuffers.push_back(_cpuBuffer);
   }
-  
+
+  // Similarly get CPU buffer for dense layer reduceasync
+  {
+    CUDA_CALL(cudaHostAlloc(
+        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+  }
+
   // Start the pslite instance
   if (!_ps && BytePSSparseCommon::IsDistributed()) {
     _ps = new ps::KVWorker<char>(0, 0);
@@ -178,6 +202,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Prepare gossip communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
+    if (i != 0) continue;
     std::vector<float*> srcs(localSize);
     std::vector<size_t> srcs_lens(localSize);
     std::vector<size_t> send_counts(localSize);
@@ -195,25 +220,11 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         planfile_name, localSize, srcs, srcs_lens, send_counts, dst, dst_len);
   }
 
-  _local_scatter_comms.resize(localSize);
-  for (int i = 0; i < localSize; i++) {
-    float* src = (float *)_denseBuffers[i];
-    size_t src_len = _denseBufferLength;
-    std::vector<float*> scatter_dsts(localSize);
-    std::vector<size_t> scatter_dsts_lens(localSize);
-    std::vector<size_t> scatter_send_counts(localSize);
-    for (int j = 0; j < localSize; j++) {
-      scatter_dsts[j] = (float*)_embedBuffers[j] + (i * _embedBufferLens[workerID][j] / localSize);
-      scatter_dsts_lens[j] = src_len / localSize;
-      scatter_send_counts[j] = src_len / localSize;
-    }
+  _denseDeltaBufferLength = sizeDenseDelta;
 
-    std::string planfile_name("scatter_plan_");
-    planfile_name += std::to_string(i) + std::string(".json");
-    _local_scatter_comms[i] = std::make_unique<LocalScatterComm>(
-        planfile_name, localSize, src, src_len, scatter_send_counts, scatter_dsts, scatter_dsts_lens);
-  }
-
+  // Start the DenseReduce loop
+  runDenseReduceLoop(_denseReduceLoop);
+  _denseReducer = new ::byteps::common::CpuReducer(nullptr);
 } 
 
 void bytepsSparseShutdown() {
@@ -226,6 +237,7 @@ void bytepsGather(int local_rank, cudaStream_t stream) {
   auto workerID = BytePSSparseCommon::GetWorkerID();
   auto workerNum = BytePSSparseCommon::GetNumWorker();
 
+  if (local_rank > 0) return; // debug
   _local_gather_comms[local_rank]->ExecAsync();
   _local_gather_comms[local_rank]->Sync();
 
@@ -237,11 +249,52 @@ void bytepsScatter(int local_rank, cudaStream_t stream) {
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerID = BytePSSparseCommon::GetWorkerID();
   void* baseSrcPtr = (void*)_denseBuffers[local_rank];
-
-  _local_scatter_comms[local_rank]->ExecAsync();
-  _local_scatter_comms[local_rank]->Sync();
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
+
+
+// Currently the implementation is blocking. Async means that API is used in the async
+// training of Wide and Deep model such as HugeCTR.
+
+
+// TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
+extern "C" void bytepsDenseReduceAsync(int local_rank, cudaStream_t stream) {
+  auto localSize = BytePSSparseCommon::GetLocalSize();
+  auto workerID = BytePSSparseCommon::GetWorkerID();
+  void* baseSrcPtr = (void*) (_denseDeltaBeforeReduceBuffers[local_rank]);
+  void* baseResultPtr = (void*) (_denseDeltaAfterReduceBuffers[local_rank]);
+
+  size_t buffer_size = _denseDeltaBufferLength;
+
+  // Create a local thread and related mutex to synchronnize.
+  std::mutex signal_mtx;
+  std::condition_variable signal_cv;
+  bool is_ready = false;
+
+  auto reduce_async_job = [& signal_mtx, & signal_cv, & is_ready, baseSrcPtr, baseResultPtr,
+                           buffer_size, stream]() {
+    // Copy dense layer's param delta D2H.
+    CUDA_CALL(cudaMemcpyAsync((void *)_cpuDenseDeltaBuffers, baseSrcPtr, buffer_size, cudaMemcpyDeviceToHost, stream));
+    CUDA_CALL(cudaStreamSynchronize(stream));
+
+    // CPU Work to reduce.
+    _denseReducer->sum(_cpuDenseLatestBuffers, _cpuDenseDeltaBuffers, _denseDeltaBufferLength /* in bytes*/, DataType::BYTEPS_FLOAT32);
+
+    // Copy dense layer's latest param H2D.
+    CUDA_CALL(cudaMemcpyAsync(baseResultPtr, _cpuDenseLatestBuffers, buffer_size, cudaMemcpyHostToDevice, stream));
+    CUDA_CALL(cudaStreamSynchronize(stream));
+
+    std::unique_lock<std::mutex> lck(signal_mtx);
+    is_ready = true;
+    signal_cv.notify_one();
+  };
+  _denseReduceLoop->add_worker(reduce_async_job);
+
+  std::unique_lock<std::mutex> lck(signal_mtx);
+  while (!is_ready)
+    signal_cv.wait(lck);
+}
+
 
 } // namespace sparse
 } // namespace byteps 
