@@ -204,8 +204,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     std::vector<size_t> scatter_send_counts(localSize);
     for (int j = 0; j < localSize; j++) {
       scatter_dsts[j] = (float*)_embedBuffers[j] + (i * _embedBufferLens[workerID][j] / localSize);
-      scatter_dsts_lens[j] = src_len / localSize;
-      scatter_send_counts[j] = src_len / localSize;
+      scatter_dsts_lens[j] = (localSize - i) * _embedBufferLens[workerID][j] / localSize;
+      scatter_send_counts[j] = _embedBufferLens[workerID][j] / localSize;
     }
 
     std::string planfile_name("scatter_plan_");
