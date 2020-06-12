@@ -30,7 +30,7 @@ ALL_DEPEND_OBJECTS = $(BUILD_DIR)/plan_parser.o \
 					 $(BUILD_DIR)/util.o \
 					 $(BUILD_DIR)/common.o 
 
-DEPEND_HEADERS = sparse.h communicator.h common.h util.h
+DEPEND_HEADERS = sparse.h communicator.h common.h util.h local_comm.h dist_comm.h
 				 
 
 .PHONY: all clean
