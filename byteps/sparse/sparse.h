@@ -21,8 +21,6 @@
 #include "common.h"
 #include "local_comm.h"
 #include "dist_comm.h"
-#include "loop.h"
-#include "cpu_reducer.h"
 
 namespace byteps {
 namespace sparse {
@@ -36,8 +34,6 @@ static std::vector<void*> _cpuBuffers;
 static size_t _denseBufferLen;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
-
-
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers,

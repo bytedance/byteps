@@ -2,6 +2,8 @@
 #define BYTEPS_SPARSE_DENSE_H
 
 // Communication APIs for the dense layers in a sparse model.
+#include "loop.h"
+#include "cpu_reducer.h"
 
 namespace byteps {
 namespace sparse {
