@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "sparse.h"
+#include "sparse_dense.h"
 #include "sparse.cuh"
 
 namespace byteps {
