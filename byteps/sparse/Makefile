@@ -37,9 +37,11 @@ BUILD_DIR = build
 ALL_DEPEND_OBJECTS = $(BUILD_DIR)/plan_parser.o \
 					 $(BUILD_DIR)/util.o \
 					 $(BUILD_DIR)/common.o \
-					 $(BUILD_DIR)/cpu_reducer.o
+					 $(BUILD_DIR)/cpu_reducer.o \
+					 $(BUILD_DIR)/queue_exec.o \
+					 $(BUILD_DIR)/loop.o \
 
-DEPEND_HEADERS = sparse.h communicator.h common.h util.h local_comm.h dist_comm.h loop.h queue_exec.h cpu_reducer.h
+DEPEND_HEADERS = sparse.h sparse.cuh communicator.h common.h util.h local_comm.h dist_comm.h loop.h queue_exec.h cpu_reducer.h
 
 .PHONY: all clean
 
@@ -53,6 +55,12 @@ $(BUILD_DIR)/sparse.o: $(BUILD_DIR) sparse.cu $(DEPEND_HEADERS) $(ALL_DEPEND_OBJ
 
 $(BUILD_DIR)/cpu_reducer.o: cpu_reducer.h cpu_reducer.cc
 	$(NVCC) $(NVCCFLAGS) -c cpu_reducer.cc -o $(BUILD_DIR)/cpu_reducer.o
+
+$(BUILD_DIR)/loop.o: loop.h loop.cc queue_exec.h queue_exec.cc
+	$(NVCC) $(NVCCFLAGS) -c loop.cc -o $(BUILD_DIR)/loop.o
+
+$(BUILD_DIR)/queue_exec.o: queue_exec.h queue_exec.cc
+	$(NVCC) $(NVCCFLAGS) -c queue_exec.cc -o $(BUILD_DIR)/queue_exec.o
 
 $(BUILD_DIR)/util.o: util.h util.cc
 	$(NVCC) $(NVCCFLAGS) -c util.cc -o $(BUILD_DIR)/util.o 
