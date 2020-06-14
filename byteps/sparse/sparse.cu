@@ -115,19 +115,17 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     _cpuBuffers.push_back(_cpuBuffer);
   }
   
-  // Start the pslite instance
+  // The followings are for the global coordination of 
+  // the embedding buffer length, which is equivalent to all-gather 
   auto ps = BytePSSparseCommon::GetPS();
-  if (BytePSSparseCommon::IsDistributed() && !ps) {
-    // Global coordination of the _embedBufferLens 
-    // which is equivalent to all-gather 
+  if (BytePSSparseCommon::IsDistributed()) {
+    CHECK(ps); // must init the pslite instance before
     std::vector<ps::SArray<char>> bufferLenSarrays;
     for (int i = 0; i < workerNum; i++) {
-      ps::SArray<char> tmp((char*)_embedBufferLens[i].data(), 
-                        workerNum * sizeof(int), 
-                        false);
+      ps::SArray<char> tmp(
+          (char*)_embedBufferLens[i].data(), localSize * sizeof(int), false);
       bufferLenSarrays.push_back(tmp);
     }
-
     std::vector<ps::SArray<ps::Key>> tmpKeys;
     std::vector<ps::SArray<int>> tmpLens;
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
@@ -138,7 +136,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       ps::SArray<ps::Key> keys(tmp1);
       tmpKeys.push_back(keys);
 
-      std::vector<int> tmp2(1, workerNum * sizeof(int));
+      std::vector<int> tmp2(1, localSize * sizeof(int));
       ps::SArray<int> lens(tmp2);
       tmpLens.push_back(lens);
     }
@@ -169,7 +167,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     }
   }
 
-  // Prepare gossip communication
+  // Prepare gossip-gather communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
     std::vector<float*> srcs(localSize);
@@ -189,6 +187,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         planfile_name, localSize, srcs, srcs_lens, send_counts, dst, dst_len);
   }
 
+  // Prepare gossip-scatter communication
   _local_scatter_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
     float* src = (float *)_denseBuffers[i];
