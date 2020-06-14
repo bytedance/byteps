@@ -19,7 +19,6 @@
 #include <cuda_runtime.h>
 #include <cstdlib>
 #include <unistd.h>
-#include "../common/global.h"
 #include "ps/ps.h"
 #include "util.h"
 

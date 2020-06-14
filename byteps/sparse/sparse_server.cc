@@ -55,27 +55,21 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
   } else { // pull 
     CHECK(_init_bufferLengths.find(key) != _init_bufferLengths.end()) << key;
     server->Response(req_meta, _init_bufferLengths[key]);
+
+    // sharedMemoryInfo info;
+    // CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0);
+    // auto shm = (volatile shmStruct *)info.addr;
   }
 }
 
-void InitServer() {
-  sharedMemoryInfo info;
-  BPS_CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0);
-  auto shm = (volatile shmStruct *)info.addr;
-
+void RunServer() {
+  LOG(INFO) << "Launch BytePS Server process for sparse training";
   // init ps-lite instance
   _byteps_server = new ps::KVServer<char>(0);
   _byteps_server->set_request_handle(BytepsSparseHandler<char>);
   ps::StartAsync(0, "byteps_server\0");
-  if (!Postoffice::Get()->is_recovery()) {
-    ps::Postoffice::Get()->Barrier(0,
+  ps::Postoffice::Get()->Barrier(0,
       ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-  }
-
-}
-
-void StopServer() {
-  // clean the server resource
   ps::Finalize(0, true);
   if (_byteps_server) {
     delete _byteps_server;
@@ -84,8 +78,7 @@ void StopServer() {
 }
 
 extern "C" void bytepsSparseServer() {
-  InitServer();
-  StopServer();
+  RunServer();
 }
 
 

@@ -835,7 +835,8 @@ def build_sparse_extension(build_ext, options):
     sparse_lib.extra_objects = options['EXTRA_OBJECTS']
     sparse_lib.library_dirs = options['LIBRARY_DIRS']
     sparse_lib.sources = options['SOURCES'] + \
-        ['byteps/sparse/sparse_server.cc'
+        ['byteps/sparse/sparse_server.cc',
+         'byteps/sparse/util.cc'
          ]
     sparse_lib.libraries = options['LIBRARIES']
 
