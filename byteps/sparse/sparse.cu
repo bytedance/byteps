@@ -68,12 +68,9 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       << "Shared memory processes: " << shm->nprocesses 
       << ", send buffers: " << embedBuffers.size();
 
-  // We need to manually we need to clear the containers because
-  // bytepsSparseInit() might be (unexpectedly) invoked multiple times
   _embedBuffers.assign(embedBuffers.begin(), embedBuffers.end());
   _denseBuffers.assign(denseBuffers.begin(), denseBuffers.end());
 
-  _localEmbedBufLens.clear();
   _localEmbedBufLens.resize(localSize);
   _globalTotalEmbedBufLens.resize(workerNum, 0);
 
@@ -125,7 +122,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
 
       // vals
       ps::SArray<char> tmp(
-          (char*)&_globalTotalEmbedBufLens[i], sizeof(int), false);
+          (char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), false);
       bufferLenSarrays.push_back(tmp);
       
       // keys
@@ -134,7 +131,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       tmpKeys.push_back(keys);
       
       // lens
-      std::vector<int> tmp2(1, localSize * sizeof(int));
+      std::vector<int> tmp2(1, sizeof(size_t));
       ps::SArray<int> lens(tmp2);
       tmpLens.push_back(lens);
     }
