@@ -182,19 +182,33 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   for (auto len : _globalTotalEmbedBufLens) accmul += len / globalSize;
   CHECK_EQ(accmul, _denseBufferLen) << accmul << " " << _denseBufferLen;
 
+  // Calc the global offset for the communication buffers
+  size_t global_offset = 0;
+  for (int id = 0; id < workerID; id++) {
+    global_offset += _globalTotalEmbedBufLens[id] / globalSize;
+  }
+
   // Prepare gossip-gather communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
     std::vector<float*> srcs(localSize);
     std::vector<size_t> srcs_lens(localSize);
     std::vector<size_t> send_counts(localSize);
+
     for (int j = 0; j < localSize; j++) {
-      srcs[j] = (float*)_embedBuffers[j] + (i * _localEmbedBufLens[j] / localSize);
-      srcs_lens[j] = (localSize - i) * _localEmbedBufLens[j] / localSize;
-      send_counts[j] = _localEmbedBufLens[j] / localSize;
+      srcs[j] = 
+          (float*)_embedBuffers[j] + 
+          _localEmbedBufLens[j] / globalSize * (i + localSize * workerID);
+
+      srcs_lens[j] = 
+          _localEmbedBufLens[j] / globalSize * 
+          (globalSize - (i + localSize * workerID));
+          
+      send_counts[j] = 
+          _localEmbedBufLens[j] / globalSize;
     }
-    float* dst = (float *)_denseBuffers[i];
-    size_t dst_len = _denseBufferLen;
+    float* dst = (float *)_denseBuffers[i] + global_offset;
+    size_t dst_len = _globalTotalEmbedBufLens[workerID] / globalSize;
 
     std::string planfile_name("gather_plan_");
     planfile_name += std::to_string(i) + std::string(".json");
@@ -205,21 +219,28 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Prepare gossip-scatter communication
   _local_scatter_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
-    float* src = (float *)_denseBuffers[i];
-    size_t src_len = _denseBufferLen;
-    std::vector<float*> scatter_dsts(localSize);
-    std::vector<size_t> scatter_dsts_lens(localSize);
-    std::vector<size_t> scatter_send_counts(localSize);
+    float* src = (float *)_denseBuffers[i] + global_offset;
+    size_t src_len = _globalTotalEmbedBufLens[workerID] / globalSize;
+    std::vector<float*> dsts(localSize);
+    std::vector<size_t> dsts_lens(localSize);
+    std::vector<size_t> send_counts(localSize);
     for (int j = 0; j < localSize; j++) {
-      scatter_dsts[j] = (float*)_embedBuffers[j] + (i * _localEmbedBufLens[j] / localSize);
-      scatter_dsts_lens[j] = (localSize - i) * _localEmbedBufLens[j] / localSize;
-      scatter_send_counts[j] = _localEmbedBufLens[j] / localSize;
+      dsts[j] = 
+          (float*)_embedBuffers[j] + 
+          _localEmbedBufLens[j] / globalSize * (i + localSize * workerID);
+
+      dsts_lens[j] = 
+          _localEmbedBufLens[j] / globalSize * 
+          (globalSize - (i + localSize * workerID));
+
+      send_counts[j] = 
+          _localEmbedBufLens[j] / globalSize;
     }
 
     std::string planfile_name("scatter_plan_");
     planfile_name += std::to_string(i) + std::string(".json");
     _local_scatter_comms[i] = std::make_unique<LocalScatterComm>(
-        planfile_name, localSize, src, src_len, scatter_send_counts, scatter_dsts, scatter_dsts_lens);
+        planfile_name, localSize, src, src_len, send_counts, dsts, dsts_lens);
   }
 
 } 
