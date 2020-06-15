@@ -29,14 +29,15 @@ enum OP { GATHER, SCATTER };
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
-static std::vector<std::vector<size_t>> _embedBufferLens; 
+static std::vector<size_t> _localEmbedBufLens; // per GPU (size: # GPUs)
+static std::vector<size_t> _globalTotalEmbedBufLens; // sum of _localEmbedBufLens (size: # workers)
 static std::vector<void*> _cpuBuffers;
 static size_t _denseBufferLen;
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
 
 // The following are extern APIs
-extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<int>& embedBufferLens, int size);
+extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<size_t>& embedBufferLens, size_t denseBufferLen);
 extern "C" void bytepsSparseShutdown();
 extern "C" void bytepsGatherExecAsync(int local_rank, cudaStream_t stream);
 extern "C" void bytepsScatterExecAsync(int local_rank, cudaStream_t stream);
