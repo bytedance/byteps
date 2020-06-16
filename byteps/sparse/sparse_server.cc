@@ -37,22 +37,22 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
 
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
 
-    size_t len = (size_t) req_data.vals.size();
+    int len = (int) req_data.vals.size();
     if (_init_bufferLengths.find(key) == _init_bufferLengths.end()) {
-      AllocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&req_data.keys[0], 1);
+      AllocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&key, 1);
       AllocMemoryAndCreateSarray(_init_bufferLengths[key].vals, recved, len);
       AllocMemoryAndCreateSarray(_init_bufferLengths[key].lens, (int*)&len, 1);
     }
 
-    LOG(INFO) << "key=" << key << "\t" 
+    LOG(INFO) << "receive push key=" << key << "\t" 
         << "len=" << len << "\t"
-        << ((int*)recved)[0] << " " << ((int*)recved)[1]
-        << "\n";
+        << ((size_t*)recved)[0] << " from sender=" << req_meta.sender << "\n";
     
     // send push response (empty payload)
     ps::KVPairs<char> res;
     server->Response(req_meta, res);
   } else { // pull 
+    LOG(INFO) << "receive pull key=" << key << " from sender=" << req_meta.sender;
     CHECK(_init_bufferLengths.find(key) != _init_bufferLengths.end()) << key;
     server->Response(req_meta, _init_bufferLengths[key]);
 
@@ -67,10 +67,9 @@ void RunServer() {
   // init ps-lite instance
   _byteps_server = new ps::KVServer<char>(0);
   _byteps_server->set_request_handle(BytepsSparseHandler<char>);
-  ps::StartAsync(0, "byteps_server\0");
-  ps::Postoffice::Get()->Barrier(0,
-      ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-  ps::Finalize(0, true);
+  ps::Start(0, "byteps_server\0");
+  // this Finalize will post a barrier
+  ps::Finalize(0, true); 
   if (_byteps_server) {
     delete _byteps_server;
     _byteps_server = nullptr;

@@ -121,18 +121,20 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       int server = i;
 
       // vals
-      ps::SArray<char> tmp(
-          (char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), false);
+      ps::SArray<char> tmp;
+      tmp.reset((char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), [](void *){});
       bufferLenSarrays.push_back(tmp);
       
       // keys
-      std::vector<ps::Key> tmp1(1, krs[server].begin() + key);
-      ps::SArray<ps::Key> keys(tmp1);
+      ps::Key ps_key = krs[server].begin() + key;
+      ps::SArray<ps::Key> keys;
+      keys.reset(&ps_key, 1, [](void *){});
       tmpKeys.push_back(keys);
       
       // lens
-      std::vector<int> tmp2(1, sizeof(size_t));
-      ps::SArray<int> lens(tmp2);
+      int ps_len = sizeof(size_t);
+      ps::SArray<int> lens;
+      lens.reset(&ps_len, 1, [](void *){});
       tmpLens.push_back(lens);
     }
 
@@ -144,12 +146,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       auto lens = tmpLens[server];
       ps->Wait(ps->ZPush(keys, vals, lens));
     }
-
-    // Call a barrier to sync across multiple workers. 
-    // In case that some workers finish push too fast, 
-    // and then pull from other workers too early
-    ps::Postoffice::Get()->Barrier(
-        0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
 
     // Pull the embedding buffer length of other workers
     for (int key = 0; key < workerNum; key++) {

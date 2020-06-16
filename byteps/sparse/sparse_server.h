@@ -52,7 +52,7 @@ void AllocMemoryAndCreateSarray(ps::SArray<T> sarr, T* addr, int count) {
   void* ptr;
   MallocAligned(&ptr, count * sizeof(T));
   memcpy(ptr, (void*)addr, count * sizeof(T));
-  sarr.reset((T*)ptr, count * sizeof(T), [](void *){});
+  sarr.reset((T*)ptr, count, [](void *){});
 }
 
 } // namespace sparse
