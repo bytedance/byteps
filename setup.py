@@ -835,7 +835,8 @@ def build_sparse_extension(build_ext, options):
     sparse_lib.extra_objects = options['EXTRA_OBJECTS']
     sparse_lib.library_dirs = options['LIBRARY_DIRS']
     sparse_lib.sources = options['SOURCES'] + \
-        ['byteps/sparse/sparse_server.cc'
+        ['byteps/sparse/sparse_server.cc',
+         'byteps/sparse/util.cc'
          ]
     sparse_lib.libraries = options['LIBRARIES']
 
@@ -967,7 +968,18 @@ class custom_build_ext(build_ext):
 
         if not int(os.environ.get('BYTEPS_WITHOUT_SPARSE', 0)):
             try:
+                # build sparse server
                 build_sparse_extension(self, options)
+
+                # build sparse libbyteps.so (for worker) 
+                make_dlib_process = subprocess.Popen('make', cwd='byteps/sparse',
+                                     stdout=sys.stdout, stderr=sys.stderr, shell=True)
+                make_dlib_process.communicate()
+                if make_dlib_process.returncode:
+                    raise DistutilsSetupError('An ERROR occured while running the '
+                                            'Makefile for the sparse library. '
+                                            'Exit code: {0}'.format(make_process.returncode))
+
                 built_plugins.append(True)
                 print('INFO: Sparse extension has been built successfully.')
             except:

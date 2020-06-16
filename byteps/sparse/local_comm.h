@@ -17,6 +17,7 @@
 #define BYTEPS_LOCAL_COMMUNICATOR_H
 
 #include "communicator.h"
+#include "util.h"
 
 namespace byteps {
 namespace sparse {
@@ -42,14 +43,14 @@ class LocalGatherComm : public SparseComm {
     bufs_lens_.resize(num_gpu);
     for (int gpu = 0; gpu < num_gpu; ++gpu) {
       bufs_lens_[gpu] = bufs_lens_calc_gather[gpu];
-      cudaSetDevice(context_->get_device_id(gpu));
-      cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
-    } CUERR
+      CUDA_CALL(cudaSetDevice(context_->get_device_id(gpu)));
+      CUDA_CALL(cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]));
+    } 
     context_->sync_hard();
   }
 
   ~LocalGatherComm() {
-    for (auto buf : bufs_) cudaFree(buf); 
+    for (auto buf : bufs_) CUDA_CALL(cudaFree(buf)); 
   }
   
   void ExecAsync() {
@@ -95,14 +96,14 @@ class LocalScatterComm : public SparseComm {
     bufs_lens_.resize(num_gpu);
     for (int gpu = 0; gpu < num_gpu; ++gpu) {
       bufs_lens_[gpu] = bufs_lens_calc_scatter[gpu];
-      cudaSetDevice(context_->get_device_id(gpu));
-      cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]);
-    } CUERR
+      CUDA_CALL(cudaSetDevice(context_->get_device_id(gpu)));
+      CUDA_CALL(cudaMalloc(&bufs_[gpu], sizeof(data_t)*bufs_lens_[gpu]));
+    } 
     context_->sync_hard();
   }
 
   ~LocalScatterComm() {
-    for (auto buf : bufs_) cudaFree(buf); 
+    for (auto buf : bufs_) CUDA_CALL(cudaFree(buf)); 
   }
   
   void ExecAsync() {

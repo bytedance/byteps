@@ -33,9 +33,9 @@ namespace sparse {
                   it is equivalent for all GPUs
  */
 void bytepsSparseInit(std::vector<void*>& embedBuffers, 
-                      std::vector<void*>& denseBuffers,
-                      std::vector<int>& embedBufferLens,
-                      int size) {
+                      std::vector<void*>& denseBuffers, 
+                      std::vector<size_t>& embedBufferLens, 
+                      size_t denseBufferLen) {
   BytePSSparseCommon::Init();
   CHECK_EQ(embedBuffers.size(), denseBuffers.size());
   CHECK_EQ(embedBufferLens.size(), denseBuffers.size());
@@ -49,6 +49,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerNum = BytePSSparseCommon::GetNumWorker();
   auto workerID = BytePSSparseCommon::GetWorkerID();
+  auto globalSize = localSize * workerNum;
 
   for (int i = 0; i < localSize; i++) {
     cudaDeviceProp prop;
@@ -75,16 +76,11 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       << "Shared memory processes: " << shm->nprocesses 
       << ", send buffers: " << embedBuffers.size();
 
-  // We need to manually we need to clear the containers because
-  // bytepsSparseInit() might be (unexpectedly) invoked multiple times
   _embedBuffers.assign(embedBuffers.begin(), embedBuffers.end());
   _denseBuffers.assign(denseBuffers.begin(), denseBuffers.end());
 
-  _embedBufferLens.clear();
-  _embedBufferLens.resize(workerNum);
-  for (int i = 0; i < workerNum; i++) {
-    _embedBufferLens[i].resize(localSize);
-  }
+  _localEmbedBufLens.resize(localSize);
+  _globalTotalEmbedBufLens.resize(workerNum, 0);
 
   // Allocate memory and an event for each process and fill 
   // the shared memory buffer with the IPC handles 
@@ -103,51 +99,48 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         (cudaIpcEventHandle_t *)&shm->eventHandle[i], event));
     
     // Store the buffers 
-    _embedBufferLens[workerID][i] = embedBufferLens[i]; // local buffer length
+    _localEmbedBufLens[i] = embedBufferLens[i]; // local buffer length
   }
-  _denseBufferLen = size;
+  _denseBufferLen = denseBufferLen;
 
-  // Check buffer length
-  int accuml = 0;
   for (int i = 0; i < localSize; i++) {
-    accuml += _embedBufferLens[workerID][i] / localSize;
+    _globalTotalEmbedBufLens[workerID] += _localEmbedBufLens[i];
   }
-  CHECK_EQ(accuml, _denseBufferLen) 
-      << accuml << " " << _denseBufferLen;
 
   // Need a continous CPU buffer for each GPU
   _cpuBuffers.clear();
   for (int i = 0; i < localSize; i++) {
     void* _cpuBuffer;
     CUDA_CALL(cudaHostAlloc(
-        &_cpuBuffer, size, cudaHostAllocMapped | cudaHostAllocPortable));
+        &_cpuBuffer, _denseBufferLen, cudaHostAllocMapped | cudaHostAllocPortable));
     _cpuBuffers.push_back(_cpuBuffer);
   }
-
-  // Start the pslite instance
+  
+  // The followings are for the global coordination of 
+  // the embedding buffer length, which is equivalent to all-gather 
   auto ps = BytePSSparseCommon::GetPS();
-  if (BytePSSparseCommon::IsDistributed() && !ps) {
-    // Global coordination of the _embedBufferLens 
-    // which is equivalent to all-gather 
-    std::vector<ps::SArray<char>> bufferLenSarrays;
-    for (int i = 0; i < workerNum; i++) {
-      ps::SArray<char> tmp((char*)_embedBufferLens[i].data(), 
-                        workerNum * sizeof(int), 
-                        false);
-      bufferLenSarrays.push_back(tmp);
-    }
-
+  if (BytePSSparseCommon::IsDistributed()) {
+    CHECK(ps); // must init the pslite instance before
     std::vector<ps::SArray<ps::Key>> tmpKeys;
     std::vector<ps::SArray<int>> tmpLens;
+    std::vector<ps::SArray<char>> bufferLenSarrays;
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
-    for (int key = 0; key < workerNum; key++) {
-      int server = key;
+    for (int i = 0; i < workerNum; i++) {
+      ps::Key key = i;
+      int server = i;
 
+      // vals
+      ps::SArray<char> tmp(
+          (char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), false);
+      bufferLenSarrays.push_back(tmp);
+      
+      // keys
       std::vector<ps::Key> tmp1(1, krs[server].begin() + key);
       ps::SArray<ps::Key> keys(tmp1);
       tmpKeys.push_back(keys);
-
-      std::vector<int> tmp2(1, workerNum * sizeof(int));
+      
+      // lens
+      std::vector<int> tmp2(1, sizeof(size_t));
       ps::SArray<int> lens(tmp2);
       tmpLens.push_back(lens);
     }
@@ -167,7 +160,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     ps::Postoffice::Get()->Barrier(
         0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
 
-    // Gather from other workers 
+    // Pull the embedding buffer length of other workers
     for (int key = 0; key < workerNum; key++) {
       int server = key;
       if (server == workerID) continue; // skip myself
@@ -178,20 +171,51 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     }
   }
 
-  // Prepare gossip communication
+  // For debug: print _localEmbedBufLens
+  std::cout << "_localEmbedBufLens:" << std::endl;
+  for (auto len : _localEmbedBufLens) 
+    std::cout << len << " ";
+  std::cout << std::endl;
+
+  // For debug: print _globalTotalEmbedBufLens
+  std::cout << "_globalTotalEmbedBufLens:" << std::endl;
+  for (auto len : _globalTotalEmbedBufLens) 
+    std::cout << len << " ";
+  std::cout << std::endl;
+
+  // Check the buffer size 
+  size_t accmul = 0;
+  for (auto len : _globalTotalEmbedBufLens) accmul += len / globalSize;
+  CHECK_EQ(accmul, _denseBufferLen) << accmul << " " << _denseBufferLen;
+
+  // Calc the global offset for the communication buffers
+  size_t global_offset = 0;
+  for (int id = 0; id < workerID; id++) {
+    global_offset += _globalTotalEmbedBufLens[id] / globalSize;
+  }
+
+  // Prepare gossip-gather communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
     if (i != 0) continue;
     std::vector<float*> srcs(localSize);
     std::vector<size_t> srcs_lens(localSize);
     std::vector<size_t> send_counts(localSize);
+
     for (int j = 0; j < localSize; j++) {
-      srcs[j] = (float*)_embedBuffers[j] + (i * _embedBufferLens[workerID][j] / localSize);
-      srcs_lens[j] = (localSize - i) * _embedBufferLens[workerID][j] / localSize;
-      send_counts[j] = _embedBufferLens[workerID][j] / localSize;
+      srcs[j] = 
+          (float*)_embedBuffers[j] + 
+          _localEmbedBufLens[j] / globalSize * (i + localSize * workerID);
+
+      srcs_lens[j] = 
+          _localEmbedBufLens[j] / globalSize * 
+          (globalSize - (i + localSize * workerID));
+          
+      send_counts[j] = 
+          _localEmbedBufLens[j] / globalSize;
     }
-    float* dst = (float *)_denseBuffers[i];
-    size_t dst_len = _denseBufferLen;
+    float* dst = (float *)_denseBuffers[i] + global_offset;
+    size_t dst_len = _globalTotalEmbedBufLens[workerID] / globalSize;
 
     std::string planfile_name("gather_plan_");
     planfile_name += std::to_string(i) + std::string(".json");
@@ -199,21 +223,35 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         planfile_name, localSize, srcs, srcs_lens, send_counts, dst, dst_len);
   }
 
+  // Prepare gossip-scatter communication
   _local_scatter_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
-    float* src = (float *)_denseBuffers[i];
-    size_t src_len = _denseBufferLen;
-    std::vector<float*> scatter_dsts(localSize);
-    std::vector<size_t> scatter_dsts_lens(localSize);
-    std::vector<size_t> scatter_send_counts(localSize);
+    float* src = (float *)_denseBuffers[i] + global_offset;
+    size_t src_len = _globalTotalEmbedBufLens[workerID] / globalSize;
+    std::vector<float*> dsts(localSize);
+    std::vector<size_t> dsts_lens(localSize);
+    std::vector<size_t> send_counts(localSize);
     for (int j = 0; j < localSize; j++) {
-      scatter_dsts[j] = (float*)_embedBuffers[j] + (i * _embedBufferLens[workerID][j] / localSize);
-      scatter_dsts_lens[j] = (localSize - i) * _embedBufferLens[workerID][j] / localSize;
-      scatter_send_counts[j] = _embedBufferLens[workerID][j] / localSize;
+      dsts[j] = 
+          (float*)_embedBuffers[j] + 
+          _localEmbedBufLens[j] / globalSize * (i + localSize * workerID);
+
+      dsts_lens[j] = 
+          _localEmbedBufLens[j] / globalSize * 
+          (globalSize - (i + localSize * workerID));
+
+      send_counts[j] = 
+          _localEmbedBufLens[j] / globalSize;
     }
+
+    std::string planfile_name("scatter_plan_");
+    planfile_name += std::to_string(i) + std::string(".json");
+    _local_scatter_comms[i] = std::make_unique<LocalScatterComm>(
+        planfile_name, localSize, src, src_len, send_counts, dsts, dsts_lens);
   }
 }
 
+<<<<<<< HEAD
 void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
                            std::vector<void*>& denseDeltaAfterReduceBuffers,
                            int sizeDenseDelta) {
@@ -313,6 +351,9 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
     _denseReducer = new ::byteps::common::CpuReducer(nullptr);
   } else{
     CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
+=======
+
+>>>>>>> f9963d2cf3b5b52dd539323b71cd0049d5e41b65
   }
 
   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
