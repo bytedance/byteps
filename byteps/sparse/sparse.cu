@@ -317,6 +317,13 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
 
   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
   _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffer);
+
+  bool is_ready = false;
+  std::mutex * mtx = new std::mutex();
+  std::condition_variable * signal_cv = new std::condition_variable();
+  _is_ready_per_gpu.push_back(is_ready);
+  _signal_mtx_per_gpu.push_back(mtx);
+  _signal_cv_per_gpu.push_back(signal_cv);
 }
 
 
@@ -356,13 +363,18 @@ void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
   _local_scatter_comms[local_rank]->ExecAsync();
 }
 
+void dense_ready_callback(int local_rank) {
+  // std::mutex signal_mtx = _signal_mtx_per_gpu.at(local_rank);
+  bool is_ready = _is_ready_per_gpu.at(local_rank);
+  // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
 
-// Currently the implementation is blocking. Async means that API is used in the async
-// training of Wide and Deep model such as HugeCTR.
-
+  std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
+  is_ready = true;
+  _signal_cv_per_gpu.at(local_rank)->notify_one();
+}
 
 // TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
-extern "C" void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
+void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerID = BytePSSparseCommon::GetWorkerID();
   void* baseSrcPtr = (void*) (_denseDeltaBeforeReduceBuffers[local_rank]);
@@ -371,11 +383,14 @@ extern "C" void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) 
   size_t buffer_size = _denseDeltaBufferLength;
 
   // Create a local thread and related mutex to synchronnize.
-  std::mutex signal_mtx;
-  std::condition_variable signal_cv;
-  bool is_ready = false;
+  _is_ready_per_gpu.at(local_rank) = false;
 
-  auto reduce_async_job = [& signal_mtx, & signal_cv, & is_ready, baseSrcPtr, baseResultPtr,
+  // std::mutex signal_mtx;
+  // bool is_ready = false;
+  // std::condition_variable signal_cv;
+
+  auto reduce_async_job = [//& signal_mtx, & signal_cv, & is_ready, 
+                           local_rank, baseSrcPtr, baseResultPtr,
                            buffer_size, stream]() {
     // Copy dense layer's param delta D2H.
     CUDA_CALL(cudaMemcpyAsync((void *)_cpuDenseDeltaBuffers, baseSrcPtr, buffer_size, cudaMemcpyDeviceToHost, stream));
@@ -388,16 +403,21 @@ extern "C" void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) 
     CUDA_CALL(cudaMemcpyAsync(baseResultPtr, _cpuDenseLatestBuffers, buffer_size, cudaMemcpyHostToDevice, stream));
     CUDA_CALL(cudaStreamSynchronize(stream));
 
-    std::unique_lock<std::mutex> lck(signal_mtx);
-    is_ready = true;
-    signal_cv.notify_one();
+    dense_ready_callback(local_rank);
   };
   _denseReduceLoop->add_worker(reduce_async_job);
-
-  std::unique_lock<std::mutex> lck(signal_mtx);
-  while (!is_ready)
-    signal_cv.wait(lck);
 }
+
+void bytepsDenseSynchronize(int local_rank, cudaStream_t stream) {
+  bool is_ready = _is_ready_per_gpu.at(local_rank);
+  // auto signal_mtx = _signal_mtx_per_gpu.at(local_rank);
+  // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
+
+  std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
+  while (!is_ready)
+    _signal_cv_per_gpu.at(local_rank)->wait(lck);
+}
+
 
 } // namespace sparse
 } // namespace byteps 
