@@ -251,7 +251,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
 }
 
-<<<<<<< HEAD
 void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
                            std::vector<void*>& denseDeltaAfterReduceBuffers,
                            int sizeDenseDelta) {
@@ -351,9 +350,6 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
     _denseReducer = new ::byteps::common::CpuReducer(nullptr);
   } else{
     CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
-=======
-
->>>>>>> f9963d2cf3b5b52dd539323b71cd0049d5e41b65
   }
 
   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
