@@ -24,13 +24,7 @@ namespace sparse {
   embedBuffers: the addresses of all embedding buffers (could have variable length)
   denseBuffers: the addresses of all dense buffers (the length should be identical)
   embedBufferLens: the length of the embedding buffers (could have variable length)
-  denseDeltaBeforeReduceBuffers: the addresses of all dense layer delta before reduce buffers
-                                 (the length should be identical)
-  denseDeltaReducedBuffers: the addresses of all dense layer delta after reduce buffers
-                            (the length should be identical)  
   size: the length of a dense buffer (in bytes), it is equivalent for all GPUs
-  sizeDenseDelta: the length of a dense layer Delta buffer for reduceasync (in bytes), 
-                  it is equivalent for all GPUs
  */
 void bytepsSparseInit(std::vector<void*>& embedBuffers, 
                       std::vector<void*>& denseBuffers, 
@@ -197,7 +191,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Prepare gossip-gather communication
   _local_gather_comms.resize(localSize);
   for (int i = 0; i < localSize; i++) {
-    if (i != 0) continue;
     std::vector<float*> srcs(localSize);
     std::vector<size_t> srcs_lens(localSize);
     std::vector<size_t> send_counts(localSize);
@@ -374,7 +367,6 @@ void bytepsGatherExecAsync(int local_rank, cudaStream_t stream) {
   auto workerID = BytePSSparseCommon::GetWorkerID();
   auto workerNum = BytePSSparseCommon::GetNumWorker();
 
-  if (local_rank > 0) return; // debug
   _local_gather_comms[local_rank]->ExecAsync();
 }
 
@@ -414,8 +406,8 @@ void dense_ready_callback(int local_rank) {
 void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerID = BytePSSparseCommon::GetWorkerID();
-  void* baseSrcPtr = (void*) (_denseDeltaBeforeReduceBuffers[local_rank]);
-  void* baseResultPtr = (void*) (_denseDeltaAfterReduceBuffers[local_rank]);
+  void* baseSrcPtr = (void*) (_denseDeltaBeforeReduceBuffers.at(local_rank));
+  void* baseResultPtr = (void*) (_denseDeltaAfterReduceBuffers.at(local_rank));
 
   size_t buffer_size = _denseDeltaBufferLength;
 

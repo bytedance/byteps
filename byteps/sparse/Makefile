@@ -2,10 +2,18 @@ NVCC=nvcc
 NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
 
-NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
+NVCCFLAGS = $(NVCCGENCODE) -g \
+	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
-	# -include ../common/cpu_reducer.h -include ../common/common.h -include ../common/logging.h \
+	
+
+
+# NVCCFLAGS = $(NVCCGENCODE) -O3 
+# 	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
+# 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
+# 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
+
 
 # CC = gcc
 
