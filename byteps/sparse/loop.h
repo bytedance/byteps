@@ -17,7 +17,8 @@ void runDenseReduceLoop(QueueExecLoop *& queue_loop_ptr);
 void runDenseReducePipeline(MemcpyD2HQueueExecLoop *& _denseD2HLoop,
                             CPUReduceQueueExecLoop *& _denseReduceLoop,
                             MemcpyH2DQueueExecLoop *& _denseH2DLoop,
-                            ::byteps::common::CpuReducer * cpuReducer);
+                            ::byteps::common::CpuReducer * cpuReducer,
+                            std::mutex * _mtx_DenseLatestBuffers);
 
 } // namespace sparse
 } // namespace byteps 

@@ -11,10 +11,11 @@ void runDenseReduceLoop(QueueExecLoop *& queue_loop_ptr) {
 void runDenseReducePipeline(MemcpyD2HQueueExecLoop *& denseD2HLoop,
                             CPUReduceQueueExecLoop *& denseReduceLoop,
                             MemcpyH2DQueueExecLoop *& denseH2DLoop,
-                            ::byteps::common::CpuReducer * cpuReducer) {
+                            ::byteps::common::CpuReducer * cpuReducer,
+                            std::mutex * mtx_DenseLatestBuffers) {
   denseD2HLoop = MemcpyD2HQueueExecLoop::init_loop();
-  denseReduceLoop = CPUReduceQueueExecLoop::init_loop(cpuReducer);
-  denseH2DLoop = MemcpyH2DQueueExecLoop::init_loop();
+  denseReduceLoop = CPUReduceQueueExecLoop::init_loop(cpuReducer, mtx_DenseLatestBuffers);
+  denseH2DLoop = MemcpyH2DQueueExecLoop::init_loop(mtx_DenseLatestBuffers);
 
   // Link exec_loops into a pipeline by setting downstream. Must explicitly set nullptr
   // as downstrea for the end stage.

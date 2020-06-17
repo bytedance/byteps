@@ -89,13 +89,15 @@ void PredefinedQueueExecLoop::set_downstream(PredefinedQueueExecLoop * downstrea
 
 void MemcpyH2DQueueExecLoop::predefined_work(DenseTask task) {
   // Copy dense layer's param delta H2D.
+  std::unique_lock<std::mutex> lck(* mtx_DenseLatestBuffers_);
+
   CUDA_CALL(cudaMemcpyAsync(task.baseResultPtr, task.cpuDenseLatestPtr,
                             task.buffer_size, cudaMemcpyHostToDevice, task.streamH2D));
   CUDA_CALL(cudaStreamSynchronize(task.streamH2D));
 }
 
-MemcpyH2DQueueExecLoop * MemcpyH2DQueueExecLoop::init_loop(){
-  auto loop = new MemcpyH2DQueueExecLoop();
+MemcpyH2DQueueExecLoop * MemcpyH2DQueueExecLoop::init_loop(std::mutex * mtx_DenseLatestBuffers){
+  auto loop = new MemcpyH2DQueueExecLoop(mtx_DenseLatestBuffers);
   loop->start_executors();
   return loop;
 }
@@ -103,12 +105,14 @@ MemcpyH2DQueueExecLoop * MemcpyH2DQueueExecLoop::init_loop(){
 //********** CPUReduceQueueExecLoop **********//
 
 void CPUReduceQueueExecLoop::predefined_work(DenseTask task) {
-  // CPU Work to reduce.
+  // CPU Work to reduce, cpuDenseLatestPtr requires a lock.
+  std::unique_lock<std::mutex> lck(* mtx_DenseLatestBuffers_);
   _loopdenseReducer->sum(task.cpuDenseLatestPtr, task.cpuDenseDeltaPtr, task.buffer_size /* in bytes*/, DataType::BYTEPS_FLOAT32);
 }
 
-CPUReduceQueueExecLoop * CPUReduceQueueExecLoop::init_loop(::byteps::common::CpuReducer* denseReducer){
-  auto loop = new CPUReduceQueueExecLoop(denseReducer);
+CPUReduceQueueExecLoop * CPUReduceQueueExecLoop::init_loop(
+    ::byteps::common::CpuReducer* denseReducer, std::mutex * mtx_DenseLatestBuffers) {
+  auto loop = new CPUReduceQueueExecLoop(denseReducer, mtx_DenseLatestBuffers);
   loop->start_executors();
   return loop;
 }

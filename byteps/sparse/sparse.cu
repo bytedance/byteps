@@ -352,7 +352,7 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
 
     // Start the 3-stage pipeline: D2H -> CpuReduce -> H2D
     _denseReducer = new ::byteps::common::CpuReducer(nullptr);
-    runDenseReducePipeline(_denseD2HLoop, _denseReduceLoop, _denseH2DLoop, _denseReducer);
+    runDenseReducePipeline(_denseD2HLoop, _denseReduceLoop, _denseH2DLoop, _denseReducer, _mtx_DenseLatestBuffers);
   } else{
     CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
   }
