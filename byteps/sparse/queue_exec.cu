@@ -1,4 +1,5 @@
 #include "queue_exec.h"
+#include <iostream>
 
 namespace byteps {
 namespace sparse {
@@ -67,10 +68,14 @@ QueueExecLoop* QueueExecLoop::init_loop() {
 void PredefinedQueueExecLoop::add_predefined_worker(DenseTask task){
   std::function<void()> job = [this, task] () {
     predefined_work(task);
-    if (downstream_ != nullptr)
+    if (downstream_ != nullptr){
+      // std::cout << "Add downstream work." << std::endl;
       downstream_->add_predefined_worker(task);
-    else
+    }
+    else{
+      // std::cout << "No downstream, doing all finish callback." << std::endl;
       task.allFinishCallback(task.local_rank);
+    }
   };
   add_worker(job);
 }
@@ -112,6 +117,7 @@ CPUReduceQueueExecLoop * CPUReduceQueueExecLoop::init_loop(::byteps::common::Cpu
 
 void MemcpyD2HQueueExecLoop::predefined_work(DenseTask task) {
   // Copy dense layer's latest param D2H.
+  // *(int*)0 = 0;
   CUDA_CALL(cudaMemcpyAsync(task.cpuDenseDeltaPtr, task.baseSrcPtr,
                             task.buffer_size, cudaMemcpyDeviceToHost, task.streamD2H));
   CUDA_CALL(cudaStreamSynchronize(task.streamD2H));

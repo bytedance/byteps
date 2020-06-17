@@ -342,6 +342,10 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
     _denseDeltaBufferLength = sizeDenseDelta;
     _mtx_DenseLatestBuffers = new std::mutex();
 
+    // Allocate latest parameter buffer.
+    CUDA_CALL(cudaHostAlloc(
+      &_cpuDenseLatestBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+
     // Start the DenseReduce loop
     // _denseReducer = new ::byteps::common::CpuReducer(nullptr);
     // runDenseReduceLoop(_denseReduceLoop);
@@ -405,15 +409,14 @@ void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
   _local_scatter_comms[local_rank]->ExecAsync();
 }
 
-void dense_ready_callback(int local_rank) {
-  // std::mutex signal_mtx = _signal_mtx_per_gpu.at(local_rank);
-  bool is_ready = _is_ready_per_gpu.at(local_rank);
-  // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
+// void dense_ready_callback(int local_rank) {
+//   // std::mutex signal_mtx = _signal_mtx_per_gpu.at(local_rank);
+//   // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
 
-  std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
-  is_ready = true;
-  _signal_cv_per_gpu.at(local_rank)->notify_one();
-}
+//   std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
+//   _is_ready_per_gpu.at(local_rank) = true;
+//   _signal_cv_per_gpu.at(local_rank)->notify_one();
+// }
 
 // TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
 void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
@@ -445,6 +448,13 @@ void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
   // };
   // _denseReduceLoop->add_worker(reduce_async_job);
 
+  auto dense_ready_callback = 
+    [] (int local_rank) {
+    std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
+    _is_ready_per_gpu.at(local_rank) = true;
+    _signal_cv_per_gpu.at(local_rank)->notify_one();
+  };
+
   DenseTask task;
   {
     task.workerID = workerID;
@@ -464,12 +474,11 @@ void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
 }
 
 void bytepsDenseSynchronize(int local_rank, cudaStream_t stream) {
-  bool is_ready = _is_ready_per_gpu.at(local_rank);
   // auto signal_mtx = _signal_mtx_per_gpu.at(local_rank);
   // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
 
   std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
-  while (!is_ready)
+  while (!_is_ready_per_gpu.at(local_rank))
     _signal_cv_per_gpu.at(local_rank)->wait(lck);
 }
 
