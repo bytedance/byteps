@@ -83,10 +83,10 @@ void PredefinedQueueExecLoop::set_downstream(PredefinedQueueExecLoop * downstrea
 //********** MemcpyH2DQueueExecLoop **********//
 
 void MemcpyH2DQueueExecLoop::predefined_work(DenseTask task) {
-  // Copy dense layer's param delta D2H.
-  CUDA_CALL(cudaMemcpyAsync(task.cpuDenseDeltaPtr, task.baseSrcPtr,
-                            task.buffer_size, cudaMemcpyDeviceToHost, task.streamD2H));
-  CUDA_CALL(cudaStreamSynchronize(task.streamD2H));
+  // Copy dense layer's param delta H2D.
+  CUDA_CALL(cudaMemcpyAsync(task.baseResultPtr, task.cpuDenseLatestPtr,
+                            task.buffer_size, cudaMemcpyHostToDevice, task.streamH2D));
+  CUDA_CALL(cudaStreamSynchronize(task.streamH2D));
 }
 
 MemcpyH2DQueueExecLoop * MemcpyH2DQueueExecLoop::init_loop(){
@@ -111,9 +111,9 @@ CPUReduceQueueExecLoop * CPUReduceQueueExecLoop::init_loop(::byteps::common::Cpu
 //********** MemcpyD2HQueueExecLoop **********//
 
 void MemcpyD2HQueueExecLoop::predefined_work(DenseTask task) {
-  // Copy dense layer's latest param H2D.
-  CUDA_CALL(cudaMemcpyAsync(task.baseResultPtr, task.cpuDenseLatestPtr, 
-                            task.buffer_size, cudaMemcpyHostToDevice, task.streamD2H));
+  // Copy dense layer's latest param D2H.
+  CUDA_CALL(cudaMemcpyAsync(task.cpuDenseDeltaPtr, task.baseSrcPtr,
+                            task.buffer_size, cudaMemcpyDeviceToHost, task.streamD2H));
   CUDA_CALL(cudaStreamSynchronize(task.streamD2H));
 }
 

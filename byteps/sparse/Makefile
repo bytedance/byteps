@@ -8,7 +8,6 @@ NVCCFLAGS = $(NVCCGENCODE) -g \
 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
 	
 
-
 # NVCCFLAGS = $(NVCCGENCODE) -O3 
 # 	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
 # 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \

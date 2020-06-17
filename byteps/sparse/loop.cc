@@ -4,13 +4,13 @@
 namespace byteps {
 namespace sparse {
 
-void runDenseReduceLoop(QueueExecLoop * queue_loop_ptr) {
+void runDenseReduceLoop(QueueExecLoop *& queue_loop_ptr) {
   queue_loop_ptr = QueueExecLoop::init_loop();
 }
 
-void runDenseReducePipeline(MemcpyD2HQueueExecLoop * denseD2HLoop,
-                            CPUReduceQueueExecLoop * denseReduceLoop,
-                            MemcpyH2DQueueExecLoop * denseH2DLoop,
+void runDenseReducePipeline(MemcpyD2HQueueExecLoop *& denseD2HLoop,
+                            CPUReduceQueueExecLoop *& denseReduceLoop,
+                            MemcpyH2DQueueExecLoop *& denseH2DLoop,
                             ::byteps::common::CpuReducer * cpuReducer) {
   denseD2HLoop = MemcpyD2HQueueExecLoop::init_loop();
   denseReduceLoop = CPUReduceQueueExecLoop::init_loop(cpuReducer);

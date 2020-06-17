@@ -26,7 +26,7 @@ class QueueExecLoop {
   // This should be only called at destructor or during test.
   void stop_executors();
 
- protected:
+//  protected:
   QueueExecLoop() : running_(true) {}
   
   ~QueueExecLoop() {
@@ -71,7 +71,7 @@ class PredefinedQueueExecLoop : public QueueExecLoop{
 
   void set_downstream(PredefinedQueueExecLoop * downstream);
 
- protected:
+//  protected:
   PredefinedQueueExecLoop() : QueueExecLoop() {}
 
  private:

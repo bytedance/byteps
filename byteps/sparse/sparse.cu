@@ -16,6 +16,7 @@
 #include "sparse.h"
 #include "sparse_dense.h"
 #include "sparse.cuh"
+#include <iostream>
 
 namespace byteps {
 namespace sparse {
@@ -334,6 +335,8 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
   auto workerNum = BytePSSparseCommon::GetNumWorker();
   auto workerID = BytePSSparseCommon::GetWorkerID();
   assert((device_id < localSize) && "Device id must be within local gpu size.");
+
+  std::cout << "Init BytePS Sparse for dense layers: Device" << device_id << std::endl;
 
   if (device_id == 0){
     _denseDeltaBufferLength = sizeDenseDelta;
