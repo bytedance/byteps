@@ -11,12 +11,17 @@ namespace sparse {
 // Buffers for dense layers when calling DenseReduceAsync
 static std::vector<void*> _denseDeltaBeforeReduceBuffers;   // In GPU
 static std::vector<void*> _denseDeltaAfterReduceBuffers;    // In GPU
-static void* _cpuDenseDeltaBuffers;
+
+static std::vector<void*> _cpuDenseDeltaBuffers;
+static std::mutex * _mtx_DenseLatestBuffers;
 static void* _cpuDenseLatestBuffers;
 
 static size_t _denseDeltaBufferLength;  // Unit in bytes.
 
-static QueueExecLoop* _denseReduceLoop;
+// static QueueExecLoop* _denseReduceLoop;
+static MemcpyD2HQueueExecLoop* _denseD2HLoop;
+static CPUReduceQueueExecLoop* _denseReduceLoop;
+static MemcpyH2DQueueExecLoop* _denseH2DLoop;
 static ::byteps::common::CpuReducer* _denseReducer;
 
 // The mutex for each GPU to access async reduce readiness.
@@ -29,9 +34,9 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
                                             void* denseDeltaBeforeReduceBuffer,
                                             void* denseDeltaAfterReduceBuffer,
                                             int sizeDenseDelta);
-extern "C" void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
-                                      std::vector<void*>& denseDeltaAfterReduceBuffers,
-                                      int sizeDenseDelta);
+// extern "C" void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
+//                                       std::vector<void*>& denseDeltaAfterReduceBuffers,
+//                                       int sizeDenseDelta);
 extern "C" void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream);
 extern "C"  void bytepsDenseSynchronize(int local_rank, cudaStream_t stream);
 

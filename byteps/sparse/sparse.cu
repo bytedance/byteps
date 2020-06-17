@@ -244,6 +244,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
 }
 
+/*
 void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
                            std::vector<void*>& denseDeltaAfterReduceBuffers,
                            int sizeDenseDelta) {
@@ -323,6 +324,7 @@ void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
   runDenseReduceLoop(_denseReduceLoop);
   _denseReducer = new ::byteps::common::CpuReducer(nullptr);
 }
+*/
 
 extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
                                             void* denseDeltaBeforeReduceBuffer,
@@ -335,16 +337,24 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
 
   if (device_id == 0){
     _denseDeltaBufferLength = sizeDenseDelta;
-    // Get CPU buffer for dense layer reduceasync
-    CUDA_CALL(cudaHostAlloc(
-        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+    _mtx_DenseLatestBuffers = new std::mutex();
+
     // Start the DenseReduce loop
-    runDenseReduceLoop(_denseReduceLoop);
+    // _denseReducer = new ::byteps::common::CpuReducer(nullptr);
+    // runDenseReduceLoop(_denseReduceLoop);
+
+    // Start the 3-stage pipeline: D2H -> CpuReduce -> H2D
     _denseReducer = new ::byteps::common::CpuReducer(nullptr);
+    runDenseReducePipeline(_denseD2HLoop, _denseReduceLoop, _denseH2DLoop, _denseReducer);
   } else{
     CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
   }
 
+  // Get CPU buffer for dense layer reduceasync
+  void * _cpuDenseDeltaBuffers_per_gpu;
+  CUDA_CALL(cudaHostAlloc(
+    &_cpuDenseDeltaBuffers_per_gpu, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
+  _cpuDenseDeltaBuffers.push_back(_cpuDenseDeltaBuffers_per_gpu);
   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
   _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffer);
 
@@ -414,27 +424,40 @@ void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
   // Create a local thread and related mutex to synchronnize.
   _is_ready_per_gpu.at(local_rank) = false;
 
-  // std::mutex signal_mtx;
-  // bool is_ready = false;
-  // std::condition_variable signal_cv;
+  // auto reduce_async_job = [//& signal_mtx, & signal_cv, & is_ready, 
+  //                          local_rank, baseSrcPtr, baseResultPtr,
+  //                          buffer_size, stream]() {
+  //   // Copy dense layer's param delta D2H.
+  //   CUDA_CALL(cudaMemcpyAsync((void *)_cpuDenseDeltaBuffers, baseSrcPtr, buffer_size, cudaMemcpyDeviceToHost, stream));
+  //   CUDA_CALL(cudaStreamSynchronize(stream));
 
-  auto reduce_async_job = [//& signal_mtx, & signal_cv, & is_ready, 
-                           local_rank, baseSrcPtr, baseResultPtr,
-                           buffer_size, stream]() {
-    // Copy dense layer's param delta D2H.
-    CUDA_CALL(cudaMemcpyAsync((void *)_cpuDenseDeltaBuffers, baseSrcPtr, buffer_size, cudaMemcpyDeviceToHost, stream));
-    CUDA_CALL(cudaStreamSynchronize(stream));
+  //   // CPU Work to reduce.
+  //   _denseReducer->sum(_cpuDenseLatestBuffers, _cpuDenseDeltaBuffers, _denseDeltaBufferLength /* in bytes*/, DataType::BYTEPS_FLOAT32);
 
-    // CPU Work to reduce.
-    _denseReducer->sum(_cpuDenseLatestBuffers, _cpuDenseDeltaBuffers, _denseDeltaBufferLength /* in bytes*/, DataType::BYTEPS_FLOAT32);
+  //   // Copy dense layer's latest param H2D.
+  //   CUDA_CALL(cudaMemcpyAsync(baseResultPtr, _cpuDenseLatestBuffers, buffer_size, cudaMemcpyHostToDevice, stream));
+  //   CUDA_CALL(cudaStreamSynchronize(stream));
 
-    // Copy dense layer's latest param H2D.
-    CUDA_CALL(cudaMemcpyAsync(baseResultPtr, _cpuDenseLatestBuffers, buffer_size, cudaMemcpyHostToDevice, stream));
-    CUDA_CALL(cudaStreamSynchronize(stream));
+  //   dense_ready_callback(local_rank);
+  // };
+  // _denseReduceLoop->add_worker(reduce_async_job);
 
-    dense_ready_callback(local_rank);
-  };
-  _denseReduceLoop->add_worker(reduce_async_job);
+  DenseTask task;
+  {
+    task.workerID = workerID;
+    task.local_rank = local_rank;
+    task.buffer_size = buffer_size; // In bytes.
+    task.streamH2D = stream;
+    task.streamD2H = stream; // TODO(chengyu.dai): separate the streams for two directions.
+
+    task.baseSrcPtr = baseSrcPtr;
+    task.cpuDenseDeltaPtr = (void *) (_cpuDenseDeltaBuffers.at(local_rank));
+    task.cpuDenseLatestPtr = _cpuDenseLatestBuffers;
+    task.baseResultPtr = baseResultPtr;
+
+    task.allFinishCallback = dense_ready_callback;
+  }
+  _denseD2HLoop->add_predefined_worker(task);
 }
 
 void bytepsDenseSynchronize(int local_rank, cudaStream_t stream) {

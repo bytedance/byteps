@@ -3,7 +3,7 @@ NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
 
 NVCCFLAGS = $(NVCCGENCODE) -g \
-	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
+	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC,-pthread" -Wreorder -lineinfo \
 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
 	
@@ -64,11 +64,11 @@ $(BUILD_DIR)/sparse.o: $(BUILD_DIR) sparse.cu $(DEPEND_HEADERS) $(ALL_DEPEND_OBJ
 $(BUILD_DIR)/cpu_reducer.o: cpu_reducer.h cpu_reducer.cc
 	$(NVCC) $(NVCCFLAGS) -c cpu_reducer.cc -o $(BUILD_DIR)/cpu_reducer.o
 
-$(BUILD_DIR)/loop.o: loop.h loop.cc queue_exec.h queue_exec.cc
+$(BUILD_DIR)/loop.o: loop.h loop.cc queue_exec.h queue_exec.cu
 	$(NVCC) $(NVCCFLAGS) -c loop.cc -o $(BUILD_DIR)/loop.o
 
-$(BUILD_DIR)/queue_exec.o: queue_exec.h queue_exec.cc
-	$(NVCC) $(NVCCFLAGS) -c queue_exec.cc -o $(BUILD_DIR)/queue_exec.o
+$(BUILD_DIR)/queue_exec.o: queue_exec.h queue_exec.cu
+	$(NVCC) $(NVCCFLAGS) -c queue_exec.cu -o $(BUILD_DIR)/queue_exec.o
 
 $(BUILD_DIR)/util.o: util.h util.cc
 	$(NVCC) $(NVCCFLAGS) -c util.cc -o $(BUILD_DIR)/util.o 
