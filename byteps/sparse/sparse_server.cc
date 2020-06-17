@@ -39,7 +39,7 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
 
     int len = (int) req_data.vals.size();
     if (_init_bufferLengths.find(key) == _init_bufferLengths.end()) {
-      AllocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&key, 1);
+      AllocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&req_data.keys[0], 1);
       AllocMemoryAndCreateSarray(_init_bufferLengths[key].vals, recved, len);
       AllocMemoryAndCreateSarray(_init_bufferLengths[key].lens, (int*)&len, 1);
     }
@@ -56,19 +56,22 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
     CHECK(_init_bufferLengths.find(key) != _init_bufferLengths.end()) << key;
     server->Response(req_meta, _init_bufferLengths[key]);
 
-    // sharedMemoryInfo info;
-    // CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0);
-    // auto shm = (volatile shmStruct *)info.addr;
   }
 }
 
 void RunServer() {
   LOG(INFO) << "Launch BytePS Server process for sparse training";
+
+  ps::Start(0, "byteps_server\0");
   // init ps-lite instance
   _byteps_server = new ps::KVServer<char>(0);
   _byteps_server->set_request_handle(BytepsSparseHandler<char>);
-  ps::Start(0, "byteps_server\0");
-  // this Finalize will post a barrier
+
+  // post a barrier to sync the global buffer length
+  ps::Postoffice::Get()->Barrier(
+      0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+
+  // this Finalize will also post a barrier
   ps::Finalize(0, true); 
   if (_byteps_server) {
     delete _byteps_server;

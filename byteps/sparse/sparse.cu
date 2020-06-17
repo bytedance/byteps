@@ -112,51 +112,64 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   auto ps = BytePSSparseCommon::GetPS();
   if (BytePSSparseCommon::IsDistributed()) {
     CHECK(ps); // must init the pslite instance before
-    std::vector<ps::SArray<ps::Key>> tmpKeys;
-    std::vector<ps::SArray<int>> tmpLens;
-    std::vector<ps::SArray<char>> bufferLenSarrays;
+    
+    // keys
+    std::vector<ps::Key> pskeys(workerNum);
+    std::vector<ps::SArray<ps::Key>> keys_array; 
+
+    // lens
+    std::vector<int> pslens(workerNum);
+    std::vector<ps::SArray<int>> lens_array; 
+
+    // vals
+    std::vector<ps::SArray<char>> vals_array; 
+
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
     for (int i = 0; i < workerNum; i++) {
       ps::Key key = i;
       int server = i;
-
-      // vals
-      ps::SArray<char> tmp;
-      tmp.reset((char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), [](void *){});
-      bufferLenSarrays.push_back(tmp);
       
-      // keys
-      ps::Key ps_key = krs[server].begin() + key;
+      // keys 
+      pskeys[i] = krs[server].begin() + key;
       ps::SArray<ps::Key> keys;
-      keys.reset(&ps_key, 1, [](void *){});
-      tmpKeys.push_back(keys);
+      keys.reset(&pskeys[i], 1, [](void *){});
+      keys_array.push_back(keys);
       
-      // lens
-      int ps_len = sizeof(size_t);
+      // lens 
+      pslens[i] = sizeof(size_t);
       ps::SArray<int> lens;
-      lens.reset(&ps_len, 1, [](void *){});
-      tmpLens.push_back(lens);
+      lens.reset(&pslens[i], 1, [](void *){});
+      lens_array.push_back(lens);
+
+      // vals 
+      ps::SArray<char> vals;
+      vals.reset((char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), [](void *){});
+      vals_array.push_back(vals);
     }
 
     // Push once to the associated server
     {
       int server = workerID;
-      auto keys = tmpKeys[server];
-      auto vals = bufferLenSarrays[server];
-      auto lens = tmpLens[server];
+      auto keys = keys_array[server];
+      auto vals = vals_array[server];
+      auto lens = lens_array[server];
       ps->Wait(ps->ZPush(keys, vals, lens));
     }
 
+    ps::Postoffice::Get()->Barrier(
+        0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+
     // Pull the embedding buffer length of other workers
-    for (int key = 0; key < workerNum; key++) {
-      int server = key;
-      if (server == workerID) continue; // skip myself
-      auto keys = tmpKeys[server];
-      auto vals = bufferLenSarrays[server];
-      auto lens = tmpLens[server];
+    for (int i = 0; i < workerNum; i++) {
+      if (i == workerID) continue; // skip myself
+      int server = i;
+      auto keys = keys_array[server];
+      auto vals = vals_array[server];
+      auto lens = lens_array[server];
       ps->Wait(ps->ZPull(keys, &vals, &lens));
     }
-  }
+
+  } // BytePSSparseCommon::IsDistributed()
 
   // For debug: print _localEmbedBufLens
   std::cout << "_localEmbedBufLens:" << std::endl;

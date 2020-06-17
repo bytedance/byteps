@@ -48,7 +48,7 @@ void MallocAligned(void** ptr, size_t size) {
 }
 
 template <typename T>
-void AllocMemoryAndCreateSarray(ps::SArray<T> sarr, T* addr, int count) {
+void AllocMemoryAndCreateSarray(ps::SArray<T>& sarr, T* addr, int count) {
   void* ptr;
   MallocAligned(&ptr, count * sizeof(T));
   memcpy(ptr, (void*)addr, count * sizeof(T));
