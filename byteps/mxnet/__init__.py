@@ -304,11 +304,11 @@ class DistributedTrainer(mx.gluon.Trainer):
                 nd._internal._mul_scalar(
                     param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
                 compressed, ctx = self._intra_compressors[i].compress(
-                    param._grad[0], x=param._data[0])
+                    param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
                 param._grad[0] = self._intra_compressors[i].decompress(
-                    compressed, ctx)
+                    compressed, ctx,  x=param._data[0])
 
     def _init_params(self):
         tensors = []

@@ -70,38 +70,13 @@ class WeightDecayMomentum(Compressor):
 
     def __init__(self, compressor, mu, wd, *args, **kwargs):
         self.compressor = compressor
+        self.mom = None
+        self.cache = None
         self.mu = mu
         self.wd = wd
-        self.task_queue = Queue()
-        self.done_queue = Queue()
-        threading.Thread(target=self._worker, args=(
-            self.mu, self.wd, self.task_queue, self.done_queue), daemon=True).start()
-
-    def __del__(self):
-        self.task_queue.put('STOP')
-
-    @staticmethod
-    def _worker(mu, wd, input, output):
-        mom = None
-        cache = None
-        for x, _ in iter(input.get, 'STOP'):
-            if mom is None:
-                mom = nd.zeros_like(x)
-                cache = nd.zeros_like(x)
-
-            nd._internal._mul_scalar(x, wd, out=cache)
-            mom += cache
-            nd._internal._mul_scalar(mom, mu, out=mom)
-            cache += mom
-            output.put(cache)
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
-        if "x" not in kwargs:
-            return self.compressor.compress(tensor)
-
-        x = kwargs["x"]
-        self.task_queue.put((x, None))
         return self.compressor.compress(tensor)
 
     def decompress(self, tensor, ctx, *args, **kwargs):
@@ -109,12 +84,19 @@ class WeightDecayMomentum(Compressor):
             m_t = \mu * m_{t-1} + wd * x_t
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
         """
-        try:
-            tensor += self.done_queue.get(timeout=0.1)
-        except Empty:
-            print("empty for wd-momentum")
-        except TimeoutError:
-            print("timeout for wd-momentum")
+        if "x" not in kwargs:
+            return self.compressor.decompress(tensor, ctx)
+
+        x = kwargs["x"]
+        
+        if self.mom is None:
+            self.mom = nd.zeros_like(tensor)
+            self.cache = nd.zeros_like(tensor)
+
+        nd._internal._mul_scalar(x, self.wd, out=self.cache)
+        self.mom += self.cache
+        nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
+        tensor += self.mom + self.cache
         return self.compressor.decompress(tensor, ctx)
 
 
