@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#define BYTEPS_DEBUG
+
 #include "sparse.h"
 
 namespace byteps {
@@ -72,6 +74,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   _denseBuffers.assign(denseBuffers.begin(), denseBuffers.end());
 
   _localEmbedBufLens.resize(localSize);
+  _globalEmbedBufLens.resize(workerNum, std::vector<size_t>(localSize));
   _globalTotalEmbedBufLens.resize(workerNum, 0);
 
   // Allocate memory and an event for each process and fill 
@@ -94,8 +97,16 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   }
   _denseBufferLen = denseBufferLen;
 
+#ifdef BYTEPS_DEBUG
+  // For debug: print _localEmbedBufLens
+  std::cout << "_localEmbedBufLens:" << std::endl;
+  for (auto len : _localEmbedBufLens) 
+    std::cout << len << " ";
+  std::cout << std::endl;
+#endif
+
   for (int i = 0; i < localSize; i++) {
-    _globalTotalEmbedBufLens[workerID] += _localEmbedBufLens[i];
+    _globalEmbedBufLens[workerID][i] = _localEmbedBufLens[i];
   }
 
   // Need a continous CPU buffer for each GPU
@@ -136,14 +147,14 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       keys_array.push_back(keys);
       
       // lens 
-      pslens[i] = sizeof(size_t);
+      pslens[i] = sizeof(size_t) * localSize;
       ps::SArray<int> lens;
       lens.reset(&pslens[i], 1, [](void *){});
       lens_array.push_back(lens);
 
       // vals 
       ps::SArray<char> vals;
-      vals.reset((char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), [](void *){});
+      vals.reset((char*)_globalEmbedBufLens[i].data(), localSize * sizeof(size_t), [](void *){});
       vals_array.push_back(vals);
     }
 
@@ -168,20 +179,32 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
       auto lens = lens_array[server];
       ps->Wait(ps->ZPull(keys, &vals, &lens));
     }
-
   } // BytePSSparseCommon::IsDistributed()
 
-  // For debug: print _localEmbedBufLens
-  std::cout << "_localEmbedBufLens:" << std::endl;
-  for (auto len : _localEmbedBufLens) 
-    std::cout << len << " ";
+  for (int wid = 0; wid < workerNum; wid++) {
+    for (int gpu = 0; gpu < localSize; gpu++) {
+      _globalTotalEmbedBufLens[wid] += _globalEmbedBufLens[wid][gpu];
+    }
+  }
+
+#ifdef BYTEPS_DEBUG
+  // For debug: print _globalEmbedBufLens
+  std::cout << "_globalEmbedBufLens:" << std::endl;
+  for (auto vec : _globalEmbedBufLens) {
+    for (auto len : vec) {
+      std::cout << len << " ";
+    }
+    std::cout << std::endl;
+  }
   std::cout << std::endl;
 
   // For debug: print _globalTotalEmbedBufLens
   std::cout << "_globalTotalEmbedBufLens:" << std::endl;
-  for (auto len : _globalTotalEmbedBufLens) 
+  for (auto len : _globalTotalEmbedBufLens) {
     std::cout << len << " ";
+  }
   std::cout << std::endl;
+#endif 
 
   // Check the buffer size 
   size_t accmul = 0;

@@ -29,10 +29,23 @@ enum OP { GATHER, SCATTER };
 
 static std::vector<void*> _embedBuffers;
 static std::vector<void*> _denseBuffers;
-static std::vector<size_t> _localEmbedBufLens; // per GPU (size: # GPUs)
-static std::vector<size_t> _globalTotalEmbedBufLens; // sum of _localEmbedBufLens (size: # workers)
-static std::vector<void*> _cpuBuffers;
+
+// length of the _denseBuffers
 static size_t _denseBufferLen;
+
+// length of _embedBuffers, per local GPU (size: # GPUs)
+static std::vector<size_t> _localEmbedBufLens; 
+
+// embed buf len of each global gpu (dim0: num_worker, dim1: localsize) 
+static std::vector<std::vector<size_t>> _globalEmbedBufLens; 
+
+// sum of the embed buf len of each worker (size: # workers)
+static std::vector<size_t> _globalTotalEmbedBufLens;
+
+// cpu buffer for global scatter/gather
+static std::vector<void*> _cpuBuffers;
+
+// local communication handler
 static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
 static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
 
