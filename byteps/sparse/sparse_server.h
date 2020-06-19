@@ -25,32 +25,17 @@
 namespace byteps {
 namespace sparse {
 
-#define DIVUP(x, y) (((x)+(y)-1)/(y))
-#define ROUNDUP(x, y) (DIVUP((x), (y))*(y))
-
 extern "C" void bytepsSparseServer();
 
-uint64_t DecodeKey(ps::Key key) {
+uint64_t decodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
   return key - kr.begin();
 }
 
-void MallocAligned(void** ptr, size_t size) {
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  void* p;
-  int size_aligned = ROUNDUP(size, page_size);
-  int ret = posix_memalign(&p, page_size, size_aligned);
-  CHECK_EQ(ret, 0) 
-      << "posix_memalign error: " << strerror(ret);
-  CHECK(p);
-  memset(p, 0, size);
-  *ptr = p;
-}
-
 template <typename T>
-void AllocMemoryAndCreateSarray(ps::SArray<T>& sarr, T* addr, int count) {
+void allocMemoryAndCreateSarray(ps::SArray<T>& sarr, T* addr, int count) {
   void* ptr;
-  MallocAligned(&ptr, count * sizeof(T));
+  mallocAligned(&ptr, count * sizeof(T));
   memcpy(ptr, (void*)addr, count * sizeof(T));
   sarr.reset((T*)ptr, count, [](void *){});
 }

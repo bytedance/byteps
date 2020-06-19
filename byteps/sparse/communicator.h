@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <mutex>
 #include "gossip/include/gossip.cuh"
 #include "gossip/include/cudahelpers/cuda_helpers.cuh"
 #include "gossip/include/plan_parser.hpp"

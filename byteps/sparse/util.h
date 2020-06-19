@@ -28,6 +28,8 @@ namespace byteps {
 namespace sparse {
 
 #define MAX_CUDA_DEVICES (32)
+#define DIVUP(x, y) (((x)+(y)-1)/(y))
+#define ROUNDUP(x, y) (DIVUP((x), (y))*(y))
 
 #define CUDA_CALL(func)                                          \
   {                                                              \
@@ -52,12 +54,15 @@ typedef struct shmStruct_st {
   cudaIpcEventHandle_t eventHandle[MAX_CUDA_DEVICES];
 } shmStruct;
 
-
 int sharedMemoryCreate(const char *name, size_t sz, sharedMemoryInfo *info);
 
 int sharedMemoryOpen(const char *name, size_t sz, sharedMemoryInfo *info);
 
 void sharedMemoryClose(sharedMemoryInfo *info);
+
+void mallocAligned(void** ptr, size_t size);
+
+void mallocAlignedCudaAwareCpubuff(void **ptr, size_t size);
 
 } // namespace sparse
 } // namespace byteps

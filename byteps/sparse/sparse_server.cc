@@ -27,7 +27,7 @@ template <typename Val>
 void BytepsSparseHandler(const ps::KVMeta &req_meta, 
                          const ps::KVPairs<Val> &req_data, 
                          ps::KVServer<Val> *server) {
-  uint64_t key = DecodeKey(req_data.keys[0]);
+  uint64_t key = decodeKey(req_data.keys[0]);
   if (req_meta.push) {
     CHECK(req_data.lens.size());
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]) 
@@ -39,9 +39,9 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
 
     int len = (int) req_data.vals.size();
     if (_init_bufferLengths.find(key) == _init_bufferLengths.end()) {
-      AllocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&req_data.keys[0], 1);
-      AllocMemoryAndCreateSarray(_init_bufferLengths[key].vals, recved, len);
-      AllocMemoryAndCreateSarray(_init_bufferLengths[key].lens, (int*)&len, 1);
+      allocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&req_data.keys[0], 1);
+      allocMemoryAndCreateSarray(_init_bufferLengths[key].vals, recved, len);
+      allocMemoryAndCreateSarray(_init_bufferLengths[key].lens, (int*)&len, 1);
     }
 
     LOG(INFO) << "receive push key=" << key << "\t" 
