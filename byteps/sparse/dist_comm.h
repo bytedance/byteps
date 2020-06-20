@@ -17,6 +17,7 @@
 #define BYTEPS_DISTRIBUTED_COMMUNICATOR_H
 
 #include "communicator.h"
+#include "util.h"
 
 namespace byteps {
 namespace sparse {
@@ -88,6 +89,7 @@ class DistGatherComm : public SparseComm {
 
     // init cuda stream for copyH2D
     CUDA_CALL(cudaSetDevice(local_rank_));
+    copy_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     CUDA_CALL(cudaStreamCreateWithFlags(
       copy_stream_, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamSynchronize(*copy_stream_));

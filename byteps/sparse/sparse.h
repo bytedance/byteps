@@ -42,12 +42,12 @@ static std::vector<std::vector<size_t>> _globalEmbedBufLens;
 // sum of the embed buf len of each worker (size: # workers)
 static std::vector<size_t> _globalTotalEmbedBufLens;
 
-// cpu buffer for global scatter/gather
-static std::vector<void*> _cpuBuffers;
-
 // local communication handler
-static std::vector<std::unique_ptr<LocalGatherComm>>  _local_gather_comms;
-static std::vector<std::unique_ptr<LocalScatterComm>>  _local_scatter_comms;
+static std::vector<std::unique_ptr<LocalGatherComm>> _local_gather_comms;
+static std::vector<std::unique_ptr<LocalScatterComm>> _local_scatter_comms;
+
+// distributed communication handler
+static std::vector<std::unique_ptr<DistGatherComm>> _dist_gather_comms;
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<size_t>& embedBufferLens, size_t denseBufferLen);

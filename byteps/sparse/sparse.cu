@@ -108,15 +108,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   for (int i = 0; i < localSize; i++) {
     _globalEmbedBufLens[workerID][i] = _localEmbedBufLens[i];
   }
-
-  // Need a continous CPU buffer for each GPU
-  _cpuBuffers.clear();
-  for (int i = 0; i < localSize; i++) {
-    void* _cpuBuffer;
-    CUDA_CALL(cudaHostAlloc(
-        &_cpuBuffer, _denseBufferLen, cudaHostAllocMapped | cudaHostAllocPortable));
-    _cpuBuffers.push_back(_cpuBuffer);
-  }
   
   // The followings are for the global coordination of 
   // the embedding buffer length, which is equivalent to all-gather 
@@ -272,6 +263,17 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         planfile_name, localSize, src, src_len, send_counts, dsts, dsts_lens);
   }
 
+
+  if (BytePSSparseCommon::IsDistributed()) {
+    // Prepare distributed gather communication
+    _dist_gather_comms.resize(localSize);
+
+    for (int i = 0; i < localSize; i++) {
+      auto ps = BytePSSparseCommon::GetPS();
+      _dist_gather_comms[i] = std::make_unique<DistGatherComm>(ps, _globalEmbedBufLens, 
+        _denseBuffers[i], _denseBufferLen, i, localSize, workerID, workerNum);
+    }
+  } // endif of BytePSSparseCommon::IsDistributed()
 } 
 
 void bytepsSparseShutdown() {
@@ -280,23 +282,25 @@ void bytepsSparseShutdown() {
 
 void bytepsGatherExecAsync(int local_rank, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-  auto workerNum = BytePSSparseCommon::GetNumWorker();
-
   _local_gather_comms[local_rank]->ExecAsync();
+  if (BytePSSparseCommon::IsDistributed()) {
+    _dist_gather_comms[local_rank]->ExecAsync();
+  }
 }
 
 void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) { 
   switch (op) {
-    case GATHER:
+    case GATHER: {
       _local_gather_comms[local_rank]->Sync();
-      break;
-    case SCATTER:
+      if (BytePSSparseCommon::IsDistributed()) {
+        _dist_gather_comms[local_rank]->Sync();
+      }
+    } break;
+    case SCATTER: {
       _local_scatter_comms[local_rank]->Sync();
-      break;
+    } break;
     default:
-      CHECK(0) << "unrecognized operation";
+      CHECK(0) << "unrecognized operation: " << op;
   }
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
