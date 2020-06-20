@@ -20,52 +20,76 @@ namespace sparse {
 
 using namespace ps;
 
-static ps::KVServer<char>* _byteps_server;
-static std::unordered_map<uint64_t, KVPairs<char>> _init_bufferLengths;
-
 template <typename Val>
 void BytepsSparseHandler(const ps::KVMeta &req_meta, 
                          const ps::KVPairs<Val> &req_data, 
                          ps::KVServer<Val> *server) {
-  uint64_t key = decodeKey(req_data.keys[0]);
-  if (req_meta.push) {
-    CHECK(req_data.lens.size());
-    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]) 
-        << "key=" << key << ", " 
-        << req_data.vals.size() << ", " 
-        << req_data.lens[0];
+  uint64_t key = DecodeKey(req_data.keys[0]);
 
-    auto recved = reinterpret_cast<char*>(req_data.vals.data());
+  LOG(INFO) << "receive " << (req_meta.push ? "push" : "pull")
+            << "\t key=" << key 
+            << "\t len=" << req_meta.val_len
+            << "\t sender=" << req_meta.sender;
 
-    int len = (int) req_data.vals.size();
-    if (_init_bufferLengths.find(key) == _init_bufferLengths.end()) {
-      allocMemoryAndCreateSarray(_init_bufferLengths[key].keys, (ps::Key*)&req_data.keys[0], 1);
-      allocMemoryAndCreateSarray(_init_bufferLengths[key].vals, recved, len);
-      allocMemoryAndCreateSarray(_init_bufferLengths[key].lens, (int*)&len, 1);
+  if ((key & 0xffff) == 0xffff) { 
+    // scatter or gather, see key encode logic in dist_comm.h
+    if (req_meta.push) { 
+      // scatter request
+
+    } else { 
+      // gather request
+      int gpu = (key >> 16) % local_size_;
+      int len = req_meta.val_len;
+      if (map_.find(key) == map_.end()) {
+        AllocMemoryAndCreateSarray(map_[key].keys, 1, (ps::Key*)&req_data.keys[0]);
+        AllocMemoryAndCreateSarray(map_[key].vals, len);
+        AllocMemoryAndCreateSarray(map_[key].lens, 1, (int*)&len);
+      }
+      server->Response(req_meta, map_[key]);
     }
+  } else { 
+    // init global buffer length
+    if (req_meta.push) {
+      CHECK(req_data.lens.size());
+      CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]) 
+          << "key=" << key << ", " 
+          << req_data.vals.size() << ", " 
+          << req_data.lens[0];
 
-    LOG(INFO) << "receive push key=" << key << "\t" 
-        << "len=" << len << "\t"
-        << ((size_t*)recved)[0] << " from sender=" << req_meta.sender << "\n";
-    
-    // send push response (empty payload)
-    ps::KVPairs<char> res;
-    server->Response(req_meta, res);
-  } else { // pull 
-    LOG(INFO) << "receive pull key=" << key << " from sender=" << req_meta.sender;
-    CHECK(_init_bufferLengths.find(key) != _init_bufferLengths.end()) << key;
-    server->Response(req_meta, _init_bufferLengths[key]);
+      auto recved = reinterpret_cast<char*>(req_data.vals.data());
 
+      int len = (int) req_data.vals.size();
+      if (map_.find(key) == map_.end()) {
+        AllocMemoryAndCreateSarray(map_[key].keys, 1, (ps::Key*)&req_data.keys[0]);
+        AllocMemoryAndCreateSarray(map_[key].vals, len, recved);
+        AllocMemoryAndCreateSarray(map_[key].lens, 1, (int*)&len);
+      }
+      
+      // send push response (empty payload)
+      ps::KVPairs<char> res;
+      server->Response(req_meta, res);
+    } else { // pull 
+      CHECK(map_.find(key) != map_.end()) << key;
+      server->Response(req_meta, map_[key]);
+    }
   }
 }
 
-void RunServer() {
+void InitEnv() {
+  if (ps::IsScheduler()) return; // skip this init for the scheduler
+  CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "Should init BYTEPS_LOCAL_SIZE";
+  local_size_ = atoi(getenv("BYTEPS_LOCAL_SIZE"));
+}
+
+extern "C" void bytepsSparseServer() {
   LOG(INFO) << "Launch BytePS Server process for sparse training";
 
+  // should init ps-lite instance before anything else
   ps::Start(0, "byteps_server\0");
-  // init ps-lite instance
-  _byteps_server = new ps::KVServer<char>(0);
-  _byteps_server->set_request_handle(BytepsSparseHandler<char>);
+  byteps_server_ = new ps::KVServer<char>(0);
+  byteps_server_->set_request_handle(BytepsSparseHandler<char>);
+
+  InitEnv();
 
   // post a barrier to sync the global buffer length
   ps::Postoffice::Get()->Barrier(
@@ -73,14 +97,10 @@ void RunServer() {
 
   // this Finalize will also post a barrier
   ps::Finalize(0, true); 
-  if (_byteps_server) {
-    delete _byteps_server;
-    _byteps_server = nullptr;
+  if (byteps_server_) {
+    delete byteps_server_;
+    byteps_server_ = nullptr;
   }
-}
-
-extern "C" void bytepsSparseServer() {
-  RunServer();
 }
 
 

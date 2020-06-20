@@ -27,17 +27,23 @@ namespace sparse {
 
 extern "C" void bytepsSparseServer();
 
-uint64_t decodeKey(ps::Key key) {
+static ps::KVServer<char>* byteps_server_;
+static std::unordered_map<uint64_t, ps::KVPairs<char>> map_;
+static int local_size_; // local gpu number
+
+uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
   return key - kr.begin();
 }
 
 template <typename T>
-void allocMemoryAndCreateSarray(ps::SArray<T>& sarr, T* addr, int count) {
+void AllocMemoryAndCreateSarray(ps::SArray<T>& sarr, int count, T* addr = nullptr) {
   void* ptr;
   mallocAligned(&ptr, count * sizeof(T));
-  memcpy(ptr, (void*)addr, count * sizeof(T));
   sarr.reset((T*)ptr, count, [](void *){});
+  if (addr != nullptr) {
+    memcpy(ptr, (void*)addr, count * sizeof(T));
+  }
 }
 
 } // namespace sparse
