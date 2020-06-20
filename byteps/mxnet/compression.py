@@ -96,7 +96,8 @@ class WeightDecayMomentum(Compressor):
         nd._internal._mul_scalar(x, self.wd, out=self.cache)
         self.mom += self.cache
         nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
-        tensor += self.mom + self.cache
+        tensor += self.mom
+        tensor += self.cache
         return self.compressor.decompress(tensor, ctx)
 
 
