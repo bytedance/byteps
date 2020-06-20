@@ -16,6 +16,7 @@
 #ifndef BYTEPS_DISTRIBUTED_COMMUNICATOR_H
 #define BYTEPS_DISTRIBUTED_COMMUNICATOR_H
 
+#include <atomic>
 #include "communicator.h"
 #include "util.h"
 
@@ -96,43 +97,36 @@ class DistGatherComm : public SparseComm {
   }
 
   void ExecAsync() {
-    std::lock_guard<std::mutex> lk(mu_);
     for (int wid = 0; wid < num_worker_; ++wid) {
       if (wid == worker_id_) continue; // skip pull myself
       for (int gid = 0; gid < local_size_; ++gid) {
         auto& keys = pskeys_[wid][gid];
         auto& vals = psvals_[wid][gid]; 
-        auto& lens = pslens_[wid][gid]; 
-        auto ts = ps_->ZPull(keys, &vals, &lens);
-        ts_.push_back(ts);
+        auto& lens = pslens_[wid][gid];
+        
+        // send pull request and set the callback function 
+        void* dst = (void*)((char*)dst_ + dst_offsets_[wid][gid]);
+        void* src = cpubuffs_[wid][gid];
+        size_t copy_len = cpubuffs_lens_[wid][gid];
+        ps_->ZPull(keys, &vals, &lens, 0, [dst, src, copy_len, this](){
+            CUDA_CALL(cudaMemcpyAsync(
+                (void*) dst, 
+                (const void *) src, 
+                (size_t) copy_len, 
+                (cudaMemcpyKind) cudaMemcpyHostToDevice, 
+                (cudaStream_t) *copy_stream_));
+            CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
+            finished_cnt_.fetch_add(1);
+          });
       }
     }
   }
 
   void Sync() {
-    std::lock_guard<std::mutex> lk(mu_);
-    // sync all gather timestamps and clear 
-    for (auto ts : ts_) {
-      ps_->Wait(ts);
+    while ((local_size_ * (num_worker_ - 1)) != finished_cnt_) {
+      std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
-    ts_.clear();
-
-    // copy from host to gpu
-    CUDA_CALL(cudaSetDevice(local_rank_));
-    for (int wid = 0; wid < num_worker_; ++wid) {
-      if (wid == worker_id_) continue;
-      for (int gid = 0; gid < local_size_; ++gid) {
-        void* dst = (void*)((char*)dst_ + dst_offsets_[wid][gid]);
-        void* src = cpubuffs_[wid][gid];
-        CUDA_CALL(cudaMemcpyAsync(
-          (void*) dst, 
-          (const void *)src, 
-          (size_t) cpubuffs_lens_[wid][gid], 
-          (cudaMemcpyKind) cudaMemcpyHostToDevice, 
-          (cudaStream_t) *copy_stream_));
-      }
-    }
-    CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
+    finished_cnt_ = 0;
   }
 
   ~DistGatherComm() {
@@ -165,8 +159,7 @@ class DistGatherComm : public SparseComm {
   std::vector<std::vector<V>> psvals_;
   std::vector<std::vector<L>> pslens_;
 
-  std::vector<int> ts_;
-  std::mutex mu_;
+  std::atomic<unsigned int> finished_cnt_{0};
 
   cudaStream_t* copy_stream_;
 
