@@ -96,6 +96,7 @@ class DistGatherComm : public SparseComm {
   }
 
   void ExecAsync() {
+    std::lock_guard<std::mutex> lk(mu_);
     for (int wid = 0; wid < num_worker_; ++wid) {
       if (wid == worker_id_) continue; // skip pull myself
       for (int gid = 0; gid < local_size_; ++gid) {
@@ -109,6 +110,7 @@ class DistGatherComm : public SparseComm {
   }
 
   void Sync() {
+    std::lock_guard<std::mutex> lk(mu_);
     // sync all gather timestamps and clear 
     for (auto ts : ts_) {
       ps_->Wait(ts);
@@ -116,6 +118,7 @@ class DistGatherComm : public SparseComm {
     ts_.clear();
 
     // copy from host to gpu
+    CUDA_CALL(cudaSetDevice(local_rank_));
     for (int wid = 0; wid < num_worker_; ++wid) {
       if (wid == worker_id_) continue;
       for (int gid = 0; gid < local_size_; ++gid) {
@@ -163,6 +166,7 @@ class DistGatherComm : public SparseComm {
   std::vector<std::vector<L>> pslens_;
 
   std::vector<int> ts_;
+  std::mutex mu_;
 
   cudaStream_t* copy_stream_;
 

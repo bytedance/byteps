@@ -27,6 +27,7 @@ namespace sparse {
 
 extern "C" void bytepsSparseServer();
 
+static bool debug_ = false;
 static ps::KVServer<char>* byteps_server_;
 static std::unordered_map<uint64_t, ps::KVPairs<char>> map_;
 static int local_size_; // local gpu number

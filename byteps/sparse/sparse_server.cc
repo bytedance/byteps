@@ -26,10 +26,12 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
                          ps::KVServer<Val> *server) {
   uint64_t key = DecodeKey(req_data.keys[0]);
 
-  LOG(INFO) << "receive " << (req_meta.push ? "push" : "pull")
-            << "\t key=" << key 
-            << "\t len=" << req_meta.val_len
-            << "\t sender=" << req_meta.sender;
+  if (debug_) {
+    LOG(INFO) << "receive " << (req_meta.push ? "push" : "pull")
+              << "\t key=" << key 
+              << "\t len=" << req_meta.val_len
+              << "\t sender=" << req_meta.sender;
+  }
 
   if ((key & 0xffff) == 0xffff) { 
     // scatter or gather, see key encode logic in dist_comm.h
@@ -79,6 +81,8 @@ void InitEnv() {
   if (ps::IsScheduler()) return; // skip this init for the scheduler
   CHECK(getenv("BYTEPS_LOCAL_SIZE")) << "Should init BYTEPS_LOCAL_SIZE";
   local_size_ = atoi(getenv("BYTEPS_LOCAL_SIZE"));
+
+  debug_ = getenv("BYTEPS_SPARSE_SERVER_DEBUG") ? true : false;
 }
 
 extern "C" void bytepsSparseServer() {
