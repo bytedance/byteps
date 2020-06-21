@@ -35,9 +35,10 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   CHECK_EQ(embedBufferLens.size(), denseBuffers.size());
   
   // Init IPC stuff
+  volatile shmStruct *shm = NULL;
   sharedMemoryInfo info;
-  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
-  auto shm = (volatile shmStruct *)info.addr;
+  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(*shm), &info), 0);
+  shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 
   auto localSize = BytePSSparseCommon::GetLocalSize();
@@ -50,16 +51,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
 
     // CUDA IPC is only supported on devices with unified addressing
-    if (!prop.unifiedAddressing) {
-      // BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
-      continue;
-    }
-    // We require two processes accessing each device, so we need
-    // to ensure exclusive or prohibited mode is not set
-    if (prop.computeMode != cudaComputeModeDefault) {
-      // BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
-      continue;
-    }
+    CHECK(prop.unifiedAddressing)
+        << "Device " << i << " does not support unified addressing.";
 
     shm->devices[shm->nprocesses++] = i;
     CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);

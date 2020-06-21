@@ -38,7 +38,7 @@ namespace sparse {
         << "CUDA: " << cudaGetErrorString(e);                    \
   }
 
-static const char* bpsShmName = "BytePS_Sparse_ShM_";
+static const char* bpsShmName = "BytePS_Sparse_CudaIpc_ShM_";
 
 typedef struct sharedMemoryInfo_st {
   void *addr;

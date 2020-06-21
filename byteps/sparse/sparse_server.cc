@@ -20,6 +20,40 @@ namespace sparse {
 
 using namespace ps;
 
+void InitCudaInterProcComm() {
+  sharedMemoryInfo info;
+  volatile shmStruct *shm = NULL;
+  CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0)
+      << "shared memory open failed";
+  shm = (volatile shmStruct *)info.addr;
+
+  CHECK_EQ(shm->nprocesses, local_size_) 
+      << shm->nprocesses << " " << local_size_;
+
+  streams_d2h_.resize(local_size_);
+  embed_ipc_handlers_.resize(local_size_);
+  dense_ipc_handlers_.resize(local_size_);
+  embed_bufs_.resize(local_size_);
+  dense_bufs_.resize(local_size_);
+
+  for (int gid = 0; gid < local_size_; ++gid) {
+    CUDA_CALL(cudaSetDevice(shm->devices[gid]));
+
+    CUDA_CALL(cudaIpcOpenMemHandle(&embed_bufs_[gid], 
+              *(cudaIpcMemHandle_t *)&shm->embedMemHandle[gid],
+              cudaIpcMemLazyEnablePeerAccess));
+
+    CUDA_CALL(cudaIpcOpenMemHandle(&dense_bufs_[gid], 
+              *(cudaIpcMemHandle_t *)&shm->denseMemHandle[gid],
+              cudaIpcMemLazyEnablePeerAccess));
+
+    CUDA_CALL(cudaStreamCreateWithFlags(&streams_d2h_[gid], 
+              cudaStreamNonBlocking));
+
+    CUDA_CALL(cudaStreamSynchronize(streams_d2h_[gid]));
+  }
+}
+
 template <typename Val>
 void BytepsSparseHandler(const ps::KVMeta &req_meta, 
                          const ps::KVPairs<Val> &req_data, 
@@ -33,8 +67,14 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
               << "\t sender=" << req_meta.sender;
   }
 
-  if ((key & 0xffff) == 0xffff) { 
-    // scatter or gather, see key encode logic in dist_comm.h
+  if ((key & 0xffff) == 0xffff) { // scatter or gather
+    // as it receives the first gather/scatter key, the IPC handler
+    // should have been inited already
+    if (init_stage_ == 0) {
+      InitCudaInterProcComm();
+      ++init_stage_;
+    }
+
     if (req_meta.push) { 
       // scatter request
 
@@ -47,6 +87,7 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
         AllocMemoryAndCreateSarray(map_[key].vals, len);
         AllocMemoryAndCreateSarray(map_[key].lens, 1, (int*)&len);
       }
+
       server->Response(req_meta, map_[key]);
     }
   } else { 
@@ -85,6 +126,23 @@ void InitEnv() {
   debug_ = getenv("BYTEPS_SPARSE_SERVER_DEBUG") ? true : false;
 }
 
+void ReleaseServerResources() {
+  if (ps::IsScheduler()) return; 
+
+  if (byteps_server_) {
+    delete byteps_server_;
+    byteps_server_ = nullptr;
+  }
+
+  for (int gid = 0; gid < local_size_; ++gid) {
+    CUDA_CALL(cudaIpcCloseMemHandle(embed_bufs_[gid]));
+    CUDA_CALL(cudaIpcCloseMemHandle(dense_bufs_[gid]));
+    CUDA_CALL(cudaStreamDestroy(streams_d2h_[gid]));
+  }
+
+  LOG(INFO) << "Succesfully release all server resources.";
+}
+
 extern "C" void bytepsSparseServer() {
   LOG(INFO) << "Launch BytePS Server process for sparse training";
 
@@ -101,10 +159,8 @@ extern "C" void bytepsSparseServer() {
 
   // this Finalize will also post a barrier
   ps::Finalize(0, true); 
-  if (byteps_server_) {
-    delete byteps_server_;
-    byteps_server_ = nullptr;
-  }
+
+  ReleaseServerResources();
 }
 
 
