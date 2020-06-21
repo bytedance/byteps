@@ -40,6 +40,7 @@ static std::vector<void*> embed_bufs_;
 static std::vector<void*> dense_bufs_;
 
 static std::vector<size_t> embed_buflens_;
+static size_t dense_buflen_;
 
 
 uint64_t DecodeKey(ps::Key key) {

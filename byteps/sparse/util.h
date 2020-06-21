@@ -51,6 +51,8 @@ typedef struct shmStruct_st {
   int devices[MAX_CUDA_DEVICES];
   cudaIpcMemHandle_t embedMemHandle[MAX_CUDA_DEVICES];
   cudaIpcMemHandle_t denseMemHandle[MAX_CUDA_DEVICES];
+  size_t embedBufferLength[MAX_CUDA_DEVICES];
+  size_t denseBufferLength;
 } shmStruct;
 
 int sharedMemoryCreate(const char *name, size_t sz, sharedMemoryInfo *info);

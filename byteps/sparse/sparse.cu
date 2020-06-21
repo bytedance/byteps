@@ -80,10 +80,12 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
     
+    shm->embedBufferLength[i] = embedBufferLens[i];
     // Store the buffers 
     _localEmbedBufLens[i] = embedBufferLens[i]; // local buffer length
   }
   _denseBufferLen = denseBufferLen;
+  shm->denseBufferLength = denseBufferLen;
 
 #ifdef BYTEPS_DEBUG
   // For debug: print _localEmbedBufLens

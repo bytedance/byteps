@@ -33,6 +33,7 @@ void InitGatherCudaIpc() {
   streams_d2h_.resize(local_size_);
   embed_ipc_handlers_.resize(local_size_);
   embed_bufs_.resize(local_size_);
+  embed_buflens_.resize(local_size_);
 
   for (int gid = 0; gid < local_size_; ++gid) {
     CUDA_CALL(cudaSetDevice(shm->devices[gid]));
@@ -45,7 +46,10 @@ void InitGatherCudaIpc() {
               cudaStreamNonBlocking));
 
     CUDA_CALL(cudaStreamSynchronize(streams_d2h_[gid]));
+
+    embed_buflens_[gid] = shm->embedBufferLength[gid];
   }
+  dense_buflen_ = shm->denseBufferLength;
 }
 
 template <typename Val>
@@ -117,10 +121,6 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
         AllocMemoryAndCreateSarray(map_[key].keys, 1, (ps::Key*)&req_data.keys[0]);
         AllocMemoryAndCreateSarray(map_[key].vals, len, recved);
         AllocMemoryAndCreateSarray(map_[key].lens, 1, (int*)&len);
-      }
-
-      for (int i = 0; i < local_size_; ++i) {
-        embed_buflens_.push_back(*((size_t*)recved + i));
       }
       
       // send push response (empty payload)
