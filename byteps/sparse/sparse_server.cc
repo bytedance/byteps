@@ -68,8 +68,10 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
 
   if ((key & 0xffff) == 0xffff) { // scatter or gather
     if (req_meta.push) { // TODO: scatter request 
-
-
+      // send push response (empty payload)
+      ps::KVPairs<char> res;
+      server->Response(req_meta, res);
+      
     } else { // gather request
     
       // as it receives the first gather key, the IPC 

@@ -257,13 +257,19 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   if (BytePSSparseCommon::IsDistributed()) {
     // Prepare distributed gather communication
     _dist_gather_comms.resize(localSize);
-
     for (int i = 0; i < localSize; i++) {
       auto ps = BytePSSparseCommon::GetPS();
       _dist_gather_comms[i] = std::make_unique<DistGatherComm>(ps, _globalEmbedBufLens, 
         _denseBuffers[i], _denseBufferLen, i, localSize, workerID, workerNum);
     }
-  } // endif of BytePSSparseCommon::IsDistributed()
+    // Prepare distributed scatter communication
+    _dist_scatter_comms.resize(localSize);
+    for (int i = 0; i < localSize; i++) {
+      auto ps = BytePSSparseCommon::GetPS();
+      _dist_scatter_comms[i] = std::make_unique<DistScatterComm>(ps, _globalEmbedBufLens, 
+        _denseBuffers[i], _denseBufferLen, i, localSize, workerID, workerNum);
+    }
+  } 
 } 
 
 void bytepsSparseShutdown() {
@@ -273,6 +279,8 @@ void bytepsSparseShutdown() {
 void bytepsGatherExecAsync(int local_rank, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
   _local_gather_comms[local_rank]->ExecAsync();
+  
+  // Gather from distributed peer GPUs on other workers
   if (BytePSSparseCommon::IsDistributed()) {
     _dist_gather_comms[local_rank]->ExecAsync();
   }
@@ -288,6 +296,9 @@ void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) {
     } break;
     case SCATTER: {
       _local_scatter_comms[local_rank]->Sync();
+      if (BytePSSparseCommon::IsDistributed()) {
+        _dist_scatter_comms[local_rank]->Sync();
+      }
     } break;
     default:
       CHECK(0) << "unrecognized operation: " << op;
@@ -296,11 +307,13 @@ void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) {
 }
 
 void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-  void* baseSrcPtr = (void*)_denseBuffers[local_rank];
-
+  // Scatter to local peer GPUs on the same worker
   _local_scatter_comms[local_rank]->ExecAsync();
+  
+  // Scatter to distributed peer GPUs on other workers
+  if (BytePSSparseCommon::IsDistributed()) {
+    _dist_scatter_comms[local_rank]->ExecAsync();
+  }
 }
 
 

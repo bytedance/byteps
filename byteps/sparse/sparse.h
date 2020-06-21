@@ -48,6 +48,7 @@ static std::vector<std::unique_ptr<LocalScatterComm>> _local_scatter_comms;
 
 // distributed communication handler
 static std::vector<std::unique_ptr<DistGatherComm>> _dist_gather_comms;
+static std::vector<std::unique_ptr<DistScatterComm>> _dist_scatter_comms;
 
 // The following are extern APIs
 extern "C" void bytepsSparseInit(std::vector<void*>& embedBuffers, std::vector<void*>& denseBuffers, std::vector<size_t>& embedBufferLens, size_t denseBufferLen);
