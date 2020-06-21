@@ -20,7 +20,7 @@ namespace sparse {
 
 using namespace ps;
 
-void InitCudaInterProcComm() {
+void InitGatherCudaIpc() {
   sharedMemoryInfo info;
   volatile shmStruct *shm = NULL;
   CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0)
@@ -32,19 +32,13 @@ void InitCudaInterProcComm() {
 
   streams_d2h_.resize(local_size_);
   embed_ipc_handlers_.resize(local_size_);
-  dense_ipc_handlers_.resize(local_size_);
   embed_bufs_.resize(local_size_);
-  dense_bufs_.resize(local_size_);
 
   for (int gid = 0; gid < local_size_; ++gid) {
     CUDA_CALL(cudaSetDevice(shm->devices[gid]));
 
     CUDA_CALL(cudaIpcOpenMemHandle(&embed_bufs_[gid], 
               *(cudaIpcMemHandle_t *)&shm->embedMemHandle[gid],
-              cudaIpcMemLazyEnablePeerAccess));
-
-    CUDA_CALL(cudaIpcOpenMemHandle(&dense_bufs_[gid], 
-              *(cudaIpcMemHandle_t *)&shm->denseMemHandle[gid],
               cudaIpcMemLazyEnablePeerAccess));
 
     CUDA_CALL(cudaStreamCreateWithFlags(&streams_d2h_[gid], 
@@ -68,17 +62,18 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
   }
 
   if ((key & 0xffff) == 0xffff) { // scatter or gather
-    // as it receives the first gather/scatter key, the IPC handler
-    // should have been inited already
-    if (init_stage_ == 0) {
-      InitCudaInterProcComm();
-      ++init_stage_;
-    }
-
     if (req_meta.push) { 
-      // scatter request
+      // TODO: scatter request 
+
 
     } else { 
+      // as it receives the first gather key, the IPC 
+      // handler should have been inited already
+      if (gather_init_stage_ == 0) {
+        InitGatherCudaIpc();
+        ++gather_init_stage_;
+      }
+
       // gather request
       int gpu = (key >> 16) % local_size_;
       int len = req_meta.val_len;

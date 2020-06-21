@@ -31,7 +31,7 @@ static bool debug_ = false;
 static ps::KVServer<char>* byteps_server_;
 static std::unordered_map<uint64_t, ps::KVPairs<char>> map_;
 static int local_size_; // local gpu number
-static int init_stage_ = 0;
+static int gather_init_stage_ = 0;
 
 static std::vector<cudaStream_t> streams_d2h_;
 static std::vector<cudaIpcMemHandle_t*> embed_ipc_handlers_;

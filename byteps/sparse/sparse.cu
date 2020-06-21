@@ -70,20 +70,15 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   _globalEmbedBufLens.resize(workerNum, std::vector<size_t>(localSize));
   _globalTotalEmbedBufLens.resize(workerNum, 0);
 
-  // Allocate memory and an event for each process and fill 
+  // Allocate memory for each process and fill 
   // the shared memory buffer with the IPC handles 
   for (size_t i = 0; i < shm->nprocesses; i++) {
-    cudaEvent_t event;
     CUDA_CALL(cudaSetDevice(
         shm->devices[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
-    CUDA_CALL(cudaEventCreate(
-        &event, cudaEventDisableTiming | cudaEventInterprocess));
-    CUDA_CALL(cudaIpcGetEventHandle(
-        (cudaIpcEventHandle_t *)&shm->eventHandle[i], event));
     
     // Store the buffers 
     _localEmbedBufLens[i] = embedBufferLens[i]; // local buffer length
