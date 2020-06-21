@@ -39,6 +39,8 @@ static std::vector<cudaIpcMemHandle_t*> dense_ipc_handlers_;
 static std::vector<void*> embed_bufs_;
 static std::vector<void*> dense_bufs_;
 
+static std::vector<size_t> embed_buflens_;
+
 
 uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];

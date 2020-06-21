@@ -103,7 +103,11 @@ class DistGatherComm : public SparseComm {
         auto& keys = pskeys_[wid][gid];
         auto& vals = psvals_[wid][gid]; 
         auto& lens = pslens_[wid][gid]; 
-        auto ts = ps_->ZPull(keys, &vals, &lens);
+        
+        // use the pslite cmd field to store my global gpu id 
+        int my_global_id = worker_id_ * local_size_ + local_rank_; 
+
+        auto ts = ps_->ZPull(keys, &vals, &lens, my_global_id);
         timestamps.push_back(ts);
       }
     }
