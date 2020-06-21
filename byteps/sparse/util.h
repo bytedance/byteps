@@ -50,7 +50,6 @@ typedef struct shmStruct_st {
   size_t nprocesses;
   int devices[MAX_CUDA_DEVICES];
   cudaIpcMemHandle_t embedMemHandle[MAX_CUDA_DEVICES];
-  cudaIpcMemHandle_t denseMemHandle[MAX_CUDA_DEVICES];
   size_t embedBufferLength[MAX_CUDA_DEVICES];
   size_t denseBufferLength;
 } shmStruct;

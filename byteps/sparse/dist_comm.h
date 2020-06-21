@@ -279,15 +279,16 @@ class DistScatterComm : public SparseComm {
       }
     }
 
-    // there is an hanging issue if we do Wait in Sync()
-    // so we need to wait here
+    // maybe we can relax this wait in 
+    // sparse training to improve performance
     for (auto ts : timestamps) {
       ps_->Wait(ts);
     }
   }
 
   void Sync() {
-
+    // There is a strange hanging problem if we 
+    // wait the timestamps here, so just do nothing 
   }
  
  private:

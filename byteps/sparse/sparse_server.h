@@ -29,16 +29,15 @@ extern "C" void bytepsSparseServer();
 
 static bool debug_ = false;
 static ps::KVServer<char>* byteps_server_;
-static std::unordered_map<uint64_t, ps::KVPairs<char>> map_;
+static std::unordered_map<uint64_t, ps::KVPairs<char>> init_map_;
+static std::unordered_map<uint64_t, ps::KVPairs<char>> gather_map_;
 static int local_size_; // local gpu number
-static int gather_init_stage_ = 0;
+static bool is_inited_ = false;
 
 static std::vector<cudaStream_t> streams_d2h_;
+static std::vector<cudaStream_t> streams_h2d_;
 static std::vector<cudaIpcMemHandle_t*> embed_ipc_handlers_;
-static std::vector<cudaIpcMemHandle_t*> dense_ipc_handlers_;
 static std::vector<void*> embed_bufs_;
-static std::vector<void*> dense_bufs_;
-
 static std::vector<size_t> embed_buflens_;
 static size_t dense_buflen_;
 

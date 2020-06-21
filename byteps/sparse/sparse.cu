@@ -77,8 +77,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
         shm->devices[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
-    CUDA_CALL(cudaIpcGetMemHandle(
-        (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
     
     shm->embedBufferLength[i] = embedBufferLens[i];
     // Store the buffers 
