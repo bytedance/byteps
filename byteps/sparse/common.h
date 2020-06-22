@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+#ifndef BYTEPS_SPARSE_COMMON_H
+#define BYTEPS_SPARSE_COMMON_H
 
 #include "ps/ps.h"
 
@@ -40,3 +42,5 @@ class BytePSSparseCommon {
 
 } // namespace sparse
 } // namespace byteps 
+
+#endif  // BYTEPS_SPARSE_COMMON_H

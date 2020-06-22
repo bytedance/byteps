@@ -2,9 +2,24 @@ NVCC=nvcc
 NVCCGENCODE = -gencode arch=compute_60,code=sm_60 \
               -gencode arch=compute_70,code=sm_70
 
-NVCCFLAGS = $(NVCCGENCODE) -O3 -std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
+NVCCFLAGS = $(NVCCGENCODE) -O3 \
+	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC,-pthread" -Wreorder -lineinfo \
 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
-	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq 
+	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
+	
+
+# NVCCFLAGS = $(NVCCGENCODE) -O3 
+# 	-std=c++14 --expt-extended-lambda -Xcompiler="-fopenmp,-fPIC" -Wreorder -lineinfo \
+# 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
+# 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq
+
+
+# CC = gcc
+
+# CCFLAGS = -O3 -std=c++11 -Wall -fopenmp -fPIC -Wreorder -lineinfo \
+# 	-include ../common/cpu_reducer.h \
+# 	-Igossip/include/cudahelpers/ -I../../3rdparty/ps-lite/include -lrdmacm -libverbs \
+# 	-L../../3rdparty/ps-lite/build -l:libps.a -L../../3rdparty/ps-lite/deps/lib -lzmq -lcudart
 
 GOSSIP_HEADERS = gossip/include/gossip.cuh \
 		  gossip/include/gossip/all_to_all_async.cuh \
@@ -28,10 +43,12 @@ BUILD_DIR = build
 
 ALL_DEPEND_OBJECTS = $(BUILD_DIR)/plan_parser.o \
 					 $(BUILD_DIR)/util.o \
-					 $(BUILD_DIR)/common.o 
+					 $(BUILD_DIR)/common.o \
+					 $(BUILD_DIR)/cpu_reducer.o \
+					 $(BUILD_DIR)/queue_exec.o \
+					 $(BUILD_DIR)/loop.o \
 
-DEPEND_HEADERS = sparse.h communicator.h common.h util.h local_comm.h dist_comm.h
-				 
+DEPEND_HEADERS = sparse.h sparse_dense.h sparse.cuh communicator.h common.h util.h local_comm.h dist_comm.h loop.h queue_exec.h cpu_reducer.h
 
 .PHONY: all clean
 
@@ -40,8 +57,17 @@ all: sparse
 sparse: $(BUILD_DIR) $(BUILD_DIR)/sparse.o $(ALL_DEPEND_OBJECTS)
 	$(NVCC) $(NVCCFLAGS) $(BUILD_DIR)/sparse.o $(ALL_DEPEND_OBJECTS) --shared -o $(BUILD_DIR)/libbyteps.so
 
-$(BUILD_DIR)/sparse.o: $(BUILD_DIR) sparse.cu $(DEPEND_HEADERS) $(ALL_DEPEND_OBJECTS) $(GOSSIP_HEADERS) 
+$(BUILD_DIR)/sparse.o: $(BUILD_DIR) sparse.cu $(DEPEND_HEADERS) $(ALL_DEPEND_OBJECTS) $(GOSSIP_HEADERS) $(BPS_COMMON_HEADERS)
 	$(NVCC) $(NVCCFLAGS) -c sparse.cu -o $(BUILD_DIR)/sparse.o
+
+$(BUILD_DIR)/cpu_reducer.o: cpu_reducer.h cpu_reducer.cc
+	$(NVCC) $(NVCCFLAGS) -c cpu_reducer.cc -o $(BUILD_DIR)/cpu_reducer.o
+
+$(BUILD_DIR)/loop.o: loop.h loop.cc queue_exec.h queue_exec.cu
+	$(NVCC) $(NVCCFLAGS) -c loop.cc -o $(BUILD_DIR)/loop.o
+
+$(BUILD_DIR)/queue_exec.o: queue_exec.h queue_exec.cu
+	$(NVCC) $(NVCCFLAGS) -c queue_exec.cu -o $(BUILD_DIR)/queue_exec.o
 
 $(BUILD_DIR)/util.o: util.h util.cc
 	$(NVCC) $(NVCCFLAGS) -c util.cc -o $(BUILD_DIR)/util.o 
