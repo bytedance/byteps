@@ -20,6 +20,48 @@ namespace sparse {
 
 using namespace ps;
 
+void BytePSSparseEngineThread(int i) {
+  auto& q = engine_queues_[i];
+  while (true) {
+    BytePSSparseEngineMessage msg;
+    q->WaitAndPop(&msg);
+    if (msg.type == TERMINATE) break;
+    switch (msg.type) {
+      case GATHER: {
+        CUDA_CALL(cudaMemcpyAsync(
+            (void*) msg.dst, 
+            (const void *) msg.src, 
+            (size_t) msg.len, 
+            (cudaMemcpyKind) cudaMemcpyDeviceToHost, 
+            (cudaStream_t) *msg.stream));
+        CUDA_CALL(cudaStreamSynchronize(*msg.stream));
+
+        byteps_server_->Response(msg.req_meta, msg.kvpairs);
+      } break;
+
+      case SCATTER: {
+        CUDA_CALL(cudaMemcpyAsync(
+            (void*) msg.dst, 
+            (const void *) msg.src, 
+            (size_t) msg.len, 
+            (cudaMemcpyKind) cudaMemcpyHostToDevice, 
+            (cudaStream_t) *msg.stream));
+        CUDA_CALL(cudaStreamSynchronize(*msg.stream));
+
+        ps::KVPairs<char> res; // send push response (empty payload)
+        byteps_server_->Response(msg.req_meta, res); 
+      } break;
+
+      case REDUCE: {
+
+      } break;
+
+      default: 
+        CHECK(0) << "Invalid msg type: " << msg.type;
+    }
+  }
+}
+
 void InitCudaIpc() {
   sharedMemoryInfo info;
   volatile shmStruct *shm = NULL;
@@ -92,19 +134,18 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
       void* dst = (void*) ((char*)embed_bufs_[target_local_gid] + 
                   embed_buflens_[target_local_gid] / global_num_gpu * from_gid);
 
-      CUDA_CALL(cudaMemcpyAsync(
-          (void*) dst, 
-          (const void *) src, 
-          (size_t) len, 
-          (cudaMemcpyKind) cudaMemcpyHostToDevice, 
-          (cudaStream_t) streams_h2d_[target_local_gid]));
+      // init engine message
+      BytePSSparseEngineMessage msg;
+      msg.dst = dst;
+      msg.src = src;
+      msg.len = len;
+      msg.type = SCATTER;
+      msg.kvpairs = req_data; // hold the sarrays to prevent it from being released too early
+      msg.req_meta = req_meta;
+      msg.stream = &streams_h2d_[target_local_gid];
 
-      CUDA_CALL(cudaStreamSynchronize(streams_h2d_[target_local_gid]));
-      
-      // TODO: maybe we can send response earlier (e.g., before cuda copy)
-      // if the consistency can be relaxed 
-      ps::KVPairs<char> res; // send push response (empty payload)
-      server->Response(req_meta, res); 
+      int qid = (request_id_++) % engine_nthreads_; // load balanced
+      engine_queues_[qid]->Push(msg);
 
     } else { // gather request
       int target_local_gid = (key >> 16) % local_size_;
@@ -123,15 +164,19 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
                   embed_buflens_[target_local_gid] / global_num_gpu * from_gid);
       void* dst = (void*) gather_map_[key].vals.data();
 
-      CUDA_CALL(cudaMemcpyAsync(
-          (void*) dst, 
-          (const void *) src, 
-          (size_t) len, 
-          (cudaMemcpyKind) cudaMemcpyDeviceToHost, 
-          (cudaStream_t) streams_d2h_[target_local_gid]));
-      CUDA_CALL(cudaStreamSynchronize(streams_d2h_[target_local_gid]));
+      // init engine message
+      BytePSSparseEngineMessage msg;
+      msg.dst = dst;
+      msg.src = src;
+      msg.len = len;
+      msg.type = GATHER;
+      msg.kvpairs = gather_map_[key]; 
+      msg.req_meta = req_meta;
+      msg.stream = &streams_d2h_[target_local_gid];
 
-      server->Response(req_meta, gather_map_[key]);
+      int qid = (request_id_++) % engine_nthreads_; // load balanced
+      engine_queues_[qid]->Push(msg);
+
     }
   } else { 
     // init global buffer length
@@ -167,10 +212,28 @@ void InitEnv() {
   local_size_ = atoi(getenv("BYTEPS_LOCAL_SIZE"));
 
   debug_ = getenv("BYTEPS_SPARSE_SERVER_DEBUG") ? true : false;
+
+  engine_nthreads_ = getenv("BYTEPS_SPARSE_ENGINE_NTHREADS") ?
+      atoi(getenv("BYTEPS_SPARSE_ENGINE_NTHREADS")) : 8; 
+  LOG(INFO) << "BYTEPS_SPARSE_ENGINE_NTHREADS set to " << engine_nthreads_;
+  for (size_t i = 0; i < engine_nthreads_; ++i) {  
+    auto q = new TsQueue();
+    engine_queues_.push_back(q);
+  }
+
+  for (size_t i = 0; i < engine_nthreads_; ++i) {
+    auto t = new std::thread(&BytePSSparseEngineThread, i);
+    threads_.push_back(t);
+  }
 }
 
 void ReleaseServerResources() {
   if (ps::IsScheduler()) return; 
+
+  BytePSSparseEngineMessage msg;
+  msg.type = TERMINATE;
+  for (auto q : engine_queues_) q->Push(msg);
+  for (auto t : threads_) t->join();
 
   if (byteps_server_) {
     delete byteps_server_;

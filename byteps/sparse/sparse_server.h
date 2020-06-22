@@ -20,12 +20,27 @@
 #include <cstdlib>
 #include <unistd.h>
 #include "ps/ps.h"
+#include "ps/internal/threadsafe_queue.h"
 #include "util.h"
 
 namespace byteps {
 namespace sparse {
 
 extern "C" void bytepsSparseServer();
+
+enum MessageType {
+  GATHER, SCATTER, REDUCE, TERMINATE
+};
+
+struct BytePSSparseEngineMessage {
+  void* dst;
+  void* src;
+  size_t len;
+  MessageType type;
+  ps::KVPairs<char> kvpairs; 
+  ps::KVMeta req_meta;
+  cudaStream_t* stream;
+};
 
 static bool debug_ = false;
 static ps::KVServer<char>* byteps_server_;
@@ -41,6 +56,11 @@ static std::vector<void*> embed_bufs_;
 static std::vector<size_t> embed_buflens_;
 static size_t dense_buflen_;
 
+using TsQueue = ps::ThreadsafeQueue<BytePSSparseEngineMessage>;
+static size_t engine_nthreads_;
+static std::vector<TsQueue*> engine_queues_;
+static std::vector<std::thread *> threads_;
+static uint64_t request_id_ = 0;
 
 uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
