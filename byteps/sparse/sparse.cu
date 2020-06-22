@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#define BYTEPS_DEBUG
+
 #include "sparse.h"
 #include "sparse_dense.h"
 #include "sparse.cuh"
@@ -36,9 +38,10 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   CHECK_EQ(embedBufferLens.size(), denseBuffers.size());
 
   // Init IPC stuff
+  volatile shmStruct *shm = NULL;
   sharedMemoryInfo info;
-  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
-  auto shm = (volatile shmStruct *)info.addr;
+  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(*shm), &info), 0);
+  shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 
   auto localSize = BytePSSparseCommon::GetLocalSize();
@@ -51,16 +54,8 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     CUDA_CALL(cudaGetDeviceProperties(&prop, i));
 
     // CUDA IPC is only supported on devices with unified addressing
-    if (!prop.unifiedAddressing) {
-      // BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
-      continue;
-    }
-    // We require two processes accessing each device, so we need
-    // to ensure exclusive or prohibited mode is not set
-    if (prop.computeMode != cudaComputeModeDefault) {
-      // BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
-      continue;
-    }
+    CHECK(prop.unifiedAddressing)
+        << "Device " << i << " does not support unified addressing.";
 
     shm->devices[shm->nprocesses++] = i;
     CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);
@@ -75,40 +70,34 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   _denseBuffers.assign(denseBuffers.begin(), denseBuffers.end());
 
   _localEmbedBufLens.resize(localSize);
+  _globalEmbedBufLens.resize(workerNum, std::vector<size_t>(localSize));
   _globalTotalEmbedBufLens.resize(workerNum, 0);
 
-  // Allocate memory and an event for each process and fill 
+  // Allocate memory for each process and fill 
   // the shared memory buffer with the IPC handles 
   for (size_t i = 0; i < shm->nprocesses; i++) {
-    cudaEvent_t event;
     CUDA_CALL(cudaSetDevice(
         shm->devices[i]));
     CUDA_CALL(cudaIpcGetMemHandle(
         (cudaIpcMemHandle_t *)&shm->embedMemHandle[i], embedBuffers[i]));
-    CUDA_CALL(cudaIpcGetMemHandle(
-        (cudaIpcMemHandle_t *)&shm->denseMemHandle[i], denseBuffers[i]));
-
-    CUDA_CALL(cudaEventCreate(
-        &event, cudaEventDisableTiming | cudaEventInterprocess));
-    CUDA_CALL(cudaIpcGetEventHandle(
-        (cudaIpcEventHandle_t *)&shm->eventHandle[i], event));
     
+    shm->embedBufferLength[i] = embedBufferLens[i];
     // Store the buffers 
     _localEmbedBufLens[i] = embedBufferLens[i]; // local buffer length
   }
   _denseBufferLen = denseBufferLen;
+  shm->denseBufferLength = denseBufferLen;
+
+#ifdef BYTEPS_DEBUG
+  // For debug: print _localEmbedBufLens
+  std::cout << "_localEmbedBufLens:" << std::endl;
+  for (auto len : _localEmbedBufLens) 
+    std::cout << len << " ";
+  std::cout << std::endl;
+#endif
 
   for (int i = 0; i < localSize; i++) {
-    _globalTotalEmbedBufLens[workerID] += _localEmbedBufLens[i];
-  }
-
-  // Need a continous CPU buffer for each GPU
-  _cpuBuffers.clear();
-  for (int i = 0; i < localSize; i++) {
-    void* _cpuBuffer;
-    CUDA_CALL(cudaHostAlloc(
-        &_cpuBuffer, _denseBufferLen, cudaHostAllocMapped | cudaHostAllocPortable));
-    _cpuBuffers.push_back(_cpuBuffer);
+    _globalEmbedBufLens[workerID][i] = _localEmbedBufLens[i];
   }
   
   // The followings are for the global coordination of 
@@ -116,67 +105,88 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   auto ps = BytePSSparseCommon::GetPS();
   if (BytePSSparseCommon::IsDistributed()) {
     CHECK(ps); // must init the pslite instance before
-    std::vector<ps::SArray<ps::Key>> tmpKeys;
-    std::vector<ps::SArray<int>> tmpLens;
-    std::vector<ps::SArray<char>> bufferLenSarrays;
+    
+    // keys
+    std::vector<ps::Key> pskeys(workerNum);
+    std::vector<ps::SArray<ps::Key>> keys_array; 
+
+    // lens
+    std::vector<int> pslens(workerNum);
+    std::vector<ps::SArray<int>> lens_array; 
+
+    // vals
+    std::vector<ps::SArray<char>> vals_array; 
+
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
     for (int i = 0; i < workerNum; i++) {
       ps::Key key = i;
       int server = i;
+      
+      // keys 
+      pskeys[i] = krs[server].begin() + key;
+      ps::SArray<ps::Key> keys;
+      keys.reset(&pskeys[i], 1, [](void *){});
+      keys_array.push_back(keys);
+      
+      // lens 
+      pslens[i] = sizeof(size_t) * localSize;
+      ps::SArray<int> lens;
+      lens.reset(&pslens[i], 1, [](void *){});
+      lens_array.push_back(lens);
 
-      // vals
-      ps::SArray<char> tmp(
-          (char*)&_globalTotalEmbedBufLens[i], sizeof(size_t), false);
-      bufferLenSarrays.push_back(tmp);
-      
-      // keys
-      std::vector<ps::Key> tmp1(1, krs[server].begin() + key);
-      ps::SArray<ps::Key> keys(tmp1);
-      tmpKeys.push_back(keys);
-      
-      // lens
-      std::vector<int> tmp2(1, sizeof(size_t));
-      ps::SArray<int> lens(tmp2);
-      tmpLens.push_back(lens);
+      // vals 
+      ps::SArray<char> vals;
+      vals.reset((char*)_globalEmbedBufLens[i].data(), localSize * sizeof(size_t), [](void *){});
+      vals_array.push_back(vals);
     }
 
     // Push once to the associated server
     {
       int server = workerID;
-      auto keys = tmpKeys[server];
-      auto vals = bufferLenSarrays[server];
-      auto lens = tmpLens[server];
+      auto keys = keys_array[server];
+      auto vals = vals_array[server];
+      auto lens = lens_array[server];
       ps->Wait(ps->ZPush(keys, vals, lens));
     }
 
-    // Call a barrier to sync across multiple workers. 
-    // In case that some workers finish push too fast, 
-    // and then pull from other workers too early
     ps::Postoffice::Get()->Barrier(
         0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
 
     // Pull the embedding buffer length of other workers
-    for (int key = 0; key < workerNum; key++) {
-      int server = key;
-      if (server == workerID) continue; // skip myself
-      auto keys = tmpKeys[server];
-      auto vals = bufferLenSarrays[server];
-      auto lens = tmpLens[server];
+    for (int i = 0; i < workerNum; i++) {
+      if (i == workerID) continue; // skip myself
+      int server = i;
+      auto keys = keys_array[server];
+      auto vals = vals_array[server];
+      auto lens = lens_array[server];
       ps->Wait(ps->ZPull(keys, &vals, &lens));
+    }
+  } // BytePSSparseCommon::IsDistributed()
+
+  for (int wid = 0; wid < workerNum; wid++) {
+    for (int gpu = 0; gpu < localSize; gpu++) {
+      _globalTotalEmbedBufLens[wid] += _globalEmbedBufLens[wid][gpu];
     }
   }
 
-  // For debug: print _localEmbedBufLens
-  std::cout << "_localEmbedBufLens:" << std::endl;
-  for (auto len : _localEmbedBufLens) 
-    std::cout << len << " ";
+#ifdef BYTEPS_DEBUG
+  // For debug: print _globalEmbedBufLens
+  std::cout << "_globalEmbedBufLens:" << std::endl;
+  for (auto vec : _globalEmbedBufLens) {
+    for (auto len : vec) {
+      std::cout << len << " ";
+    }
+    std::cout << std::endl;
+  }
   std::cout << std::endl;
 
   // For debug: print _globalTotalEmbedBufLens
   std::cout << "_globalTotalEmbedBufLens:" << std::endl;
-  for (auto len : _globalTotalEmbedBufLens) 
+  for (auto len : _globalTotalEmbedBufLens) {
     std::cout << len << " ";
+  }
   std::cout << std::endl;
+#endif 
 
   // Check the buffer size 
   size_t accmul = 0;
@@ -243,6 +253,23 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
     _local_scatter_comms[i] = std::make_unique<LocalScatterComm>(
         planfile_name, localSize, src, src_len, send_counts, dsts, dsts_lens);
   }
+  
+  if (BytePSSparseCommon::IsDistributed()) {
+    // Prepare distributed gather communication
+    _dist_gather_comms.resize(localSize);
+    for (int i = 0; i < localSize; i++) {
+      auto ps = BytePSSparseCommon::GetPS();
+      _dist_gather_comms[i] = std::make_unique<DistGatherComm>(ps, _globalEmbedBufLens, 
+        _denseBuffers[i], _denseBufferLen, i, localSize, workerID, workerNum);
+    }
+    // Prepare distributed scatter communication
+    _dist_scatter_comms.resize(localSize);
+    for (int i = 0; i < localSize; i++) {
+      auto ps = BytePSSparseCommon::GetPS();
+      _dist_scatter_comms[i] = std::make_unique<DistScatterComm>(ps, _globalEmbedBufLens, 
+        _denseBuffers[i], _denseBufferLen, i, localSize, workerID, workerNum);
+    }
+  } 
 }
 
 /*
@@ -373,40 +400,48 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
   _signal_cv_per_gpu.push_back(signal_cv);
 }
 
-
 void bytepsSparseShutdown() {
 }
 
 
 void bytepsGatherExecAsync(int local_rank, cudaStream_t stream) {
   // Gather from local peer GPUs on the same worker
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-  auto workerNum = BytePSSparseCommon::GetNumWorker();
-
   _local_gather_comms[local_rank]->ExecAsync();
+  
+  // Gather from distributed peer GPUs on other workers
+  if (BytePSSparseCommon::IsDistributed()) {
+    _dist_gather_comms[local_rank]->ExecAsync();
+  }
 }
 
 void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) { 
   switch (op) {
-    case GATHER:
+    case GATHER: {
       _local_gather_comms[local_rank]->Sync();
-      break;
-    case SCATTER:
+      if (BytePSSparseCommon::IsDistributed()) {
+        _dist_gather_comms[local_rank]->Sync();
+      }
+    } break;
+    case SCATTER: {
       _local_scatter_comms[local_rank]->Sync();
-      break;
+      if (BytePSSparseCommon::IsDistributed()) {
+        _dist_scatter_comms[local_rank]->Sync();
+      }
+    } break;
     default:
-      CHECK(0) << "unrecognized operation";
+      CHECK(0) << "unrecognized operation: " << op;
   }
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
 void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-  void* baseSrcPtr = (void*)_denseBuffers[local_rank];
-
+  // Scatter to local peer GPUs on the same worker
   _local_scatter_comms[local_rank]->ExecAsync();
+  
+  // Scatter to distributed peer GPUs on other workers
+  if (BytePSSparseCommon::IsDistributed()) {
+    _dist_scatter_comms[local_rank]->ExecAsync();
+  }
 }
 
 // void dense_ready_callback(int local_rank) {

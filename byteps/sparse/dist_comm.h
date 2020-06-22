@@ -17,22 +17,158 @@
 #define BYTEPS_DISTRIBUTED_COMMUNICATOR_H
 
 #include "communicator.h"
+#include "util.h"
 
 namespace byteps {
 namespace sparse {
 
 class DistGatherComm : public SparseComm {
   using data_t = float;
+  using K = ps::SArray<ps::Key>;  // keys
+  using V = ps::SArray<char>;     // vals
+  using L = ps::SArray<int>;      // lens
 
  public:
+  DistGatherComm(ps::KVWorker<char>* ps, std::vector<std::vector<size_t>> globalBufLens,
+                 void* dst, size_t dst_len, int local_rank, int local_size, int worker_id, int num_worker) : 
+                 ps_(ps), dst_(dst), dst_len_(dst_len), local_rank_(local_rank), local_size_(local_size), 
+                 worker_id_(worker_id), num_worker_(num_worker), globalBufLens_(globalBufLens) {
+    CHECK_LT(worker_id_, num_worker_);
+    CHECK_LT(local_rank_, local_size_);
+    
+    pskeys_.resize(num_worker_, std::vector<K>(local_size_));
+    psvals_.resize(num_worker_, std::vector<V>(local_size_));
+    pslens_.resize(num_worker_, std::vector<L>(local_size_));
+    cpubuffs_.resize(num_worker_, std::vector<void*>(local_size_));
+    cpubuffs_lens_.resize(num_worker_, std::vector<size_t>(local_size_));
+    dst_offsets_.resize(num_worker_, std::vector<size_t>(local_size_));
+
+    // prepare dst_offsets_
+    size_t offset = 0;
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      for (int gid = 0; gid < local_size_; ++gid) {
+        dst_offsets_[wid][gid] = offset;
+        offset += globalBufLens_[wid][gid] / (num_worker_ * local_size_);
+      }
+    }
+    CHECK_EQ(offset, dst_len_) << offset << " " << dst_len_;
+    
+    auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+    CHECK_EQ(krs.size(), num_worker_);
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue;
+
+      for (int gid = 0; gid < local_size_; ++gid) {
+        // allocate cuda-aware cpu buffer
+        size_t cpubuff_len = 
+            globalBufLens_[wid][gid] / (num_worker_ * local_size_);
+        void* cpubuff;
+        mallocAlignedCudaAwareCpubuff(&cpubuff, cpubuff_len);
+        cpubuffs_[wid][gid] = cpubuff;
+        cpubuffs_lens_[wid][gid] = cpubuff_len;
+
+        // encode: the last 16 bits are all "1"s 
+        // so the server can know this is a gather key
+        uint64_t key = ((wid * local_size_ + gid) << 16) + 0xffff;
+
+        // assigned to the server that is colocated with the worker with wid
+        ps::Key pskey = krs[wid].begin() + key;
+        CHECK_LT(pskey, krs[wid].end());
+
+        // prepare keys
+        pskeys_[wid][gid].CopyFrom(&pskey, 1);
+
+        // prepare vals
+        psvals_[wid][gid].reset((char*)cpubuff, cpubuff_len, [](void*){});
+
+        // prepare lens
+        int tmplen = cpubuff_len;
+        pslens_[wid][gid].CopyFrom(&tmplen, 1);
+      }
+    }
+
+    // init cuda stream for copyH2D
+    CUDA_CALL(cudaSetDevice(local_rank_));
+    copy_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    CUDA_CALL(cudaStreamCreateWithFlags(
+      copy_stream_, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
+  }
 
   void ExecAsync() {
+    std::vector<int> timestamps;
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue; // skip pull myself
+      for (int gid = 0; gid < local_size_; ++gid) {
+        auto& keys = pskeys_[wid][gid];
+        auto& vals = psvals_[wid][gid]; 
+        auto& lens = pslens_[wid][gid]; 
+        
+        // use the pslite cmd field to store my global gpu id 
+        int my_global_id = worker_id_ * local_size_ + local_rank_; 
 
+        auto ts = ps_->ZPull(keys, &vals, &lens, my_global_id);
+        timestamps.push_back(ts);
+      }
+    }
+
+    // there is an hanging issue if we do Wait in Sync()
+    // so we need to wait here
+    for (auto ts : timestamps) {
+      ps_->Wait(ts);
+    }
+
+    // copy from host to gpu
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue;
+      for (int gid = 0; gid < local_size_; ++gid) {
+        void* dst = (void*)((char*)dst_ + dst_offsets_[wid][gid]);
+        void* src = cpubuffs_[wid][gid];
+        CUDA_CALL(cudaMemcpyAsync(
+          (void*) dst, 
+          (const void *)src, 
+          (size_t) cpubuffs_lens_[wid][gid], 
+          (cudaMemcpyKind) cudaMemcpyHostToDevice, 
+          (cudaStream_t) *copy_stream_));
+      }
+    }
   }
 
   void Sync() {
-
+    CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
   }
+
+  ~DistGatherComm() {
+    pskeys_.clear();
+    psvals_.clear();
+    pslens_.clear();
+
+    for (auto bufs : cpubuffs_) {
+      for (auto buf : bufs) {
+        CUDA_CALL(cudaHostUnregister(buf));
+        free(buf);
+      }
+    }
+  }
+ 
+ private:
+  ps::KVWorker<char>* ps_;
+  void* dst_; // the dst buffers
+  size_t dst_len_; // length of the dst buffer
+  int local_rank_;
+  int local_size_;
+  int worker_id_;
+  int num_worker_;
+  std::vector<std::vector<size_t>> globalBufLens_; 
+  std::vector<std::vector<size_t>> dst_offsets_; // calculate the offset for copyH2D
+
+  std::vector<std::vector<void *>> cpubuffs_;
+  std::vector<std::vector<size_t>> cpubuffs_lens_;
+  std::vector<std::vector<K>> pskeys_;
+  std::vector<std::vector<V>> psvals_;
+  std::vector<std::vector<L>> pslens_;
+
+  cudaStream_t* copy_stream_;
 
 }; // class DistGatherComm 
 
@@ -40,17 +176,140 @@ class DistGatherComm : public SparseComm {
 
 class DistScatterComm : public SparseComm {
   using data_t = float;
+  using K = ps::SArray<ps::Key>;  // keys
+  using V = ps::SArray<char>;     // vals
+  using L = ps::SArray<int>;      // lens
 
  public:
+  DistScatterComm(ps::KVWorker<char>* ps, std::vector<std::vector<size_t>> globalBufLens,
+                  void* src, size_t src_len, int local_rank, int local_size, int worker_id, int num_worker) :
+                  ps_(ps), src_(src), src_len_(src_len), local_rank_(local_rank), local_size_(local_size), 
+                  worker_id_(worker_id), num_worker_(num_worker), globalBufLens_(globalBufLens) {
+    CHECK_LT(worker_id_, num_worker_);
+    CHECK_LT(local_rank_, local_size_);
+    
+    pskeys_.resize(num_worker_, std::vector<K>(local_size_));
+    psvals_.resize(num_worker_, std::vector<V>(local_size_));
+    pslens_.resize(num_worker_, std::vector<L>(local_size_));
+    cpubuffs_.resize(num_worker_, std::vector<void*>(local_size_));
+    cpubuffs_lens_.resize(num_worker_, std::vector<size_t>(local_size_));
+    src_offsets_.resize(num_worker_, std::vector<size_t>(local_size_));
+
+    // prepare src_offsets_
+    size_t offset = 0;
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      for (int gid = 0; gid < local_size_; ++gid) {
+        src_offsets_[wid][gid] = offset;
+        offset += globalBufLens_[wid][gid] / (num_worker_ * local_size_);
+      }
+    }
+    CHECK_EQ(offset, src_len_) << offset << " " << src_len_;
+    
+    auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+    CHECK_EQ(krs.size(), num_worker_);
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue;
+
+      for (int gid = 0; gid < local_size_; ++gid) {
+        // allocate cuda-aware cpu buffer
+        size_t cpubuff_len = 
+            globalBufLens_[wid][gid] / (num_worker_ * local_size_);
+        void* cpubuff;
+        mallocAlignedCudaAwareCpubuff(&cpubuff, cpubuff_len);
+        cpubuffs_[wid][gid] = cpubuff;
+        cpubuffs_lens_[wid][gid] = cpubuff_len;
+
+        // encode: the last 16 bits are all "1"s 
+        uint64_t key = ((wid * local_size_ + gid) << 16) + 0xffff;
+
+        // assigned to the server that is colocated with the worker with wid
+        ps::Key pskey = krs[wid].begin() + key;
+        CHECK_LT(pskey, krs[wid].end());
+
+        // prepare keys
+        pskeys_[wid][gid].CopyFrom(&pskey, 1);
+
+        // prepare vals
+        psvals_[wid][gid].reset((char*)cpubuff, cpubuff_len, [](void*){});
+
+        // prepare lens
+        int tmplen = cpubuff_len;
+        pslens_[wid][gid].CopyFrom(&tmplen, 1);
+      }
+    }
+
+    // init cuda stream for copyH2D
+    CUDA_CALL(cudaSetDevice(local_rank_));
+    copy_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
+    CUDA_CALL(cudaStreamCreateWithFlags(
+      copy_stream_, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
+  }
 
   void ExecAsync() {
+    // copy from gpu to host
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue;
+      for (int gid = 0; gid < local_size_; ++gid) {
+        void* src = (void*)((char*)src_ + src_offsets_[wid][gid]);
+        void* dst = cpubuffs_[wid][gid];
+        CUDA_CALL(cudaMemcpyAsync(
+          (void*) dst, 
+          (const void *)src, 
+          (size_t) cpubuffs_lens_[wid][gid], 
+          (cudaMemcpyKind) cudaMemcpyDeviceToHost, 
+          (cudaStream_t) *copy_stream_));
+      }
+    }
+    CUDA_CALL(cudaStreamSynchronize(*copy_stream_));
 
+    std::vector<int> timestamps;
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      if (wid == worker_id_) continue; // skip pull myself
+      for (int gid = 0; gid < local_size_; ++gid) {
+        auto& keys = pskeys_[wid][gid];
+        auto& vals = psvals_[wid][gid]; 
+        auto& lens = pslens_[wid][gid]; 
+        
+        // use the pslite cmd field to store my global gpu id 
+        int my_global_id = worker_id_ * local_size_ + local_rank_; 
+
+        auto ts = ps_->ZPush(keys, vals, lens, my_global_id);
+        timestamps.push_back(ts);
+      }
+    }
+
+    // maybe we can relax this wait in 
+    // sparse training to improve performance
+    for (auto ts : timestamps) {
+      ps_->Wait(ts);
+    }
   }
 
   void Sync() {
-
+    // There is a strange hanging problem if we 
+    // wait the timestamps here, so just do nothing 
   }
-  
+ 
+ private:
+  ps::KVWorker<char>* ps_;
+  void* src_; 
+  size_t src_len_; 
+  int local_rank_;
+  int local_size_;
+  int worker_id_;
+  int num_worker_;
+  std::vector<std::vector<size_t>> globalBufLens_; 
+  std::vector<std::vector<size_t>> src_offsets_; // calculate the offset for copyH2D
+
+  std::vector<std::vector<void *>> cpubuffs_;
+  std::vector<std::vector<size_t>> cpubuffs_lens_;
+  std::vector<std::vector<K>> pskeys_;
+  std::vector<std::vector<V>> psvals_;
+  std::vector<std::vector<L>> pslens_;
+
+  cudaStream_t* copy_stream_;
+
 }; // class DistScatterComm 
 
 } // namespace sparse

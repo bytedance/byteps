@@ -62,6 +62,22 @@ void sharedMemoryClose(sharedMemoryInfo *info) {
   }
 }
 
+void mallocAligned(void** ptr, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p;
+  int size_aligned = ROUNDUP(size, page_size);
+  int ret = posix_memalign(&p, page_size, size_aligned);
+  CHECK_EQ(ret, 0) 
+      << "posix_memalign error: " << strerror(ret);
+  CHECK(p);
+  memset(p, 0, size);
+  *ptr = p;
+}
+
+void mallocAlignedCudaAwareCpubuff(void **ptr, size_t size) {
+  mallocAligned(ptr, size);
+  CUDA_CALL(cudaHostRegister(*ptr, size, cudaHostRegisterMapped));
+}
 
 } // namespace sparse
 } // namespace byteps

@@ -35,66 +35,16 @@ void BytePSSparseCommon::Init() {
   _worker_id = atoi(getenv("DMLC_WORKER_ID"));
   _global_size = _num_worker * _local_size;
 
-  // LOG(INFO) << "local_size=" << _local_size 
-  //     << ", global_size=" << _global_size
-  //     << ", num_worker=" << _num_worker
-  //     << ", worker_id=" << _worker_id;
+  LOG(INFO) << "local_size=" << _local_size 
+      << ", global_size=" << _global_size
+      << ", num_worker=" << _num_worker
+      << ", worker_id=" << _worker_id;
 
-  
   // Launch ps-lite if needs distributed training
   if (BytePSSparseCommon::IsDistributed()) {
     // Init worker
     _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
-    ps::Postoffice::Get()->Barrier(0, 
-        ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
-  }
-}
-
-void BytePSSparseCommon::CoordinateDistBufferLens(std::vector<std::vector<int>> src) {
-  auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
-  const int numServers = krs.size();
-  int rank = BytePSSparseCommon::GetWorkerID();
-  CHECK_EQ(numServers, (int)src.size()) << numServers << " " << src.size();
-
-  // Prepare vals
-  std::vector<ps::SArray<char>> psVals(numServers);
-  for (int i = 0; i < numServers; i++) {
-    ps::SArray<char> tmp((char*)src[i].data(), numServers * sizeof(int), false);
-    psVals[i] = tmp;
-  }
-  
-  // Prepare keys and lens
-  std::vector<ps::SArray<ps::Key>> psKeys; 
-  std::vector<ps::SArray<int>> psLens; 
-  for (int i = 0; i < numServers; i++) {
-    int server = i;
-    std::vector<ps::Key> tmp1(1, (ps::Key)krs[server].begin() + server);
-    ps::SArray<ps::Key> keys(tmp1);
-    psKeys.push_back(keys);
-
-    std::vector<int> tmp2(1, (int)src.size() * sizeof(int));
-    ps::SArray<int> lens(tmp2);
-    psLens.push_back(lens);
-  }
-
-  // Push myself
-  { 
-    int server = rank;
-    auto keys = psKeys[server];
-    auto vals = psVals[server];
-    auto lens = psLens[server];
-    _ps->Wait(_ps->ZPush(keys, vals, lens));
-  }
-
-  // Pull from others
-  for (int i = 0; i < numServers; i++) {
-    if (i == rank) continue; // skip myself
-    int server = i;
-    auto keys = psKeys[server];
-    auto vals = psVals[server];
-    auto lens = psLens[server];
-    _ps->Wait(_ps->ZPull(keys, &vals, &lens));
+    ps::Start(0, "byteps\0");
   }
 
 }
