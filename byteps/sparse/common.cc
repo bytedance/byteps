@@ -41,11 +41,9 @@ void BytePSSparseCommon::Init() {
       << ", worker_id=" << _worker_id;
 
   // Launch ps-lite if needs distributed training
-  if (BytePSSparseCommon::IsDistributed()) {
-    // Init worker
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::Start(0, "byteps\0");
-  }
+  // Init worker
+  _ps = new ps::KVWorker<char>(0, 0);
+  ps::Start(0, "byteps\0");
 
 }
 

@@ -272,88 +272,6 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   } 
 }
 
-/*
-void bytepsSparseInitDense(std::vector<void*>& denseDeltaBeforeReduceBuffers,
-                           std::vector<void*>& denseDeltaAfterReduceBuffers,
-                           int sizeDenseDelta) {
-
-  CHECK_EQ(denseDeltaBeforeReduceBuffers.size(), denseDeltaAfterReduceBuffers.size());
-  _denseDeltaBufferLength = sizeDenseDelta;
-
-  // // Init IPC stuff
-  // sharedMemoryInfo info;
-  // CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(shmStruct), &info), 0);
-  // auto shm = (volatile shmStruct *)info.addr;
-  // memset((void *)shm, 0, sizeof(*shm));
-
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerNum = BytePSSparseCommon::GetNumWorker();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-
-  // for (int i = 0; i < localSize; i++) {
-  //   cudaDeviceProp prop;
-  //   CUDA_CALL(cudaGetDeviceProperties(&prop, i));
-
-  //   // CUDA IPC is only supported on devices with unified addressing
-  //   if (!prop.unifiedAddressing) {
-  //     // BPS_LOG(INFO) << "Device " << i << " does not support unified addressing, skipping...";
-  //     continue;
-  //   }
-  //   // We require two processes accessing each device, so we need
-  //   // to ensure exclusive or prohibited mode is not set
-  //   if (prop.computeMode != cudaComputeModeDefault) {
-  //     // BPS_LOG(INFO) << "Device " << i << "is in an unsupported compute mode for this sample";
-  //     continue;
-  //   }
-
-  //   shm->devices[shm->nprocesses++] = i;
-  //   CHECK_GT(MAX_CUDA_DEVICES, shm->nprocesses);
-  // }
-
-  // CHECK(shm->nprocesses > 0) 
-  //     << "No cuda device suppported";
-  // CHECK_EQ(shm->nprocesses, embedBuffers.size())
-  //     << "Shared memory processes: " << shm->nprocesses 
-  //     << ", send buffers: " << embedBuffers.size();
-
-  // We need to manually we need to clear the containers because
-  // bytepsSparseInit() might be (unexpectedly) invoked multiple times
-  _denseDeltaBeforeReduceBuffers.clear();
-  _denseDeltaAfterReduceBuffers.clear();
-  for (size_t i = 0; i < localSize; i++) {
-    _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffers[i]); 
-    _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffers[i]);
-  }
-
-  // Allocate memory and an event for each process and fill 
-  // the shared memory buffer with the IPC handles 
-  // for (size_t i = 0; i < shm->nprocesses; i++) {
-  //   cudaEvent_t event;
-  //   CUDA_CALL(cudaSetDevice(
-  //       shm->devices[i]));
-
-  //   CUDA_CALL(cudaIpcGetMemHandle(
-  //     (cudaIpcMemHandle_t *)&shm->denseDeltaBeforeReduceMemHandle[i], denseDeltaBeforeReduceBuffers[i]));
-  //   CUDA_CALL(cudaIpcGetMemHandle(
-  //     (cudaIpcMemHandle_t *)&shm->denseDeltaAfterReduceMemHandle[i], denseDeltaAfterReduceBuffers[i]));
-
-  //   // Store the buffers 
-  //   _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffers[i]); 
-  //   _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffers[i]);
-  // }
-
-  // Get CPU buffer for dense layer reduceasync
-  {
-    CUDA_CALL(cudaHostAlloc(
-        &_cpuDenseDeltaBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
-  }
-
-  // Start the DenseReduce loop
-  runDenseReduceLoop(_denseReduceLoop);
-  _denseReducer = new ::byteps::common::CpuReducer(nullptr);
-}
-*/
-
 extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
                                             void* denseDeltaBeforeReduceBuffer,
                                             void* denseDeltaAfterReduceBuffer,
@@ -361,43 +279,25 @@ extern "C" void bytepsSparseInitDensePerGPU(int device_id /* starts with 0 */,
   auto localSize = BytePSSparseCommon::GetLocalSize();
   auto workerNum = BytePSSparseCommon::GetNumWorker();
   auto workerID = BytePSSparseCommon::GetWorkerID();
-  assert((device_id < localSize) && "Device id must be within local gpu size.");
+  CHECK_LT(device_id, localSize) << "Device id must be within local gpu size.";
 
-  std::cout << "Init BytePS Sparse for dense layers: Device" << device_id << std::endl;
+  LOG(INFO) << "Init BytePS Sparse for dense layers: Device " << device_id;
 
-  if (device_id == 0){
-    _denseDeltaBufferLength = sizeDenseDelta;
-    _mtx_DenseLatestBuffers = new std::mutex();
-
-    // Allocate latest parameter buffer.
-    CUDA_CALL(cudaHostAlloc(
-      &_cpuDenseLatestBuffers, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
-
-    // Start the DenseReduce loop
-    // _denseReducer = new ::byteps::common::CpuReducer(nullptr);
-    // runDenseReduceLoop(_denseReduceLoop);
-
-    // Start the 3-stage pipeline: D2H -> CpuReduce -> H2D
-    _denseReducer = new ::byteps::common::CpuReducer(nullptr);
-    runDenseReducePipeline(_denseD2HLoop, _denseReduceLoop, _denseH2DLoop, _denseReducer, _mtx_DenseLatestBuffers);
-  } else{
-    CHECK_EQ(_denseDeltaBufferLength, sizeDenseDelta);
-  }
-
-  // Get CPU buffer for dense layer reduceasync
-  void * _cpuDenseDeltaBuffers_per_gpu;
-  CUDA_CALL(cudaHostAlloc(
-    &_cpuDenseDeltaBuffers_per_gpu, sizeDenseDelta, cudaHostAllocMapped | cudaHostAllocPortable));
-  _cpuDenseDeltaBuffers.push_back(_cpuDenseDeltaBuffers_per_gpu);
-  _denseDeltaBeforeReduceBuffers.push_back(denseDeltaBeforeReduceBuffer); 
-  _denseDeltaAfterReduceBuffers.push_back(denseDeltaAfterReduceBuffer);
-
-  bool is_ready = false;
-  std::mutex * mtx = new std::mutex();
-  std::condition_variable * signal_cv = new std::condition_variable();
-  _is_ready_per_gpu.push_back(is_ready);
-  _signal_mtx_per_gpu.push_back(mtx);
-  _signal_cv_per_gpu.push_back(signal_cv);
+  _denseDeltaBufferLength = sizeDenseDelta;
+  
+  auto ps = BytePSSparseCommon::GetPS();
+  _dense_reduce_comms.push_back(
+      std::make_unique<DenseReduceComm>(
+        ps, 
+        sizeDenseDelta, 
+        denseDeltaBeforeReduceBuffer,
+        denseDeltaAfterReduceBuffer,
+        device_id,
+        localSize, 
+        workerID, 
+        workerNum
+      )
+  );
 }
 
 void bytepsSparseShutdown() {
@@ -412,6 +312,23 @@ void bytepsGatherExecAsync(int local_rank, cudaStream_t stream) {
   if (BytePSSparseCommon::IsDistributed()) {
     _dist_gather_comms[local_rank]->ExecAsync();
   }
+}
+
+
+void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
+  // Scatter to local peer GPUs on the same worker
+  _local_scatter_comms[local_rank]->ExecAsync();
+  
+  // Scatter to distributed peer GPUs on other workers
+  if (BytePSSparseCommon::IsDistributed()) {
+    _dist_scatter_comms[local_rank]->ExecAsync();
+  }
+}
+
+
+// TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
+void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
+
 }
 
 void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) { 
@@ -434,89 +351,10 @@ void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) {
   CUDA_CALL(cudaStreamSynchronize(stream));
 }
 
-void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
-  // Scatter to local peer GPUs on the same worker
-  _local_scatter_comms[local_rank]->ExecAsync();
-  
-  // Scatter to distributed peer GPUs on other workers
-  if (BytePSSparseCommon::IsDistributed()) {
-    _dist_scatter_comms[local_rank]->ExecAsync();
-  }
-}
 
-// void dense_ready_callback(int local_rank) {
-//   // std::mutex signal_mtx = _signal_mtx_per_gpu.at(local_rank);
-//   // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
-
-//   std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
-//   _is_ready_per_gpu.at(local_rank) = true;
-//   _signal_cv_per_gpu.at(local_rank)->notify_one();
-// }
-
-// TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
-void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
-  auto localSize = BytePSSparseCommon::GetLocalSize();
-  auto workerID = BytePSSparseCommon::GetWorkerID();
-  void* baseSrcPtr = (void*) (_denseDeltaBeforeReduceBuffers.at(local_rank));
-  void* baseResultPtr = (void*) (_denseDeltaAfterReduceBuffers.at(local_rank));
-
-  size_t buffer_size = _denseDeltaBufferLength;
-
-  // Create a local thread and related mutex to synchronnize.
-  _is_ready_per_gpu.at(local_rank) = false;
-
-  // auto reduce_async_job = [//& signal_mtx, & signal_cv, & is_ready, 
-  //                          local_rank, baseSrcPtr, baseResultPtr,
-  //                          buffer_size, stream]() {
-  //   // Copy dense layer's param delta D2H.
-  //   CUDA_CALL(cudaMemcpyAsync((void *)_cpuDenseDeltaBuffers, baseSrcPtr, buffer_size, cudaMemcpyDeviceToHost, stream));
-  //   CUDA_CALL(cudaStreamSynchronize(stream));
-
-  //   // CPU Work to reduce.
-  //   _denseReducer->sum(_cpuDenseLatestBuffers, _cpuDenseDeltaBuffers, _denseDeltaBufferLength /* in bytes*/, DataType::BYTEPS_FLOAT32);
-
-  //   // Copy dense layer's latest param H2D.
-  //   CUDA_CALL(cudaMemcpyAsync(baseResultPtr, _cpuDenseLatestBuffers, buffer_size, cudaMemcpyHostToDevice, stream));
-  //   CUDA_CALL(cudaStreamSynchronize(stream));
-
-  //   dense_ready_callback(local_rank);
-  // };
-  // _denseReduceLoop->add_worker(reduce_async_job);
-
-  auto dense_ready_callback = 
-    [] (int local_rank) {
-    std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
-    _is_ready_per_gpu.at(local_rank) = true;
-    _signal_cv_per_gpu.at(local_rank)->notify_one();
-  };
-
-  DenseTask task;
-  {
-    task.workerID = workerID;
-    task.local_rank = local_rank;
-    task.buffer_size = buffer_size; // In bytes.
-    task.streamH2D = stream;
-    task.streamD2H = stream; // TODO(chengyu.dai): separate the streams for two directions.
-
-    task.baseSrcPtr = baseSrcPtr;
-    task.cpuDenseDeltaPtr = (void *) (_cpuDenseDeltaBuffers.at(local_rank));
-    task.cpuDenseLatestPtr = _cpuDenseLatestBuffers;
-    task.baseResultPtr = baseResultPtr;
-
-    task.allFinishCallback = dense_ready_callback;
-  }
-  _denseD2HLoop->add_predefined_worker(task);
-}
-
+// TODO: should merge this with bytepsSynchronize
 void bytepsDenseSynchronize(int local_rank, cudaStream_t stream) {
-  // auto signal_mtx = _signal_mtx_per_gpu.at(local_rank);
-  // std::condition_variable signal_cv = _signal_cv_per_gpu.at(local_rank);
-
-  std::unique_lock<std::mutex> lck(* _signal_mtx_per_gpu.at(local_rank));
-  while (!_is_ready_per_gpu.at(local_rank))
-    _signal_cv_per_gpu.at(local_rank)->wait(lck);
 }
-
 
 } // namespace sparse
 } // namespace byteps 
