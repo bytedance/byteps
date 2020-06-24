@@ -40,7 +40,7 @@ void bytepsSparseInit(std::vector<void*>& embedBuffers,
   // Init IPC stuff
   volatile shmStruct *shm = NULL;
   sharedMemoryInfo info;
-  CHECK_EQ(sharedMemoryCreate(bpsShmName, sizeof(*shm), &info), 0);
+  CHECK_EQ(createCudaIpcSharedMemory(bpsCudaIpcShmName, sizeof(*shm), &info), 0);
   shm = (volatile shmStruct *)info.addr;
   memset((void *)shm, 0, sizeof(*shm));
 

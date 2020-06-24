@@ -38,7 +38,8 @@ namespace sparse {
         << "CUDA: " << cudaGetErrorString(e);                    \
   }
 
-static const char* bpsShmName = "BytePS_Sparse_CudaIpc_ShM_";
+static const char* bpsShmName = "BytePS_Shm_";
+static const char* bpsCudaIpcShmName = "BytePS_CudaIpc_Shm";
 
 typedef struct sharedMemoryInfo_st {
   void *addr;
@@ -54,14 +55,17 @@ typedef struct shmStruct_st {
   size_t denseBufferLength;
 } shmStruct;
 
-int sharedMemoryCreate(const char *name, size_t sz, sharedMemoryInfo *info);
+// shared memory
+int createSharedMemory(const char *name, size_t sz, void** ptr);
+int openSharedMemory(const char *name, size_t sz, void** ptr);
 
-int sharedMemoryOpen(const char *name, size_t sz, sharedMemoryInfo *info);
+// cuda ipc shared memory
+int createCudaIpcSharedMemory(const char *name, size_t sz, sharedMemoryInfo *info);
+int openCudaIpcSharedMemory(const char *name, size_t sz, sharedMemoryInfo *info);
+void closeCudaIpcSharedMemory(sharedMemoryInfo *info);
 
-void sharedMemoryClose(sharedMemoryInfo *info);
-
+//  aligned memory allocation
 void mallocAligned(void** ptr, size_t size);
-
 void mallocAlignedCudaAwareCpubuff(void **ptr, size_t size);
 
 } // namespace sparse

@@ -65,7 +65,7 @@ void BytePSSparseEngineThread(int i) {
 void InitCudaIpc() {
   sharedMemoryInfo info;
   volatile shmStruct *shm = NULL;
-  CHECK_EQ(sharedMemoryOpen(bpsShmName, sizeof(shmStruct), &info), 0)
+  CHECK_EQ(openCudaIpcSharedMemory(bpsCudaIpcShmName, sizeof(shmStruct), &info), 0)
       << "shared memory open failed";
   shm = (volatile shmStruct *)info.addr;
 

@@ -35,8 +35,11 @@ class DenseReduceComm : public SparseComm {
                   local_size_(local_size), worker_id_(worker_id), num_worker_(num_worker) {
     CHECK_LT(worker_id_, num_worker_);
     CHECK_LT(local_rank_, local_size_);
+    CUDA_CALL(cudaSetDevice(local_rank_));
 
-    mallocAlignedCudaAwareCpubuff(&cpubuff_, buflen_);
+    CHECK_EQ(createSharedMemory(bpsShmName, buflen_, &cpubuff_), 0);
+    CUDA_CALL(cudaHostRegister(cpubuff_, buflen_, cudaHostRegisterMapped));
+
     mallocAlignedCudaAwareCpubuff(&dummy_buff_, dummy_buff_len_);
 
     // prepare pslite communication
@@ -62,16 +65,17 @@ class DenseReduceComm : public SparseComm {
         pslens_[wid].CopyFrom(&dummy_buff_len_, 1); // lens
       } else { 
         // send to other workers, use normal buffers
+        size_t offset = buflen_ / num_worker_ * worker_id_;
+        int trans_len = buflen_ / num_worker_;
+
         psvals_[wid].reset(
-            (char*) cpubuff_, (size_t) buflen_, [](void*){}); // vals
+            (char*) cpubuff_ + offset, (size_t) trans_len, [](void*){}); // vals
         
-        int intlen = buflen_;
-        pslens_[wid].CopyFrom(&intlen, 1); // lens
+        pslens_[wid].CopyFrom(&trans_len, 1); // lens
       }
     }
     
     // init cuda stream for cuda memcpy
-    CUDA_CALL(cudaSetDevice(local_rank_));
     copy_d2h_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     copy_h2d_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     CUDA_CALL(cudaStreamCreateWithFlags(copy_d2h_stream_, cudaStreamNonBlocking));
@@ -89,10 +93,36 @@ class DenseReduceComm : public SparseComm {
       (cudaStream_t) *copy_d2h_stream_));
     CUDA_CALL(cudaStreamSynchronize(*copy_d2h_stream_));
 
+    std::vector<int> timestamps;
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      auto& keys = pskeys_[wid];
+      auto& vals = psvals_[wid]; 
+      auto& lens = pslens_[wid]; 
+      
+      // use the pslite cmd field to store my global gpu id 
+      int my_global_id = worker_id_ * local_size_ + local_rank_; 
+
+      ps_->ZPush(keys, vals, lens, my_global_id); 
+      auto ts = 
+          ps_->ZPull(keys, &vals, &lens, my_global_id); 
+
+      timestamps.push_back(ts);
+    }
+
+    for (auto ts : timestamps) {
+      ps_->Wait(ts);
+    }
+
+    CUDA_CALL(cudaMemcpyAsync(
+      (void*) dst_, 
+      (const void *) cpubuff_, 
+      (size_t) buflen_, 
+      (cudaMemcpyKind) cudaMemcpyHostToDevice, 
+      (cudaStream_t) *copy_h2d_stream_));
   }
 
   void Sync() {
-
+    CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream_));
   }
 
   void FreeBuffer(void* buf) {
