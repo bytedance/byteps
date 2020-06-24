@@ -14,7 +14,7 @@
 // =============================================================================
 
 #include "server.h"
-
+#include "../common/compressor/utils.h"
 #include "queue.h"
 
 namespace byteps {
@@ -101,7 +101,7 @@ void BytePSServerEngineThread(int i) {
         CHECK_LE(compressed_len, msg.len);
         common::compressor::tensor_t compressed(
             reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype),
-            decompressed(nullptr, msg.len);
+            decompressed;
         iter->second->Decompress(compressed, decompressed);
         msg.src = decompressed.data;
       }
@@ -227,11 +227,12 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       std::string content{reinterpret_cast<char*>(req_data.vals.data()),
                           static_cast<size_t>(req_data.lens[0])};
       auto kwargs = byteps::common::compressor::Deserialize(content);
-      auto compressor_ptr =
-          byteps::common::compressor::CompressorRegistry::Create(kwargs);
-      CHECK_NE(compressor_ptr, nullptr);
       auto stored = GetStore(key);
-      compressor_ptr->Init(byteps::common::Align(stored->len, stored->dtype));
+      size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
+      auto compressor_ptr =
+          byteps::common::compressor::CompressorRegistry::Create(
+              kwargs, aligned_size, stored->dtype);
+      CHECK_NE(compressor_ptr, nullptr);
       compressor_map_[key] = std::move(compressor_ptr);
       if (log_key_info_) {
         LOG(INFO) << "register compressor for key=" << key;

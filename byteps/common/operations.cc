@@ -13,8 +13,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "operations.h"
-
 #include <cuda_runtime.h>
 #include <unistd.h>
 
@@ -22,10 +20,13 @@
 #include <memory>
 #include <thread>
 
-#include "compressor/base_compressor.h"
+#include "compressor/compressor.h"
+#include "compressor/compressor_registry.h"
+#include "compressor/utils.h"
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
+#include "operations.h"
 
 namespace byteps {
 namespace common {
@@ -94,8 +95,10 @@ void byteps_shutdown() {
 
 void byteps_resume(int num_workers, int num_servers) {
   // set ps, worker numbers
-  BPS_LOG(DEBUG) << "Resume worker number: " << num_workers << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
-  BPS_LOG(DEBUG) << "Resume server number: " << num_workers << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
+  BPS_LOG(DEBUG) << "Resume worker number: " << num_workers
+                 << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
+  BPS_LOG(DEBUG) << "Resume server number: " << num_workers
+                 << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
   BPS_LOG(DEBUG) << "Start resuming BytePS";
 
   BytePSGlobal::SetResumingFlag(true);
@@ -188,9 +191,9 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   // add queue
   if (BytePSGlobal::IsRootDevice() && !context.compressor_list.empty()) {
     auto it = std::find(queue_list->begin(), queue_list->end(), PUSH);
-    it = queue_list->insert(it, COMPRESS); // before PUSH
+    it = queue_list->insert(it, COMPRESS);  // before PUSH
     it = std::find(queue_list->begin(), queue_list->end(), PULL);
-    queue_list->insert(it+1, DECOMPRESS); // after PULL
+    queue_list->insert(it + 1, DECOMPRESS);  // after PULL
   }
 
   std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
@@ -205,11 +208,14 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->callback = callback;
 
   if (device == CPU_DEVICE_ID) {
-    cudaError_t err = cudaHostRegister(const_cast<void*>(input->data()), input->size(), cudaHostRegisterMapped);
+    cudaError_t err = cudaHostRegister(const_cast<void *>(input->data()),
+                                       input->size(), cudaHostRegisterMapped);
     if (err == cudaSuccess) {
-      BPS_LOG(DEBUG) << name << " cpu address has changed, so it is pinned again.";
+      BPS_LOG(DEBUG) << name
+                     << " cpu address has changed, so it is pinned again.";
     }
-    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
+    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr),
+                                       const_cast<void *>(input->data()), 0));
   }
 
   e->cpubuff = context.cpubuff;
@@ -319,7 +325,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
     cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
     if (e != cudaSuccess) {
-      BPS_LOG(INFO) << cudaGetErrorString(e) 
+      BPS_LOG(INFO) << cudaGetErrorString(e)
                     << " (You may ignore this if your program continues)";
     }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
@@ -367,8 +373,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // register
       if (!context.kwargs.empty()) {
         auto compressor_ptr =
-            compressor::CompressorRegistry::Create(context.kwargs);
-        compressor_ptr->Init(Align(len, dtype));
+            compressor::CompressorRegistry::Create(context.kwargs, Align(len, dtype), dtype);
         context.compressor_list.push_back(std::move(compressor_ptr));
       }
     }

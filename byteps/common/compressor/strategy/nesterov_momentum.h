@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_NESTEROV_MOM_H
-#define BYTEPS_COMPRESS_NESTEROV_MOM_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H
+#define BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H
 
 #include "../momentum.h"
 
@@ -24,9 +24,10 @@ namespace compressor {
 
 class NesterovMomentumCompressor : public Momentum {
  public:
-  NesterovMomentumCompressor(std::unique_ptr<BaseCompressor> compressor_ptr,
-                            float mu);
-  virtual ~NesterovMomentumCompressor();
+  NesterovMomentumCompressor(size_t size, std::unique_ptr<Compressor> cptr,
+                             float mu)
+      : Momentum(size, std::move(cptr), mu){};
+  virtual ~NesterovMomentumCompressor() = default;
 
  protected:
   void UpdateMom(tensor_t grad) override;
@@ -37,4 +38,4 @@ class NesterovMomentumCompressor : public Momentum {
 }  // namespace common
 }  // namespace byteps
 
-#endif
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H

@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_VANILLA_EF_H
-#define BYTEPS_COMPRESS_VANILLA_EF_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_VANILLA_ERROR_FEEDBACK_H
+#define BYTEPS_COMPRESSOR_STRATEGY_VANILLA_ERROR_FEEDBACK_H
 
 #include "../error_feedback.h"
 
@@ -23,15 +23,13 @@ namespace common {
 namespace compressor {
 
 /*!
- * \brief TODO
+ * \brief VanillaErrorFeedbackCompressor
  */
 class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  public:
-  explicit VanillaErrorFeedbackCompressor(
-      std::unique_ptr<BaseCompressor> compressor_ptr);
+  VanillaErrorFeedbackCompressor(size_t size,
+      std::unique_ptr<Compressor> cptr);
   virtual ~VanillaErrorFeedbackCompressor();
-
-  virtual void Init(size_t aligned_size);
 
  protected:
   void UpdateGradient(tensor_t grad) override;
@@ -45,4 +43,4 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_VANILLA_EF_H
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_VANILLA_ERROR_FEEDBACK_H

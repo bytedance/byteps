@@ -14,31 +14,24 @@
 // =============================================================================
 
 #include "onebit.h"
-
-#include "../../logging.h"
+#include "../compressor_registry.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorRegistry::Register reg(
-    "onebit_compressor", [](const kwargs_t& kwargs) {
-      BPS_LOG(DEBUG) << "Register Onebit Compressor";
-      bool scaled = false;
-      auto iter = kwargs.find("compressor_onebit_scaling");
-      if (iter != kwargs.end()) {
-        if (iter->second == "true" || iter->second == "True") scaled = true;
-      }
-      if (scaled) {
-        return std::unique_ptr<BaseCompressor>(new OnebitCompressor(true));
-      }
-      return std::unique_ptr<BaseCompressor>(new OnebitCompressor());
-    });
+CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
+                                                         size_t size,
+                                                         int dtype) {
+  BPS_LOG(DEBUG) << "Register Onebit Compressor";
+  bool scaled = false;
+  auto iter = kwargs.find("compressor_onebit_scaling");
+  if (iter != kwargs.end()) {
+    if (iter->second == "true" || iter->second == "True") scaled = true;
+  }
+  return std::unique_ptr<Compressor>(new OnebitCompressor(size, scaled));
+});
 }
-
-OnebitCompressor::OnebitCompressor(bool use_scale) : _use_scale(use_scale){};
-
-OnebitCompressor::~OnebitCompressor() = default;
 
 template <typename index_t, typename scalar_t>
 size_t OnebitCompressor::PackingImpl(index_t* dst, const scalar_t* src,

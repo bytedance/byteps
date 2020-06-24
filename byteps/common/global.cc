@@ -13,14 +13,13 @@
 // limitations under the License.
 // =============================================================================
 
-#include "global.h"
-
 #include <malloc.h>
 #include <numa.h>
 
 #include <sstream>
 
-#include "compressor/base_compressor.h"
+#include "compressor/compressor.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -41,7 +40,7 @@ bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
-uint32_t BytePSGlobal::_min_compress_bytes = (1<<16);
+uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
@@ -285,14 +284,13 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
   // we reuse _init_mutex, because BytePS should have been inited
   std::lock_guard<std::mutex> lock(_init_mutex);
   if (!_ps && IsDistributed() &&
-      _my_role ==
-          BytePSRole::LOCAL_ROOT) {  // only the root needs networking
-      // init low-level ps implementation
-      _ps = new ps::KVWorker<char>(0, 0);
-      ps::StartAsync(0, "byteps\0");
-      if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
-        ps::Postoffice::Get()->Barrier(
-            0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+      _my_role == BytePSRole::LOCAL_ROOT) {  // only the root needs networking
+    // init low-level ps implementation
+    _ps = new ps::KVWorker<char>(0, 0);
+    ps::StartAsync(0, "byteps\0");
+    if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
+      ps::Postoffice::Get()->Barrier(
+          0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
   }
   return _ps;
@@ -414,7 +412,8 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
 bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) ==
+        _declared_tensors.end()) {
       _declared_tensors.push_back(name);
     }
     _name_to_cxt[name].initialized = false;
@@ -430,14 +429,15 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
 }
 
 void BytePSGlobal::ReDeclareTensor() {
-  for (auto name: _declared_tensors) {
+  for (auto name : _declared_tensors) {
     BPS_LOG(DEBUG) << "Redeclare tensor " << name;
     BytePSGlobal::IsTensorDeclared(name);
   }
 }
 
-void BytePSGlobal::RegisterCompressor(const std::string& name,
-                                      std::unordered_map<std::string, std::string>& kwargs) {
+void BytePSGlobal::RegisterCompressor(
+    const std::string& name,
+    std::unordered_map<std::string, std::string>& kwargs) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
       << name << " is not initialized";

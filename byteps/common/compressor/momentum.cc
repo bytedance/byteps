@@ -19,18 +19,6 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-Momentum::Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
-    : _compressor_ptr(std::move(compressor_ptr)), _mu(mu) {}
-
-Momentum::~Momentum() = default;
-
-void Momentum::Init(size_t aligned_size) {
-  _compressor_ptr->Init(aligned_size);
-  _mom.reset(new char[aligned_size]);
-  memset(_mom.get(), 0, aligned_size);
-  _cpu_reducer.reset(new CpuReducer(nullptr));
-}
-
 void Momentum::Compress(tensor_t grad, tensor_t& compressed) {
   // m_t = \mu * m_{t-1} + g_t
   UpdateMom(grad);
@@ -39,11 +27,11 @@ void Momentum::Compress(tensor_t grad, tensor_t& compressed) {
   UpdateGradient(grad);
 
   // compress
-  _compressor_ptr->Compress(grad, compressed);
+  _cptr->Compress(grad, compressed);
 }
 
 void Momentum::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  _compressor_ptr->Decompress(compressed, decompressed);
+  _cptr->Decompress(compressed, decompressed);
 }
 
 }  // namespace compressor

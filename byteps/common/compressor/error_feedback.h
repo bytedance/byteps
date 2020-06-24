@@ -13,10 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_ERROR_FEEDBACK_H
-#define BYTEPS_COMPRESS_ERROR_FEEDBACK_H
+#ifndef BYTEPS_COMPRESSOR_ERROR_FEEDBACK_H
+#define BYTEPS_COMPRESSOR_ERROR_FEEDBACK_H
 
-#include "base_compressor.h"
+#include "compressor.h"
 
 namespace byteps {
 namespace common {
@@ -27,16 +27,11 @@ namespace compressor {
  *
  *  add error feedback behavior to any compressor at run-time
  */
-class ErrorFeedback : public BaseCompressor {
+class ErrorFeedback : public Compressor {
  public:
-  explicit ErrorFeedback(std::unique_ptr<BaseCompressor> compressor_ptr);
-  virtual ~ErrorFeedback();
-
-  /*!
-   * \brief Allocate encoding buffer for compression.
-   * \param aligned_size aligned size
-   */
-  virtual void Init(size_t aligned_size);
+  ErrorFeedback(size_t size, std::unique_ptr<Compressor> cptr)
+      : Compressor(size), _cptr(std::move(cptr)), _error(new byte_t[size]()) {}
+  virtual ~ErrorFeedback() = default;
 
   /*!
    * \brief Compress function
@@ -76,16 +71,16 @@ class ErrorFeedback : public BaseCompressor {
   virtual void UpdateError(tensor_t corrected, tensor_t compressed);
 
  protected:
-  std::unique_ptr<char[]> _error;
+  std::unique_ptr<byte_t[]> _error;
 
  private:
   /*!
    * \brief compressor
    */
-  std::unique_ptr<BaseCompressor> _compressor_ptr;
+  std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_ERROR_FEEDBACK_H
+#endif  // BYTEPS_COMPRESSOR_ERROR_FEEDBACK_H

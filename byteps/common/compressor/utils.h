@@ -12,33 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#include "error_feedback.h"
+
+#ifndef BYTEPS_COMPRESSOR_UTILS_H
+#define BYTEPS_COMPRESSOR_UTILS_H
+
+#include <sstream>
+#include <string>
+
+#include "common.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 
-void ErrorFeedback::Compress(tensor_t grad, tensor_t& compressed) {
-  // before: grad += error
-  UpdateGradient(grad);
-
-  // TODO: look strange
-  compressed.data = _error.get();
-  // compress
-  _cptr->Compress(grad, compressed);
-
-  UpdateError(grad, compressed);
+inline std::string Serialize(const kwargs_t& kwargs) {
+  std::ostringstream os;
+  os << kwargs.size();
+  for (auto const& kwarg : kwargs) {
+    os << " " << kwarg.first << " " << kwarg.second;
+  }
+  return os.str();
 }
 
-void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  _cptr->Decompress(compressed, decompressed);
-}
+inline kwargs_t Deserialize(const std::string& content) {
+  kwargs_t kwargs;
+  std::istringstream is(content);
+  size_t size = 0;
+  is >> size;
+  for (size_t i = 0; i < size; ++i) {
+    kwargs_t::key_type key;
+    kwargs_t::mapped_type val;
+    is >> key >> val;
+    kwargs[key] = val;
+  }
 
-void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
-  tensor_t error{_error.get(), _size, corrected.dtype};
-  _cptr->FastUpdateError(error, corrected, compressed);
+  return kwargs;
 }
 
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
+
+#endif  // BYTEPS_COMPRESSOR_UTILS_H

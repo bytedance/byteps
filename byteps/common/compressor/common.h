@@ -12,33 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#include "error_feedback.h"
+
+#ifndef BYTEPS_COMPRESSOR_COMMON_H
+#define BYTEPS_COMPRESSOR_COMMON_H
+
+#include <unordered_map>
 
 namespace byteps {
 namespace common {
 namespace compressor {
+typedef char byte_t;
+/*!
+ * \brief Tensor type
+ */
+typedef struct BPSTensor {
+  byte_t* data;
+  size_t size;
+  int dtype;
 
-void ErrorFeedback::Compress(tensor_t grad, tensor_t& compressed) {
-  // before: grad += error
-  UpdateGradient(grad);
+  BPSTensor() : data(nullptr), size(0), dtype(0) {}
+  BPSTensor(byte_t* data, size_t size=0, int dtype=0)
+      : data(data), size(size), dtype(dtype) {}
+} tensor_t;
 
-  // TODO: look strange
-  compressed.data = _error.get();
-  // compress
-  _cptr->Compress(grad, compressed);
-
-  UpdateError(grad, compressed);
-}
-
-void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  _cptr->Decompress(compressed, decompressed);
-}
-
-void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
-  tensor_t error{_error.get(), _size, corrected.dtype};
-  _cptr->FastUpdateError(error, corrected, compressed);
-}
+using kwargs_t = std::unordered_map<std::string, std::string>;
 
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
+
+#endif  // BYTEPS_COMPRESSOR_COMMON_H

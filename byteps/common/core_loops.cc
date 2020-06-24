@@ -13,15 +13,14 @@
 // limitations under the License.
 // =============================================================================
 
-#include "core_loops.h"
-
 #include <cuda_runtime.h>
 
 #include <chrono>
 #include <memory>
 
 #include "common.h"
-#include "compressor/base_compressor.h"
+#include "compressor/compressor.h"
+#include "core_loops.h"
 #include "global.h"
 #include "logging.h"
 
@@ -628,8 +627,7 @@ bool RunDecompressLoopOnce() {
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
       int dtype = task->tensor->dtype();
-      compressor::tensor_t compressed(data, len, dtype),
-          decompressed(data, task->len);
+      compressor::tensor_t compressed(data, len, dtype), decompressed{data};
       task->compressor->Decompress(compressed, decompressed);
       BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
 

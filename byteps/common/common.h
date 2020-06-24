@@ -45,7 +45,7 @@ namespace common {
 namespace compressor {
 struct BPSTensor;
 typedef BPSTensor tensor_t;
-class BaseCompressor;
+class Compressor;
 class ErrorFeedback;
 }  // namespace compressor
 
@@ -198,7 +198,7 @@ typedef struct BytePSContext {
                      std::unordered_map<int, std::queue<BPSCommTime*>>>
       part_comm_time;
   // Compressor list
-  std::vector<std::shared_ptr<compressor::BaseCompressor>> compressor_list;
+  std::vector<std::shared_ptr<compressor::Compressor>> compressor_list;
   // kwargs
   std::unordered_map<std::string, std::string> kwargs;
 } BPSContext;
@@ -257,7 +257,7 @@ struct TensorTableEntry {
   // How many partitions
   unsigned int total_partnum = 0;
   // Compressor
-  std::shared_ptr<compressor::BaseCompressor> compressor;
+  std::shared_ptr<compressor::Compressor> compressor;
   // Compressed
   std::shared_ptr<compressor::tensor_t> compressed;
 };

@@ -13,10 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_MOMENTUM_H
-#define BYTEPS_COMPRESS_MOMENTUM_H
+#ifndef BYTEPS_COMPRESSOR_MOMENTUM_H
+#define BYTEPS_COMPRESSOR_MOMENTUM_H
 
-#include "base_compressor.h"
+#include "compressor.h"
 
 namespace byteps {
 namespace common {
@@ -29,15 +29,14 @@ namespace compressor {
  * NOTE: This should not be used at the same time with the momentum implemented
  * in the framework such as MXNet, Tensorflow or PyTorch etc.
  */
-class Momentum : public BaseCompressor {
+class Momentum : public Compressor {
  public:
-  Momentum(std::unique_ptr<BaseCompressor> compressor_ptr, float mu);
-  virtual ~Momentum();
-  /*!
-   * \brief Allocate encoding buffer for compression.
-   * \param aligned_size aligned size
-   */
-  virtual void Init(size_t aligned_size) final;
+  Momentum(size_t size, std::unique_ptr<Compressor> cptr, float mu)
+      : Compressor(size),
+        _cptr(std::move(cptr)),
+        _mu(mu),
+        _mom(new byte_t[size]()){};
+  virtual ~Momentum() = default;
 
   /*!
    * \brief Compress function
@@ -75,7 +74,7 @@ class Momentum : public BaseCompressor {
   virtual void UpdateGradient(tensor_t grad) = 0;
 
  protected:
-  std::unique_ptr<char[]> _mom;
+  std::unique_ptr<byte_t[]> _mom;
 
   float _mu;
 
@@ -83,10 +82,10 @@ class Momentum : public BaseCompressor {
   /*!
    * \brief compressor
    */
-  std::unique_ptr<BaseCompressor> _compressor_ptr;
+  std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
 
-#endif
+#endif  // BYTEPS_COMPRESSOR_MOMENTUM_H

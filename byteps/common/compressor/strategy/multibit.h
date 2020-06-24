@@ -13,10 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_STRAT_MULTIBIT_H
-#define BYTEPS_COMPRESS_STRAT_MULTIBIT_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_MULTIBIT_H
+#define BYTEPS_COMPRESSOR_STRATEGY_MULTIBIT_H
 
-#include "../base_compressor.h"
+#include "../compressor.h"
 
 namespace byteps {
 namespace common {
@@ -25,10 +25,10 @@ namespace compressor {
 /*!
  * \brief TODO
  */
-class MultibitCompressor : public BaseCompressor {
+class MultibitCompressor : public Compressor {
  public:
-  explicit MultibitCompressor(int k);
-  virtual ~MultibitCompressor();
+  MultibitCompressor(size_t size, int k) : Compressor(size), _k(k){};
+  virtual ~MultibitCompressor() = default;
 
   void Compress(tensor_t grad, tensor_t& compressed) override;
 
@@ -41,4 +41,4 @@ class MultibitCompressor : public BaseCompressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_STRAT_MULTIBIT_H
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_MULTIBIT_H

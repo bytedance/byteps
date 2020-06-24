@@ -12,33 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#include "error_feedback.h"
+
+#ifndef BYTEPS_COMPRESSOR_COMPRESSOR_REGISTRY_H
+#define BYTEPS_COMPRESSOR_COMPRESSOR_REGISTRY_H
+
+#include "compressor.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 
-void ErrorFeedback::Compress(tensor_t grad, tensor_t& compressed) {
-  // before: grad += error
-  UpdateGradient(grad);
+class CompressorRegistry {
+ public:
+  using ctor_t = std::function<std::unique_ptr<Compressor>(
+      const kwargs_t& kwargs, size_t size, int dtype)>;
 
-  // TODO: look strange
-  compressed.data = _error.get();
-  // compress
-  _cptr->Compress(grad, compressed);
+  using map_t = std::unordered_map<std::string, ctor_t>;
 
-  UpdateError(grad, compressed);
-}
+  struct Register {
+    Register(std::string name, ctor_t ctor);
+  };
 
-void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  _cptr->Decompress(compressed, decompressed);
-}
+  static ctor_t Find(const std::string& name);
 
-void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
-  tensor_t error{_error.get(), _size, corrected.dtype};
-  _cptr->FastUpdateError(error, corrected, compressed);
-}
+  static std::unique_ptr<Compressor> Create(const kwargs_t& kwargs, size_t size,
+                                            int dtype);
+
+ private:
+  static map_t _ctor_map;
+
+  CompressorRegistry() = delete;
+  ~CompressorRegistry() = delete;
+};
 
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
+
+#endif  // BYTEPS_COMPRESSOR_COMPRESSOR_REGISTRY_H

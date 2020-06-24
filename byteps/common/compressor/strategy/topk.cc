@@ -13,11 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include "topk.h"
-
 #include <queue>
 
-#include "../../logging.h"
+#include "../compressor_registry.h"
+#include "topk.h"
 
 namespace byteps {
 namespace common {
@@ -25,7 +24,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "topk_compressor",
-    [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+    [](const kwargs_t& kwargs, size_t size,
+       int dtype) -> std::unique_ptr<Compressor> {
       auto iter = kwargs.find("compressor_k");
       if (iter == kwargs.end()) {
         BPS_LOG(WARNING) << "Topk Compressor needs parameter \"compressor_k\"";
@@ -34,13 +34,9 @@ CompressorRegistry::Register reg(
       int k = std::stoi(iter->second);
       BPS_LOG(DEBUG) << "Register Topk Compressor "
                      << "k=" << k;
-      return std::unique_ptr<BaseCompressor>(new TopkCompressor(k));
+      return std::unique_ptr<Compressor>(new TopkCompressor(size, k));
     });
 }
-
-TopkCompressor::TopkCompressor(int k) : _k(k){};
-
-TopkCompressor::~TopkCompressor() = default;
 
 template <typename index_t, typename scalar_t>
 size_t TopkCompressor::PackingImpl(index_t* dst, const scalar_t* src,
@@ -158,12 +154,11 @@ void TopkCompressor::Unpacking(void* dst, const void* src, size_t size,
 }
 
 void TopkCompressor::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  BPS_CHECK_GT(decompressed.size, 0);
 #ifdef BYTEPS_BUILDING_SERVER
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
 #endif
-  Unpacking(decompressed.data, compressed.data, compressed.size,
-            decompressed.size, compressed.dtype);
+  Unpacking(decompressed.data, compressed.data, compressed.size, _size,
+            compressed.dtype);
 }
 
 template <typename index_t, typename scalar_t>

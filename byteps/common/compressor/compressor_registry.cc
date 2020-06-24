@@ -13,9 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "base_compressor.h"
-
-#include "../logging.h"
+#include "compressor_registry.h"
 
 namespace byteps {
 namespace common {
@@ -38,8 +36,8 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
   return it->second;
 }
 
-std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
-    const kwargs_t& kwargs) {
+std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
+                                                       size_t size, int dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
   const std::string types[] = {"momentum_type", "ef_type", "compressor_type"};
 #else
@@ -51,24 +49,13 @@ std::unique_ptr<BaseCompressor> CompressorRegistry::Create(
     if (iter != kwargs.end()) {
       auto ctor = CompressorRegistry::Find(iter->second + "_" + type);
       BPS_CHECK_NE(ctor, nullptr);
-      return ctor(kwargs);
+      return ctor(kwargs, size, dtype);
     }
   }
 
   return nullptr;
 }
 
-BaseCompressor::BaseCompressor() = default;
-
-BaseCompressor::~BaseCompressor() = default;
-
-void BaseCompressor::Init(size_t aligned_size) {
-  _buf.reset(new char[aligned_size]);
-  _cpu_reducer.reset(new CpuReducer(nullptr));
-}
-
-void BaseCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
-                                     tensor_t compressed) {}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

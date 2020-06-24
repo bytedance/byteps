@@ -14,8 +14,7 @@
 // =============================================================================
 
 #include "nesterov_momentum.h"
-
-#include "../../logging.h"
+#include "../compressor_registry.h"
 
 namespace byteps {
 namespace common {
@@ -23,27 +22,23 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "nesterov_momentum",
-    [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+    [](const kwargs_t& kwargs, size_t size,
+       int dtype) -> std::unique_ptr<Compressor> {
       // register cpr
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("momentum_type");
-      auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
-      BPS_CHECK_NE(compressor_ptr, nullptr);
+      auto cptr =
+          CompressorRegistry::Create(kwargs_clone, size, dtype);
+      BPS_CHECK_NE(cptr, nullptr);
       // find \mu
       auto iter = kwargs.find("momentum_mu");
       BPS_CHECK_NE(iter, kwargs.end()) << "momentum \mu is not defined";
       float mu = std::stof(iter->second);
       BPS_LOG(DEBUG) << "with momentum";
       return std::unique_ptr<NesterovMomentumCompressor>(
-          new NesterovMomentumCompressor(std::move(compressor_ptr), mu));
+          new NesterovMomentumCompressor(size, std::move(cptr), mu));
     });
 }
-
-NesterovMomentumCompressor::NesterovMomentumCompressor(
-    std::unique_ptr<BaseCompressor> compressor_ptr, float mu)
-    : Momentum(std::move(compressor_ptr), mu){};
-
-NesterovMomentumCompressor::~NesterovMomentumCompressor() = default;
 
 void NesterovMomentumCompressor::UpdateMom(tensor_t grad) {
   // m_t = \mu * m_{t-1} + g_t

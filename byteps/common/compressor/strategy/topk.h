@@ -13,10 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_STRAT_TOPK_H
-#define BYTEPS_COMPRESS_STRAT_TOPK_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_TOPK_H
+#define BYTEPS_COMPRESSOR_STRATEGY_TOPK_H
 
-#include "../base_compressor.h"
+#include "../compressor.h"
 
 namespace byteps {
 namespace common {
@@ -31,10 +31,10 @@ namespace compressor {
  * sending the most significant entries of the stochastic gradient
  *
  */
-class TopkCompressor : public BaseCompressor {
+class TopkCompressor : public Compressor {
  public:
-  explicit TopkCompressor(int k);
-  virtual ~TopkCompressor();
+  TopkCompressor(size_t size, int k) : Compressor(size), _k(k){};
+  virtual ~TopkCompressor() = default;
 
   /*!
    * \brief Compress function
@@ -92,4 +92,4 @@ class TopkCompressor : public BaseCompressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_STRAT_MULTIBIT_H
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_TOPK_H

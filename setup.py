@@ -250,7 +250,7 @@ def get_common_options(build_ext):
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
                'byteps/common/cpu_reducer.cc'] + [
-               'byteps/common/compressor/base_compressor.cc',
+               'byteps/common/compressor/compressor_registry.cc',
                'byteps/common/compressor/error_feedback.cc',
                'byteps/common/compressor/momentum.cc',
                'byteps/common/compressor/strategy/multibit.cc',
@@ -302,8 +302,8 @@ def build_server(build_ext, options):
     server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
                           'byteps/common/logging.cc',
-                          'byteps/common/common.cc']+ [
-                          'byteps/common/compressor/base_compressor.cc',
+                          'byteps/common/common.cc'] + [
+                          'byteps/common/compressor/compressor_registry.cc',
                           'byteps/common/compressor/error_feedback.cc',
                           'byteps/common/compressor/strategy/multibit.cc',
                           'byteps/common/compressor/strategy/onebit.cc',

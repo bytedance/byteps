@@ -13,10 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_STRAT_ONEBIT_H
-#define BYTEPS_COMPRESS_STRAT_ONEBIT_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_ONEBIT_H
+#define BYTEPS_COMPRESSOR_STRATEGY_ONEBIT_H
 
-#include "../base_compressor.h"
+#include "../compressor.h"
 
 namespace byteps {
 namespace common {
@@ -36,10 +36,11 @@ namespace compressor {
  *
  * \note 0 represents positive and 1 represents negative.
  */
-class OnebitCompressor : public BaseCompressor {
+class OnebitCompressor : public Compressor {
  public:
-  OnebitCompressor(bool use_scale = false);
-  virtual ~OnebitCompressor();
+  OnebitCompressor(size_t size, bool use_scale = false)
+      : Compressor(size), _use_scale(use_scale) {}
+  virtual ~OnebitCompressor() = default;
 
   /*!
    * \brief Compress function
@@ -94,4 +95,4 @@ class OnebitCompressor : public BaseCompressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_STRAT_ONEBIT_H
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_ONEBIT_H

@@ -13,14 +13,13 @@
 // limitations under the License.
 // =============================================================================
 
-#include "vanilla_error_feedback.h"
-
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "../../logging.h"
+#include "../compressor_registry.h"
+#include "vanilla_error_feedback.h"
 
 namespace byteps {
 namespace common {
@@ -28,36 +27,34 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "vanilla_ef",
-    [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+    [](const kwargs_t& kwargs, size_t size,
+       int dtype) -> std::unique_ptr<Compressor> {
       // register cpr
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("ef_type");
-      auto compressor_ptr = CompressorRegistry::Create(kwargs_clone);
-      BPS_CHECK_NE(compressor_ptr, nullptr);
-
+      auto cptr =
+          CompressorRegistry::Create(kwargs_clone, size, dtype);
+      BPS_CHECK_NE(cptr, nullptr);
       BPS_LOG(DEBUG) << "with Error feedback";
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
-          new VanillaErrorFeedbackCompressor(std::move(compressor_ptr)));
+          new VanillaErrorFeedbackCompressor(size, std::move(cptr)));
     });
 }
 
 VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
-    std::unique_ptr<BaseCompressor> compressor_ptr)
-    : ErrorFeedback(std::move(compressor_ptr)) {}
-
-VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() {
-  munmap(_mm, 8);
-  close(_fd);
-}
-
-void VanillaErrorFeedbackCompressor::Init(size_t aligned_size) {
-  ErrorFeedback::Init(aligned_size);
+    size_t size, std::unique_ptr<Compressor> cptr)
+    : ErrorFeedback(size, std::move(cptr)) {
   _fd = open("lr.s", O_RDONLY);
   BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
   void* ptr = mmap(0, 8, PROT_READ, MAP_SHARED, _fd, 0);
   BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed, errno=" << strerror(errno);
   _mm = ptr;
   _pre_lr = _cur_lr = *reinterpret_cast<double*>(_mm);
+}
+
+VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() {
+  munmap(_mm, 8);
+  close(_fd);
 }
 
 void VanillaErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {

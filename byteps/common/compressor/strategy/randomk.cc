@@ -14,8 +14,7 @@
 // =============================================================================
 
 #include "randomk.h"
-
-#include "../../logging.h"
+#include "../compressor_registry.h"
 
 namespace byteps {
 namespace common {
@@ -23,7 +22,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register
     reg("randomk_compressor",
-        [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+        [](const kwargs_t& kwargs, size_t size,
+           int dtype) -> std::unique_ptr<Compressor> {
           auto iter = kwargs.find("compressor_k");
           if (iter == kwargs.end()) {
             BPS_LOG(WARNING)
@@ -33,13 +33,10 @@ CompressorRegistry::Register
           int k = std::stoi(iter->second);
           BPS_LOG(DEBUG) << "Register Randomk Compressor "
                          << "k=" << k;
-          return std::unique_ptr<BaseCompressor>(new RandomkCompressor(k));
+          return std::unique_ptr<Compressor>(new RandomkCompressor(size, k));
         });
 }
 
-RandomkCompressor::RandomkCompressor(int k) : _k(k) { _gen.seed(_rd()); };
-
-RandomkCompressor::~RandomkCompressor() = default;
 template <typename index_t, typename scalar_t>
 size_t RandomkCompressor::PackingImpl(index_t* dst, const scalar_t* src,
                                       size_t len) {
@@ -142,12 +139,11 @@ void RandomkCompressor::Unpacking(void* dst, const void* src, size_t size,
 
 void RandomkCompressor::Decompress(tensor_t compressed,
                                    tensor_t& decompressed) {
-  BPS_CHECK_GT(decompressed.size, 0);
 #ifdef BYTEPS_BUILDING_SERVER
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
 #endif
   Unpacking(decompressed.data, compressed.data, compressed.size,
-            decompressed.size, compressed.dtype);
+            _size, compressed.dtype);
 }
 
 template <typename index_t, typename scalar_t>

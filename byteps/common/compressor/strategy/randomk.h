@@ -13,12 +13,12 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESS_STRAT_RANDOMK_H
-#define BYTEPS_COMPRESS_STRAT_RANDOMK_H
+#ifndef BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H
+#define BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H
 
 #include <random>
 
-#include "../base_compressor.h"
+#include "../compressor.h"
 
 namespace byteps {
 namespace common {
@@ -32,10 +32,12 @@ namespace compressor {
  *
  * randomly sending k entries of the stochastic gradient
  */
-class RandomkCompressor : public BaseCompressor {
+class RandomkCompressor : public Compressor {
  public:
-  explicit RandomkCompressor(int k);
-  virtual ~RandomkCompressor();
+  RandomkCompressor(size_t size, int k) : Compressor(size), _k(k) {
+    _gen.seed(_rd());
+  };
+  virtual ~RandomkCompressor() = default;
 
   /*!
    * \brief Compress function
@@ -93,4 +95,4 @@ class RandomkCompressor : public BaseCompressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESS_STRAT_RANDOMK_H
+#endif  // BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H

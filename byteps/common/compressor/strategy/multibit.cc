@@ -14,8 +14,7 @@
 // =============================================================================
 
 #include "multibit.h"
-
-#include "../../logging.h"
+#include "../compressor_registry.h"
 
 namespace byteps {
 namespace common {
@@ -23,7 +22,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register
     reg("multibit_compressor",
-        [](const kwargs_t& kwargs) -> std::unique_ptr<BaseCompressor> {
+        [](const kwargs_t& kwargs, size_t size,
+           int dtype) -> std::unique_ptr<Compressor> {
           auto iter = kwargs.find("compressor_k");
           if (iter == kwargs.end()) {
             BPS_LOG(WARNING)
@@ -33,13 +33,9 @@ CompressorRegistry::Register
           int k = std::stoi(iter->second);
           BPS_LOG(DEBUG) << "Register Multibit Compressor "
                          << "k=" << k;
-          return std::unique_ptr<BaseCompressor>(new MultibitCompressor(k));
+          return std::unique_ptr<Compressor>(new MultibitCompressor(size, k));
         });
 }
-
-MultibitCompressor::MultibitCompressor(int k) : _k(k){};
-
-MultibitCompressor::~MultibitCompressor() = default;
 
 void MultibitCompressor::Compress(tensor_t grad, tensor_t& compressed) {
   // TOOD
