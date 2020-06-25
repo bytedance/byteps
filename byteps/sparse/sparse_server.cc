@@ -95,20 +95,13 @@ void InitCudaIpc() {
 
     embed_buflens_[gid] = shm->embedBufferLength[gid];
   }
-
-  if (dense_buflen_ == 0) dense_buflen_ = shm->denseBufferLength;
-  else CHECK_EQ(dense_buflen_, shm->denseBufferLength);
 }
 
 void InitDenseReduce() {
-  sharedMemoryInfo info;
-  volatile shmStruct *shm = NULL;
-  CHECK_EQ(openCudaIpcSharedMemory(bpsCudaIpcShmName, sizeof(shmStruct), &info), 0)
-      << "shared memory open failed";
-  shm = (volatile shmStruct *)info.addr;
-
-  if (dense_buflen_ == 0) dense_buflen_ = shm->denseBufferLength;
-  else CHECK_EQ(dense_buflen_, shm->denseBufferLength);
+  void* dense_buf_len_ptr;
+  CHECK_EQ(openSharedMemory(bpsDenseLenShmName, sizeof(size_t), &dense_buf_len_ptr), 0);
+  dense_buflen_ = *(size_t*)dense_buf_len_ptr;
+  CHECK_GT(dense_buflen_, 0) << dense_buflen_; 
 
   local_dense_bufs_.resize(local_size_);
   for (int gid = 0; gid < local_size_; ++gid) {
@@ -118,7 +111,7 @@ void InitDenseReduce() {
   }
 
   // init the latest params buffer
-  mallocAligned(&lastest_params_buf_, dense_buflen_);
+  mallocAligned(&lastest_params_buf_, dense_buflen_ / ps::NumServers());
 }
 
 template <typename Val>
@@ -152,16 +145,22 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
         size_t offset = len * ps::MyRank();
 
         void* src = reinterpret_cast<void*>((char*)shm_addr + offset);
-        void* dst = reinterpret_cast<void*>((char*)lastest_params_buf_ + offset);
+        void* dst = lastest_params_buf_;
 
         bps_reducer_->sum(dst, src, len, DataType::BYTEPS_FLOAT32);
-
-        // send push response (empty payload)
-        ps::KVPairs<char> res;
-        server->Response(req_meta, res);
       } else {
+        int len = req_meta.val_len;
 
+        void* src = reinterpret_cast<void*>(req_data.vals.data());
+        void* dst = lastest_params_buf_;
+
+        bps_reducer_->sum(dst, src, len, DataType::BYTEPS_FLOAT32);
       }
+
+      // send push response (empty payload)
+      ps::KVPairs<char> res;
+      server->Response(req_meta, res);
+
     } else { // pull
       if (IsSenderLocalWorker(req_meta.sender)) {
         CHECK_EQ(local_dense_bufs_.size(), local_size_);
@@ -172,7 +171,7 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
         size_t len = dense_buflen_ / ps::NumServers();
         size_t offset = len * ps::MyRank();
 
-        void* src = reinterpret_cast<void*>((char*)lastest_params_buf_ + offset);
+        void* src = reinterpret_cast<void*>((char*)lastest_params_buf_);
         void* dst = reinterpret_cast<void*>((char*)shm_addr + offset);
         
         bps_reducer_->copy(dst, src, len);
@@ -185,8 +184,21 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
           AllocMemoryAndCreateSarray(dense_map_[key].lens, 1, (int*)&tmplen);
         }
         server->Response(req_meta, dense_map_[key]);
-      } else {
 
+      } else {
+        int tmplen = req_meta.val_len;
+        CHECK_EQ(tmplen, dense_buflen_ / ps::NumServers())
+            << tmplen << " " << (dense_buflen_ / ps::NumServers());
+
+        if (dense_map_.find(key) == dense_map_.end()) {
+          dense_map_[key].keys.CopyFrom((ps::Key*)&req_data.keys[0], 1); // keys
+
+          dense_map_[key].vals.reset(
+              (char*)lastest_params_buf_, (size_t) tmplen, [](void*){}); // vals
+
+          dense_map_[key].lens.CopyFrom(&tmplen, 1); // lens
+        }
+        server->Response(req_meta, dense_map_[key]);
       }
     }
   } else if (IsScatterOrGatherKey(key)) {  // gather or scatter

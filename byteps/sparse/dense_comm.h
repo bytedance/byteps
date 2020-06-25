@@ -42,6 +42,11 @@ class DenseReduceComm : public SparseComm {
 
     mallocAlignedCudaAwareCpubuff(&dummy_buff_, dummy_buff_len_);
 
+    // pass the dense buffer length to the server process using shared memory
+    void* dense_buf_len_ptr;
+    CHECK_EQ(createSharedMemory(bpsDenseLenShmName, sizeof(size_t), &dense_buf_len_ptr), 0);
+    memcpy(dense_buf_len_ptr, (const void*)&buflen_, sizeof(size_t)); 
+
     // prepare pslite communication
     pskeys_.resize(num_worker_);
     psvals_.resize(num_worker_);
@@ -49,7 +54,7 @@ class DenseReduceComm : public SparseComm {
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
     CHECK_EQ(krs.size(), num_worker_);
     for (int wid = 0; wid < num_worker_; ++wid) {
-      uint64_t key = ((uint64_t)(wid * local_size_ + local_rank_) << 32) + 0xffffffff;
+      uint64_t key = ((uint64_t)(worker_id_ * local_size_ + local_rank_) << 32) + 0xffffffff;
       ps::Key pskey = krs[wid].begin() + key;
       CHECK_LT(pskey, krs[wid].end());
 

@@ -40,6 +40,7 @@ namespace sparse {
 
 static const char* bpsShmName = "BytePS_Shm_";
 static const char* bpsCudaIpcShmName = "BytePS_CudaIpc_Shm";
+static const char* bpsDenseLenShmName = "BytePS_Dense_Layer_Length";
 
 typedef struct sharedMemoryInfo_st {
   void *addr;
