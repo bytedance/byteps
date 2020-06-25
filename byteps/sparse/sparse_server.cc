@@ -52,8 +52,16 @@ void BytePSSparseEngineThread(int i) {
         byteps_server_->Response(msg.req_meta, res); 
       } break;
 
-      case REDUCE: {
+      case DENSE_REDUCE: {
+        bps_reducer_->sum(msg.dst, msg.src, msg.len, DataType::BYTEPS_FLOAT32);
+        // send push response (empty payload)
+        ps::KVPairs<char> res;
+        byteps_server_->Response(msg.req_meta, res);
+      } break;
 
+      case DENSE_COPY: {
+        bps_reducer_->copy(msg.dst, msg.src, msg.len);
+        byteps_server_->Response(msg.req_meta, msg.kvpairs);
       } break;
 
       default: 
@@ -69,7 +77,7 @@ void InitCudaIpc() {
       << "shared memory open failed";
   shm = (volatile shmStruct *)info.addr;
 
-  CHECK_EQ(shm->nprocesses, local_size_) 
+  CHECK_EQ(shm->nprocesses, (size_t)local_size_) 
       << shm->nprocesses << " " << local_size_;
 
   streams_d2h_.resize(local_size_);
@@ -135,35 +143,39 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
     }
 
     if (req_meta.push) { // push
+      size_t len;
+      void* src;
+      void* dst;
       if (IsSenderLocalWorker(req_meta.sender)) {
-        CHECK_EQ(local_dense_bufs_.size(), local_size_);
-
+        CHECK_EQ(local_dense_bufs_.size(), (size_t)local_size_);
         int src_gpu = (key >> 32) % local_size_;
         void* shm_addr = CHECK_NOTNULL(local_dense_bufs_[src_gpu]);
 
-        size_t len = dense_buflen_ / ps::NumServers();
+        len = dense_buflen_ / ps::NumServers();
         size_t offset = len * ps::MyRank();
 
-        void* src = reinterpret_cast<void*>((char*)shm_addr + offset);
-        void* dst = lastest_params_buf_;
-
-        bps_reducer_->sum(dst, src, len, DataType::BYTEPS_FLOAT32);
+        src = reinterpret_cast<void*>((char*)shm_addr + offset);
+        dst = lastest_params_buf_;
       } else {
-        int len = req_meta.val_len;
-
-        void* src = reinterpret_cast<void*>(req_data.vals.data());
-        void* dst = lastest_params_buf_;
-
-        bps_reducer_->sum(dst, src, len, DataType::BYTEPS_FLOAT32);
+        len = req_meta.val_len;
+        src = reinterpret_cast<void*>(req_data.vals.data());
+        dst = lastest_params_buf_;
       }
 
-      // send push response (empty payload)
-      ps::KVPairs<char> res;
-      server->Response(req_meta, res);
+      BytePSSparseEngineMessage msg;
+      msg.dst = dst;
+      msg.src = src;
+      msg.len = len;
+      msg.type = DENSE_REDUCE;
+      msg.req_meta = req_meta;
+      
+      // need to make sure that the push/pull of 
+      // the same dense layer key is assigned to the last thread
+      engine_queues_[engine_nthreads_-1]->Push(msg);
 
     } else { // pull
       if (IsSenderLocalWorker(req_meta.sender)) {
-        CHECK_EQ(local_dense_bufs_.size(), local_size_);
+        CHECK_EQ(local_dense_bufs_.size(), (size_t)local_size_);
 
         int src_gpu = (key >> 32) % local_size_;
         void* shm_addr = CHECK_NOTNULL(local_dense_bufs_[src_gpu]);
@@ -174,8 +186,6 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
         void* src = reinterpret_cast<void*>((char*)lastest_params_buf_);
         void* dst = reinterpret_cast<void*>((char*)shm_addr + offset);
         
-        bps_reducer_->copy(dst, src, len);
-
         // send dummy pull response
         int tmplen = req_meta.val_len;
         if (dense_map_.find(key) == dense_map_.end()) {
@@ -183,11 +193,20 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
           AllocMemoryAndCreateSarray(dense_map_[key].vals, tmplen);
           AllocMemoryAndCreateSarray(dense_map_[key].lens, 1, (int*)&tmplen);
         }
-        server->Response(req_meta, dense_map_[key]);
+
+        BytePSSparseEngineMessage msg;
+        msg.dst = dst;
+        msg.src = src;
+        msg.len = len;
+        msg.type = DENSE_COPY;
+        msg.req_meta = req_meta;
+        msg.kvpairs = dense_map_[key]; 
+
+        engine_queues_[engine_nthreads_-1]->Push(msg);
 
       } else {
         int tmplen = req_meta.val_len;
-        CHECK_EQ(tmplen, dense_buflen_ / ps::NumServers())
+        CHECK_EQ((size_t)tmplen, dense_buflen_ / ps::NumServers())
             << tmplen << " " << (dense_buflen_ / ps::NumServers());
 
         if (dense_map_.find(key) == dense_map_.end()) {
@@ -233,7 +252,7 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
       msg.req_meta = req_meta;
       msg.stream = &streams_h2d_[target_local_gid];
 
-      int qid = (request_id_++) % engine_nthreads_; // load balanced
+      int qid = (request_id_++) % (engine_nthreads_-1); // load balanced
       engine_queues_[qid]->Push(msg);
 
     } else { // gather request
@@ -263,7 +282,7 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
       msg.req_meta = req_meta;
       msg.stream = &streams_d2h_[target_local_gid];
 
-      int qid = (request_id_++) % engine_nthreads_; // load balanced
+      int qid = (request_id_++) % (engine_nthreads_-1); // load balanced
       engine_queues_[qid]->Push(msg);
 
     }
@@ -304,6 +323,7 @@ void InitEnv() {
 
   engine_nthreads_ = getenv("BYTEPS_SPARSE_ENGINE_NTHREADS") ?
       atoi(getenv("BYTEPS_SPARSE_ENGINE_NTHREADS")) : 8; 
+  CHECK_GT(engine_nthreads_, 1); // the last thread is for dense reduce, while the rest are for others
   LOG(INFO) << "BYTEPS_SPARSE_ENGINE_NTHREADS set to " << engine_nthreads_;
   for (size_t i = 0; i < engine_nthreads_; ++i) {  
     auto q = new TsQueue();

@@ -30,7 +30,7 @@ namespace sparse {
 extern "C" void bytepsSparseServer();
 
 enum MessageType {
-  GATHER, SCATTER, REDUCE, TERMINATE
+  GATHER, SCATTER, DENSE_REDUCE, DENSE_COPY, TERMINATE
 };
 
 struct BytePSSparseEngineMessage {
