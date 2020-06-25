@@ -274,6 +274,10 @@ class DistributedTrainer(mx.gluon.Trainer):
                 setattr(param, "byteps_momentum_mu",
                         optimizer_params["momentum"])
 
+            if compression_params.get("seed"):
+                setattr(param, "byteps_seed",
+                        compression_params["seed"])
+
         # change
         if compression_params.get("momentum"):
             # 1bit compressor use an additional momentum for weight decay

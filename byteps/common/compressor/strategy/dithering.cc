@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "multibit.h"
+#include "dithering.h"
 #include "../compressor_registry.h"
 
 namespace byteps {
@@ -21,7 +21,7 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register
-    reg("multibit_compressor",
+    reg("dithering_compressor",
         [](const kwargs_t& kwargs, size_t size,
            int dtype) -> std::unique_ptr<Compressor> {
           auto iter = kwargs.find("compressor_k");
@@ -33,16 +33,17 @@ CompressorRegistry::Register
           int k = std::stoi(iter->second);
           BPS_LOG(DEBUG) << "Register Multibit Compressor "
                          << "k=" << k;
-          return std::unique_ptr<Compressor>(new MultibitCompressor(size, k));
+          return std::unique_ptr<Compressor>(new DitheringCompressor(size, k));
         });
 }
 
-void MultibitCompressor::Compress(tensor_t grad, tensor_t& compressed) {
-  // TOOD
+void DitheringCompressor::Compress(tensor_t grad, tensor_t& compressed) {
+  // normalize
+  
 }
 
-void MultibitCompressor::Decompress(tensor_t compressed,
-                                    tensor_t& decompressed) {
+void DitheringCompressor::Decompress(tensor_t compressed,
+                                     tensor_t& decompressed) {
   // TODO
 }
 }  // namespace compressor

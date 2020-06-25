@@ -1,12 +1,18 @@
 #!/bin/bash
 
-path="`dirname $0`"
+path="$(dirname $0)"
 
 export PATH=~/.local/bin:$PATH
 export DMLC_NUM_WORKER=1
 export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=127.0.0.1
 export DMLC_PS_ROOT_PORT=1234
+
+function cleanup() {
+  rm -rf lr.s
+}
+
+trap cleanup EXIT
 
 pkill bpslaunch
 pkill python3
@@ -31,9 +37,11 @@ if [ "$TEST_TYPE" == "mxnet" ]; then
 elif [ "$TEST_TYPE" == "keras" ]; then
   echo "TEST KERAS ..."
   python $path/test_tensorflow_keras.py $@
-elif [ "$TEST_TYPE" == "onebit" ]; then
-  echo "TEST ONEBIT"
-  bpslaunch python3 test_onebit.py
+elif [ "$TEST_TYPE" == "onebit" ] || [ "$TEST_TYPE" == "topk" ] || [ "$TEST_TYPE" == "randomk" ]; then
+  export BYTEPS_MIN_COMPRESS_BYTES=0
+  export BYTEPS_PARTITION_BYTES=2147483647
+  echo "TEST $TEST_TYPE"
+  bpslaunch python3 test_$TEST_TYPE.py
 else
   echo "Error: unsupported $TEST_TYPE"
   exit 1

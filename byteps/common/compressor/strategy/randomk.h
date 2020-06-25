@@ -34,8 +34,14 @@ namespace compressor {
  */
 class RandomkCompressor : public Compressor {
  public:
-  RandomkCompressor(size_t size, int k) : Compressor(size), _k(k) {
-    _gen.seed(_rd());
+  RandomkCompressor(size_t size, int k, unsigned int seed = 0,
+                    bool deterministic = false)
+      : Compressor(size), _k(k) {
+    if (deterministic) {
+      _gen.seed(seed);
+    } else {
+      _gen.seed(_rd());
+    }
   };
   virtual ~RandomkCompressor() = default;
 

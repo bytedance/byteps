@@ -6,20 +6,55 @@ import mxnet.ndarray as nd
 import numpy as np
 from gluoncv.model_zoo import get_model
 from mxnet import gluon, autograd
+from parameterized import parameterized
+from tqdm import tqdm
 
 from utils import fake_data
 
 
-def onebit(x):
-    l1 = np.linalg.norm(x.flatten(), 1)
-    sign = x < 0
-    sign = -((sign << 1) - 1)
-    return l1 / len(x.flatten()) * sign
+def round_next_pow2(v):
+    v -= 1
+    v |= v >> 1
+    v |= v >> 2
+    v |= v >> 4
+    v |= v >> 8
+    v |= v >> 16
+    v += 1
+    return v
 
 
-class OnebitTestCase(unittest.TestCase):
-    def test_onebit(self):
+# partition: 'linear' or 'natural'
+def dithering(x, k, partition='linear'):
+    y = x.flatten()
+    # normalize
+    l2 = np.linalg.norm(y, ord=2)
+    y /= l2
+
+    # stocastic rounding
+    if partition == 'linear':
+        y *= k
+        low = np.floor(y)
+        p = y - low  # whether to ceil
+        y = low + np.random.binomial(n=1, p=p)
+        y /= k
+    else:
+        # 2 < 3 < 4
+        y *= 2**(k-1)
+        low = round_next_pow2(int(np.ceil(y))) << 1
+        p = (y - low) / low
+        y = (1 + np.random.binomial(n=1, p=p)) * low
+        y /= 2**(k-1)
+
+    return y.reshape(x.shape)
+
+
+class DitheringTestCase(unittest.TestCase):
+    def setUp(self):
+        print("init")
         bps.init()
+
+    @parameterized.expand([(1,)])
+    def test_dithering(self, k):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
         net.initialize(mx.init.Xavier(), ctx=ctx)
@@ -31,10 +66,10 @@ class OnebitTestCase(unittest.TestCase):
                             'learning_rate': 0.01}
 
         compression_params = {
-            "compressor": "onebit",
+            "compressor": "dithering",
             "ef": "vanilla",
             "momentum": "nesterov",
-            "scaling": True,
+            "k": k,
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -58,7 +93,7 @@ class OnebitTestCase(unittest.TestCase):
                 moms[i] = np.zeros_like(params[i])
                 wd_moms[i] = np.zeros_like(params[i])
 
-        for it, batch in enumerate(train_data):
+        for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
             label = batch[1].as_in_context(ctx)
 
@@ -85,16 +120,15 @@ class OnebitTestCase(unittest.TestCase):
                     moms[i] += g
                     g += 0.9 * moms[i]
                     g += errors[i]
-                    c = onebit(g)
+                    c = dithering(g, k)
                     errors[i] = g - c
 
-                    c += errors_s[i]
-                    cs = onebit(c)
-                    errors_s[i] = c - cs
-                    c = cs
+                    # c += errors_s[i]
+                    # cs = dithering(c, k)
+                    # errors_s[i] = c - cs
+                    # c = cs
 
-                    wd_moms[i] = 0.9 * wd_moms[i] + 1e-4 * xs[i]
-                    c += 0.9 * wd_moms[i] + 1e-4 * xs[i]
+                    c += 1e-4*xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0

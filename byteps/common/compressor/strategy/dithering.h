@@ -25,10 +25,10 @@ namespace compressor {
 /*!
  * \brief TODO
  */
-class MultibitCompressor : public Compressor {
+class DitheringCompressor : public Compressor {
  public:
-  MultibitCompressor(size_t size, int k) : Compressor(size), _k(k){};
-  virtual ~MultibitCompressor() = default;
+  DitheringCompressor(size_t size, int k) : Compressor(size), _k(k){};
+  virtual ~DitheringCompressor() = default;
 
   void Compress(tensor_t grad, tensor_t& compressed) override;
 

@@ -33,7 +33,15 @@ CompressorRegistry::Register
           int k = std::stoi(iter->second);
           BPS_LOG(DEBUG) << "Register Randomk Compressor "
                          << "k=" << k;
-          return std::unique_ptr<Compressor>(new RandomkCompressor(size, k));
+
+          auto iter2 = kwargs.find("seed");
+          if (iter2 == kwargs.end()) {
+            return std::unique_ptr<Compressor>(new RandomkCompressor(size, k));
+          } else {
+            unsigned int seed = std::stoul(iter2->second);
+            return std::unique_ptr<Compressor>(
+                new RandomkCompressor(size, k, seed, true));
+          }
         });
 }
 
@@ -142,8 +150,8 @@ void RandomkCompressor::Decompress(tensor_t compressed,
 #ifdef BYTEPS_BUILDING_SERVER
   if (decompressed.data == nullptr) decompressed.data = _buf.get();
 #endif
-  Unpacking(decompressed.data, compressed.data, compressed.size,
-            _size, compressed.dtype);
+  Unpacking(decompressed.data, compressed.data, compressed.size, _size,
+            compressed.dtype);
 }
 
 template <typename index_t, typename scalar_t>

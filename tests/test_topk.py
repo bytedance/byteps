@@ -6,20 +6,29 @@ import mxnet.ndarray as nd
 import numpy as np
 from gluoncv.model_zoo import get_model
 from mxnet import gluon, autograd
+from parameterized import parameterized
+from tqdm import tqdm
 
 from utils import fake_data
 
 
-def onebit(x):
-    l1 = np.linalg.norm(x.flatten(), 1)
-    sign = x < 0
-    sign = -((sign << 1) - 1)
-    return l1 / len(x.flatten()) * sign
+def topk(x, k):
+    y = x.flatten()
+    indices = np.argsort(np.abs(y))[-k:][::-1]
+    vals = y[indices]
+    y.fill(0)
+    for idx, val in zip(indices, vals):
+        y[idx] = val
+    return y.reshape(x.shape)
 
 
-class OnebitTestCase(unittest.TestCase):
-    def test_onebit(self):
+class TopkTestCase(unittest.TestCase):
+    def setUp(self):
+        print("init")
         bps.init()
+
+    @parameterized.expand([(1,)])
+    def test_topk(self, k):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
         net.initialize(mx.init.Xavier(), ctx=ctx)
@@ -31,10 +40,10 @@ class OnebitTestCase(unittest.TestCase):
                             'learning_rate': 0.01}
 
         compression_params = {
-            "compressor": "onebit",
+            "compressor": "topk",
             "ef": "vanilla",
             "momentum": "nesterov",
-            "scaling": True,
+            "k": k,
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -58,7 +67,7 @@ class OnebitTestCase(unittest.TestCase):
                 moms[i] = np.zeros_like(params[i])
                 wd_moms[i] = np.zeros_like(params[i])
 
-        for it, batch in enumerate(train_data):
+        for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
             label = batch[1].as_in_context(ctx)
 
@@ -85,16 +94,15 @@ class OnebitTestCase(unittest.TestCase):
                     moms[i] += g
                     g += 0.9 * moms[i]
                     g += errors[i]
-                    c = onebit(g)
+                    c = topk(g, k)
                     errors[i] = g - c
 
-                    c += errors_s[i]
-                    cs = onebit(c)
-                    errors_s[i] = c - cs
-                    c = cs
+                    # c += errors_s[i]
+                    # cs = topk(c, k)
+                    # errors_s[i] = c - cs
+                    # c = cs
 
-                    wd_moms[i] = 0.9 * wd_moms[i] + 1e-4 * xs[i]
-                    c += 0.9 * wd_moms[i] + 1e-4 * xs[i]
+                    c += 1e-4*xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
