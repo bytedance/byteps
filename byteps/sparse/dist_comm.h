@@ -43,6 +43,14 @@ class DistGatherComm : public SparseComm {
     cpubuffs_lens_.resize(num_worker_, std::vector<size_t>(local_size_));
     dst_offsets_.resize(num_worker_, std::vector<size_t>(local_size_));
 
+    // scale the length 
+    dst_len_ *= sizeof(data_t);
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      for (int gid = 0; gid < local_size_; ++gid) {
+        globalBufLens_[wid][gid] = sizeof(data_t) * globalBufLens_[wid][gid];
+      }
+    }
+
     // prepare dst_offsets_
     size_t offset = 0;
     for (int wid = 0; wid < num_worker_; ++wid) {
@@ -194,6 +202,14 @@ class DistScatterComm : public SparseComm {
     cpubuffs_.resize(num_worker_, std::vector<void*>(local_size_));
     cpubuffs_lens_.resize(num_worker_, std::vector<size_t>(local_size_));
     src_offsets_.resize(num_worker_, std::vector<size_t>(local_size_));
+
+    // scale the length 
+    src_len_ *= sizeof(data_t);
+    for (int wid = 0; wid < num_worker_; ++wid) {
+      for (int gid = 0; gid < local_size_; ++gid) {
+        globalBufLens_[wid][gid] = sizeof(data_t) * globalBufLens_[wid][gid];
+      }
+    }
 
     // prepare src_offsets_
     size_t offset = 0;
