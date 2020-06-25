@@ -95,16 +95,16 @@ class MemcpyH2DQueueExecLoop : public PredefinedQueueExecLoop{
 
 class CPUReduceQueueExecLoop : public PredefinedQueueExecLoop {
  public:
-  static CPUReduceQueueExecLoop* init_loop(::byteps::common::CpuReducer* denseReducer,
+  static CPUReduceQueueExecLoop* init_loop(::byteps::sparse::CpuReducer* denseReducer,
                                            std::mutex * mtx_DenseLatestBuffers);
 
  private:
-  CPUReduceQueueExecLoop(::byteps::common::CpuReducer * denseReducer, std::mutex * mtx_DenseLatestBuffers)
+  CPUReduceQueueExecLoop(::byteps::sparse::CpuReducer * denseReducer, std::mutex * mtx_DenseLatestBuffers)
     : PredefinedQueueExecLoop(), _loopdenseReducer(denseReducer), mtx_DenseLatestBuffers_(mtx_DenseLatestBuffers) {}
 
   void predefined_work(DenseTask task) override;
 
-  ::byteps::common::CpuReducer* _loopdenseReducer;
+  ::byteps::sparse::CpuReducer* _loopdenseReducer;
   std::mutex * mtx_DenseLatestBuffers_;
 };
 

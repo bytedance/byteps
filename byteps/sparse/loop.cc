@@ -11,7 +11,7 @@ void runDenseReduceLoop(QueueExecLoop *& queue_loop_ptr) {
 void runDenseReducePipeline(MemcpyD2HQueueExecLoop *& denseD2HLoop,
                             CPUReduceQueueExecLoop *& denseReduceLoop,
                             MemcpyH2DQueueExecLoop *& denseH2DLoop,
-                            ::byteps::common::CpuReducer * cpuReducer,
+                            ::byteps::sparse::CpuReducer * cpuReducer,
                             std::mutex * mtx_DenseLatestBuffers) {
   denseD2HLoop = MemcpyD2HQueueExecLoop::init_loop();
   denseReduceLoop = CPUReduceQueueExecLoop::init_loop(cpuReducer, mtx_DenseLatestBuffers);

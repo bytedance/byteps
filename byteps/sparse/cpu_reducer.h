@@ -24,7 +24,10 @@
 #include <memory>
 #include <cstring>
 #include "common.h"
-// #include "logging.h"
+#include <stdint.h>
+
+namespace byteps {
+namespace sparse {
 
 typedef void BytePSComm;
 
@@ -48,12 +51,6 @@ enum DataType {
   if (!(x))          \
   std::cout << "Check failed: " #x << ' '
 
-
-#include <stdint.h>
-
-namespace byteps {
-namespace common {
-
 class CpuReducer {
  public:
   CpuReducer(std::shared_ptr<BytePSComm> comm);
@@ -65,12 +62,6 @@ class CpuReducer {
   int sum(void* dst, void* src, size_t len, DataType dtype);
   int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
   int copy(void* dst, void* src, size_t len);
-
-#ifndef BYTEPS_BUILDING_SERVER
-  bool isRoot();
-  std::shared_ptr<BytePSComm> getComm() { return _comm; }
-#endif
-
 
   DataType GetDataType(int dtype) {
     return static_cast<DataType>(dtype);
@@ -207,7 +198,7 @@ class CpuReducer {
   int _num_threads;
 };
 
-}  // namespace common
+}  // namespace sparse
 }  // namespace byteps
 
 #endif  // BYTEPS_SPARSE_CPU_REDUCER_H

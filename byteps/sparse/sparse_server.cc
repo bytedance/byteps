@@ -95,7 +95,30 @@ void InitCudaIpc() {
 
     embed_buflens_[gid] = shm->embedBufferLength[gid];
   }
-  dense_buflen_ = shm->denseBufferLength;
+
+  if (dense_buflen_ == 0) dense_buflen_ = shm->denseBufferLength;
+  else CHECK_EQ(dense_buflen_, shm->denseBufferLength);
+}
+
+void InitDenseReduce() {
+  sharedMemoryInfo info;
+  volatile shmStruct *shm = NULL;
+  CHECK_EQ(openCudaIpcSharedMemory(bpsCudaIpcShmName, sizeof(shmStruct), &info), 0)
+      << "shared memory open failed";
+  shm = (volatile shmStruct *)info.addr;
+
+  if (dense_buflen_ == 0) dense_buflen_ = shm->denseBufferLength;
+  else CHECK_EQ(dense_buflen_, shm->denseBufferLength);
+
+  local_dense_bufs_.resize(local_size_);
+  for (int gid = 0; gid < local_size_; ++gid) {
+    std::string shm_name = std::string(bpsShmName) + std::to_string(gid);
+    CHECK_EQ(openSharedMemory(
+        shm_name.c_str(), dense_buflen_, &local_dense_bufs_[gid]), 0);
+  }
+
+  // init the latest params buffer
+  mallocAligned(&lastest_params_buf_, dense_buflen_);
 }
 
 template <typename Val>
@@ -111,13 +134,67 @@ void BytepsSparseHandler(const ps::KVMeta &req_meta,
               << "\t sender=" << req_meta.sender
               << "\t cmd=" << req_meta.cmd;
   }
+  
+  if (IsDenseKey(key)) { // dense reduce
+    if (!is_dense_inited_) {
+      InitDenseReduce();
+      is_dense_inited_ = true;
+    }
 
-  if ((key & 0xffff) == 0xffff) { 
+    if (req_meta.push) { // push
+      if (IsSenderLocalWorker(req_meta.sender)) {
+        CHECK_EQ(local_dense_bufs_.size(), local_size_);
+
+        int src_gpu = (key >> 32) % local_size_;
+        void* shm_addr = CHECK_NOTNULL(local_dense_bufs_[src_gpu]);
+
+        size_t len = dense_buflen_ / ps::NumServers();
+        size_t offset = len * ps::MyRank();
+
+        void* src = reinterpret_cast<void*>((char*)shm_addr + offset);
+        void* dst = reinterpret_cast<void*>((char*)lastest_params_buf_ + offset);
+
+        bps_reducer_->sum(dst, src, len, DataType::BYTEPS_FLOAT32);
+
+        // send push response (empty payload)
+        ps::KVPairs<char> res;
+        server->Response(req_meta, res);
+      } else {
+
+      }
+    } else { // pull
+      if (IsSenderLocalWorker(req_meta.sender)) {
+        CHECK_EQ(local_dense_bufs_.size(), local_size_);
+
+        int src_gpu = (key >> 32) % local_size_;
+        void* shm_addr = CHECK_NOTNULL(local_dense_bufs_[src_gpu]);
+
+        size_t len = dense_buflen_ / ps::NumServers();
+        size_t offset = len * ps::MyRank();
+
+        void* src = reinterpret_cast<void*>((char*)lastest_params_buf_ + offset);
+        void* dst = reinterpret_cast<void*>((char*)shm_addr + offset);
+        
+        bps_reducer_->copy(dst, src, len);
+
+        // send dummy pull response
+        int tmplen = req_meta.val_len;
+        if (dense_map_.find(key) == dense_map_.end()) {
+          AllocMemoryAndCreateSarray(dense_map_[key].keys, 1, (ps::Key*)&req_data.keys[0]);
+          AllocMemoryAndCreateSarray(dense_map_[key].vals, tmplen);
+          AllocMemoryAndCreateSarray(dense_map_[key].lens, 1, (int*)&tmplen);
+        }
+        server->Response(req_meta, dense_map_[key]);
+      } else {
+
+      }
+    }
+  } else if (IsScatterOrGatherKey(key)) {  // gather or scatter
     // as it receives the first gather key, the IPC 
     // handler should have been inited already
-    if (!is_inited_) {
+    if (!is_ipc_inited_) {
       InitCudaIpc();
-      is_inited_ = true;
+      is_ipc_inited_ = true;
     }
 
     if (req_meta.push) { // scatter request 
@@ -225,6 +302,8 @@ void InitEnv() {
     auto t = new std::thread(&BytePSSparseEngineThread, i);
     threads_.push_back(t);
   }
+
+  bps_reducer_ = new ::byteps::sparse::CpuReducer(nullptr);
 }
 
 void ReleaseServerResources() {
@@ -238,6 +317,11 @@ void ReleaseServerResources() {
   if (byteps_server_) {
     delete byteps_server_;
     byteps_server_ = nullptr;
+  }
+
+  if (bps_reducer_) {
+    delete bps_reducer_;
+    bps_reducer_ = nullptr;
   }
 
   for (int gid = 0; gid < local_size_; ++gid) {

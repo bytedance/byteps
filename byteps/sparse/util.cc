@@ -28,7 +28,7 @@ int createSharedMemory(const char *name, size_t sz, void** ptr) {
 
   void* addr = mmap(0, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (addr == NULL) return errno;
-  ptr = &addr;
+  *ptr = addr;
   return 0;
 }
 
@@ -38,7 +38,7 @@ int openSharedMemory(const char *name, size_t sz, void** ptr) {
 
   void* addr = mmap(0, sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (addr == NULL) return errno;
-  ptr = &addr;
+  *ptr = addr;
   return 0;
 }
 

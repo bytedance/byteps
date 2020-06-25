@@ -115,7 +115,7 @@ void CPUReduceQueueExecLoop::predefined_work(DenseTask task) {
 }
 
 CPUReduceQueueExecLoop * CPUReduceQueueExecLoop::init_loop(
-    ::byteps::common::CpuReducer* denseReducer, std::mutex * mtx_DenseLatestBuffers) {
+    ::byteps::sparse::CpuReducer* denseReducer, std::mutex * mtx_DenseLatestBuffers) {
   auto loop = new CPUReduceQueueExecLoop(denseReducer, mtx_DenseLatestBuffers);
   loop->start_executors();
   return loop;

@@ -328,7 +328,7 @@ void bytepsScatterExecAsync(int local_rank, cudaStream_t stream) {
 
 // TODO (chengyu.dai): Add Broadcast for initializing the latestBuffer.
 void bytepsDenseReduceExecAsync(int local_rank, cudaStream_t stream) {
-
+  _dense_reduce_comms[local_rank]->ExecAsync();
 }
 
 void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) { 
@@ -354,6 +354,7 @@ void bytepsSynchronize(int local_rank, cudaStream_t stream, OP op) {
 
 // TODO: should merge this with bytepsSynchronize
 void bytepsDenseSynchronize(int local_rank, cudaStream_t stream) {
+  _dense_reduce_comms[local_rank]->Sync();
 }
 
 } // namespace sparse

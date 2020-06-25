@@ -35,9 +35,9 @@ class DenseReduceComm : public SparseComm {
                   local_size_(local_size), worker_id_(worker_id), num_worker_(num_worker) {
     CHECK_LT(worker_id_, num_worker_);
     CHECK_LT(local_rank_, local_size_);
-    CUDA_CALL(cudaSetDevice(local_rank_));
 
-    CHECK_EQ(createSharedMemory(bpsShmName, buflen_, &cpubuff_), 0);
+    std::string shm_name = std::string(bpsShmName) + std::to_string(local_rank_);
+    CHECK_EQ(createSharedMemory(shm_name.c_str(), buflen_, &cpubuff_), 0);
     CUDA_CALL(cudaHostRegister(cpubuff_, buflen_, cudaHostRegisterMapped));
 
     mallocAlignedCudaAwareCpubuff(&dummy_buff_, dummy_buff_len_);
@@ -76,6 +76,7 @@ class DenseReduceComm : public SparseComm {
     }
     
     // init cuda stream for cuda memcpy
+    CUDA_CALL(cudaSetDevice(local_rank_));
     copy_d2h_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     copy_h2d_stream_ = (cudaStream_t*) malloc(sizeof(cudaStream_t) * 1);
     CUDA_CALL(cudaStreamCreateWithFlags(copy_d2h_stream_, cudaStreamNonBlocking));
@@ -125,21 +126,28 @@ class DenseReduceComm : public SparseComm {
     CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream_));
   }
 
-  void FreeBuffer(void* buf) {
-    CUDA_CALL(cudaHostUnregister(buf));
-    free(buf);
-  }
-
   ~DenseReduceComm() {
     CUDA_CALL(cudaStreamSynchronize(*copy_d2h_stream_));
     CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream_));
     CUDA_CALL(cudaStreamDestroy(*copy_d2h_stream_));
     CUDA_CALL(cudaStreamDestroy(*copy_h2d_stream_));
-    FreeBuffer(cpubuff_);
-    FreeBuffer(dummy_buff_);
+
+    CUDA_CALL(cudaHostUnregister(cpubuff_));
+    CUDA_CALL(cudaHostUnregister(dummy_buff_));
+    free(cpubuff_);
+    free(dummy_buff_);
+
+    pskeys_.clear();
+    psvals_.clear();
+    pslens_.clear();
   }
   
  private:
+  void FreeBuffer(void* buf) {
+    CUDA_CALL(cudaHostUnregister(buf));
+    free(buf);
+  }
+
   ps::KVWorker<char>* ps_; 
   size_t buflen_;
   void* src_; // on gpu

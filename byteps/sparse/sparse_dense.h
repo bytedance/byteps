@@ -22,7 +22,7 @@ static size_t _denseDeltaBufferLength;  // Unit in bytes.
 static MemcpyD2HQueueExecLoop* _denseD2HLoop;
 static CPUReduceQueueExecLoop* _denseReduceLoop;
 static MemcpyH2DQueueExecLoop* _denseH2DLoop;
-static ::byteps::common::CpuReducer* _denseReducer;
+static ::byteps::sparse::CpuReducer* _denseReducer;
 
 // The mutex for each GPU to access async reduce readiness.
 static std::vector<std::mutex *> _signal_mtx_per_gpu;

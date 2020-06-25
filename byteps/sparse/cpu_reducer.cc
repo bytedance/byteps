@@ -16,7 +16,7 @@
 #include "cpu_reducer.h"
 
 namespace byteps {
-namespace common {
+namespace sparse {
 
 CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
 
@@ -194,5 +194,5 @@ int CpuReducer::copy(void* dst, void* src, size_t len) {
 }
 
 
-}  // namespace common
+}  // namespace sparse
 }  // namespace byteps
