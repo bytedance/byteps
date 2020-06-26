@@ -253,12 +253,12 @@ def get_common_options(build_ext):
                'byteps/common/compressor/compressor_registry.cc',
                'byteps/common/compressor/error_feedback.cc',
                'byteps/common/compressor/momentum.cc',
-               'byteps/common/compressor/strategy/multibit.cc',
-               'byteps/common/compressor/strategy/onebit.cc',
-               'byteps/common/compressor/strategy/randomk.cc',
-               'byteps/common/compressor/strategy/topk.cc',
-               'byteps/common/compressor/strategy/vanilla_error_feedback.cc',
-               'byteps/common/compressor/strategy/nesterov_momentum.cc']
+               'byteps/common/compressor/impl/dithering.cc',
+               'byteps/common/compressor/impl/onebit.cc',
+               'byteps/common/compressor/impl/randomk.cc',
+               'byteps/common/compressor/impl/topk.cc',
+               'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+               'byteps/common/compressor/impl/nesterov_momentum.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + \
@@ -305,11 +305,11 @@ def build_server(build_ext, options):
                           'byteps/common/common.cc'] + [
                           'byteps/common/compressor/compressor_registry.cc',
                           'byteps/common/compressor/error_feedback.cc',
-                          'byteps/common/compressor/strategy/multibit.cc',
-                          'byteps/common/compressor/strategy/onebit.cc',
-                          'byteps/common/compressor/strategy/randomk.cc',
-                          'byteps/common/compressor/strategy/topk.cc',
-                          'byteps/common/compressor/strategy/vanilla_error_feedback.cc']
+                          'byteps/common/compressor/impl/dithering.cc',
+                          'byteps/common/compressor/impl/onebit.cc',
+                          'byteps/common/compressor/impl/randomk.cc',
+                          'byteps/common/compressor/impl/topk.cc',
+                          'byteps/common/compressor/impl/vanilla_error_feedback.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']

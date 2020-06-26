@@ -25,6 +25,12 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
+/*!
+ * \brief serialize key-vals hyper-params for network transmission
+ *
+ * \param kwargs hyper-params
+ * \return std::string serialized data
+ */
 inline std::string Serialize(const kwargs_t& kwargs) {
   std::ostringstream os;
   os << kwargs.size();
@@ -34,6 +40,12 @@ inline std::string Serialize(const kwargs_t& kwargs) {
   return os.str();
 }
 
+/*!
+ * \brief deserialize serialized data into key-vals hyper-params
+ *
+ * \param content serialized data
+ * \return kwargs_t hyper-params
+ */
 inline kwargs_t Deserialize(const std::string& content) {
   kwargs_t kwargs;
   std::istringstream is(content);

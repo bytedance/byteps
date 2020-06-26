@@ -12,26 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+
 #include "error_feedback.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 
-void ErrorFeedback::Compress(tensor_t grad, tensor_t& compressed) {
-  // before: grad += error
+tensor_t ErrorFeedback::Compress(tensor_t grad) {
+  // 1. grad <- grad + error
   UpdateGradient(grad);
 
-  // TODO: look strange
-  compressed.data = _error.get();
-  // compress
-  _cptr->Compress(grad, compressed);
+  // 2. c <- Compress(grad)
+  auto compressed = _cptr->Compress(grad);
 
+  // 3. e <- grad - Decompress(c)
   UpdateError(grad, compressed);
+
+  return compressed;
 }
 
-void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& decompressed) {
-  _cptr->Decompress(compressed, decompressed);
+tensor_t ErrorFeedback::Decompress(tensor_t compressed) {
+  // directly forward to internal compressor
+  return _cptr->Decompress(compressed);
 }
 
 void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {

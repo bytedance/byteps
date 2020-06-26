@@ -24,6 +24,7 @@ namespace compressor {
 
 class CompressorRegistry {
  public:
+  // constructor of compressor
   using ctor_t = std::function<std::unique_ptr<Compressor>(
       const kwargs_t& kwargs, size_t size, int dtype)>;
 

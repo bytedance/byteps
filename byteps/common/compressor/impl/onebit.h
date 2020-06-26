@@ -13,10 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H
-#define BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H
-
-#include <random>
+#ifndef BYTEPS_COMPRESSOR_IMPL_ONEBIT_H
+#define BYTEPS_COMPRESSOR_IMPL_ONEBIT_H
 
 #include "../compressor.h"
 
@@ -25,45 +23,45 @@ namespace common {
 namespace compressor {
 
 /*!
- * \brief RandomK Compressor
+ * \brief Onebit Compressor
  *
- * paper: Sparsified SGD with Memory
- * https://arxiv.org/pdf/1809.07599.pdf
+ * paper: SIGNSGD: Compressed Optimisation for Non-Convex Problems
+ * https://arxiv.org/pdf/1802.04434.pdf
  *
- * randomly sending k entries of the stochastic gradient
+ * each worker i:
+ *    c_i <- sign(grad)
+ *
+ * server: majority vote
+ *    sign(\sum_i c_i)
+ *
+ * \note 0 represents positive and 1 represents negative.
  */
-class RandomkCompressor : public Compressor {
+class OnebitCompressor : public Compressor {
  public:
-  RandomkCompressor(size_t size, int k, unsigned int seed = 0,
-                    bool deterministic = false)
-      : Compressor(size), _k(k) {
-    if (deterministic) {
-      _gen.seed(seed);
-    } else {
-      _gen.seed(_rd());
-    }
-  };
-  virtual ~RandomkCompressor() = default;
+  OnebitCompressor(size_t size, bool use_scale = false)
+      : Compressor(size), _use_scale(use_scale) {}
+  virtual ~OnebitCompressor() = default;
 
   /*!
    * \brief Compress function
    *
-   * randomly select k entries and corresponding indices
+   * compress and pack into byte array.
+   * each bit represents a sign.
    *
    * \param grad gradient tensor
    * \param compressed compressed tensor
    */
-  void Compress(tensor_t grad, tensor_t& compressed) override;
+  tensor_t Compress(tensor_t grad) override;
 
   /*!
    * \brief Decompress function
    *
-   * fill a zero tensor with topk entries and corresponding indices
+   * unpack from byte array to FP tensor
    *
    * \param compressed compressed tensor
    * \param decompressed decompressed tensor
    */
-  void Decompress(tensor_t compressed, tensor_t& decompressed) override;
+  tensor_t Decompress(tensor_t compressed) override;
 
   /*!
    * \brief help function for error feedback `UpdateError`
@@ -76,29 +74,25 @@ class RandomkCompressor : public Compressor {
                        tensor_t compressed) override;
 
  private:
-  size_t Packing(const void* src, size_t size, int dtype);
+  size_t Packing(const void* src, size_t len, int dtype);
 
   template <typename index_t, typename scalar_t>
   size_t PackingImpl(index_t* dst, const scalar_t* src, size_t len);
 
-  void Unpacking(void* dst, const void* src, size_t size, size_t src_size,
-                 int dtype);
+  void Unpacking(void* dst, const void* src, size_t len, int dtype);
 
-  template <typename index_t, typename scalar_t>
-  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t len,
-                     size_t src_len);
+  template <typename scalar_t, typename index_t>
+  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t size);
 
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, const index_t* compressed,
-                           size_t len);
+  template <typename scalar_t, typename index_t>
+  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
+                           index_t* compressed, float scale, size_t len);
 
  private:
-  int _k;
-  std::random_device _rd;
-  std::mt19937 _gen;
+  bool _use_scale;
 };
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_STRATEGY_RANDOMK_H
+#endif  // BYTEPS_COMPRESSOR_IMPL_ONEBIT_H

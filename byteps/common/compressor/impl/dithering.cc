@@ -37,13 +37,11 @@ CompressorRegistry::Register
         });
 }
 
-void DitheringCompressor::Compress(tensor_t grad, tensor_t& compressed) {
+tensor_t DitheringCompressor::Compress(tensor_t grad) {
   // normalize
-  
 }
 
-void DitheringCompressor::Decompress(tensor_t compressed,
-                                     tensor_t& decompressed) {
+tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
   // TODO
 }
 }  // namespace compressor

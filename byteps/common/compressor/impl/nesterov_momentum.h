@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H
-#define BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H
+#ifndef BYTEPS_COMPRESSOR_IMPL_NESTEROV_MOMENTUM_H
+#define BYTEPS_COMPRESSOR_IMPL_NESTEROV_MOMENTUM_H
 
 #include "../momentum.h"
 
@@ -22,6 +22,16 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
+/*!
+ * \brief Nesterov Momentum Compressor
+ *
+ * paper: A method for solving the convex programming problem with convergence
+ * rate $O (1/k^2)$
+ * 
+ * m_t <- \mu m_{t-1} + g_t
+ * g_t <- \mu m_t + g_t
+ * 
+ */
 class NesterovMomentumCompressor : public Momentum {
  public:
   NesterovMomentumCompressor(size_t size, std::unique_ptr<Compressor> cptr,
@@ -38,4 +48,4 @@ class NesterovMomentumCompressor : public Momentum {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_STRATEGY_NESTEROV_MOMENTUM_H
+#endif  // BYTEPS_COMPRESSOR_IMPL_NESTEROV_MOMENTUM_H

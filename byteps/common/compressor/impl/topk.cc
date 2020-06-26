@@ -73,17 +73,6 @@ size_t TopkCompressor::PackingImpl(index_t* dst, const scalar_t* src,
 
 size_t TopkCompressor::Packing(const void* src, size_t size, int dtype) {
   switch (dtype) {
-    case BYTEPS_INT8:
-      return PackingImpl(reinterpret_cast<int8_t*>(_buf.get()),
-                         reinterpret_cast<const int8_t*>(src),
-                         size / sizeof(int8_t));
-    case BYTEPS_UINT8:
-      return PackingImpl(reinterpret_cast<uint8_t*>(_buf.get()),
-                         reinterpret_cast<const uint8_t*>(src),
-                         size / sizeof(uint8_t));
-    // case BYTEPS_FLOAT16:
-    //   return _Packing(reinterpret_cast<int8_t*>(_buf.get()),
-    //                   reinterpret_cast<const int8_t*>(src), size);
     case BYTEPS_FLOAT32:
       return PackingImpl(reinterpret_cast<int32_t*>(_buf.get()),
                          reinterpret_cast<const float*>(src),
@@ -98,9 +87,9 @@ size_t TopkCompressor::Packing(const void* src, size_t size, int dtype) {
   return 0;
 }
 
-void TopkCompressor::Compress(tensor_t grad, tensor_t& compressed) {
-  compressed.size = Packing(grad.data, grad.size, grad.dtype);
-  compressed.data = _buf.get();
+tensor_t TopkCompressor::Compress(tensor_t grad) {
+  auto compressed_size = Packing(grad.data, grad.size, grad.dtype);
+  return {_buf.get(), compressed_size};
 }
 
 template <typename index_t, typename scalar_t>
@@ -128,18 +117,6 @@ void TopkCompressor::UnpackingImpl(scalar_t* dst, const index_t* src,
 void TopkCompressor::Unpacking(void* dst, const void* src, size_t size,
                                size_t src_size, int dtype) {
   switch (dtype) {
-    case BYTEPS_INT8:
-      return UnpackingImpl(
-          reinterpret_cast<int8_t*>(dst), reinterpret_cast<const int8_t*>(src),
-          size / sizeof(int8_t) / 2, src_size / sizeof(int8_t));
-    case BYTEPS_UINT8:
-      return UnpackingImpl(reinterpret_cast<uint8_t*>(dst),
-                           reinterpret_cast<const uint8_t*>(src),
-                           size / sizeof(uint8_t) / 2,
-                           src_size / sizeof(uint8_t));
-    // case BYTEPS_FLOAT16:
-    //   return _Unpacking(reinterpret_cast<int8_t*>(_buf.get()),
-    //                   reinterpret_cast<const int8_t*>(src), size);
     case BYTEPS_FLOAT32:
       return UnpackingImpl(reinterpret_cast<float*>(dst),
                            reinterpret_cast<const int32_t*>(src),
@@ -153,12 +130,14 @@ void TopkCompressor::Unpacking(void* dst, const void* src, size_t size,
   }
 }
 
-void TopkCompressor::Decompress(tensor_t compressed, tensor_t& decompressed) {
+tensor_t TopkCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
-  if (decompressed.data == nullptr) decompressed.data = _buf.get();
+  auto dst_ptr = _buf.get();
+#else
+  auto dst_ptr = compressed.data;
 #endif
-  Unpacking(decompressed.data, compressed.data, compressed.size, _size,
-            compressed.dtype);
+  Unpacking(dst_ptr, compressed.data, compressed.size, _size, compressed.dtype);
+  return {dst_ptr, _size};
 }
 
 template <typename index_t, typename scalar_t>
@@ -180,31 +159,11 @@ void TopkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                      tensor_t compressed) {
   std::memcpy(error.data, corrected.data, corrected.size);
   switch (corrected.dtype) {
-    case BYTEPS_INT8:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<int8_t*>(error.data),
-          reinterpret_cast<const int8_t*>(compressed.data),
-          corrected.size / sizeof(int8_t));
-    case BYTEPS_UINT8:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<uint8_t*>(error.data),
-          reinterpret_cast<const int8_t*>(compressed.data),
-          corrected.size / sizeof(uint8_t));
-    case BYTEPS_INT32:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<int32_t*>(error.data),
-          reinterpret_cast<const int32_t*>(compressed.data),
-          corrected.size / sizeof(int32_t));
     case BYTEPS_FLOAT32:
       return FastUpdateErrorImpl(
           reinterpret_cast<float*>(error.data),
           reinterpret_cast<const int32_t*>(compressed.data),
           corrected.size / sizeof(float));
-    case BYTEPS_INT64:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<int64_t*>(error.data),
-          reinterpret_cast<const int64_t*>(compressed.data),
-          corrected.size / sizeof(int64_t));
     case BYTEPS_FLOAT64:
       return FastUpdateErrorImpl(
           reinterpret_cast<double*>(error.data),

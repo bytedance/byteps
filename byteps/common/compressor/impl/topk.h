@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_STRATEGY_TOPK_H
-#define BYTEPS_COMPRESSOR_STRATEGY_TOPK_H
+#ifndef BYTEPS_COMPRESSOR_IMPL_TOPK_H
+#define BYTEPS_COMPRESSOR_IMPL_TOPK_H
 
 #include "../compressor.h"
 
@@ -46,7 +46,7 @@ class TopkCompressor : public Compressor {
    * \param grad gradient tensor
    * \param compressed compressed tensor
    */
-  void Compress(tensor_t grad, tensor_t& compressed) override;
+  tensor_t Compress(tensor_t grad) override;
 
   /*!
    * \brief Decompress function
@@ -56,10 +56,13 @@ class TopkCompressor : public Compressor {
    * \param compressed compressed tensor
    * \param decompressed decompressed tensor
    */
-  void Decompress(tensor_t compressed, tensor_t& decompressed) override;
+  tensor_t Decompress(tensor_t compressed) override;
 
   /*!
-   * \brief help function for error feedback `UpdateError`
+   * \brief faster version of `UpdateError` 
+   * 
+   * 1. e <- p (e is the error and p is the corrected gradient)
+   * 2. zero-fill e with selected k indices
    *
    * \param corrected gradient corrected with error
    * \param error error
@@ -92,4 +95,4 @@ class TopkCompressor : public Compressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_STRATEGY_TOPK_H
+#endif  // BYTEPS_COMPRESSOR_IMPL_TOPK_H

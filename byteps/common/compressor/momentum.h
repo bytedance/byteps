@@ -26,11 +26,22 @@ namespace compressor {
  *
  * Stochastic gradient descent with momentum
  *
- * NOTE: This should not be used at the same time with the momentum implemented
- * in the framework such as MXNet, Tensorflow or PyTorch etc.
+ * \note
+ * The momentum is added to gradient before compression. This should not be used
+ * at the same time with the momentum implemented in the framework such as
+ * MXNet, Tensorflow or PyTorch etc. The key difference between the two is the
+ * position where they are added to the gradients. For this one, it is added
+ * before push_pull. But for framework's momentum, it is added after push_pull.
+ *
+ * \note
+ * The framework's momentum is disabled when using this momentum. User do not
+ * need to disable it manully.
+ * 
+ * \sa Compressor, NesterovMomentumCompressor
  */
 class Momentum : public Compressor {
  public:
+  // momentum should be cleared to zeros
   Momentum(size_t size, std::unique_ptr<Compressor> cptr, float mu)
       : Compressor(size),
         _cptr(std::move(cptr)),
@@ -38,50 +49,38 @@ class Momentum : public Compressor {
         _mom(new byte_t[size]()){};
   virtual ~Momentum() = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
-  virtual void Compress(tensor_t grad, tensor_t& compressed) final;
+  virtual tensor_t Compress(tensor_t grad) final;
 
-  /*!
-   * \brief Decompress function
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
-  virtual void Decompress(tensor_t compressed, tensor_t& decompressed) final;
+  virtual tensor_t Decompress(tensor_t compressed) final;
 
  protected:
   /*!
    * \brief Update momentum
    *
-   * m_t = \mu * m_{t-1} + g_t
+   * e.g. m_t = \mu * m_{t-1} + g_t
    *
    * \param grad refers to gradient
    */
   virtual void UpdateMom(tensor_t grad) = 0;
 
   /*!
-   * \brief Update gradient
+   * \brief Update gradient with momentum
    *
-   * p_t = \mu m_t + g_t
+   * e.g. g_t = \mu m_t + g_t
    *
    * \param grad refers to gradient which adds momentum in place.
    */
   virtual void UpdateGradient(tensor_t grad) = 0;
 
  protected:
+  /*! \brief buffer of momentum */
   std::unique_ptr<byte_t[]> _mom;
-
+  
+  /*! \brief momentum factor */
   float _mu;
 
  private:
-  /*!
-   * \brief compressor
-   */
+  /*! \brief compressor pointer */
   std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor

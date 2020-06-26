@@ -25,35 +25,44 @@ namespace compressor {
 /*!
  *  \brief Error feedback Decorator
  *
- *  add error feedback behavior to any compressor at run-time
+ * paper: 1-bit stochastic gradient descent and its application to data-parallel
+ * distributed training of speech dnns
+ * https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/IS140694.pdf
+ *
+ * 1. UpdateGradient: g <- g + e
+ * 2. UpdateError: e <- g - c
+ *
+ * These two functions should be implemented in children classes.
+ *
+ * \par
+ * The caller do not need allocate an additional buffer to store error. There is
+ * a buffer already inside the class.
+ *
+ * \par
+ * Add error feedback behavior to any compressor at run-time via decorator
+ * pattern. It keeps the same interface as Compressor. Compress and Decompress
+ * have been implemented and can not be changed in children classes.
+ *
+ * \sa Compressor, VanillaErrorFeedbackCompressor
  */
 class ErrorFeedback : public Compressor {
  public:
+  // error buffer should be cleared to zeros at the beginning.
   ErrorFeedback(size_t size, std::unique_ptr<Compressor> cptr)
       : Compressor(size), _cptr(std::move(cptr)), _error(new byte_t[size]()) {}
   virtual ~ErrorFeedback() = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
-  virtual void Compress(tensor_t grad, tensor_t& compressed);
+  virtual tensor_t Compress(tensor_t grad) final;
 
-  /*!
-   * \brief Decompress function
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
-  virtual void Decompress(tensor_t compressed, tensor_t& decompressed);
+  virtual tensor_t Decompress(tensor_t compressed) final;
 
  protected:
   /*!
    * \brief Correct gradient with error
    *
    * grad += error
+   *
+   * \note it is an inplace operation.
    *
    * \param grad input gradient to be updated inplace
    * \param dtype type
@@ -71,12 +80,11 @@ class ErrorFeedback : public Compressor {
   virtual void UpdateError(tensor_t corrected, tensor_t compressed);
 
  protected:
+  /*! \brief buffer of error */
   std::unique_ptr<byte_t[]> _error;
 
  private:
-  /*!
-   * \brief compressor
-   */
+  /*! \brief compressor pointer */
   std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor
