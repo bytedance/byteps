@@ -150,15 +150,23 @@ template <typename scalar_t, typename index_t>
 void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
                                            index_t* compressed, float scale,
                                            size_t len) {
-  constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;  
-  unsigned int mask = 1;
-  for (int i = PACKING_SIZE - 1; i >= 0; --i) {
+  constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
+
+  std::memcpy(error, compressed, len * sizeof(index_t));
+  
+  auto ptr = reinterpret_cast<index_t*>(error);
+  for (int i = PACKING_SIZE - 1; i >= 1; --i) {
     for (int j = 0; j < len; ++j) {
-      int sign_bit = (compressed[j] & mask) >> (PACKING_SIZE - i - 1);
-      error[i * len + j] =
-          corrected[i * len + j] + ((sign_bit << 1) - 1) * scale;
+      int sign = ((ptr[j] & 0x01) << 1) - 1;
+      error[i * len + j] = corrected[i * len + j] + sign * scale;
+      ptr[j] >>= 1;
     }
-    mask <<= 1;
+  }
+
+  // for i = 0 chunk
+  for (int j = 0; j < len; ++j) {
+    int sign = ((ptr[j] & 0x01) << 1) - 1;
+    error[j] = corrected[j] + sign * scale;
   }
 }
 
