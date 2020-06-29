@@ -229,7 +229,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
       auto compressor_ptr =
           byteps::common::compressor::CompressorRegistry::Create(
-              kwargs, aligned_size, stored->dtype);
+              kwargs, aligned_size,
+              static_cast<byteps::common::DataType>(stored->dtype));
       CHECK_NE(compressor_ptr, nullptr);
       compressor_map_[key] = std::move(compressor_ptr);
       if (log_key_info_) {

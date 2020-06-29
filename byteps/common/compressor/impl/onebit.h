@@ -38,8 +38,8 @@ namespace compressor {
  */
 class OnebitCompressor : public Compressor {
  public:
-  OnebitCompressor(size_t size, bool use_scale = false)
-      : Compressor(size), _use_scale(use_scale) {}
+  OnebitCompressor(size_t size, DataType dtype, bool use_scale = false)
+      : Compressor(size, dtype), _use_scale(use_scale) {}
   virtual ~OnebitCompressor() = default;
 
   /*!
@@ -74,19 +74,16 @@ class OnebitCompressor : public Compressor {
                        tensor_t compressed) override;
 
  private:
-  size_t Packing(const void* src, size_t len, int dtype);
-
   template <typename index_t, typename scalar_t>
-  size_t PackingImpl(index_t* dst, const scalar_t* src, size_t len);
-
-  void Unpacking(void* dst, const void* src, size_t len, int dtype);
+  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
 
   template <typename scalar_t, typename index_t>
-  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t size);
+  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+                          size_t compressed_size);
 
   template <typename scalar_t, typename index_t>
   void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           index_t* compressed, float scale, size_t len);
+                           const index_t* compressed, size_t compressed_size);
 
  private:
   bool _use_scale;

@@ -28,22 +28,21 @@ namespace {
 CompressorRegistry::Register reg(
     "vanilla_ef",
     [](const kwargs_t& kwargs, size_t size,
-       int dtype) -> std::unique_ptr<Compressor> {
+       DataType dtype) -> std::unique_ptr<Compressor> {
       // register cpr
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("ef_type");
-      auto cptr =
-          CompressorRegistry::Create(kwargs_clone, size, dtype);
+      auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       BPS_LOG(DEBUG) << "with Error feedback";
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
-          new VanillaErrorFeedbackCompressor(size, std::move(cptr)));
+          new VanillaErrorFeedbackCompressor(size, dtype, std::move(cptr)));
     });
 }
 
 VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
-    size_t size, std::unique_ptr<Compressor> cptr)
-    : ErrorFeedback(size, std::move(cptr)) {
+    size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
+    : ErrorFeedback(size, dtype, std::move(cptr)) {
   _fd = open("lr.s", O_RDONLY);
   BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
   void* ptr = mmap(0, 8, PROT_READ, MAP_SHARED, _fd, 0);

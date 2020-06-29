@@ -23,7 +23,7 @@ namespace {
 CompressorRegistry::Register
     reg("dithering_compressor",
         [](const kwargs_t& kwargs, size_t size,
-           int dtype) -> std::unique_ptr<Compressor> {
+           DataType dtype) -> std::unique_ptr<Compressor> {
           auto iter = kwargs.find("compressor_k");
           if (iter == kwargs.end()) {
             BPS_LOG(WARNING)
@@ -33,7 +33,8 @@ CompressorRegistry::Register
           int k = std::stoi(iter->second);
           BPS_LOG(DEBUG) << "Register Multibit Compressor "
                          << "k=" << k;
-          return std::unique_ptr<Compressor>(new DitheringCompressor(size, k));
+          return std::unique_ptr<Compressor>(
+              new DitheringCompressor(size, dtype, k));
         });
 }
 

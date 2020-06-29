@@ -33,7 +33,8 @@ namespace compressor {
  */
 class TopkCompressor : public Compressor {
  public:
-  TopkCompressor(size_t size, int k) : Compressor(size), _k(k){};
+  TopkCompressor(size_t size, DataType dtype, int k)
+      : Compressor(size, dtype), _k(k){};
   virtual ~TopkCompressor() = default;
 
   /*!
@@ -59,8 +60,8 @@ class TopkCompressor : public Compressor {
   tensor_t Decompress(tensor_t compressed) override;
 
   /*!
-   * \brief faster version of `UpdateError` 
-   * 
+   * \brief faster version of `UpdateError`
+   *
    * 1. e <- p (e is the error and p is the corrected gradient)
    * 2. zero-fill e with selected k indices
    *
@@ -72,21 +73,16 @@ class TopkCompressor : public Compressor {
                        tensor_t compressed) override;
 
  private:
-  size_t Packing(const void* src, size_t size, int dtype);
+  template <typename index_t, typename scalar_t>
+  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  size_t PackingImpl(index_t* dst, const scalar_t* src, size_t len);
-
-  void Unpacking(void* dst, const void* src, size_t size, size_t src_size,
-                 int dtype);
+  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+                          size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  void UnpackingImpl(scalar_t* dst, const index_t* src, size_t len,
-                     size_t src_len);
-
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, const index_t* compressed,
-                           size_t len);
+  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
+                           const index_t* compressed, size_t compressed_size);
 
  private:
   int _k;

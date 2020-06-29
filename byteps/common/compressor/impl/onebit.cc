@@ -22,20 +22,20 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
                                                          size_t size,
-                                                         int dtype) {
+                                                         DataType dtype) {
   BPS_LOG(DEBUG) << "Register Onebit Compressor";
   bool scaled = false;
   auto iter = kwargs.find("compressor_onebit_scaling");
   if (iter != kwargs.end()) {
     if (iter->second == "true" || iter->second == "True") scaled = true;
   }
-  return std::unique_ptr<Compressor>(new OnebitCompressor(size, scaled));
+  return std::unique_ptr<Compressor>(new OnebitCompressor(size, dtype, scaled));
 });
 }
 
 template <typename index_t, typename scalar_t>
-size_t OnebitCompressor::PackingImpl(index_t* dst, const scalar_t* src,
-                                     size_t len) {
+tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
+                                        size_t len) {
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
   constexpr size_t PACKING_SIZE = sizeof(scalar_t) * 8;
@@ -55,116 +55,92 @@ size_t OnebitCompressor::PackingImpl(index_t* dst, const scalar_t* src,
   }
 
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
-  size_t chunk_size = (len + padding_len) / PACKING_SIZE;
+  const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
 
   for (int i = 1; i < PACKING_SIZE; ++i) {
-    for (int j = 0; j < chunk_size; ++j) {
+    for (int j = 0; j < chunk_len; ++j) {
       dst[j] <<= 1;
-      dst[j] |= dst[i * chunk_size + j] & 0x01;
+      dst[j] |= dst[i * chunk_len + j] & 0x01;
     }
   }
 
-  float* p_scale = reinterpret_cast<float*>(&dst[chunk_size]);
+  float* p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
   *p_scale = scale;
 
-  return chunk_size * sizeof(index_t) + sizeof(float);
-}
-
-size_t OnebitCompressor::Packing(const void* src, size_t len, int dtype) {
-  switch (dtype) {
-    case BYTEPS_FLOAT32:
-      return PackingImpl(reinterpret_cast<uint32_t*>(_buf.get()),
-                         reinterpret_cast<const float*>(src),
-                         len / sizeof(float));
-    case BYTEPS_FLOAT64:
-      return PackingImpl(reinterpret_cast<uint64_t*>(_buf.get()),
-                         reinterpret_cast<const double*>(src),
-                         len / sizeof(double));
-    default:
-      BPS_CHECK(0) << "Unsupported data type: " << dtype;
-  }
+  return {dst, chunk_len * sizeof(index_t) + sizeof(float)};
 }
 
 tensor_t OnebitCompressor::Compress(tensor_t grad) {
-  auto compressed_size = Packing(grad.data, grad.size, grad.dtype);
-  return {_buf.get(), compressed_size};
+  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
+                       grad.size);
 }
 
 template <typename scalar_t, typename index_t>
-void OnebitCompressor::UnpackingImpl(scalar_t* dst, const index_t* src,
-                                     size_t len) {
+tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
+                                          size_t compressed_size) {
   static_assert(sizeof(scalar_t) == sizeof(index_t),
                 "scalar_t should be the same size as index_t");
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
+  const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
 
-  auto* pf = reinterpret_cast<const float*>(src + len);
+  auto* pf = reinterpret_cast<const float*>(src + chunk_len);
   float scale = *pf;
 
   auto ptr = reinterpret_cast<index_t*>(dst);
   if ((void*)dst != (void*)src) {
-    std::copy(src, src + len, ptr);
+    std::copy(src, src + chunk_len, ptr);
   }
 
   for (int i = PACKING_SIZE - 1; i >= 1; --i) {
-    for (int j = 0; j < len; ++j) {
+    for (int j = 0; j < chunk_len; ++j) {
       int sign = -(((ptr[j] & 0x01) << 1) - 1);
-      dst[i * len + j] = sign * scale;
+      dst[i * chunk_len + j] = sign * scale;
       ptr[j] >>= 1;
     }
   }
 
   // for i = 0 chunk
-  for (int j = 0; j < len; ++j) {
+  for (int j = 0; j < chunk_len; ++j) {
     int sign = -(((ptr[j] & 0x01) << 1) - 1);
     dst[j] = sign * scale;
   }
-}
 
-void OnebitCompressor::Unpacking(void* dst, const void* src, size_t size,
-                                 int dtype) {
-  switch (dtype) {
-    case BYTEPS_FLOAT32:
-      return UnpackingImpl(reinterpret_cast<float*>(dst),
-                           reinterpret_cast<const uint32_t*>(src),
-                           (size - sizeof(float)) / sizeof(uint32_t));
-    case BYTEPS_FLOAT64:
-      return UnpackingImpl(reinterpret_cast<double*>(dst),
-                           reinterpret_cast<const uint64_t*>(src),
-                           (size - sizeof(float)) / sizeof(uint64_t));
-    default:
-      BPS_CHECK(0) << "Unsupported data type: " << dtype;
-  }
+  return {dst, _size};
 }
 
 tensor_t OnebitCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
-  auto dst_ptr = _buf.get();
+  auto dst = _buf.get();
 #else
-  auto dst_ptr = compressed.data;
+  auto dst = compressed.data;
 #endif
-  Unpacking(dst_ptr, compressed.data, compressed.size, compressed.dtype);
-  return {dst_ptr, _size};
+  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
+                         compressed.size);
 }
 
 template <typename scalar_t, typename index_t>
 void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                                           index_t* compressed, float scale,
-                                           size_t len) {
+                                           const index_t* compressed,
+                                           size_t compressed_size) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
+  const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
 
-  std::memcpy(error, compressed, len * sizeof(index_t));
-  
+  auto* pf = reinterpret_cast<const float*>(compressed + chunk_len);
+  float scale = *pf;
+
+  std::memcpy(error, compressed, chunk_len * sizeof(index_t));
+
   auto ptr = reinterpret_cast<index_t*>(error);
   for (int i = PACKING_SIZE - 1; i >= 1; --i) {
-    for (int j = 0; j < len; ++j) {
+    for (int j = 0; j < chunk_len; ++j) {
       int sign = ((ptr[j] & 0x01) << 1) - 1;
-      error[i * len + j] = corrected[i * len + j] + sign * scale;
+      error[i * chunk_len + j] = corrected[i * chunk_len + j] + sign * scale;
       ptr[j] >>= 1;
     }
   }
 
   // for i = 0 chunk
-  for (int j = 0; j < len; ++j) {
+  for (int j = 0; j < chunk_len; ++j) {
     int sign = ((ptr[j] & 0x01) << 1) - 1;
     error[j] = corrected[j] + sign * scale;
   }
@@ -172,24 +148,9 @@ void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
 
 void OnebitCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                        tensor_t compressed) {
-  float scale = *reinterpret_cast<float*>(compressed.data + compressed.size -
-                                          sizeof(float));
-  switch (corrected.dtype) {
-    case BYTEPS_FLOAT32:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<float*>(error.data),
-          reinterpret_cast<float*>(corrected.data),
-          reinterpret_cast<int32_t*>(compressed.data), scale,
-          (compressed.size - sizeof(float)) / sizeof(float));
-    case BYTEPS_FLOAT64:
-      return FastUpdateErrorImpl(
-          reinterpret_cast<double*>(error.data),
-          reinterpret_cast<double*>(corrected.data),
-          reinterpret_cast<int64_t*>(compressed.data), scale,
-          (compressed.size - sizeof(float)) / sizeof(double));
-    default:
-      BPS_CHECK(0) << "Unsupported data type: " << corrected.dtype;
-  }
+  SWITCH_TO_FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl,
+                                          error.data, corrected.data,
+                                          compressed.data, compressed.size);
 }
 }  // namespace compressor
 }  // namespace common

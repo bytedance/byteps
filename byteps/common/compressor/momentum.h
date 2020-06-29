@@ -36,14 +36,15 @@ namespace compressor {
  * \note
  * The framework's momentum is disabled when using this momentum. User do not
  * need to disable it manully.
- * 
+ *
  * \sa Compressor, NesterovMomentumCompressor
  */
 class Momentum : public Compressor {
  public:
   // momentum should be cleared to zeros
-  Momentum(size_t size, std::unique_ptr<Compressor> cptr, float mu)
-      : Compressor(size),
+  Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
+           float mu)
+      : Compressor(size, dtype),
         _cptr(std::move(cptr)),
         _mu(mu),
         _mom(new byte_t[size]()){};
@@ -75,7 +76,7 @@ class Momentum : public Compressor {
  protected:
   /*! \brief buffer of momentum */
   std::unique_ptr<byte_t[]> _mom;
-  
+
   /*! \brief momentum factor */
   float _mu;
 

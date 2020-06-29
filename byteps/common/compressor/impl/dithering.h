@@ -27,7 +27,8 @@ namespace compressor {
  */
 class DitheringCompressor : public Compressor {
  public:
-  DitheringCompressor(size_t size, int k) : Compressor(size), _k(k){};
+  DitheringCompressor(size_t size, DataType dtype, int k)
+      : Compressor(size, dtype), _k(k){};
   virtual ~DitheringCompressor() = default;
 
   tensor_t Compress(tensor_t grad) override;

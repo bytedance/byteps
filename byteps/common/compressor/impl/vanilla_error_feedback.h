@@ -28,31 +28,32 @@ namespace compressor {
  * paper: Communication-efficient distributed blockwise momentum sgd with
  * error-feedback
  * https://arxiv.org/pdf/1905.10936.pdf
- * 
+ *
  * each worker i:
  *    p_{t,i} <- g_{t,i} + \frac{\eta_{t-1}}{\eta_t} e_{t,i}
  *    c_{t,i} <- Compress(p_{t,i})
  *    e_{t,i} <- p_{t,i} - c_{t,i}
- * 
+ *
  * server:
- *    \tilde{p}_{t} <- \frac{1}{M} \sum_{i=1}^{M} c_{t,i} +\frac{\eta_{t-1}}{\eta_{t}} \tilde{e_t}
- *    \tilde{e}_{t+1} <- \tilde{p}_{t}-\tilde{c_t}
- * 
+ *    \tilde{p}_{t} <- \frac{1}{M} \sum_{i=1}^{M} c_{t,i}
+ * +\frac{\eta_{t-1}}{\eta_{t}} \tilde{e_t} \tilde{e}_{t+1} <-
+ * \tilde{p}_{t}-\tilde{c_t}
+ *
  * Error-correction: error needs to be scaled with \frac{\eta_{t-1}}{\eta_t}.
  */
 class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  public:
-  VanillaErrorFeedbackCompressor(size_t size, std::unique_ptr<Compressor> cptr);
+  VanillaErrorFeedbackCompressor(size_t size, DataType dtype,
+                                 std::unique_ptr<Compressor> cptr);
   virtual ~VanillaErrorFeedbackCompressor();
 
  protected:
- 
   void UpdateGradient(tensor_t grad) override;
 
  private:
   /*!
    * \brief learning rate
-   * 
+   *
    * read from file each step
    */
   double _pre_lr, _cur_lr;

@@ -27,16 +27,16 @@ namespace compressor {
  *
  * paper: A method for solving the convex programming problem with convergence
  * rate $O (1/k^2)$
- * 
+ *
  * m_t <- \mu m_{t-1} + g_t
  * g_t <- \mu m_t + g_t
- * 
+ *
  */
 class NesterovMomentumCompressor : public Momentum {
  public:
-  NesterovMomentumCompressor(size_t size, std::unique_ptr<Compressor> cptr,
-                             float mu)
-      : Momentum(size, std::move(cptr), mu){};
+  NesterovMomentumCompressor(size_t size, DataType dtype,
+                             std::unique_ptr<Compressor> cptr, float mu)
+      : Momentum(size, dtype, std::move(cptr), mu){};
   virtual ~NesterovMomentumCompressor() = default;
 
  protected:

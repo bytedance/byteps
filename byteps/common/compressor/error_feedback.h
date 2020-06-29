@@ -48,8 +48,10 @@ namespace compressor {
 class ErrorFeedback : public Compressor {
  public:
   // error buffer should be cleared to zeros at the beginning.
-  ErrorFeedback(size_t size, std::unique_ptr<Compressor> cptr)
-      : Compressor(size), _cptr(std::move(cptr)), _error(new byte_t[size]()) {}
+  ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
+      : Compressor(size, dtype),
+        _cptr(std::move(cptr)),
+        _error(new byte_t[size]()) {}
   virtual ~ErrorFeedback() = default;
 
   virtual tensor_t Compress(tensor_t grad) final;

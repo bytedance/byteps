@@ -51,8 +51,9 @@ namespace compressor {
  */
 class Compressor {
  public:
-  Compressor(size_t size)
+  Compressor(size_t size, DataType dtype)
       : _size(size),
+        _dtype(dtype),
         _buf(new byte_t[size]),
         _cpu_reducer(new CpuReducer(nullptr)){};
   virtual ~Compressor() = default;
@@ -122,6 +123,8 @@ class Compressor {
 
   /*! \brief original size */
   size_t _size;
+
+  DataType _dtype;
 
   /*! \brief CPU reducer */
   std::unique_ptr<CpuReducer> _cpu_reducer;

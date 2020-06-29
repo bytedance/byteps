@@ -36,7 +36,7 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
 }
 
 std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
-                                                       size_t size, int dtype) {
+                                                       size_t size, DataType dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
   const std::string types[] = {"momentum_type", "ef_type", "compressor_type"};
 #else

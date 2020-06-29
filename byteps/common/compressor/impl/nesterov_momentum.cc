@@ -23,12 +23,11 @@ namespace {
 CompressorRegistry::Register reg(
     "nesterov_momentum",
     [](const kwargs_t& kwargs, size_t size,
-       int dtype) -> std::unique_ptr<Compressor> {
+       DataType dtype) -> std::unique_ptr<Compressor> {
       // register cpr
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("momentum_type");
-      auto cptr =
-          CompressorRegistry::Create(kwargs_clone, size, dtype);
+      auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       // find \mu
       auto iter = kwargs.find("momentum_mu");
@@ -36,7 +35,7 @@ CompressorRegistry::Register reg(
       float mu = std::stof(iter->second);
       BPS_LOG(DEBUG) << "with momentum";
       return std::unique_ptr<NesterovMomentumCompressor>(
-          new NesterovMomentumCompressor(size, std::move(cptr), mu));
+          new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
     });
 }
 

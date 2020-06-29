@@ -26,7 +26,7 @@ class CompressorRegistry {
  public:
   // constructor of compressor
   using ctor_t = std::function<std::unique_ptr<Compressor>(
-      const kwargs_t& kwargs, size_t size, int dtype)>;
+      const kwargs_t& kwargs, size_t size, DataType dtype)>;
 
   using map_t = std::unordered_map<std::string, ctor_t>;
 
@@ -37,7 +37,7 @@ class CompressorRegistry {
   static ctor_t Find(const std::string& name);
 
   static std::unique_ptr<Compressor> Create(const kwargs_t& kwargs, size_t size,
-                                            int dtype);
+                                            DataType dtype);
 
  private:
   static map_t _ctor_map;
