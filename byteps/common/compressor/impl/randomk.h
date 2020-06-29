@@ -19,6 +19,7 @@
 #include <random>
 
 #include "../compressor.h"
+#include "../utils.h"
 
 namespace byteps {
 namespace common {
@@ -41,9 +42,8 @@ class RandomkCompressor : public Compressor {
                     bool deterministic = false)
       : Compressor(size), _k(k) {
     if (deterministic) {
-      _gen.seed(seed);
-    } else {
-      _gen.seed(_rd());
+      BPS_LOG(INFO) << "SET SEED = " << seed;
+      _rng.set_seed(seed);
     }
   };
   virtual ~RandomkCompressor() = default;
@@ -69,8 +69,8 @@ class RandomkCompressor : public Compressor {
   tensor_t Decompress(tensor_t compressed) override;
 
   /*!
-   * \brief faster version of `UpdateError` 
-   * 
+   * \brief faster version of `UpdateError`
+   *
    * 1. e <- p (e is the error and p is the corrected gradient)
    * 2. zero-fill e with selected k indices
    *
@@ -101,7 +101,7 @@ class RandomkCompressor : public Compressor {
  private:
   int _k;
   std::random_device _rd;
-  std::mt19937 _gen;
+  XorShift128PlusBitShifterRNG _rng;
 };
 }  // namespace compressor
 }  // namespace common

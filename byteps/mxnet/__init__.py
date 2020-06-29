@@ -265,7 +265,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             if compressor == "onebit":
                 setattr(param, "byteps_compressor_onebit_scaling", str(
                     compression_params.get("scaling", False)))
-            elif compressor == "topk" or compressor == "randomk" or compressor == "multibit":
+            elif compressor == "topk" or compressor == "randomk" or compressor == "dithering":
                 # raise KeyError if 'k' is not found
                 setattr(param, "byteps_compressor_k",
                         compression_params["k"])
@@ -274,7 +274,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 setattr(param, "byteps_momentum_mu",
                         optimizer_params["momentum"])
 
-            if compression_params.get("seed"):
+            if compression_params.get("seed", None) is not None:
                 setattr(param, "byteps_seed",
                         compression_params["seed"])
 

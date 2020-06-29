@@ -39,6 +39,7 @@ CompressorRegistry::Register
             return std::unique_ptr<Compressor>(new RandomkCompressor(size, k));
           } else {
             unsigned int seed = std::stoul(iter2->second);
+            BPS_CHECK(seed != 0) << "seed should not be 0";
             return std::unique_ptr<Compressor>(
                 new RandomkCompressor(size, k, seed, true));
           }
@@ -52,11 +53,10 @@ size_t RandomkCompressor::PackingImpl(index_t* dst, const scalar_t* src,
                 "index_t should be the same size as scalar_t");
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
-  std::uniform_int_distribution<> dis(0, len - 1);
   auto ptr = reinterpret_cast<pair_t*>(dst);
 
   for (size_t i = 0; i < this->_k; ++i) {
-    auto index = dis(_gen);
+    auto index = _rng.Randint(0, len);
     ptr[i] = std::make_pair(index, src[index]);
   }
 

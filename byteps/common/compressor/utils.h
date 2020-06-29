@@ -16,6 +16,9 @@
 #ifndef BYTEPS_COMPRESSOR_UTILS_H
 #define BYTEPS_COMPRESSOR_UTILS_H
 
+#include <limits>
+#include <memory>
+#include <random>
 #include <sstream>
 #include <string>
 
@@ -60,6 +63,52 @@ inline kwargs_t Deserialize(const std::string& content) {
 
   return kwargs;
 }
+
+/*!
+ * \brief random number generator based on xorshift128plus
+ *
+ * refer to https://en.wikipedia.org/wiki/Xorshift#xorshift+
+ */
+class XorShift128PlusBitShifterRNG {
+ public:
+  XorShift128PlusBitShifterRNG() {
+    std::random_device rd;
+    _state = {rd(), rd()};
+  }
+
+  // uniform int among [low, high)
+  uint64_t Randint(uint64_t low, uint64_t high) {
+    return xorshift128p() % (high - low) + low;
+  };
+
+  // uniform [0, 1]
+  double Rand() { return double(xorshift128p()) / MAX; }
+
+  // Bernoulli Distributation
+  bool Bernoulli(double p) { return xorshift128p() < uint64_t(p * MAX); }
+
+  void set_seed(uint64_t seed) { _state = {seed, seed}; }
+
+ private:
+  struct xorshift128p_state {
+    uint64_t a, b;
+  };
+
+  uint64_t xorshift128p() {
+    uint64_t t = _state.a;
+    uint64_t const s = _state.b;
+    _state.a = s;
+    t ^= t << 23;        // a
+    t ^= t >> 17;        // b
+    t ^= s ^ (s >> 26);  // c
+    _state.b = t;
+    return t + s;
+  };
+
+  xorshift128p_state _state;
+
+  static constexpr uint64_t MAX = std::numeric_limits<uint64_t>::max();
+};
 
 }  // namespace compressor
 }  // namespace common
