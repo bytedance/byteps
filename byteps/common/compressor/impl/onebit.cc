@@ -13,8 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include "onebit.h"
+#include <bitset>
+
 #include "../compressor_registry.h"
+#include "onebit.h"
 
 namespace byteps {
 namespace common {
@@ -39,36 +41,34 @@ tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
   constexpr size_t PACKING_SIZE = sizeof(scalar_t) * 8;
+  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
+  const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
 
   float scale = 1.0f;
   if (_use_scale) {
     double sum = 0.0f;
-    for (size_t i = 0; i < len; ++i) {
-      dst[i] = src[i] < 0;
-      sum += abs(src[i]);
+#pragma omp parallel for simd num_threads(4) reduction(+ : sum)
+    for (int i = 0; i < len; ++i) {
+      sum += std::abs(src[i]);
     }
     scale = sum / len;
-  } else {
-    for (size_t i = 0; i < len; ++i) {
-      dst[i] = src[i] < 0;
-    }
   }
 
-  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
-  const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
-
-  for (int i = 1; i < PACKING_SIZE; ++i) {
-    for (int j = 0; j < chunk_len; ++j) {
-      dst[j] <<= 1;
-      dst[j] |= dst[i * chunk_len + j] & 0x01;
+#pragma omp parallel for simd num_threads(4)
+  for (int i = 0; i < chunk_len; ++i) {
+    index_t x = src[i * PACKING_SIZE] < 0;
+    for (int j = 1; j < PACKING_SIZE; ++j) {
+      x <<= 1;
+      x |= src[i * PACKING_SIZE + j] < 0;
     }
+    dst[i] = x;
   }
 
   float* p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
   *p_scale = scale;
 
   return {dst, chunk_len * sizeof(index_t) + sizeof(float)};
-}
+}  // namespace compressor
 
 tensor_t OnebitCompressor::Compress(tensor_t grad) {
   COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
@@ -86,23 +86,20 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   auto* pf = reinterpret_cast<const float*>(src + chunk_len);
   float scale = *pf;
 
-  auto ptr = reinterpret_cast<index_t*>(dst);
-  if ((void*)dst != (void*)src) {
-    std::copy(src, src + chunk_len, ptr);
+  index_t* ptr = const_cast<index_t*>(src);
+  if ((void*)dst == (void*)src) {
+    ptr = reinterpret_cast<index_t*>(_buf.get());
+    std::memcpy(ptr, src, compressed_size);
   }
 
-  for (int i = PACKING_SIZE - 1; i >= 1; --i) {
-    for (int j = 0; j < chunk_len; ++j) {
-      int sign = -(((ptr[j] & 0x01) << 1) - 1);
-      dst[i * chunk_len + j] = sign * scale;
-      ptr[j] >>= 1;
+#pragma omp parallel for simd num_threads(4)
+  for (int i = chunk_len - 1; i >= 0; --i) {
+    index_t x = ptr[i];
+    for (int j = PACKING_SIZE - 1; j >= 0; --j) {
+      int sign = 1 - ((x & 0x01) << 1);
+      dst[i * PACKING_SIZE + j] = sign * scale;
+      x >>= 1;
     }
-  }
-
-  // for i = 0 chunk
-  for (int j = 0; j < chunk_len; ++j) {
-    int sign = -(((ptr[j] & 0x01) << 1) - 1);
-    dst[j] = sign * scale;
   }
 
   return {dst, _size};
@@ -128,21 +125,15 @@ void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
   auto* pf = reinterpret_cast<const float*>(compressed + chunk_len);
   float scale = *pf;
 
-  std::memcpy(error, compressed, chunk_len * sizeof(index_t));
-
-  auto ptr = reinterpret_cast<index_t*>(error);
-  for (int i = PACKING_SIZE - 1; i >= 1; --i) {
-    for (int j = 0; j < chunk_len; ++j) {
-      int sign = ((ptr[j] & 0x01) << 1) - 1;
-      error[i * chunk_len + j] = corrected[i * chunk_len + j] + sign * scale;
-      ptr[j] >>= 1;
+#pragma omp parallel for simd num_threads(4)
+  for (int i = chunk_len - 1; i >= 0; --i) {
+    index_t x = compressed[i];
+    for (int j = PACKING_SIZE - 1; j >= 0; --j) {
+      int sign = ((x & 0x01) << 1) - 1;
+      error[i * PACKING_SIZE + j] =
+          corrected[i * PACKING_SIZE + j] + sign * scale;
+      x >>= 1;
     }
-  }
-
-  // for i = 0 chunk
-  for (int j = 0; j < chunk_len; ++j) {
-    int sign = ((ptr[j] & 0x01) << 1) - 1;
-    error[j] = corrected[j] + sign * scale;
   }
 }
 
