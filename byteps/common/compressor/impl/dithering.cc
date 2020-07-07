@@ -122,6 +122,9 @@ tensor_t DitheringCompressor::Compress(tensor_t grad) {
 template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                              size_t compressed_size) {
+  static_assert(sizeof(index_t) == sizeof(scalar_t),
+                "index_t should be the same size as scalar_t");
+
   const size_t ints =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(src + ints);
@@ -169,9 +172,49 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
                          compressed.size);
 }
 
+template <typename index_t, typename scalar_t>
+void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
+                                              scalar_t* corrected,
+                                              const index_t* compressed,
+                                              size_t compressed_size) {
+  static_assert(sizeof(index_t) == sizeof(scalar_t),
+                "index_t should be the same size as scalar_t");
+
+  const size_t ints =
+      (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
+  auto* p_bits = reinterpret_cast<const index_t*>(compressed + ints);
+  const index_t bits = *p_bits;
+
+  auto* p_scale = reinterpret_cast<const float*>(compressed + ints + 1);
+  const float scale = *p_scale;
+
+  std::memcpy(error, corrected, _size);
+
+  unsigned int s;
+  if (_ptype == PartitionType::LINEAR) {
+    s = _s;
+  } else if (_ptype == PartitionType::NATURAL) {
+    s = 1 << (_s - 1);
+  }
+
+  BitReader<index_t> bit_reader(compressed);
+  int last_non_zero_pos = -1;
+  while (bit_reader.bits() < bits) {
+    int diff = EliasDeltaDecode(bit_reader);
+    int i = last_non_zero_pos + diff;
+    last_non_zero_pos = i;
+    int signbit = bit_reader.Get();
+    int x = EliasDeltaDecode(bit_reader);
+    float num = x * scale / s;
+    error[i] -= (1 - (signbit << 1)) * num;
+  }
+}
+
 void DitheringCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                           tensor_t compressed) {
-  BPS_LOG(FATAL) << "TODO";
+  SWITCH_TO_FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl,
+                                          error.data, corrected.data,
+                                          compressed.data, compressed.size);
 }
 }  // namespace compressor
 }  // namespace common
