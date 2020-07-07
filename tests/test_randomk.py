@@ -5,16 +5,21 @@ import mxnet as mx
 import mxnet.ndarray as nd
 import numpy as np
 from gluoncv.model_zoo import get_model
-from mxnet import gluon, autograd
+from mxnet import autograd, gluon
+from numba import jit
 from parameterized import parameterized
 from tqdm import tqdm
 
-from utils import fake_data, XorShift128PlusBitShifterRNG
+from utils import fake_data, randint
 
 
-def randomk(x, k, rng):
+@jit(nopython=True)
+def randomk(x, k, state):
     y = x.flatten()
-    indices = [rng.randint(0, len(y)) for _ in range(k)]
+    low = np.uint64(0)
+    high = np.uint64(len(y))
+    indices = np.array([randint(low, high, state)
+                        for _ in range(k)], dtype=np.uint64)
     vals = y[indices]
     y.fill(0)
     for idx, val in zip(indices, vals):
@@ -36,6 +41,7 @@ class RandomkTestCase(unittest.TestCase):
         net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
 
         # hyper-params
+        seed = 2020
         batch_size = 32
         optimizer_params = {'momentum': 0, 'wd': 0,
                             'learning_rate': 0.01}
@@ -45,7 +51,7 @@ class RandomkTestCase(unittest.TestCase):
             # "ef": "vanilla",
             # "momentum": "nesterov",
             "k": k,
-            "seed": 2020
+            "seed": seed
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -70,8 +76,8 @@ class RandomkTestCase(unittest.TestCase):
                 errors_s[i] = np.zeros_like(params[i])
                 moms[i] = np.zeros_like(params[i])
                 wd_moms[i] = np.zeros_like(params[i])
-                rngs[i] = XorShift128PlusBitShifterRNG(2020, 2020)
-                rngs_s[i] = XorShift128PlusBitShifterRNG(2020, 2020)
+                rngs[i] = np.array([seed, seed], dtype=np.uint64)
+                rngs_s[i] = np.array([seed, seed], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
@@ -111,23 +117,6 @@ class RandomkTestCase(unittest.TestCase):
                     # c += 1e-4*xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
-                    g2 = param._grad[0].asnumpy().flatten()
-                    d = c.flatten()
-                    if not np.allclose(d, g2, atol=np.finfo(np.float32).eps):
-                        print("False")
-
-                        diff = np.abs(d - g2)
-                        print(d) # baseline
-                        print(g2) # byteps
-                        print(diff)
-                        print(it, i, np.max(diff), np.mean(diff), len(diff), c.shape)
-                        idx = np.where(diff > 1e-5)
-                        print("g: ", idx, gs[i].flatten()[idx])
-                        print("g+e: ", idx, g.flatten()[idx])
-                        print("mxnet: ", idx, d[idx])
-                        print("byteps: ", idx, g2[idx])
-                        input()
-
         cnt = 0
         tot = 0
         diffs = []
@@ -145,6 +134,8 @@ class RandomkTestCase(unittest.TestCase):
         if diffs:
             print("max_diff=%f\tmin_diff=%f\tmean_diff=%f" %
                   (np.max(diffs), np.min(diffs), np.mean(diffs)))
+
+        assert cnt == 0
 
 
 if __name__ == '__main__':

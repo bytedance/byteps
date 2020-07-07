@@ -5,7 +5,8 @@ import mxnet as mx
 import mxnet.ndarray as nd
 import numpy as np
 from gluoncv.model_zoo import get_model
-from mxnet import gluon, autograd
+from mxnet import autograd, gluon
+from tqdm import tqdm
 
 from utils import fake_data
 
@@ -27,13 +28,13 @@ class OnebitTestCase(unittest.TestCase):
 
         # hyper-params
         batch_size = 32
-        optimizer_params = {'momentum': 0.9, 'wd': 1e-4,
+        optimizer_params = {'momentum': 0, 'wd': 0,
                             'learning_rate': 0.01}
 
         compression_params = {
             "compressor": "onebit",
-            "ef": "vanilla",
-            "momentum": "nesterov",
+            # "ef": "vanilla",
+            # "momentum": "nesterov",
             "scaling": True,
         }
 
@@ -50,7 +51,7 @@ class OnebitTestCase(unittest.TestCase):
         moms = {}
         wd_moms = {}
 
-        for i, param in enumerate(trainer._params):
+        for i, param in tqdm(enumerate(trainer._params)):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
                 errors[i] = np.zeros_like(params[i])
@@ -81,20 +82,20 @@ class OnebitTestCase(unittest.TestCase):
             for i, param in enumerate(trainer._params):
                 if param.grad_req != "null":
                     g = gs[i] / (batch_size * bps.size())
-                    moms[i] *= 0.9
-                    moms[i] += g
-                    g += 0.9 * moms[i]
-                    g += errors[i]
+                    # moms[i] *= 0.9
+                    # moms[i] += g
+                    # g += 0.9 * moms[i]
+                    # g += errors[i]
                     c = onebit(g)
-                    errors[i] = g - c
+                    # errors[i] = g - c
 
-                    c += errors_s[i]
+                    # c += errors_s[i]
                     cs = onebit(c)
-                    errors_s[i] = c - cs
+                    # errors_s[i] = c - cs
                     c = cs
 
-                    wd_moms[i] = 0.9 * wd_moms[i] + 1e-4 * xs[i]
-                    c += 0.9 * wd_moms[i] + 1e-4 * xs[i]
+                    # wd_moms[i] = 0.9 * wd_moms[i] + 1e-4 * xs[i]
+                    # c += 0.9 * wd_moms[i] + 1e-4 * xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
@@ -114,6 +115,8 @@ class OnebitTestCase(unittest.TestCase):
         if diffs:
             print("max_diff=%f\tmin_diff=%f\tmean_diff=%f" %
                   (np.max(diffs), np.min(diffs), np.mean(diffs)))
+
+        assert cnt == 0
 
 
 if __name__ == '__main__':

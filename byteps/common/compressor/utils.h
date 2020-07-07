@@ -16,6 +16,7 @@
 #ifndef BYTEPS_COMPRESSOR_UTILS_H
 #define BYTEPS_COMPRESSOR_UTILS_H
 
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <random>
@@ -109,6 +110,97 @@ class XorShift128PlusBitShifterRNG {
 
   static constexpr uint64_t MAX = std::numeric_limits<uint64_t>::max();
 };
+
+/*!
+ * \brief Bit Writer
+ *
+ */
+template <typename T>
+class BitWriter {
+ public:
+  explicit BitWriter(T* data) : _dptr(data), _bits(0) {}
+  void Put(bool x) {
+    size_t pos = _bits / PACKING_SIZE;
+    _dptr[pos] <<= 1;
+    _dptr[pos] |= x;
+    ++_bits;
+  }
+
+  void Pad() {
+    size_t pos = _bits / PACKING_SIZE;
+    size_t padding_size = (PACKING_SIZE - _bits % PACKING_SIZE) % PACKING_SIZE;
+    _dptr[pos] <<= padding_size;
+  }
+
+  size_t bits() const { return _bits; }
+  size_t ints() const { return std::ceil((float)_bits / PACKING_SIZE); }
+
+ private:
+  static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
+  T* _dptr;  // allocated
+  size_t _bits;
+};
+
+/*!
+ * \brief Bit Reader
+ *
+ */
+template <typename T>
+class BitReader {
+ public:
+  explicit BitReader(const T* data) : _dptr(data), _bits(0) {}
+  bool Get() {
+    size_t pos = _bits / PACKING_SIZE;
+    size_t offset = PACKING_SIZE - 1 - _bits % PACKING_SIZE;
+    _bits++;
+    return _dptr[pos] & (1 << offset);
+  }
+
+  size_t bits() const { return _bits; }
+
+ private:
+  static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
+  const T* _dptr;  // allocated
+  size_t _bits;
+};
+
+inline uint32_t RoundNextPow2(uint32_t v) {
+  v -= 1;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v += 1;
+  return v;
+}
+
+template <typename T>
+void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned int x) {
+  int len = 1 + std::floor(std::log2(x));
+  int lenth_of_len = std::floor(std::log2(len));
+
+  for (int i = lenth_of_len; i > 0; --i) bit_writer.Put(0);
+  for (int i = lenth_of_len; i >= 0; --i) bit_writer.Put((len >> i) & 1);
+  for (int i = len - 2; i >= 0; i--) bit_writer.Put((x >> i) & 1);
+}
+
+template <typename T>
+unsigned int EliasDeltaDecode(BitReader<T>& bit_reader) {
+  int num = 1;
+  int len = 1;
+  int lenth_of_len = 0;
+  while (!bit_reader.Get()) lenth_of_len++;
+  for (int i = 0; i < lenth_of_len; i++) {
+    len <<= 1;
+    if (bit_reader.Get()) len |= 1;
+  }
+  for (int i = 0; i < len - 1; i++) {
+    num <<= 1;
+    if (bit_reader.Get()) num |= 1;
+  }
+  return num;
+}
 
 }  // namespace compressor
 }  // namespace common

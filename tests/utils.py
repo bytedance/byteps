@@ -1,6 +1,7 @@
 import mxnet as mx
 import mxnet.ndarray as nd
 import numpy as np
+from numba import jit
 
 
 def fake_data(dtype="float32", batch_size=32, height=224, width=224, depth=3, num_classes=1000):
@@ -27,19 +28,25 @@ def fake_data(dtype="float32", batch_size=32, height=224, width=224, depth=3, nu
                                     shuffle=True, last_batch='discard')
 
 
-class XorShift128PlusBitShifterRNG:
-    def __init__(self, a, b):
-        self.state = np.array([a, b], dtype=np.uint64)
+@jit(nopython=True)
+def xorshift128p(state):
+    t = state[0]
+    s = state[1]
+    state[0] = s
+    t ^= t << np.uint64(23)
+    t ^= t >> np.uint64(17)
+    t ^= s ^ (s >> np.uint64(26))
+    state[1] = t
+    return int(t + s)
 
-    def xorshift128p(self):
-        t = self.state[0]
-        s = self.state[1]
-        self.state[0] = s
-        t ^= t << np.uint64(23)
-        t ^= t >> np.uint64(17)
-        t ^= s ^ (s >> np.uint64(26))
-        self.state[1] = t
-        return int(t + s)
 
-    def randint(self, low, high):
-        return self.xorshift128p() % (high - low) + low
+@jit(nopython=True)
+def bernoulli(p, state):
+    t = p * np.iinfo(np.uint64).max
+    r = np.array([xorshift128p(state) for _ in range(len(p))], dtype=np.uint64)
+    return r < t
+
+
+@jit(nopython=True)
+def randint(low, high, state):
+    return xorshift128p(state) % (high - low) + low

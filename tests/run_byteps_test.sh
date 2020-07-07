@@ -30,7 +30,7 @@ export DMLC_WORKER_ID=0
 export DMLC_ROLE=worker
 export BYTEPS_THREADPOOL_SIZE=4
 export BYTEPS_FORCE_DISTRIBUTED=1
-export BYTEPS_LOG_LEVEL=INFO
+export BYTEPS_LOG_LEVEL=WARNING
 
 if [ "$TEST_TYPE" == "mxnet" ]; then
   echo "TEST MXNET ..."
@@ -38,7 +38,7 @@ if [ "$TEST_TYPE" == "mxnet" ]; then
 elif [ "$TEST_TYPE" == "keras" ]; then
   echo "TEST KERAS ..."
   python $path/test_tensorflow_keras.py $@
-elif [ "$TEST_TYPE" == "onebit" ] || [ "$TEST_TYPE" == "topk" ] || [ "$TEST_TYPE" == "randomk" ]; then
+elif [ "$TEST_TYPE" == "onebit" ] || [ "$TEST_TYPE" == "topk" ] || [ "$TEST_TYPE" == "randomk" ] || [ "$TEST_TYPE" == "dithering" ]; then
   export BYTEPS_MIN_COMPRESS_BYTES=0
   export BYTEPS_PARTITION_BYTES=2147483647
   echo "TEST $TEST_TYPE"

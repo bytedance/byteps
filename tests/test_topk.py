@@ -5,7 +5,7 @@ import mxnet as mx
 import mxnet.ndarray as nd
 import numpy as np
 from gluoncv.model_zoo import get_model
-from mxnet import gluon, autograd
+from mxnet import autograd, gluon
 from parameterized import parameterized
 from tqdm import tqdm
 
@@ -36,13 +36,13 @@ class TopkTestCase(unittest.TestCase):
 
         # hyper-params
         batch_size = 32
-        optimizer_params = {'momentum': 0.9, 'wd': 1e-4,
+        optimizer_params = {'momentum': 0, 'wd': 0,
                             'learning_rate': 0.01}
 
         compression_params = {
             "compressor": "topk",
-            "ef": "vanilla",
-            "momentum": "nesterov",
+            # "ef": "vanilla",
+            # "momentum": "nesterov",
             "k": k,
         }
 
@@ -90,19 +90,19 @@ class TopkTestCase(unittest.TestCase):
             for i, param in enumerate(trainer._params):
                 if param.grad_req != "null":
                     g = gs[i] / (batch_size * bps.size())
-                    moms[i] *= 0.9
-                    moms[i] += g
-                    g += 0.9 * moms[i]
-                    g += errors[i]
+                    # moms[i] *= 0.9
+                    # moms[i] += g
+                    # g += 0.9 * moms[i]
+                    # g += errors[i]
                     c = topk(g, k)
-                    errors[i] = g - c
+                    # errors[i] = g - c
 
                     # c += errors_s[i]
-                    # cs = topk(c, k)
+                    cs = topk(c, k)
                     # errors_s[i] = c - cs
-                    # c = cs
+                    c = cs
 
-                    c += 1e-4*xs[i]
+                    # c += 1e-4*xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
@@ -122,6 +122,8 @@ class TopkTestCase(unittest.TestCase):
         if diffs:
             print("max_diff=%f\tmin_diff=%f\tmean_diff=%f" %
                   (np.max(diffs), np.min(diffs), np.mean(diffs)))
+
+        assert cnt == 0
 
 
 if __name__ == '__main__':
