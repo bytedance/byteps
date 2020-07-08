@@ -228,8 +228,11 @@ void BytePSGlobal::Init() {
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
                                       cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2device_stream,
+                                      cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_copy_device2device_stream));
 
   // Create queues
   for (int i = 0; i < QueueNum; i++) {

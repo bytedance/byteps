@@ -30,6 +30,8 @@ for gpu in gpus:
 if gpus:
     tf.config.experimental.set_visible_devices(gpus[bps.local_rank()], 'GPU')
 
+tf.config.optimizer.set_jit(True) # Enable XLA.
+
 (mnist_images, mnist_labels), _ = \
     tf.keras.datasets.mnist.load_data(path='mnist-%d.npz' % bps.rank())
 

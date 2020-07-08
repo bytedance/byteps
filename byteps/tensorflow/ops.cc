@@ -485,11 +485,15 @@ class BytepsPushPullXlaOpV2 : public ::tensorflow::XlaOpKernel {
 
       xla::XlaOp input_tensor = context->Input(0);
       xla::XlaOp dummy_tensor = context->Input(1);
+#if TF_VERSION < 2003000000
       const ::tensorflow::TensorShape input_tensor_shape = context->InputShape(0);
       auto input_tensor_xla_shape_or =
           TensorShapeToXLAShape(context->input_xla_type(0), input_tensor_shape);
-      // xla::Shape output_tensor_shape = input_tensor_xla_shape_or.ValueOrDie();
       xla::Shape output_tensor_shape = input_tensor_xla_shape_or;
+#else
+      auto input_tensor_xla_shape_or = context->InputXlaShape(0);
+      xla::Shape output_tensor_shape = input_tensor_xla_shape_or.ValueOrDie();
+#endif
 
       auto node_name = name();
       std::string tmp_name;
@@ -546,8 +550,6 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
   queue_list->insert(queue_list->end(), queue_list_pull->begin(),
                      queue_list_pull->end());
 
-  std::mutex mtx;
-  std::condition_variable cv;
   // TODO: assign priority based on topological sort
 
   std::string name_key(node_name);
@@ -625,15 +627,16 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
 
   auto bps_input = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
   auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
-  // auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
-  // cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
-  // cudaStreamSynchronize(*my_stream);
-  // auto ready_event =
-  //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(*my_stream));
-  cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-  // cudaStreamSynchronize(stream);
+  auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
+  cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
+  cudaStreamSynchronize(*my_stream);
   auto ready_event =
-    std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
+    std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(*my_stream));
+
+  // cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+  // cudaStreamSynchronize(stream);
+  // auto ready_event =
+  //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
   std::thread t(StartTaskXlaV2, context, tmp_name, bps_output, bps_output, ready_event);
   t.detach();
 }
@@ -670,6 +673,7 @@ class BytepsSyncTensorHandleOutXlaOpV2 : public ::tensorflow::XlaOpKernel {
       xla::XlaOp input_handle = context->Input(1);
       xla::XlaOp dummy_tensor = context->Input(2);
 
+#if TF_VERSION < 2003000000
       const ::tensorflow::TensorShape input_tensor_shape = context->InputShape(0);
       auto input_tensor_xla_shape_or =
           TensorShapeToXLAShape(context->input_xla_type(0), input_tensor_shape);
@@ -677,6 +681,9 @@ class BytepsSyncTensorHandleOutXlaOpV2 : public ::tensorflow::XlaOpKernel {
       const ::tensorflow::TensorShape input_handle_shape = context->InputShape(1);
       auto input_handle_xla_shape_or =
           TensorShapeToXLAShape(context->input_xla_type(1), input_handle_shape);
+#else
+      auto input_tensor_xla_shape_or = context->InputXlaShape(0);
+#endif
       auto output_tensor_shape = input_tensor_xla_shape_or;
 
       auto node_name = name();
@@ -758,10 +765,10 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
     }
     lk.unlock();
 
-    // auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
-    // cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
-    // cudaStreamSynchronize(*my_stream);
-    cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
+    cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
+    cudaStreamSynchronize(*my_stream);
+    // cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
     // cudaStreamSynchronize(stream);
     // printMatOnGPU(tmp_name, got_ptr, buffer_size/4);
   }
