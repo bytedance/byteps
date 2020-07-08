@@ -1,6 +1,8 @@
 import tensorflow as tf
 import byteps.tensorflow as bps
+import os
 
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 bps.init()
 
 # BytePS: pin GPU to be used to process local rank (one GPU per process)
@@ -38,7 +40,7 @@ checkpoint_dir = './checkpoints'
 checkpoint = tf.train.Checkpoint(model=mnist_model, optimizer=opt)
 
 
-@tf.function
+@tf.function(experimental_compile=True)
 def training_step(images, labels, first_batch):
     with tf.GradientTape() as tape:
         probs = mnist_model(images, training=True)
