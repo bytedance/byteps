@@ -99,6 +99,7 @@ class BytePSGlobal {
 
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
+  static cudaStream_t* GetCopyDevice2DeviceStream();
 
   // methods to access or modify the _ready_table
   static ReadyTable* GetReduceTable() { return _reduce_table; }
@@ -170,6 +171,7 @@ class BytePSGlobal {
 
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
+  static cudaStream_t* _copy_device2device_stream;
 
   static uint32_t _partition_bytes;
 

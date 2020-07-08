@@ -21,7 +21,10 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
-import pre_setup
+if os.path.isfile('./pre_setup_local.py'):
+    import pre_setup_local as pre_setup
+else:
+    import pre_setup as pre_setup
 
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
@@ -208,6 +211,7 @@ def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
     ld_flags = ['-Wl,--version-script=byteps.lds', '-fopenmp']
+    ld_flags += ['-ldl']
     flags_to_try = []
     if sys.platform == 'darwin':
         flags_to_try = [libtool_flags, ld_flags]
@@ -401,7 +405,10 @@ def get_tf_abi(build_ext, include_dirs, lib_dirs, libs, cpp_flags):
 def get_tf_flags(build_ext, cpp_flags):
     import tensorflow as tf
     try:
-        return tf.sysconfig.get_compile_flags(), tf.sysconfig.get_link_flags()
+        return tf.sysconfig.get_compile_flags(), \
+               tf.sysconfig.get_link_flags() + \
+                   ['-L' + get_tf_lib_dirs()[0] + '/python/'] + \
+                   ['-l:_pywrap_tensorflow_internal.so']
     except AttributeError:
         # fallback to the previous logic
         tf_include_dirs = get_tf_include_dirs()
@@ -421,6 +428,11 @@ def get_tf_flags(build_ext, cpp_flags):
             link_flags.append('-L%s' % lib_dir)
         for lib in tf_libs:
             link_flags.append('-l%s' % lib)
+
+        compile_flags.append('-L' + get_tf_lib_dirs()[0] + '/python/')
+        compile_flags.append('-l:_pywrap_tensorflow_internal.so')
+        link_flags.append('-L' + get_tf_lib_dirs()[0] + '/python/')
+        link_flags.append('-l:_pywrap_tensorflow_internal.so')
 
         return compile_flags, link_flags
 
@@ -956,6 +968,9 @@ class custom_build_ext(build_ext):
 
 
 # Where the magic happens:
+if not os.path.exists('3rdparty/ps-lite/src'):
+    msg = "Missing ./3rdparty/ps-lite, ps-lite is required to build BytePS."
+    raise ValueError(msg)
 
 if os.path.exists('launcher/launch.py'):
     if not os.path.exists('bin'):

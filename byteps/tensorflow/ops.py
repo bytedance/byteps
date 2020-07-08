@@ -132,6 +132,49 @@ def _push_pull(tensor, scope='', name=None):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
+def _my_barrier_handle_out(handles):
+    return C_LIB.my_barrier_handle_out(handles)
+
+def _push_pull_xla_v2(tensor, scope='', name=None, idx = 1):
+    """An op which sums an input tensor over all the BytePS processes.
+    The reduction operation is keyed by the name of the op. The tensor type and
+    shape must be the same on all BytePS processes for a given name. The reduction
+    will not start until all processes are ready to send and receive the tensor.
+    Returns:
+      A tensor of the same shape and type as `tensor`, summed across all
+      processes.
+    """
+    if name is None and not _executing_eagerly():
+        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    dummy_tensor = tf.ones([idx, 1], dtype = tf.int32)
+    return C_LIB.byteps_push_pull_xla_v2(tensor, dummy_tensor, name=name, input_name = full_name)
+
+def _sync_tensors_handle_out_v2(tensor, handle, tensor_name=None, idx = 1):
+    tmp_name = tensor_name.split(":")
+    tmp_name = ":".join(tmp_name[:-1])
+    tmp_name = _normalize_name(tmp_name)
+
+    dummy_tensor = tf.ones([idx, 1], dtype = tf.int32)
+    return C_LIB.byteps_sync_tensor_handle_out_v2(tensor, handle, dummy_tensor, name=None,
+            tensor_name = tmp_name)
+
+
+def _print_tensors(tensors, grad_names=None):
+    return C_LIB.byteps_print_tensors(tensors, name=None, tensor_names = grad_names)
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):
@@ -188,6 +231,55 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     else:
         return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
+def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
+    """An op which broadcasts the input tensor on root rank to the same input tensor
+    on all other BytePS processes.
+    The broadcast operation is keyed by the name of the op. The tensor type and
+    shape must be the same on all BytePS processes for a given name. The broadcast
+    will not start until all processes are ready to send and receive the tensor.
+    Returns:
+      A tensor of the same shape and type as `tensor`, with the value broadcasted
+      from root rank.
+    """
+    # Broadcast is implemented as push + pull after zero-ing non-root tensors
+    if name is None and not _executing_eagerly():
+        name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    if root_rank != rank():
+        if is_variable:
+            if hasattr(tf, 'assign_sub'):
+                with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                    output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, M = 2)
+            else:
+                with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
+                    output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+        else:
+            with tf.device(tensor.device):
+                input_tensor = tf.zeros_like(tensor)
+            output, handle = C_LIB.byteps_push_pull_xla(input_tensor, name=name, input_name = full_name, M = 2)
+    else:
+        output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+
+    output_name = output.name
+    handle = tf.reshape(handle, [-1])
+    output = tf.cond(handle[0] > handle[1],
+            lambda: tf.identity(output) + 1,
+            lambda: tf.identity(output))
+    return output, output_name
 
 @ops.RegisterGradient('BytePSBroadcast')
 def _broadcast_grad(op, grad):

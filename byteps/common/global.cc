@@ -75,6 +75,7 @@ std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
+cudaStream_t* BytePSGlobal::_copy_device2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 
@@ -222,6 +223,7 @@ void BytePSGlobal::Init() {
   // Create CUDA streams for GPU-CPU copies
   _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _copy_device2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
@@ -625,6 +627,10 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
   return BytePSGlobal::_copy_host2device_stream;
+}
+
+cudaStream_t* BytePSGlobal::GetCopyDevice2DeviceStream() {
+  return BytePSGlobal::_copy_device2device_stream;
 }
 
 bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {

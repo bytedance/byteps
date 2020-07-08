@@ -39,6 +39,15 @@ class TFReadyEvent : public common::ReadyEvent {
   std::shared_ptr<perftools::gputools::Event> event_;
 };
 
+class XlaReadyEvent : public common::ReadyEvent {
+ public:
+  XlaReadyEvent(cudaStream_t stream);
+  bool Ready() const override;
+
+ private:
+  cudaEvent_t cuda_event_ = nullptr;
+};
+
 class TFTensor : public common::Tensor {
  public:
   TFTensor(::tensorflow::Tensor& tensor);
@@ -51,7 +60,36 @@ class TFTensor : public common::Tensor {
   ::tensorflow::Tensor tensor_;
 };
 
+class XlaTensor : public common::Tensor {
+ public:
+  XlaTensor(void *data, int64_t num_elem, ::tensorflow::DataType tf_dtype, int64_t size);
+  virtual const common::DataType dtype() const override;
+  virtual const common::TensorShape shape() const override;
+  virtual const void* data() const override;
+  virtual int64_t size() const override;
+
+  protected:
+    void *_data;
+    int64_t _num_elem;
+    ::tensorflow::DataType _tf_dtype;
+    int64_t _size;
+};
+
 extern "C" void byteps_tensorflow_declare_tensor(char* name);
+struct Xla_done_cb_args{
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool is_done;
+  void *bps_out_buf;
+  void *bps_in_buf;
+  std::shared_ptr<::tensorflow::Tensor> output_tensor;
+  int bps_buf_size;
+  int num_waiting;
+};
+
+extern std::unordered_map<std::string, std::shared_ptr<Xla_done_cb_args>> _name_to_done_args;
+extern std::mutex _name_to_done_args_mtx;
+extern std::condition_variable _name_to_done_args_cv;
 
 }  // namespace tensorflow
 }  // namespace byteps
