@@ -5,13 +5,14 @@ import os
 import sys
 import argparse
 import byteps.tensorflow as bps
+from  byteps.tensorflow.distribute import MirroredStrategy
 
 parser = argparse.ArgumentParser(description='TensorFlow Synthetic Benchmark',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
 args = parser.parse_args()
-# https://stackoverflow.com/a/55318851
+
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
 
 bps.init()
@@ -51,7 +52,7 @@ def build_and_compile_cnn_model():
 
 per_worker_batch_size = 64
 
-strategy = bps.distribute.MirroredStrategy(devices=["/gpu:0"])
+strategy = MirroredStrategy(devices=["/gpu:0"])
 
 
 num_workers = 1
