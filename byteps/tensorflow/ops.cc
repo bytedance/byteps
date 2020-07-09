@@ -258,14 +258,25 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
   public:
     explicit BytepsPushPullXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
+      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
+      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
     }
     ~BytepsPushPullXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* context) override {
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
-      xla::XlaOp tensor = context->Input(0);
-      auto shape_or = context->InputXlaShape(0);
+      xla::XlaOp input_tensor = context->Input(0);
+      // auto shape_or = context->InputXlaShape(0);
+      auto input_tensor_xla_shape_or = context->InputXlaShape(0);
+      xla::Shape output_tensor_shape = input_tensor_xla_shape_or.ValueOrDie();
+
+      // auto input_shape = context->InputShape(0);
+      // xla::Shape input_xla_shape = TensorShapeToXLAShape(dst_type_, input_shape);
+      std::cout << " xxx " << output_tensor_shape.ToString() << std::endl;
+      // std::cout << " xxx " << input_xla_shape.ToProto() << std::endl;
+      std::cout << " xxx end shape test" << std::endl;
+
       std::cout << " xxx pos 1 " << std::endl;
       // OP_REQUIRES_OK(context, shape_or.status());
 
@@ -285,13 +296,16 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
       context->SetOutput(
         0, xla::CustomCall(context->builder(),
           /*call_target_name=*/"StartTaskWrapper",
-          {tensor}, shape_or.ValueOrDie(), ss.str()));
+          {input_tensor}, input_tensor_xla_shape_or.ValueOrDie(), ss.str()));
       // private:
       //   TF_DISALLOW_COPY_AND_ASSIGN(BytepsPushPullXlaOp);
       std::cout << " xxx pos 3 " << std::endl;
     }
   private:
      std::string input_tensor_name;
+  // protected:
+  //    DataType dst_dtype_;
+  //    xla::PrimitiveType  dst_type_;
 };
 
 REGISTER_XLA_OP(Name("BytepsPushPull"), BytepsPushPullXlaOp);
