@@ -11,10 +11,11 @@ process works with one GPU. Example usage:
 
 ```python
 import byteps.tensorflow as bps
+from  byteps.tensorflow.distribute import MirroredStrategy
 
 bps.init()
 tf.config.experimental.set_visible_devices(gpus[bps.local_rank()], 'GPU')
-strategy = bps.distribute.MirroredStrategy(devices=["/gpu:0"])
+strategy = MirroredStrategy(devices=["/gpu:0"])
 
 with strategy.scope():
   # Model building/compiling need to be within `strategy.scope()`.
