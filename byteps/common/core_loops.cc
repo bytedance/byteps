@@ -551,7 +551,7 @@ bool RunPushLoopOnce() {
 
       // use compressed data/len
       if (task->compressed) {
-        BPS_LOG(DEBUG) << "PUSH  with gradient compression. key=" << task->key;
+        BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
         data = task->compressed->data;
         len = task->compressed->size;
         task->compressed = nullptr;
