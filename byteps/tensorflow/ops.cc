@@ -24,6 +24,7 @@
 #include <cuda.h>
 
 #include "ops.h"
+#include "../common/logging.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -342,7 +343,10 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   auto& byteps_context = common::GetContextFromName(node_name);
   std::cout << " x2682  pos 12 " << std::endl;
   // auto device = GetDeviceID(context);
-  auto device = 0;
+  // auto device = 0;
+  int device;
+  CUDA_CALL(cudaGetDevice(&device));
+  std::cout << " x2682 device: " << device << std::endl;
   std::cout << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
   std::cout << " x2682  pos 14 " << std::endl;
@@ -390,7 +394,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     // auto bps_output = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[1]));
     std::cout << " x2682  pos 8 " << std::endl;
 
-    std::cout << " x2682  opaque: " << opaque << std::endl;
+    std::cout << " x2682  received opaque: " << opaque << std::endl;
     std::stringstream ss(opaque);
     std::string tmp_name;
     std::string ptr_str;
@@ -434,8 +438,10 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     // ::tensorflow::GPUBFCAllocator *allocator =
     //   new ::tensorflow::GPUBFCAllocator(sub_allocator, num_elem * sizeof(::tensorflow::DT_FLOAT), "GPU_0_bfc");
+    // ::tensorflow::GPUBFCAllocator *allocator =
+    //   new ::tensorflow::GPUBFCAllocator(sub_allocator, 1<<30, "GPU_0_bfc");
     ::tensorflow::GPUBFCAllocator *allocator =
-      new ::tensorflow::GPUBFCAllocator(sub_allocator, 1<<30, "GPU_0_bfc");
+      new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
     ::tensorflow::Tensor inputTensor(allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
     auto inputTensor_flat = inputTensor.flat<float>();
     cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
