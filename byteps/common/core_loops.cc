@@ -629,7 +629,7 @@ bool RunDecompressLoopOnce() {
       int dtype = task->tensor->dtype();
       compressor::tensor_t compressed(data, len, dtype);
       auto decompressed = task->compressor->Decompress(compressed);
-      BPS_LOG(DEBUG) << "PULL  with gradient compression. key=" << task->key;
+      BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
 
       FinishOrProceed(task);
     });
