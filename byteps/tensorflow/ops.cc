@@ -346,7 +346,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // auto device = 0;
   int device;
   CUDA_CALL(cudaGetDevice(&device));
-  std::cout << " x2682 device: " << device << std::endl;
+  std::cout << " x2682 rank " << common::byteps_rank() << " device: " << device << std::endl;
   std::cout << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
   std::cout << " x2682  pos 14 " << std::endl;
@@ -388,7 +388,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     void *b = buffers[1];
     std::cout << " x2682  pos 6 " << std::endl;
     // std::shared_ptr<byteps::tensorflow::TFTensor> bps_input = nullptr, bps_output = nullptr;
-    std::shared_ptr<byteps::tensorflow::TFTensor>  bps_output = nullptr;
+    // std::shared_ptr<byteps::tensorflow::TFTensor>  bps_output = nullptr;
     // auto bps_input = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[0]));
     std::cout << " x2682  pos 7 " << std::endl;
     // auto bps_output = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[1]));
@@ -431,6 +431,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
     **/
     ::tensorflow::PlatformGpuId platform_gpu_id(0);
+
     ::tensorflow::GPUMemAllocator *sub_allocator =
       new ::tensorflow::GPUMemAllocator(
         ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
@@ -440,25 +441,36 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     //   new ::tensorflow::GPUBFCAllocator(sub_allocator, num_elem * sizeof(::tensorflow::DT_FLOAT), "GPU_0_bfc");
     // ::tensorflow::GPUBFCAllocator *allocator =
     //   new ::tensorflow::GPUBFCAllocator(sub_allocator, 1<<30, "GPU_0_bfc");
-    ::tensorflow::GPUBFCAllocator *allocator =
+    ::tensorflow::GPUBFCAllocator *input_allocator =
       new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
-    ::tensorflow::Tensor inputTensor(allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+
+    ::tensorflow::Tensor inputTensor(input_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+
     auto inputTensor_flat = inputTensor.flat<float>();
+
     cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
     std::cout << " x2682  pos 9 " << std::endl;
     auto bps_input = std::make_shared<TFTensor>(inputTensor);
+
+    ::tensorflow::GPUBFCAllocator *output_allocator =
+      new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
+    ::tensorflow::Tensor outputTensor(output_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    auto bps_output = std::make_shared<TFTensor>(outputTensor);
    ////////////////////////////
     // auto ready_event =
     //     std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
     std::cout << " x2682  pos 10 " << std::endl;
     auto& bps_context = common::GetContextFromName(tmp_name);
-    if (bps_context.initialized) {
+    if (true or bps_context.initialized) {
       StartTaskXla(context, tmp_name, bps_input, bps_output, ready_event);
     } else {
       std::thread t(StartTaskXla, context, tmp_name, bps_input, bps_output,
                     ready_event);
       t.detach();
     }
+    auto outputTensor_flat = outputTensor.flat<float>();
+    cudaMemcpy(buffers[1], &outputTensor_flat(0), buffer_size, cudaMemcpyDeviceToDevice);
+    std::cout << " x2682  pos end " << std::endl;
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
