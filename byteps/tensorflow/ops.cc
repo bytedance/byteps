@@ -36,6 +36,12 @@
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+
 using namespace byteps;
 
 namespace byteps {
@@ -273,11 +279,19 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
 
       // auto input_shape = context->InputShape(0);
       // xla::Shape input_xla_shape = TensorShapeToXLAShape(dst_type_, input_shape);
-      std::cout << " xxx " << output_tensor_shape.ToString() << std::endl;
-      // std::cout << " xxx " << input_xla_shape.ToProto() << std::endl;
-      std::cout << " xxx end shape test" << std::endl;
+      std::cout << " x2682  " << output_tensor_shape.ToString(true) << std::endl;
+      std::cout << " x2682  has_layout? " << xla::LayoutUtil::HasLayout(output_tensor_shape) << std::endl;
+      std::cout << " x2682  num dimensions " << output_tensor_shape.rank() << std::endl;
+      std::cout << " x2682  dimensions are ";
+      for (int i = 0; i < output_tensor_shape.rank(); i++) {
+        std::cout << " " << output_tensor_shape.dimensions(i) ;
+      }
+      std::cout << std::endl;
+      std::cout << " x2682  memory_space " << output_tensor_shape.layout().memory_space() << std::endl;
+      // std::cout << " x2682  " << input_xla_shape.ToProto() << std::endl;
+      std::cout << " x2682  end shape test" << std::endl;
 
-      std::cout << " xxx pos 1 " << std::endl;
+      std::cout << " x2682  pos 1 " << std::endl;
       // OP_REQUIRES_OK(context, shape_or.status());
 
       // OP_REQUIRES_OK(
@@ -289,17 +303,27 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
       } else {
         tmp_name = input_tensor_name;
       }
+      auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context->op_kernel_context()));
+      std::cout << "x2682 device_id " << GetDeviceID(context->op_kernel_context()) << std::endl;
 
       std::stringstream ss;
-      ss << tmp_name << " " << context->op_kernel_context() << std::endl;
-      std::cout << " xxx pos 2 " << std::endl;
+      // ss << tmp_name << " " << context->op_kernel_context();
+      ss << tmp_name << " " << ready_event;
+      ss << " " << output_tensor_shape.rank();
+      for (int i = 0; i < output_tensor_shape.rank(); i++) {
+        ss << " " << output_tensor_shape.dimensions(i) ;
+      }
+      ss << std::endl;
+      std::cout << " x2682  pos 2 " << std::endl;
+      std::cout << " x2682  passing opaque: " << ss.str() << std::endl;
       context->SetOutput(
         0, xla::CustomCall(context->builder(),
           /*call_target_name=*/"StartTaskWrapper",
           {input_tensor}, input_tensor_xla_shape_or.ValueOrDie(), ss.str()));
       // private:
       //   TF_DISALLOW_COPY_AND_ASSIGN(BytepsPushPullXlaOp);
-      std::cout << " xxx pos 3 " << std::endl;
+      std::cout << " x2682  pos 3 " << std::endl;
     }
   private:
      std::string input_tensor_name;
@@ -314,13 +338,20 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<TFTensor> byteps_input,
                std::shared_ptr<TFTensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
+  std::cout << " x2682  pos 11 inside StartTaskXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
-  auto device = GetDeviceID(context);
+  std::cout << " x2682  pos 12 " << std::endl;
+  // auto device = GetDeviceID(context);
+  auto device = 0;
+  std::cout << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
+  std::cout << " x2682  pos 14 " << std::endl;
   auto dtype = byteps_input->dtype();
-  void* cpubuff = (device == CPU_DEVICE_ID)
-                      ? const_cast<void*>(byteps_input->data())
-                      : nullptr;
+  std::cout << " x2682  pos 15 " << std::endl;
+  // void* cpubuff = (device == CPU_DEVICE_ID)
+  //                     ? const_cast<void*>(byteps_input->data())
+  //                     : nullptr;
+  void* cpubuff = nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
@@ -329,12 +360,13 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                      queue_list_pull->end());
 
   bool is_done = false;
+  std::cout << " x2682  pos 16 before EnqueueTensor" << std::endl;
   // TODO: assign priority based on topological sort
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
-                    [context, &is_done](const common::Status& status) {
-                      context->SetStatus(ConvertStatus(status));
+                    [&is_done](const common::Status& status) {
+                      // context->SetStatus(ConvertStatus(status));
                       is_done = true;
                     },
                     queue_list);
@@ -346,29 +378,73 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 // void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
-    std::cout << " xxx pos 4 " << std::endl;
+    std::cout << " x2682  pos 4 " << std::endl;
     void *a = buffers[0];
-    std::cout << " xxx pos 5 " << std::endl;
+    std::cout << " x2682  pos 5 " << std::endl;
     void *b = buffers[1];
-    std::cout << " xxx pos 6 " << std::endl;
+    std::cout << " x2682  pos 6 " << std::endl;
+    // std::shared_ptr<byteps::tensorflow::TFTensor> bps_input = nullptr, bps_output = nullptr;
+    std::shared_ptr<byteps::tensorflow::TFTensor>  bps_output = nullptr;
     // auto bps_input = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[0]));
-    auto bps_input = nullptr;
-    std::cout << " xxx pos 7 " << std::endl;
-    auto bps_output = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[1]));
-    std::cout << " xxx pos 8 " << std::endl;
+    std::cout << " x2682  pos 7 " << std::endl;
+    // auto bps_output = std::make_shared<TFTensor>(*reinterpret_cast<TFTensor *>(buffers[1]));
+    std::cout << " x2682  pos 8 " << std::endl;
 
+    std::cout << " x2682  opaque: " << opaque << std::endl;
     std::stringstream ss(opaque);
     std::string tmp_name;
     std::string ptr_str;
-    ::tensorflow::OpKernelContext* context;
+    ::tensorflow::OpKernelContext* context = nullptr;
+    // std::shared_ptr<common::ReadyEvent> ready_event;
 
     ss >> tmp_name;
     ss >> std::hex >> ptr_str;
-    context = (::tensorflow::OpKernelContext *) stoul(ptr_str, nullptr, 0);
+    // context = (::tensorflow::OpKernelContext *) stoul(ptr_str, nullptr, 0);
+    // std::cout << "x2682 got context: " << context << std::endl;
+     // ready_event = (std::shared_ptr<common::ReadyEvent> )
+    auto ready_event = std::shared_ptr<common::ReadyEvent>((common::ReadyEvent *) stoul(ptr_str, nullptr, 0));
+    std::cout << "x2682 got ready_event: " << ready_event << std::endl;
+    int ndim = 0;
+    ss >> std::dec >> ndim;
+    size_t buffer_size = 0;
+    size_t num_elem = 1;
+    for (int i = 0; i < ndim; i++) {
+      size_t dim;
+      ss >> std::dec >> dim;
+      num_elem *= dim;
+      std::cout << " dim " << dim;
+    }
+    buffer_size = 1 * num_elem;
+    std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
+   ////////////////////////////
+/**
+// https://blog.csdn.net/weixin_30497527/article/details/99334016
+    ::tensorflow::GPUBFCAllocator * allocator = new ::tensorflow::GPUBFCAllocator(0,sizeof(float)* num_elem);
+    //tensorflow::Allocator* allocator = new AllocatorWrapper(0, tempfftsize * Col_num * sizeof(float));
+    ::tensorflow::GPUcudaMallocAllocator *gpu_allocator = new ::tensorflow::GPUcudaMallocAllocator(gpu_allocator, 0);
+    ::tensorflow::Tensor inputTensor(gpu_allocator,DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    auto inputTensor_flat = inputTensor.flat<float>();
+    cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
+    **/
+    ::tensorflow::PlatformGpuId platform_gpu_id(0);
+    ::tensorflow::GPUMemAllocator *sub_allocator =
+      new ::tensorflow::GPUMemAllocator(
+        ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
 
-    auto ready_event =
-        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    std::cout << " xxx pos 9 " << std::endl;
+    // ::tensorflow::GPUBFCAllocator *allocator =
+    //   new ::tensorflow::GPUBFCAllocator(sub_allocator, num_elem * sizeof(::tensorflow::DT_FLOAT), "GPU_0_bfc");
+    ::tensorflow::GPUBFCAllocator *allocator =
+      new ::tensorflow::GPUBFCAllocator(sub_allocator, 1<<30, "GPU_0_bfc");
+    ::tensorflow::Tensor inputTensor(allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    auto inputTensor_flat = inputTensor.flat<float>();
+    cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
+    std::cout << " x2682  pos 9 " << std::endl;
+    auto bps_input = std::make_shared<TFTensor>(inputTensor);
+   ////////////////////////////
+    // auto ready_event =
+    //     std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    std::cout << " x2682  pos 10 " << std::endl;
     auto& bps_context = common::GetContextFromName(tmp_name);
     if (bps_context.initialized) {
       StartTaskXla(context, tmp_name, bps_input, bps_output, ready_event);
