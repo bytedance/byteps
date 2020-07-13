@@ -60,26 +60,34 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
                     float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<float*>(dst),
                   reinterpret_cast<const float*>(src), len, alpha);
     case BYTEPS_FLOAT64:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<double*>(dst),
                   reinterpret_cast<const double*>(src), len, alpha);
     case BYTEPS_FLOAT16:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum_float16(dst, src, len, alpha);
     case BYTEPS_UINT8:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<uint8_t*>(dst),
                   reinterpret_cast<const uint8_t*>(src), len, alpha);
     case BYTEPS_INT32:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<int32_t*>(dst),
                   reinterpret_cast<const int32_t*>(src), len, alpha);
     case BYTEPS_INT8:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<int8_t*>(dst),
                   reinterpret_cast<const int8_t*>(src), len, alpha);
     case BYTEPS_INT64:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       return _sum(reinterpret_cast<int64_t*>(dst),
                   reinterpret_cast<const int64_t*>(src), len, alpha);
     default:
+      std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
   return 0;
@@ -87,6 +95,7 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
 
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src, size_t len, float alpha) {
+std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + alpha * src[i];
@@ -96,6 +105,7 @@ int CpuReducer::_sum(T* dst, const T* src, size_t len, float alpha) {
 
 int CpuReducer::_sum_float16(void* dst, const void* src, size_t len,
                              float alpha) {
+std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
   // cast src and dst to your float16 type
   auto in = reinterpret_cast<const unsigned short*>(src);
   auto inout = reinterpret_cast<unsigned short*>(dst);
