@@ -59,6 +59,8 @@ bool CpuReducer::isRoot() {
 int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
                     float alpha) {
   std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
+  while (dst == nullptr)
+    std::this_thread::yield();
   switch (dtype) {
     case BYTEPS_FLOAT32:
       std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
