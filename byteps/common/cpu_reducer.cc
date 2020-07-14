@@ -64,10 +64,11 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
     case BYTEPS_FLOAT32:
       std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
       std::cerr << "xxx " << "dst: " << dst << " src: " << src << " len: " << len << " alpha: " << alpha << std::endl;
-      if (dst == nullptr)
+      if (dst == nullptr) {
         int aaa = 1;
-        while (aaa)
+        while (aaa == 1)
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
       return _sum(reinterpret_cast<float*>(dst),
                   reinterpret_cast<const float*>(src), len, alpha);
     case BYTEPS_FLOAT64:
