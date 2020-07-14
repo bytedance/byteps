@@ -179,6 +179,7 @@ void BytePSServerEngineThread(int i) {
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src)
                     << "\t";
         }
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         CHECK_GE(bps_reducer_->sum(msg.dst, msg.src, msg.len, bps_type), 0);
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
@@ -308,6 +309,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                                      COPY_FIRST,     req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         } else {  // async mode, directly add to the buffer
+          std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           CHECK_GE(bps_reducer_->sum((void*)stored->tensor, (void*)recved, len,
                                      bps_reducer_->GetDataType(stored->dtype)),
                    0);
@@ -326,6 +328,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         }
         if (is_engine_blocking_) {
           // TODO: decompress
+          std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           CHECK_GE(bps_reducer_->sum(
                        (void*)updates.merged.tensor, (void*)recved, len,
                        bps_reducer_->GetDataType(updates.merged.dtype)),
