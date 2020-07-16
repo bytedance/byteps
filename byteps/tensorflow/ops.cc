@@ -36,6 +36,8 @@
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -119,6 +121,20 @@ bool TFReadyEvent::Ready() const {
          perftools::gputools::Event::Status::kPending;
 }
 
+XlaReadyEvent::XlaReadyEvent(cudaStream_t stream) {
+  cudaEventCreateWithFlags(
+          &cuda_event_, cudaEventBlockingSync | cudaEventDisableTiming);
+  cudaEventRecord(cuda_event_, stream);
+}
+
+bool XlaReadyEvent::Ready() const {
+  auto status = cudaEventQuery(cuda_event_);
+  if (status == cudaErrorNotReady) {
+    return false;
+  }
+  return true;
+}
+
 TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
 
 const common::DataType TFTensor::dtype() const {
@@ -149,13 +165,10 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
   return nullptr;
 }
 
-// common::ReadyEvent* RecordReadyEvent(::tensorflow::XlaOpKernelContext* context) {
-//   auto device_context = context->op_kernel_context()->op_device_context();
-//   if (device_context != nullptr) {
-//     return new TFReadyEvent(device_context);
-//   }
-//   return nullptr;
-// }
+std::shared_ptr<common::ReadyEvent> RecordReadyEvent(cudaStream_t stream) {
+  return std::make_shared<XlaReadyEvent>(stream);
+
+}
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name) {
   std::string tensor_name(name);
@@ -304,13 +317,17 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
       } else {
         tmp_name = input_tensor_name;
       }
-      auto ready_event =
-        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context->op_kernel_context()));
-      std::cout << "x2682 device_id " << GetDeviceID(context->op_kernel_context()) << std::endl;
+      // auto ready_event =
+      //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context->op_kernel_context()));
+      // std::cout << "x2682 device_id " << GetDeviceID(context->op_kernel_context()) << std::endl;
 
       std::stringstream ss;
       // ss << tmp_name << " " << context->op_kernel_context();
-      ss << tmp_name << " " << ready_event;
+      // ss << tmp_name << " " << ready_event;
+      ss << tmp_name;
+      // ss << " " << ::tensorflow::EncodePrimitiveTypeAsDataType(output_tensor_shape.element_type()).ValueOrDie();
+      ss << " " << context->input_type(0);
+      ss << " " << xla::ShapeUtil::ByteSizeOfPrimitiveType(output_tensor_shape.element_type());
       ss << " " << output_tensor_shape.rank();
       for (int i = 0; i < output_tensor_shape.rank(); i++) {
         ss << " " << output_tensor_shape.dimensions(i) ;
@@ -397,17 +414,23 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     std::cout << " x2682  received opaque: " << opaque << std::endl;
     std::stringstream ss(opaque);
     std::string tmp_name;
-    std::string ptr_str;
+    // std::string ptr_str;
     ::tensorflow::OpKernelContext* context = nullptr;
     // std::shared_ptr<common::ReadyEvent> ready_event;
 
     ss >> tmp_name;
-    ss >> std::hex >> ptr_str;
+    // ss >> std::hex >> ptr_str;
     // context = (::tensorflow::OpKernelContext *) stoul(ptr_str, nullptr, 0);
     // std::cout << "x2682 got context: " << context << std::endl;
      // ready_event = (std::shared_ptr<common::ReadyEvent> )
-    auto ready_event = std::shared_ptr<common::ReadyEvent>((common::ReadyEvent *) stoul(ptr_str, nullptr, 0));
-    std::cout << "x2682 got ready_event: " << ready_event << std::endl;
+    // auto ready_event = std::shared_ptr<common::ReadyEvent>((common::ReadyEvent *) stoul(ptr_str, nullptr, 0));
+    // std::cout << "x2682 got ready_event: " << ready_event << std::endl;
+    ::tensorflow::DataType dt_type;
+    int tmp_dt_type;
+    ss >> std::dec >> tmp_dt_type;
+    dt_type = static_cast<::tensorflow::DataType>(tmp_dt_type);
+    size_t elem_size;
+    ss >> elem_size;
     int ndim = 0;
     ss >> std::dec >> ndim;
     size_t buffer_size = 0;
@@ -418,7 +441,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
       num_elem *= dim;
       std::cout << " dim " << dim;
     }
-    buffer_size = 1 * num_elem;
+    buffer_size = elem_size * num_elem;
     std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
    ////////////////////////////
 /**
@@ -444,17 +467,23 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     ::tensorflow::GPUBFCAllocator *input_allocator =
       new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
 
-    ::tensorflow::Tensor inputTensor(input_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    // ::tensorflow::Tensor inputTensor(input_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    ::tensorflow::Tensor inputTensor(input_allocator, dt_type, ::tensorflow::TensorShape({num_elem}));
 
-    auto inputTensor_flat = inputTensor.flat<float>();
+    // auto inputTensor_flat = inputTensor.flat<float>();
+    void *inputTensor_flat = const_cast<void *>((const void *)(inputTensor.tensor_data().data()));
 
-    cudaMemcpy(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice);
+    // cudaMemcpyAsync(&inputTensor_flat(0), buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(inputTensor_flat, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
     std::cout << " x2682  pos 9 " << std::endl;
     auto bps_input = std::make_shared<TFTensor>(inputTensor);
+    auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
 
     ::tensorflow::GPUBFCAllocator *output_allocator =
       new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
-    ::tensorflow::Tensor outputTensor(output_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    // ::tensorflow::Tensor outputTensor(output_allocator, ::tensorflow::DT_FLOAT, ::tensorflow::TensorShape({num_elem}));
+    ::tensorflow::Tensor outputTensor(output_allocator, dt_type, ::tensorflow::TensorShape({num_elem}));
     auto bps_output = std::make_shared<TFTensor>(outputTensor);
    ////////////////////////////
     // auto ready_event =
@@ -468,8 +497,9 @@ void StartTaskWrapper(CUstream stream, void** buffers,
                     ready_event);
       t.detach();
     }
-    auto outputTensor_flat = outputTensor.flat<float>();
-    cudaMemcpy(buffers[1], &outputTensor_flat(0), buffer_size, cudaMemcpyDeviceToDevice);
+    // auto outputTensor_flat = outputTensor.flat<float>();
+    // cudaMemcpyAsync(buffers[1], &outputTensor_flat(0), buffer_size, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(buffers[1], const_cast<void *>(bps_output->data()), buffer_size, cudaMemcpyDeviceToDevice, stream);
     std::cout << " x2682  pos end " << std::endl;
 }
 

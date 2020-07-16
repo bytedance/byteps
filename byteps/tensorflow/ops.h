@@ -39,6 +39,15 @@ class TFReadyEvent : public common::ReadyEvent {
   std::shared_ptr<perftools::gputools::Event> event_;
 };
 
+class XlaReadyEvent : public common::ReadyEvent {
+ public:
+  XlaReadyEvent(cudaStream_t stream);
+  bool Ready() const override;
+
+ private:
+  cudaEvent_t cuda_event_ = nullptr;
+};
+
 class TFTensor : public common::Tensor {
  public:
   TFTensor(::tensorflow::Tensor& tensor);
