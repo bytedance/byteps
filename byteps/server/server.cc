@@ -48,7 +48,7 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req,
 void SendPullResponse(const DataHandleType type, const uint64_t key,
                       const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
-  auto& updates = update_buf_[key];
+  auto& updates = GetUpdateBuf(key);
   CHECK(updates.merged.tensor) << "init " << key << " first";
   char* data = updates.merged.tensor;
   auto len = updates.merged.len;
@@ -93,7 +93,7 @@ void BytePSServerEngineThread(int i) {
                                           msg.len, msg.type.dtype);
         auto compressed = iter->second->Compress(grad);
         // 1. compress
-        auto& updates = update_buf_[msg.key];
+        auto& updates = GetUpdateBuf(msg.key);
         updates.merged.tensor = compressed.data;
         updates.merged.len = compressed.size;
       } else {  // decompress
@@ -107,7 +107,7 @@ void BytePSServerEngineThread(int i) {
     } else {
       if (msg.ops == ALL_RECV) {
         // 2. no compress
-        auto& updates = update_buf_[msg.key];
+        auto& updates = GetUpdateBuf(msg.key);
         updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         updates.merged.len = msg.len;
       }
@@ -241,7 +241,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     }
 
     // buffer the request meta
-    auto& updates = update_buf_[key];
+    auto& updates = GetUpdateBuf(key);
     updates.request.push_back(req_meta);
     // should send response after collecting all init push
     if (updates.request.size() < (size_t)ps::NumWorkers()) return;
@@ -261,12 +261,14 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto recved = reinterpret_cast<char*>(req_data.vals.data());
 
     if (!stored->tensor) {
+      update_buf_mu_.lock();
       if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
         update_buf_[key].merged.len = len;
         update_buf_[key].merged.dtype = type.dtype;
       }
+      update_buf_mu_.unlock();
       // buffer the request meta
-      auto& updates = update_buf_[key];
+      auto& updates = GetUpdateBuf(key);
       updates.request.push_back(req_meta);
       // should send response after collecting all init push
       if (updates.request.size() < (size_t)ps::NumWorkers()) return;
@@ -290,7 +292,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       }
       updates.request.clear();
     } else {
-      auto& updates = update_buf_[key];
+      auto& updates = GetUpdateBuf(key);
       auto tid = GetThreadID(key, len);
       if (updates.request.empty()) {  // from the first incoming worker
         if (sync_mode_) {
@@ -507,11 +509,17 @@ extern "C" void byteps_server() {
   for (auto q : engine_queues_) q->Push(msg);
   for (auto t : engine_threads_) t->join();
   for (auto& it : store_) free(it.second.tensor);
+  update_buf_mu_.lock();
   for (auto& it : update_buf_) free(it.second.merged.tensor);
+  update_buf_mu_.unlock();
   LOG(INFO) << "byteps has been shutdown";
 
   return;
 }
 
+UpdateBuf& GetUpdateBuf(uint64_t key) {
+  std::lock_guard<std::mutex> lock(update_buf_mu_);
+  return update_buf_[key];
+}
 }  // namespace server
 }  // namespace byteps

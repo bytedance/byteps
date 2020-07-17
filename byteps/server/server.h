@@ -109,6 +109,7 @@ std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 // byteps handler
 std::mutex handle_mu_;
 std::mutex engine_mu_;
+std::mutex update_buf_mu_;
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
 
