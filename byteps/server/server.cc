@@ -31,6 +31,11 @@ BytePSArray* GetStore(uint64_t key) {
   return &store_[key];
 }
 
+UpdateBuf& GetUpdateBuf(uint64_t key) {
+  std::lock_guard<std::mutex> lock(update_buf_mu_);
+  return update_buf_[key];
+}
+
 void SendPushResponse(uint64_t key, const ps::KVMeta& req,
                       ps::KVServer<char>* server) {
   auto iterator = push_response_map_.find(key);
@@ -517,9 +522,5 @@ extern "C" void byteps_server() {
   return;
 }
 
-UpdateBuf& GetUpdateBuf(uint64_t key) {
-  std::lock_guard<std::mutex> lock(update_buf_mu_);
-  return update_buf_[key];
-}
 }  // namespace server
 }  // namespace byteps
