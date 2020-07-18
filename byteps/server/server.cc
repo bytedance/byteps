@@ -126,8 +126,8 @@ void BytePSServerEngineThread(int i) {
       }
     }
 
-    // bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
-    bool is_debug = (debug_mode_);
+    bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
+    // bool is_debug = (debug_mode_);
     switch (msg.ops) {
       case COPY_FIRST: {
         if (is_debug) {
@@ -348,8 +348,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         }
       } else {  // from other workers
         CHECK(sync_mode_);
-        CHECK(updates.merged.tensor);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+        CHECK(updates.merged.tensor);
         assert(updates.merged.tensor != nullptr);
 
         if (debug_mode_ && (debug_key_ == key)) {
@@ -364,10 +364,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         if (is_engine_blocking_) {
           // TODO: decompress
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-          CHECK_GE(bps_reducer_->sum(
+          int tmp_ret_val =  bps_reducer_->sum(
                        (void*)updates.merged.tensor, (void*)recved, len,
-                       bps_reducer_->GetDataType(updates.merged.dtype)),
-                   0);
+                       bps_reducer_->GetDataType(updates.merged.dtype));
+          CHECK_GE(tmp_ret_val, 0);
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {  // non-blocking
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
@@ -411,6 +411,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     }
   } else {  // pull request
     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    assert(stored->tensor);
     auto stored = GetStore(key);
     CHECK(stored->tensor) << "Should init the buffer for key=" << key
                           << " first";
