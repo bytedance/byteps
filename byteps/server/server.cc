@@ -303,7 +303,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       // init stored buffer, use page aligned memory
       size_t aligned_size = common::Align(len, type.dtype);
       // PageAlignedMalloc((void**)(&(stored->tensor)), aligned_size);
-      stored->tensor = malloc(len);
+      stored->tensor = (char *)malloc(len);
       stored->len = len;
       stored->dtype = type.dtype;
       CHECK(stored->tensor);
