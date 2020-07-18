@@ -55,6 +55,8 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
                       const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
   auto& updates = GetUpdateBuf(key);
+  std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+  assert(updates.merged.tensor);
   CHECK(updates.merged.tensor) << "init " << key << " first";
   char* data = updates.merged.tensor;
   auto len = updates.merged.len;
@@ -65,15 +67,21 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
     ps::KVPairs<char> response;
     response.keys = {EncodeKey(key)};
     response.lens = {len};
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     response.vals = ps::SArray<char>(data, len, false);  // zero copy
     pull_response_map_[key] = response;                  // add to the map
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     server->Response(req_meta, response);
   } else {  // not new key, then reuse the memory address to avoid ibv_reg_mr on
             // RDMA data path
     ps::KVPairs<char>* response = &iterator->second;
 
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     auto p = static_cast<char*>(data);
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    assert(p);
     CHECK(p);
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     response->lens = {len};
     response->vals = ps::SArray<char>(p, len, false);
     server->Response(req_meta, *response);
@@ -88,7 +96,9 @@ void BytePSServerEngineThread(int i) {
     q->WaitAndPop(&msg);
     if (msg.ops == TERMINATE) break;
     // do some check
+    assert(msg.dst);
     CHECK(msg.dst);
+    assert(msg.src);
     CHECK(msg.src);
 
     auto iter = compressor_map_.find(msg.key);
@@ -199,7 +209,9 @@ void BytePSServerEngineThread(int i) {
                     << "\t";
         }
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        CHECK_GE(bps_reducer_->sum(msg.dst, msg.src, msg.len, bps_type), 0);
+        int tmp_ret_val = bps_reducer_->sum(msg.dst, msg.src, msg.len, bps_type);
+        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+        CHECK_GE(tmp_ret_val, 0);
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_SUM_RECV_AFTER \t"
@@ -221,6 +233,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                    const ps::KVPairs<char>& req_data,
                    ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(handle_mu_);  // push & pull may have racing
+  std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   // CHECK_EQ(type.requestType, RequestType::kDefaultPushPull);
   // do some check
@@ -237,6 +250,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                 << "\t sender=" << req_meta.sender;
     }
   }
+  std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
   uint64_t key = DecodeKey(req_data.keys[0]);
 
   // register compressor
@@ -349,8 +363,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       } else {  // from other workers
         CHECK(sync_mode_);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        CHECK(updates.merged.tensor);
-        assert(updates.merged.tensor != nullptr);
+        // CHECK(updates.merged.tensor);
+        // assert(updates.merged.tensor != nullptr);
 
         if (debug_mode_ && (debug_key_ == key)) {
           std::lock_guard<std::mutex> lock(debug_mu_);
@@ -397,6 +411,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {
+          std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           BytePSEngineMessage msg = {
               timestamp_++,   type,        key,     stored->tensor,
               stored->tensor, stored->len, ALL_RECV};
@@ -411,8 +426,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     }
   } else {  // pull request
     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-    assert(stored->tensor);
     auto stored = GetStore(key);
+    std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    assert(stored->tensor);
     CHECK(stored->tensor) << "Should init the buffer for key=" << key
                           << " first";
     if (is_engine_blocking_ || !sync_mode_) {
@@ -421,12 +437,14 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       auto tid = GetThreadID(key, 0);
       std::lock_guard<std::mutex> lock(flag_mu_[tid]);
       if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
+        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         is_push_finished_[tid][key] = false;
         pull_cnt_[tid][key] = 0;
         seen_sender_[tid][key].clear();
       }
 
       auto it = seen_sender_[tid][key].find(req_meta.sender);
+      std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) {
         // push already finished && not received the associated pull response
         // yet

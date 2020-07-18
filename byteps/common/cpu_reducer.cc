@@ -63,7 +63,7 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
   switch (dtype) {
     case BYTEPS_FLOAT32:
       std::cerr << " I am at " << __FILE__ << __LINE__ << __func__ << std::endl;
-      std::cerr << "xxx " << "dst: " << dst << " src: " << src << " len: " << len << " alpha: " << alpha << std::endl;
+      // std::cerr << "xxx " << "dst: " << dst << " src: " << src << " len: " << len << " alpha: " << alpha << std::endl;
       // if (dst == nullptr) {
       //   int aaa = 1;
       //   while (aaa == 1)
