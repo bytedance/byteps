@@ -140,7 +140,9 @@ void BytePSServerEngineThread(int i) {
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src)
                     << "\t";
         }
+        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         bps_reducer_->copy(msg.dst, msg.src, msg.len);
+        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_COPY_MERGED_TO_STORE_AFTER \t"
@@ -387,7 +389,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         }
         if (is_engine_blocking_) {
           // TODO: compress
+          std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
+          std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {
           BytePSEngineMessage msg = {
               timestamp_++,   type,        key,     stored->tensor,
