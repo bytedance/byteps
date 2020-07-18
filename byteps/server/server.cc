@@ -302,14 +302,15 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       // init stored buffer, use page aligned memory
       size_t aligned_size = common::Align(len, type.dtype);
-      PageAlignedMalloc((void**)(&(stored->tensor)), aligned_size);
+      // PageAlignedMalloc((void**)(&(stored->tensor)), aligned_size);
+      stored->tensor = malloc(len);
       stored->len = len;
       stored->dtype = type.dtype;
       CHECK(stored->tensor);
 
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << " len " << len << std::endl;
-      bps_reducer_->copy(stored->tensor, recved,
-                         len);  // we may not need this copy
+      // bps_reducer_->copy(stored->tensor, recved,
+      //                    len);  // we may not need this copy
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       for (const auto& req : updates.request) {
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
