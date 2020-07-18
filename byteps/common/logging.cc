@@ -68,7 +68,7 @@ LogMessageFatal::LogMessageFatal(const char* file, int line)
     : LogMessage(file, line, LogLevel::FATAL) {}
 
 LogMessageFatal::~LogMessageFatal() {
-  std::cout << boost::stacktrace::stacktrace() << std::endl;
+  // std::cout << boost::stacktrace::stacktrace() << std::endl;
   static bool log_time = LogTimeFromEnv();
   GenerateLogMessage(log_time);
   abort();
