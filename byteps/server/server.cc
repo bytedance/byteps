@@ -16,6 +16,7 @@
 #include "server.h"
 #include "../common/compressor/utils.h"
 #include "queue.h"
+#include <assert.h>
 
 namespace byteps {
 namespace server {
@@ -92,6 +93,9 @@ void BytePSServerEngineThread(int i) {
 
     auto iter = compressor_map_.find(msg.key);
     if (iter != compressor_map_.end()) {
+
+        std::cout << " SHOULD NOT BE HERE I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+        assert(0 == 1);
       // compress
       if (msg.ops == ALL_RECV) {
         common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
@@ -112,13 +116,18 @@ void BytePSServerEngineThread(int i) {
     } else {
       if (msg.ops == ALL_RECV) {
         // 2. no compress
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         auto& updates = GetUpdateBuf(msg.key);
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         updates.merged.len = msg.len;
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       }
     }
 
-    bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
+    // bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
+    bool is_debug = (debug_mode_);
     switch (msg.ops) {
       case COPY_FIRST: {
         if (is_debug) {
@@ -145,6 +154,7 @@ void BytePSServerEngineThread(int i) {
       } break;
 
       case ALL_RECV: {
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         std::lock_guard<std::mutex> lock(flag_mu_[i]);
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
           is_push_finished_[i][msg.key] = false;
@@ -157,6 +167,7 @@ void BytePSServerEngineThread(int i) {
         while (it != q_pull_reqmeta_[i][msg.key].end()) {
           if (seen_sender_[i][msg.key].find(it->sender) ==
               seen_sender_[i][msg.key].end()) {
+            std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
             SendPullResponse(msg.type, msg.key, *it, byteps_server_);
             pull_cnt_[i][msg.key] += 1;
             seen_sender_[i][msg.key].insert(it->sender);
@@ -228,6 +239,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
 
   // register compressor
   if (type.requestType == RequestType::kCompressedPushPull) {
+    std::cout << " SHOULD NOT BE HERE I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    assert(1 == 2);
     if (compressor_map_.find(key) == compressor_map_.end()) {
       std::string content{reinterpret_cast<char*>(req_data.vals.data()),
                           static_cast<size_t>(req_data.lens[0])};
@@ -259,6 +272,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   }
 
   if (req_meta.push) {  // push request
+    std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     CHECK_EQ(req_data.lens.size(), (size_t)1);
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
     auto stored = GetStore(key);
@@ -283,6 +297,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << ", init the store buffer size="
                   << (size_t)req_data.lens[0];
       }
+      std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       // init stored buffer, use page aligned memory
       size_t aligned_size = common::Align(len, type.dtype);
       PageAlignedMalloc((void**)&stored->tensor, aligned_size);
@@ -290,13 +305,18 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       stored->dtype = type.dtype;
       CHECK(stored->tensor);
 
+      std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       bps_reducer_->copy(stored->tensor, recved,
                          len);  // we may not need this copy
+      std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       for (const auto& req : updates.request) {
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         SendPushResponse(key, req, server);
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       }
       updates.request.clear();
     } else {
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       auto& updates = GetUpdateBuf(key);
       auto tid = GetThreadID(key, len);
       if (updates.request.empty()) {  // from the first incoming worker
@@ -316,6 +336,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                                      stored->tensor, recved,   stored->len,
                                      COPY_FIRST,     req_data, req_meta};
           engine_queues_[tid]->Push(msg);
+          std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {  // async mode, directly add to the buffer
           std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           CHECK_GE(bps_reducer_->sum((void*)stored->tensor, (void*)recved, len,
@@ -341,6 +362,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                        (void*)updates.merged.tensor, (void*)recved, len,
                        bps_reducer_->GetDataType(updates.merged.dtype)),
                    0);
+          std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {  // non-blocking
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
                                      stored->tensor, recved,   stored->len,
@@ -380,6 +402,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       }
     }
   } else {  // pull request
+    std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     auto stored = GetStore(key);
     CHECK(stored->tensor) << "Should init the buffer for key=" << key
                           << " first";
@@ -398,7 +421,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) {
         // push already finished && not received the associated pull response
         // yet
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         SendPullResponse(type, key, req_meta, server);
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         pull_cnt_[tid][key] += 1;
         seen_sender_[tid][key].insert(req_meta.sender);
 
@@ -408,8 +433,10 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           seen_sender_[tid][key].clear();
         }
       } else {
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         // push not finished, put into the queue, and wait for the engine
         q_pull_reqmeta_[tid][key].push_back(req_meta);
+        std::cout << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       }
     }
   }
