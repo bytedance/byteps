@@ -278,7 +278,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 // #pragma GCC push_options
 // #pragma GCC optimize("O0")
 int CpuReducer::copy(void* dst, const void* src, size_t len) {
-  // std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << " dst: " << dst << " src " << src << " len " << len << std::endl;
+  std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << " len " << len << std::endl;
   std::memcpy(dst, src, len);
   std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
 }
