@@ -137,7 +137,6 @@ void BytePSServerEngineThread(int i) {
     }
 
     bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
-    // bool is_debug = (debug_mode_);
     switch (msg.ops) {
       case COPY_FIRST: {
         if (is_debug) {
@@ -152,6 +151,7 @@ void BytePSServerEngineThread(int i) {
         }
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         bps_reducer_->copy(msg.dst, msg.src, msg.len);
+        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
@@ -316,7 +316,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       // init stored buffer, use page aligned memory
       size_t aligned_size = common::Align(len, type.dtype);
-      PageAlignedMalloc((void**)(&(stored->tensor)), aligned_size);
+      // PageAlignedMalloc((void**)(&(stored->tensor)), aligned_size);
+      PageAlignedMalloc((void**) &stored->tensor, len);
       // stored->tensor = (char *)malloc(len);
       stored->len = len;
       stored->dtype = type.dtype;
