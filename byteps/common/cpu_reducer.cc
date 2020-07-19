@@ -275,15 +275,15 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
   return 0;
 }
 
-#pragma GCC push_options
-#pragma GCC optimize("O0")
+// #pragma GCC push_options
+// #pragma GCC optimize("O0")
 int CpuReducer::copy(void* dst, const void* src, size_t len) {
   // std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
   std::cerr << " I am at sCpuReducer::copy() " << std::endl;
   std::memcpy(dst, src, len);
   std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
 }
-#pragma GCC pop_options
+// #pragma GCC pop_options
 
 }  // namespace common
 }  // namespace byteps
