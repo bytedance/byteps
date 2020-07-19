@@ -151,7 +151,6 @@ void BytePSServerEngineThread(int i) {
         }
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         bps_reducer_->copy(msg.dst, msg.src, msg.len);
-        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
@@ -166,6 +165,8 @@ void BytePSServerEngineThread(int i) {
       } break;
 
       case ALL_RECV: {
+        auto& updates = GetUpdateBuf(msg.key);
+        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         std::lock_guard<std::mutex> lock(flag_mu_[i]);
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
