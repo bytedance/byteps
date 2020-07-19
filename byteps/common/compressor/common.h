@@ -62,7 +62,7 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                    \
   }
 
-#define SWITCH_TO_FAST_UPDATE_ERROR_IMPL_SWITCH(dtype, func, dst, src1, src2, \
+#define FAST_UPDATE_ERROR_IMPL_SWITCH(dtype, func, dst, src1, src2, \
                                                 compressed_size)              \
   switch (dtype) {                                                            \
     case BYTEPS_FLOAT32:                                                      \

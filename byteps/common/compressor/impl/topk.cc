@@ -129,9 +129,9 @@ void TopkCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
 
 void TopkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                      tensor_t compressed) {
-  SWITCH_TO_FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl,
-                                          error.data, corrected.data,
-                                          compressed.data, compressed.size);
+  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
+                                corrected.data, compressed.data,
+                                compressed.size);
 }
 }  // namespace compressor
 }  // namespace common

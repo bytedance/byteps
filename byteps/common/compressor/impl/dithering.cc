@@ -89,7 +89,8 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / l2) * scale;
       float floor = RoundNextPow2(std::ceil(normalized)) << 1;
-      int quantized = floor * (1 + _rng.Bernoulli((normalized - floor) / floor));
+      int quantized =
+          floor * (1 + _rng.Bernoulli((normalized - floor) / floor));
       if (quantized) {
         int diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
@@ -207,9 +208,9 @@ void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
 
 void DitheringCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                           tensor_t compressed) {
-  SWITCH_TO_FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl,
-                                          error.data, corrected.data,
-                                          compressed.data, compressed.size);
+  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
+                                corrected.data, compressed.data,
+                                compressed.size);
 }
 }  // namespace compressor
 }  // namespace common

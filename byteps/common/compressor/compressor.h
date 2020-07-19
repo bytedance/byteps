@@ -118,6 +118,7 @@ class Compressor {
     BPS_LOG(FATAL) << "FastUpdateError is not implemented";
   };
 
+ protected:
   /*! \brief buffer to store compressed grad */
   std::unique_ptr<byte_t[]> _buf;
 
