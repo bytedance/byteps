@@ -325,8 +325,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       CHECK(stored->tensor);
 
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << " len " << len << std::endl;
-      bps_reducer_->copy(stored->tensor, recved,
-                         len);  // we may not need this copy
+      // bps_reducer_->copy(stored->tensor, recved,
+      //                    len);  // we may not need this copy
       std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
       for (const auto& req : updates.request) {
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
