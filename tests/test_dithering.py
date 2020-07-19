@@ -60,7 +60,7 @@ class DitheringTestCase(unittest.TestCase):
         print("init")
         bps.init()
 
-    @parameterized.expand([(2, "natural",),])
+    @parameterized.expand([(2, "linear",),])
     def test_dithering(self, k, ptype):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
@@ -135,11 +135,11 @@ class DitheringTestCase(unittest.TestCase):
                     # moms[i] += g
                     # g += 0.9 * moms[i]
                     # g += errors[i]
-                    c = dithering(g, k, rngs[i])
+                    c = dithering(g, k, rngs[i], ptype)
                     # errors[i] = g - c
 
                     # c += errors_s[i]
-                    cs = dithering(c, k, rngs_s[i])
+                    cs = dithering(c, k, rngs_s[i], ptype)
                     # errors_s[i] = c - cs
                     c = cs
 

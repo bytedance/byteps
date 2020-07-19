@@ -118,27 +118,35 @@ class XorShift128PlusBitShifterRNG {
 template <typename T>
 class BitWriter {
  public:
-  explicit BitWriter(T* data) : _dptr(data), _bits(0) {}
+  explicit BitWriter(T* data)
+      : _dptr(data), _accum(0), _used_bits(0), _blocks(0) {}
   void Put(bool x) {
-    size_t pos = _bits / PACKING_SIZE;
-    _dptr[pos] <<= 1;
-    _dptr[pos] |= x;
-    ++_bits;
+    _accum <<= 1;
+    _accum |= x;
+
+    if (++_used_bits == PACKING_SIZE) {
+      _dptr[_blocks++] = _accum;
+      _used_bits = 0;
+    }
   }
 
-  void Pad() {
-    size_t pos = _bits / PACKING_SIZE;
-    size_t padding_size = (PACKING_SIZE - _bits % PACKING_SIZE) % PACKING_SIZE;
-    _dptr[pos] <<= padding_size;
+  void Flush() {
+    if (_used_bits > 0) {
+      size_t padding_size = PACKING_SIZE - _used_bits;
+      _accum <<= padding_size;
+      _dptr[_blocks] = _accum;
+    }
   }
 
-  size_t bits() const { return _bits; }
-  size_t ints() const { return std::ceil((float)_bits / PACKING_SIZE); }
+  size_t bits() const { return _blocks * PACKING_SIZE + _used_bits; }
+  size_t blocks() const { return std::ceil((float)bits() / PACKING_SIZE); }
 
  private:
   static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
   T* _dptr;  // allocated
-  size_t _bits;
+  size_t _used_bits;
+  size_t _blocks;
+  T _accum;
 };
 
 /*!
@@ -148,20 +156,24 @@ class BitWriter {
 template <typename T>
 class BitReader {
  public:
-  explicit BitReader(const T* data) : _dptr(data), _bits(0) {}
+  explicit BitReader(const T* data)
+      : _dptr(data), _used_bits(0), _blocks(0) {}
   bool Get() {
-    size_t pos = _bits / PACKING_SIZE;
-    size_t offset = PACKING_SIZE - 1 - _bits % PACKING_SIZE;
-    _bits++;
-    return _dptr[pos] & (1 << offset);
+    if (_used_bits == 0) {
+      _accum = _dptr[_blocks++];
+      _used_bits = PACKING_SIZE;
+    }
+    return _accum & (1 << --_used_bits);
   }
 
-  size_t bits() const { return _bits; }
+  size_t bits() const { return _blocks * PACKING_SIZE - _used_bits; }
 
  private:
   static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
   const T* _dptr;  // allocated
-  size_t _bits;
+  size_t _blocks;
+  size_t _used_bits;
+  T _accum;
 };
 
 inline uint32_t RoundNextPow2(uint32_t v) {
