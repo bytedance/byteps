@@ -51,6 +51,7 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req,
   }
 }
 
+#if 0
 void SendPullResponse(const DataHandleType type, const uint64_t key,
                       const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
@@ -83,6 +84,35 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
     CHECK(p);
     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     response->lens = {len};
+    response->vals = ps::SArray<char>(p, len, false);
+    server->Response(req_meta, *response);
+  }
+}
+#endif
+
+void SendPullResponse(const DataHandleType type,
+                      const uint64_t key,
+                      const ps::KVMeta& req_meta,
+                      ps::KVServer<char>* server) {
+  std::lock_guard<std::mutex> lock(pullresp_mu_);
+  auto stored = GetStore(key);
+  CHECK(stored->tensor) << "init " << key << " first";
+  auto len = stored->len;
+
+  // send pull response
+  auto iterator = pull_response_map_.find(key);
+  if (iterator == pull_response_map_.end()) { // new key
+    ps::KVPairs<char> response;
+    response.keys = {EncodeKey(key)};
+    response.lens = {len};
+    response.vals = ps::SArray<char>(stored->tensor, len, false); // zero copy
+    pull_response_map_[key] = response; // add to the map
+    server->Response(req_meta, response);
+  } else { // not new key, then reuse the memory address to avoid ibv_reg_mr on RDMA data path
+    ps::KVPairs<char> *response = &iterator->second;
+    // keys and lens remain unchanged, just update vals
+    auto p = static_cast<char*>(stored->tensor);
+    CHECK(p);
     response->vals = ps::SArray<char>(p, len, false);
     server->Response(req_meta, *response);
   }
@@ -165,8 +195,8 @@ void BytePSServerEngineThread(int i) {
       } break;
 
       case ALL_RECV: {
-        auto& updates = GetUpdateBuf(msg.key);
-        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+        // auto& updates = GetUpdateBuf(msg.key);
+        // updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         std::lock_guard<std::mutex> lock(flag_mu_[i]);
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
@@ -349,12 +379,13 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
+          updates.merged.tensor = recved;
           updates.merged.tmp_sarray = req_data;
           // copy
-          BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   stored->len,
-                                     COPY_FIRST,     req_data, req_meta};
-          engine_queues_[tid]->Push(msg);
+          // BytePSEngineMessage msg = {timestamp_++,   type,     key,
+          //                            stored->tensor, recved,   stored->len,
+          //                            COPY_FIRST,     req_data, req_meta};
+          // engine_queues_[tid]->Push(msg);
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {  // async mode, directly add to the buffer
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
@@ -387,7 +418,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
         } else {  // non-blocking
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   stored->len,
+                                     // stored->tensor, recved,   stored->len,
+                                     updates.merged.tensor, recved,   stored->len,
                                      SUM_RECV,       req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }
@@ -416,7 +448,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
           BytePSEngineMessage msg = {
               timestamp_++,   type,        key,     stored->tensor,
-              stored->tensor, stored->len, ALL_RECV};
+              update.tensor, stored->len, ALL_RECV};
           engine_queues_[tid]->Push(msg);
           engine_queues_[tid]->ClearCounter(key);
         }
