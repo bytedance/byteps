@@ -23,8 +23,8 @@
 #include <unistd.h>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
-#include "../common/compressor/compressor.h"
-#include "../common/compressor/compressor_registry.h"
+// #include "../common/compressor/compressor.h"
+// #include "../common/compressor/compressor_registry.h"
 
 namespace byteps {
 namespace server {
