@@ -131,40 +131,40 @@ void BytePSServerEngineThread(int i) {
     assert(msg.src);
     CHECK(msg.src);
 
-    auto iter = compressor_map_.find(msg.key);
-    if (iter != compressor_map_.end()) {
-
-        std::cerr << " SHOULD NOT BE HERE I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        assert(0 == 1);
-      // compress
-      if (msg.ops == ALL_RECV) {
-        common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
-                                          msg.len, msg.type.dtype);
-        auto compressed = iter->second->Compress(grad);
-        // 1. compress
-        auto& updates = GetUpdateBuf(msg.key);
-        updates.merged.tensor = compressed.data;
-        updates.merged.len = compressed.size;
-      } else {  // decompress
-        auto compressed_len = msg.sarray.lens[0];
-        CHECK_LE(compressed_len, msg.len);
-        common::compressor::tensor_t compressed(
-            reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype);
-        auto decompressed = iter->second->Decompress(compressed);
-        msg.src = decompressed.data;
-      }
-    } else {
-      if (msg.ops == ALL_RECV) {
-        // 2. no compress
-        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        auto& updates = GetUpdateBuf(msg.key);
-        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
-        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-        updates.merged.len = msg.len;
-        std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
-      }
-    }
+    // auto iter = compressor_map_.find(msg.key);
+    // if (iter != compressor_map_.end()) {
+    //
+    //     std::cerr << " SHOULD NOT BE HERE I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    //     assert(0 == 1);
+    //   // compress
+    //   if (msg.ops == ALL_RECV) {
+    //     common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
+    //                                       msg.len, msg.type.dtype);
+    //     auto compressed = iter->second->Compress(grad);
+    //     // 1. compress
+    //     auto& updates = GetUpdateBuf(msg.key);
+    //     updates.merged.tensor = compressed.data;
+    //     updates.merged.len = compressed.size;
+    //   } else {  // decompress
+    //     auto compressed_len = msg.sarray.lens[0];
+    //     CHECK_LE(compressed_len, msg.len);
+    //     common::compressor::tensor_t compressed(
+    //         reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype);
+    //     auto decompressed = iter->second->Decompress(compressed);
+    //     msg.src = decompressed.data;
+    //   }
+    // } else {
+    //   if (msg.ops == ALL_RECV) {
+    //     // 2. no compress
+    //     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    //     auto& updates = GetUpdateBuf(msg.key);
+    //     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    //     updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+    //     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    //     updates.merged.len = msg.len;
+    //     std::cerr << " I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
+    //   }
+    // }
 
     bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
     switch (msg.ops) {
@@ -289,22 +289,22 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   if (type.requestType == RequestType::kCompressedPushPull) {
     std::cerr << " SHOULD NOT BE HERE I am at " << __FILE__ << " " << __LINE__ << " " << __func__ << std::endl;
     assert(1 == 2);
-    if (compressor_map_.find(key) == compressor_map_.end()) {
-      std::string content{reinterpret_cast<char*>(req_data.vals.data()),
-                          static_cast<size_t>(req_data.lens[0])};
-      auto kwargs = byteps::common::compressor::Deserialize(content);
-      auto stored = GetStore(key);
-      size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
-      auto compressor_ptr =
-          byteps::common::compressor::CompressorRegistry::Create(
-              kwargs, aligned_size,
-              static_cast<byteps::common::DataType>(stored->dtype));
-      CHECK_NE(compressor_ptr, nullptr);
-      compressor_map_[key] = std::move(compressor_ptr);
-      if (log_key_info_) {
-        LOG(INFO) << "register compressor for key=" << key;
-      }
-    }
+    // if (compressor_map_.find(key) == compressor_map_.end()) {
+    //   std::string content{reinterpret_cast<char*>(req_data.vals.data()),
+    //                       static_cast<size_t>(req_data.lens[0])};
+    //   auto kwargs = byteps::common::compressor::Deserialize(content);
+    //   auto stored = GetStore(key);
+    //   size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
+    //   auto compressor_ptr =
+    //       byteps::common::compressor::CompressorRegistry::Create(
+    //           kwargs, aligned_size,
+    //           static_cast<byteps::common::DataType>(stored->dtype));
+    //   CHECK_NE(compressor_ptr, nullptr);
+    //   compressor_map_[key] = std::move(compressor_ptr);
+    //   if (log_key_info_) {
+    //     LOG(INFO) << "register compressor for key=" << key;
+    //   }
+    // }
 
     // buffer the request meta
     auto& updates = GetUpdateBuf(key);
