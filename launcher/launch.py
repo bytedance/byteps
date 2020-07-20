@@ -147,6 +147,8 @@ def worker(local_rank, local_size, command, allocation=None):
         if command.find("python") != 0:
             command = "python " + command
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+    elif int(os.getenv("BYTEPS_ENABLE_VALGRIND", 0)):
+        command = "valgrind " + command
 
     if allocation:
         print("enable NUMA finetune...")
@@ -209,6 +211,9 @@ def launch_bps():
         command = "python3 -c 'import byteps.server'"
         if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
             command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+        elif int(os.getenv("BYTEPS_ENABLE_VALGRIND", 0)):
+            command = "valgrind " + command
+
         print("Command: %s\n" % command, flush=True)
         my_env = os.environ.copy()
         subprocess.check_call(command, env=my_env,
