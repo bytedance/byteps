@@ -383,7 +383,8 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 // }
 // // #pragma GCC pop_options
 
-int CpuReducer::copy(void* dst, void* src, size_t len) {
+// int CpuReducer::copy(void* dst, void* src, size_t len) {
+int CpuReducer::copy(void* dst, const void* src, size_t len) {
   auto in = (float*)src;
   auto out = (float*)dst;
 #pragma omp parallel for simd num_threads(_num_threads)
