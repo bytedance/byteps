@@ -173,14 +173,19 @@ def get_cpp_flags(build_ext):
     last_err = None
     # default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native', '-Og']
     # default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native']
-    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native', '-g']
+    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp', '-march=native', '-g']
+    avx_flags = ['-mf16c', '-mavx']
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
-        flags_to_try = [default_flags + ['-stdlib=libc++'],
+        flags_to_try = [default_flags + ['-stdlib=libc++'] + avx_flags,
+                        default_flags + avx_flags,
+                        default_flags + ['-stdlib=libc++'],
                         default_flags]
     else:
-        flags_to_try = [default_flags ,
+        flags_to_try = [default_flags + avx_flags,
+                        default_flags + ['-stdlib=libc++'] + avx_flags,
+                        default_flags,
                         default_flags + ['-stdlib=libc++']]
     for cpp_flags in flags_to_try:
         try:
