@@ -121,7 +121,6 @@ void SendPullResponse(const DataHandleType type,
 void BytePSServerEngineThread(int i) {
   auto& q = engine_queues_[i];
   while (true) {
-    std::lock_guard<std::mutex> lock(engine_mu_);
     BytePSEngineMessage msg;
     q->WaitAndPop(&msg);
     if (msg.ops == TERMINATE) break;
