@@ -100,7 +100,7 @@ def submit(args):
     for (node, port) in [(args.scheduler_ip, args.scheduler_ssh_port)]:
         name = 'scheduler'
         pass_envs['DMLC_ROLE'] = name
-        prog = get_env(pass_envs) + (' '.join(args.command))
+        prog = get_env(pass_envs) + 'bpslaunch'
         threads.append(start_ssh(prog, node, port, username, name))
     for i, (node, port) in enumerate(worker_hosts):
         name = 'worker'
@@ -111,7 +111,7 @@ def submit(args):
     for i, (node, port) in enumerate(server_hosts):
         name = 'server'
         pass_envs['DMLC_ROLE'] = name
-        prog = get_env(pass_envs) + (' '.join(args.command))
+        prog = get_env(pass_envs) + 'bpslaunch'
         threads.append(start_ssh(prog, node, port, username, name + str(i)))
 
     for t in threads:
