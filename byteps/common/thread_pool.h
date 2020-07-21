@@ -17,8 +17,8 @@
 class ThreadPool {
  public:
   ThreadPool(size_t);
-  template <class F, class... Args>
-  void enqueue(F&& f, Args&&... args);
+  template <class F>
+  void enqueue(F&& f);
   ~ThreadPool();
 
  private:
@@ -55,19 +55,15 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
 }
 
 // add new work item to the pool
-template <class F, class... Args>
-void ThreadPool::enqueue(F&& f, Args&&... args) {
+template <class F>
+void ThreadPool::enqueue(F&& f) {
   {
-    std::unique_lock<std::mutex> lock(queue_mutex);
-
-    // don't allow enqueueing after stopping the pool
+    std::lock_guard<std::mutex> lock(queue_mutex);
     if (stop) throw std::runtime_error("enqueue on stopped ThreadPool");
-
-    tasks.emplace([f]() { f(); });
+    tasks.emplace(std::forward<F>(f));
   }
   condition.notify_one();
 }
-
 // the destructor joins all threads
 inline ThreadPool::~ThreadPool() {
   {
