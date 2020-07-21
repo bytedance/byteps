@@ -45,9 +45,9 @@ class Momentum : public Compressor {
   Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
            float mu)
       : Compressor(size, dtype),
-        _cptr(std::move(cptr)),
+        _mom(new byte_t[size]()),
         _mu(mu),
-        _mom(new byte_t[size]()){};
+        _cptr(std::move(cptr)){};
   virtual ~Momentum() = default;
 
   virtual tensor_t Compress(tensor_t grad) final;

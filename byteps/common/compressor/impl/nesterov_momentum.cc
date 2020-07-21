@@ -24,16 +24,13 @@ CompressorRegistry::Register reg(
     "nesterov_momentum",
     [](const kwargs_t& kwargs, size_t size,
        DataType dtype) -> std::unique_ptr<Compressor> {
-      // register cpr
+      // register cptr
       auto kwargs_clone = kwargs;
       kwargs_clone.erase("momentum_type");
       auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       // find \mu
-      auto iter = kwargs.find("momentum_mu");
-      BPS_CHECK_NE(iter, kwargs.end()) << "momentum \mu is not defined";
-      float mu = std::stof(iter->second);
-      BPS_LOG(DEBUG) << "with momentum";
+      auto mu = HyperParamFinder<float>(kwargs, "compressor_mu");
       return std::unique_ptr<NesterovMomentumCompressor>(
           new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
     });

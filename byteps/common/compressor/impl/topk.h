@@ -33,7 +33,7 @@ namespace compressor {
  */
 class TopkCompressor : public Compressor {
  public:
-  TopkCompressor(size_t size, DataType dtype, int k)
+  TopkCompressor(size_t size, DataType dtype, unsigned int k)
       : Compressor(size, dtype), _k(k){};
   virtual ~TopkCompressor() = default;
 
@@ -85,7 +85,7 @@ class TopkCompressor : public Compressor {
                            const index_t* compressed, size_t compressed_size);
 
  private:
-  int _k;
+  unsigned int _k;
 };
 }  // namespace compressor
 }  // namespace common

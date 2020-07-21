@@ -26,29 +26,17 @@ CompressorRegistry::Register reg(
     "dithering_compressor",
     [](const kwargs_t& kwargs, size_t size,
        DataType dtype) -> std::unique_ptr<Compressor> {
-      auto iter = kwargs.find("compressor_k");
-      if (iter == kwargs.end()) {
-        BPS_LOG(FATAL) << "Randomk Compressor needs parameter \"compressor_k\"";
-      }
-      int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Dithering Compressor "
-                     << "k=" << k;
+      std::tuple<> params;
+      auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
-      auto iter2 = kwargs.find("seed");
-      unsigned int seed = 0;
-      if (iter2 != kwargs.end()) {
-        seed = std::stoul(iter2->second);
-        BPS_CHECK(seed != 0) << "seed should not be 0";
-      }
+      auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true, [](unsigned x){
+        return x != 0;
+      });
 
-      auto iter3 = kwargs.find("partition");
-      int ptype_int = 0;
-      if (iter3 != kwargs.end()) {
-        ptype_int = std::stoi(iter3->second);
-        BPS_CHECK(ptype_int != 0 && ptype_int != 1) << "ptype should be 0 or 1";
-      }
+      auto ptype_int = HyperParamFinder<int>(
+          kwargs, "seed", true, [](int x) { return x == 0 || x == 1; });
       auto ptype = static_cast<DitheringCompressor::PartitionType>(ptype_int);
-
+      
       return std::unique_ptr<Compressor>(
           new DitheringCompressor(size, dtype, k, seed, ptype));
     });
@@ -62,21 +50,21 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   // normalize
   double l2 = 0.0;
 #pragma omp parallel for simd num_threads(4) reduction(+ : l2)
-  for (int i = 0; i < len; ++i) {
+  for (size_t i = 0; i < len; ++i) {
     l2 += src[i] * src[i];
   }
   l2 = std::sqrt(l2);
 
   BitWriter<index_t> bit_writer(dst);
-  int last_non_zero_pos = -1;
+  size_t last_non_zero_pos = -1;
   if (_ptype == PartitionType::LINEAR) {
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / l2) * _s;
       float floor = std::floor(normalized);
-      int quantized = floor + _rng.Bernoulli(normalized - floor);
+      unsigned quantized = floor + _rng.Bernoulli(normalized - floor);
       if (quantized) {
-        int diff = i - last_non_zero_pos;
+        size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
         EliasDeltaEncode(bit_writer, diff);
         bit_writer.Put(std::signbit(src[i]));
@@ -84,15 +72,15 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
       }
     }
   } else if (_ptype == PartitionType::NATURAL) {
-    const int scale = 1 << (_s - 1);
-    for (int i = 0; i < len; ++i) {
+    const unsigned scale = 1 << (_s - 1);
+    for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / l2) * scale;
       float floor = RoundNextPow2(std::ceil(normalized)) << 1;
-      int quantized =
+      unsigned quantized =
           floor * (1 + _rng.Bernoulli((normalized - floor) / floor));
       if (quantized) {
-        int diff = i - last_non_zero_pos;
+        size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
         EliasDeltaEncode(bit_writer, diff);
         bit_writer.Put(std::signbit(src[i]));
@@ -146,13 +134,13 @@ tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   }
 
   BitReader<index_t> bit_reader(ptr);
-  int last_non_zero_pos = -1;
+  size_t last_non_zero_pos = -1;
   while (bit_reader.bits() < bits) {
-    int diff = EliasDeltaDecode(bit_reader);
-    int i = last_non_zero_pos + diff;
+    size_t diff = EliasDeltaDecode(bit_reader);
+    size_t i = last_non_zero_pos + diff;
     last_non_zero_pos = i;
     int signbit = bit_reader.Get();
-    int quantized = EliasDeltaDecode(bit_reader);
+    unsigned quantized = EliasDeltaDecode(bit_reader);
     float num = quantized * scale / s;
     dst[i] = (1 - (signbit << 1)) * num;
   }
@@ -194,13 +182,13 @@ void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
   }
 
   BitReader<index_t> bit_reader(compressed);
-  int last_non_zero_pos = -1;
+  size_t last_non_zero_pos = -1;
   while (bit_reader.bits() < bits) {
-    int diff = EliasDeltaDecode(bit_reader);
-    int i = last_non_zero_pos + diff;
+    size_t diff = EliasDeltaDecode(bit_reader);
+    size_t i = last_non_zero_pos + diff;
     last_non_zero_pos = i;
     int signbit = bit_reader.Get();
-    int quantized = EliasDeltaDecode(bit_reader);
+    unsigned quantized = EliasDeltaDecode(bit_reader);
     float num = quantized * scale / s;
     error[i] -= (1 - (signbit << 1)) * num;
   }

@@ -24,24 +24,13 @@ CompressorRegistry::Register reg(
     "randomk_compressor",
     [](const kwargs_t& kwargs, size_t size,
        DataType dtype) -> std::unique_ptr<Compressor> {
-      auto iter = kwargs.find("compressor_k");
-      if (iter == kwargs.end()) {
-        BPS_LOG(FATAL) << "Randomk Compressor needs parameter \"compressor_k\"";
-      }
-      int k = std::stoi(iter->second);
-      BPS_LOG(DEBUG) << "Register Randomk Compressor "
-                     << "k=" << k;
+      auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
-      auto iter2 = kwargs.find("seed");
-      if (iter2 == kwargs.end()) {
-        return std::unique_ptr<Compressor>(
-            new RandomkCompressor(size, dtype, k));
-      } else {
-        unsigned int seed = std::stoul(iter2->second);
-        BPS_CHECK(seed != 0) << "seed should not be 0";
-        return std::unique_ptr<Compressor>(
-            new RandomkCompressor(size, dtype, k, seed));
-      }
+      auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
+                                             [](unsigned x) { return x != 0; });
+
+      return std::unique_ptr<Compressor>(
+          new RandomkCompressor(size, dtype, k, seed));
     });
 }
 
@@ -84,7 +73,7 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   // reset to zeros
   std::memset(dst, 0, _size);
   size_t len = compressed_size / sizeof(pair_t);
-  for (auto i = 0; i < len; ++i) {
+  for (size_t i = 0; i < len; ++i) {
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
   }
@@ -114,7 +103,7 @@ void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
   std::memcpy(error, corrected, _size);
 
   auto ptr = reinterpret_cast<const pair_t*>(compressed);
-  for (auto i = 0; i < this->_k; ++i) {
+  for (size_t i = 0; i < this->_k; ++i) {
     auto& pair = ptr[i];
     error[pair.first] = 0;
   }

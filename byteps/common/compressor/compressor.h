@@ -119,13 +119,13 @@ class Compressor {
   };
 
  protected:
-  /*! \brief buffer to store compressed grad */
-  std::unique_ptr<byte_t[]> _buf;
-
   /*! \brief original size */
   size_t _size;
 
   DataType _dtype;
+
+  /*! \brief buffer to store compressed grad */
+  std::unique_ptr<byte_t[]> _buf;
 
   /*! \brief CPU reducer */
   std::unique_ptr<CpuReducer> _cpu_reducer;

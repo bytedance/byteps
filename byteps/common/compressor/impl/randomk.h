@@ -38,7 +38,7 @@ namespace compressor {
  */
 class RandomkCompressor : public Compressor {
  public:
-  RandomkCompressor(size_t size, DataType dtype, int k, unsigned int seed = 0)
+  RandomkCompressor(size_t size, DataType dtype, unsigned int k, unsigned int seed = 0)
       : Compressor(size, dtype), _k(k) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
@@ -93,7 +93,7 @@ class RandomkCompressor : public Compressor {
                            const index_t* compressed, size_t compressed_size);
 
  private:
-  int _k;
+  unsigned int _k;
   std::random_device _rd;
   XorShift128PlusBitShifterRNG _rng;
 };

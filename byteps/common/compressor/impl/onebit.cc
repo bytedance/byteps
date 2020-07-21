@@ -13,10 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include <bitset>
-
-#include "../compressor_registry.h"
 #include "onebit.h"
+#include "../compressor_registry.h"
 
 namespace byteps {
 namespace common {
@@ -25,12 +23,8 @@ namespace {
 CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
                                                          size_t size,
                                                          DataType dtype) {
-  BPS_LOG(DEBUG) << "Register Onebit Compressor";
-  bool scaled = false;
-  auto iter = kwargs.find("compressor_onebit_scaling");
-  if (iter != kwargs.end()) {
-    if (iter->second == "true" || iter->second == "True") scaled = true;
-  }
+  auto scaled =
+      HyperParamFinder<bool>(kwargs, "compressor_onebit_scaling", true);
   return std::unique_ptr<Compressor>(new OnebitCompressor(size, dtype, scaled));
 });
 }
@@ -48,16 +42,16 @@ tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   if (_use_scale) {
     double sum = 0.0f;
 #pragma omp parallel for simd num_threads(4) reduction(+ : sum)
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
       sum += std::abs(src[i]);
     }
     scale = sum / len;
   }
 
 #pragma omp parallel for simd num_threads(4)
-  for (int i = 0; i < chunk_len; ++i) {
+  for (size_t i = 0; i < chunk_len; ++i) {
     index_t x = src[i * PACKING_SIZE] < 0;
-    for (int j = 1; j < PACKING_SIZE; ++j) {
+    for (size_t j = 1; j < PACKING_SIZE; ++j) {
       x <<= 1;
       x |= src[i * PACKING_SIZE + j] < 0;
     }

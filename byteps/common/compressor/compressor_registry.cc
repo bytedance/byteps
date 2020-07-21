@@ -25,6 +25,7 @@ CompressorRegistry::Register::Register(std::string name, ctor_t ctor) {
   BPS_CHECK_EQ(_ctor_map.count(name), 0)
       << "Duplicate registration of compressor under name " << name;
   _ctor_map.emplace(name + "_type", std::move(ctor));
+  BPS_LOG(INFO) << name << " compressor is registered";
 }
 
 CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {

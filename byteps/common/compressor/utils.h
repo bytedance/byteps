@@ -22,6 +22,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 #include "common.h"
 
@@ -144,9 +145,9 @@ class BitWriter {
  private:
   static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
   T* _dptr;  // allocated
+  T _accum;
   size_t _used_bits;
   size_t _blocks;
-  T _accum;
 };
 
 /*!
@@ -156,8 +157,7 @@ class BitWriter {
 template <typename T>
 class BitReader {
  public:
-  explicit BitReader(const T* data)
-      : _dptr(data), _used_bits(0), _blocks(0) {}
+  explicit BitReader(const T* data) : _dptr(data), _used_bits(0), _blocks(0) {}
   bool Get() {
     if (_used_bits == 0) {
       _accum = _dptr[_blocks++];
@@ -171,8 +171,8 @@ class BitReader {
  private:
   static constexpr size_t PACKING_SIZE = sizeof(T) * 8;
   const T* _dptr;  // allocated
-  size_t _blocks;
   size_t _used_bits;
+  size_t _blocks;
   T _accum;
 };
 
@@ -188,7 +188,7 @@ inline uint32_t RoundNextPow2(uint32_t v) {
 }
 
 template <typename T>
-void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned int x) {
+void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned long x) {
   int len = 1 + std::floor(std::log2(x));
   int lenth_of_len = std::floor(std::log2(len));
 
@@ -198,8 +198,8 @@ void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned int x) {
 }
 
 template <typename T>
-unsigned int EliasDeltaDecode(BitReader<T>& bit_reader) {
-  int num = 1;
+unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
+  unsigned long num = 1;
   int len = 1;
   int lenth_of_len = 0;
   while (!bit_reader.Get()) lenth_of_len++;
@@ -214,6 +214,35 @@ unsigned int EliasDeltaDecode(BitReader<T>& bit_reader) {
   return num;
 }
 
+template <typename T, class F = std::function<bool(T)>>
+T HyperParamFinder(const kwargs_t& kwargs, std::string name,
+                   bool optional = false, F&& check = [](T) { return true; }) {
+  static_assert(std::is_fundamental<T>::value,
+                "custom type is not allow for HyperParamFinder");
+  T value{T()};
+  auto iter = kwargs.find(name);
+  if (iter == kwargs.end()) {
+    // necessary hp
+    if (optional == false) {
+      BPS_LOG(FATAL) << "Hyper-parameter '" << name
+                     << "' is not found! Aborted.";
+    }
+    return value;
+  } else {
+    std::istringstream ss(iter->second);
+    if (std::is_same<T, bool>::value) {
+      ss >> std::boolalpha >> value;
+    } else {
+      ss >> value;
+    }
+    if (!check(value)) {
+      BPS_LOG(FATAL) << "Hyper-parameter '" << name << "' should not be "
+                     << value << "! Aborted.";
+    }
+  }
+
+  return value;
+}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

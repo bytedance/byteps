@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_COMPRESSOR_REGISTRY_H
 
 #include "compressor.h"
+#include "utils.h"
 
 namespace byteps {
 namespace common {
