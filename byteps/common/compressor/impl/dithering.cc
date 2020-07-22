@@ -29,16 +29,19 @@ CompressorRegistry::Register reg(
       std::tuple<> params;
       auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
-      auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true, [](unsigned x){
-        return x != 0;
-      });
+      auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
+                                             [](unsigned x) { return x != 0; });
 
       auto ptype_int = HyperParamFinder<int>(
-          kwargs, "seed", true, [](int x) { return x == 0 || x == 1; });
+          kwargs, "partition", true, [](int x) { return x == 0 || x == 1; });
       auto ptype = static_cast<DitheringCompressor::PartitionType>(ptype_int);
-      
+
+      auto ntype_int = HyperParamFinder<int>(
+          kwargs, "normalize", true, [](int x) { return x == 0 || x == 1; });
+      auto ntype = static_cast<DitheringCompressor::NomalizeType>(ntype_int);
+
       return std::unique_ptr<Compressor>(
-          new DitheringCompressor(size, dtype, k, seed, ptype));
+          new DitheringCompressor(size, dtype, k, seed, ptype, ntype));
     });
 }
 
@@ -47,20 +50,28 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                            size_t len) {
   static_assert(sizeof(index_t) == sizeof(scalar_t),
                 "index_t should be the same size as scalar_t");
+
   // normalize
-  double l2 = 0.0;
-#pragma omp parallel for simd num_threads(4) reduction(+ : l2)
-  for (size_t i = 0; i < len; ++i) {
-    l2 += src[i] * src[i];
+  double scale = 0.0;
+  if (_ntype == NomalizeType::MAX) {
+#pragma omp parallel for simd reduction(max : scale)
+    for (size_t i = 0; i < len; i++) {
+      scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
+    }
+  } else if (_ntype == NomalizeType::L2) {
+#pragma omp parallel for simd num_threads(4) reduction(+ : scale)
+    for (size_t i = 0; i < len; ++i) {
+      scale += src[i] * src[i];
+    }
+    scale = std::sqrt(scale);
   }
-  l2 = std::sqrt(l2);
 
   BitWriter<index_t> bit_writer(dst);
   size_t last_non_zero_pos = -1;
   if (_ptype == PartitionType::LINEAR) {
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
-      float normalized = (abs_x / l2) * _s;
+      float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       unsigned quantized = floor + _rng.Bernoulli(normalized - floor);
       if (quantized) {
@@ -72,10 +83,10 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
       }
     }
   } else if (_ptype == PartitionType::NATURAL) {
-    const unsigned scale = 1 << (_s - 1);
+    const unsigned level = 1 << (_s - 1);
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
-      float normalized = (abs_x / l2) * scale;
+      float normalized = (abs_x / scale) * level;
       float floor = RoundNextPow2(std::ceil(normalized)) << 1;
       unsigned quantized =
           floor * (1 + _rng.Bernoulli((normalized - floor) / floor));
@@ -96,7 +107,7 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
   // l2
   float* p_scale = reinterpret_cast<float*>(&dst[bit_writer.blocks() + 1]);
-  *p_scale = l2;
+  *p_scale = scale;
 
   return {dst, bit_writer.blocks() * sizeof(index_t) + sizeof(index_t) +
                    sizeof(float)};

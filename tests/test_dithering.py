@@ -26,11 +26,15 @@ def round_next_pow2(v):
 
 
 # partition: 'linear' or 'natural'
-def dithering(x, k, state, partition='linear'):
+def dithering(x, k, state, partition='linear', norm="max"):
     y = x.flatten()
-    # normalize
-    l2 = np.linalg.norm(y.astype(np.float64), ord=2)
-    y /= l2
+    if norm == "max":
+        scale = np.max(np.abs(y))
+    elif norm == "l2":
+        scale = np.linalg.norm(y.astype(np.float64), ord=2)
+    else:
+        raise ValueError("Unsupported normalization")
+    y /= scale
     sign = np.sign(y)
     y = np.abs(y)
 
@@ -40,18 +44,18 @@ def dithering(x, k, state, partition='linear'):
         low = np.floor(y)
         p = y - low  # whether to ceil
         y = low + bernoulli(p, state)
-        # print(y)
         y /= k
-    else:
-        # 2 < 3 < 4
+    elif partition == "natural":
         y *= 2**(k-1)
         low = round_next_pow2(int(np.ceil(y))) << 1
         p = (y - low) / low
         y = (1 + bernoulli(p, state)) * low
         y /= 2**(k-1)
+    else:
+        raise ValueError("Unsupported partition")
 
     y *= sign
-    y *= l2
+    y *= scale
     return y.reshape(x.shape)
 
 
@@ -60,8 +64,8 @@ class DitheringTestCase(unittest.TestCase):
         print("init")
         bps.init()
 
-    @parameterized.expand([(2, "linear",),])
-    def test_dithering(self, k, ptype):
+    @parameterized.expand([(2, "linear", "max"),])
+    def test_dithering(self, k, ptype, ntype):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
         net.initialize(mx.init.Xavier(), ctx=ctx)
@@ -79,6 +83,7 @@ class DitheringTestCase(unittest.TestCase):
             # "momentum": "nesterov",
             "k": k,
             "partition": ptype,
+            "normalize": ntype,
             "seed": seed
         }
 
@@ -135,11 +140,11 @@ class DitheringTestCase(unittest.TestCase):
                     # moms[i] += g
                     # g += 0.9 * moms[i]
                     # g += errors[i]
-                    c = dithering(g, k, rngs[i], ptype)
+                    c = dithering(g, k, rngs[i], ptype, ntype)
                     # errors[i] = g - c
 
                     # c += errors_s[i]
-                    cs = dithering(c, k, rngs_s[i], ptype)
+                    cs = dithering(c, k, rngs_s[i], ptype, ntype)
                     # errors_s[i] = c - cs
                     c = cs
 
