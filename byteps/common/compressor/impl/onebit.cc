@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include <cstring>
+
 #include "onebit.h"
 #include "../compressor_registry.h"
 
@@ -41,14 +43,13 @@ tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   float scale = 1.0f;
   if (_use_scale) {
     double sum = 0.0f;
-#pragma omp parallel for simd num_threads(4) reduction(+ : sum)
     for (size_t i = 0; i < len; ++i) {
       sum += std::abs(src[i]);
     }
     scale = sum / len;
   }
 
-#pragma omp parallel for simd num_threads(4)
+#pragma omp parallel for simd
   for (size_t i = 0; i < chunk_len; ++i) {
     index_t x = src[i * PACKING_SIZE] < 0;
     for (size_t j = 1; j < PACKING_SIZE; ++j) {
@@ -86,7 +87,7 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
     std::memcpy(ptr, src, compressed_size);
   }
 
-#pragma omp parallel for simd num_threads(4)
+#pragma omp parallel for simd
   for (int i = chunk_len - 1; i >= 0; --i) {
     index_t x = ptr[i];
     for (int j = PACKING_SIZE - 1; j >= 0; --j) {
@@ -119,7 +120,7 @@ void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
   auto* pf = reinterpret_cast<const float*>(compressed + chunk_len);
   float scale = *pf;
 
-#pragma omp parallel for simd num_threads(4)
+#pragma omp parallel for simd
   for (int i = chunk_len - 1; i >= 0; --i) {
     index_t x = compressed[i];
     for (int j = PACKING_SIZE - 1; j >= 0; --j) {

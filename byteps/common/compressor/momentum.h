@@ -16,6 +16,7 @@
 #ifndef BYTEPS_COMPRESSOR_MOMENTUM_H
 #define BYTEPS_COMPRESSOR_MOMENTUM_H
 
+#include "../cpu_reducer.h"
 #include "compressor.h"
 
 namespace byteps {
@@ -47,6 +48,7 @@ class Momentum : public Compressor {
       : Compressor(size, dtype),
         _mom(new byte_t[size]()),
         _mu(mu),
+        _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)){};
   virtual ~Momentum() = default;
 
@@ -79,6 +81,8 @@ class Momentum : public Compressor {
 
   /*! \brief momentum factor */
   float _mu;
+
+  std::unique_ptr<CpuReducer> _cpu_reducer;
 
  private:
   /*! \brief compressor pointer */

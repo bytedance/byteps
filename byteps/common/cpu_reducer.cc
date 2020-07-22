@@ -38,12 +38,18 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
     _comm = nullptr;
   }
 #endif
-
   if (getenv("BYTEPS_OMP_THREAD_PER_GPU")) {
     _num_threads = atoi(getenv("BYTEPS_OMP_THREAD_PER_GPU"));
   } else {
     _num_threads = 4;
   }
+
+  if (getenv("BYTEPS_OMP_THREAD_THRESHOLD")) {
+    _single_thread_threshold = atoi(getenv("BYTEPS_OMP_THREAD_THRESHOLD"));
+  } else {
+    _single_thread_threshold = (1 << 16);
+  }
+
   return;
 }
 
@@ -86,7 +92,7 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype) {
 
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src, size_t len) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + src[i];
   }
@@ -101,7 +107,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src, size_t len) {
 
 #if __AVX__ && __F16C__
   if (is_avx_and_f16c()) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & inout to m256
       __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in + i)));
@@ -126,7 +132,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src, size_t len) {
     Float2HalfBits(&inout_float, inout + i);
   }
 #else
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < (size_t)len; ++i) {
     float in_float;
     float inout_float;
@@ -177,7 +183,7 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
 
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = src1[i] + src2[i];
   }
@@ -194,7 +200,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 
 #if __AVX__ && __F16C__
   if (is_avx_and_f16c()) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in1 & in2 to m256
       __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
@@ -219,7 +225,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
     Float2HalfBits(&out_float, out + i);
   }
 #else
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < (size_t)len; ++i) {
     float in1_float;
     float in2_float;
@@ -264,7 +270,7 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
 
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src, size_t len, float alpha) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + alpha * src[i];
   }
@@ -284,7 +290,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src, size_t len,
 
   if (is_avx_and_f16c()) {
     __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in & inout to m256
       __m256 in_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in + i)));
@@ -310,7 +316,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src, size_t len,
     Float2HalfBits(&inout_float, inout + i);
   }
 #else
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < (size_t)len; ++i) {
     float in_float;
     float inout_float;
@@ -362,7 +368,7 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
 template <typename T>
 int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
                      float alpha) {
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = src1[i] + alpha * src2[i];
   }
@@ -383,7 +389,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 
   if (is_avx_and_f16c()) {
     __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
     for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
       // convert in1 & in2 to m256
       __m256 in1_m256 = _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(in1 + i)));
@@ -409,7 +415,7 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
     Float2HalfBits(&out_float, out + i);
   }
 #else
-#pragma omp parallel for simd num_threads(_num_threads)
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
   for (size_t i = 0; i < (size_t)len; ++i) {
     float in1_float;
     float in2_float;
@@ -424,8 +430,16 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
 }
 
 int CpuReducer::copy(void* dst, const void* src, size_t len) {
-  std::memcpy(dst, src, len);
+  auto in = (float*)src;
+  auto out = (float*)dst;
+#pragma omp parallel for simd num_threads(GetRecommendNumThreads(len))
+  for (size_t i = 0; i < len / 4; ++i) {
+    out[i] = in[i];
+  }
+  if (len % 4) {
+    std::memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+  return 0;
 }
-
 }  // namespace common
 }  // namespace byteps

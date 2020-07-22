@@ -63,6 +63,14 @@ class CpuReducer {
   DataType GetDataType(int dtype) { return static_cast<DataType>(dtype); }
 
  private:
+  size_t GetRecommendNumThreads(size_t len) const {
+    if (len < _single_thread_threshold) {
+      return 1;
+    } else {
+      return _num_threads;
+    }
+  }
+
 #if __AVX__ && __F16C__
   // Query CPUID to determine AVX and F16C runtime support.
   bool is_avx_and_f16c() {
@@ -200,6 +208,7 @@ class CpuReducer {
 
   std::shared_ptr<BytePSComm> _comm;
   int _num_threads;
+  size_t _single_thread_threshold; 
 };
 
 }  // namespace common

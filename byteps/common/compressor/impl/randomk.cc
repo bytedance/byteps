@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include <cstring>
+
 #include "randomk.h"
 #include "../compressor_registry.h"
 

@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include <cmath>
+#include <cstring>
 
 #include "../compressor_registry.h"
 #include "dithering.h"
@@ -54,12 +55,10 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   // normalize
   double scale = 0.0;
   if (_ntype == NomalizeType::MAX) {
-#pragma omp parallel for simd reduction(max : scale)
     for (size_t i = 0; i < len; i++) {
       scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
     }
   } else if (_ntype == NomalizeType::L2) {
-#pragma omp parallel for simd num_threads(4) reduction(+ : scale)
     for (size_t i = 0; i < len; ++i) {
       scale += src[i] * src[i];
     }

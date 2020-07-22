@@ -30,7 +30,7 @@ CompressorRegistry::Register reg(
       auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       // find \mu
-      auto mu = HyperParamFinder<float>(kwargs, "compressor_mu");
+      auto mu = HyperParamFinder<float>(kwargs, "momentum_mu");
       return std::unique_ptr<NesterovMomentumCompressor>(
           new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
     });

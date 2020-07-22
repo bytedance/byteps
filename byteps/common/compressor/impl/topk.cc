@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include <cstring>
 #include <queue>
 
 #include "../compressor_registry.h"

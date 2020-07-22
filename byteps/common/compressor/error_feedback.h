@@ -16,6 +16,7 @@
 #ifndef BYTEPS_COMPRESSOR_ERROR_FEEDBACK_H
 #define BYTEPS_COMPRESSOR_ERROR_FEEDBACK_H
 
+#include "../cpu_reducer.h"
 #include "compressor.h"
 
 namespace byteps {
@@ -51,6 +52,7 @@ class ErrorFeedback : public Compressor {
   ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
       : Compressor(size, dtype),
         _error(new byte_t[size]()),
+        _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)) {}
   virtual ~ErrorFeedback() = default;
 
@@ -84,6 +86,8 @@ class ErrorFeedback : public Compressor {
  protected:
   /*! \brief buffer of error */
   std::unique_ptr<byte_t[]> _error;
+
+  std::unique_ptr<CpuReducer> _cpu_reducer;
 
  private:
   /*! \brief compressor pointer */
