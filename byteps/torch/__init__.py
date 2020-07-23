@@ -284,9 +284,9 @@ def broadcast_parameters(params, root_rank):
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
         if name:
-            handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+            handle = byteps_push_pull(p.float(), average=False, name="Parameter."+name)
         else:
-            handle = byteps_push_pull(p, average=False)
+            handle = byteps_push_pull(p.float(), average=False)
         synchronize(handle)
 
 
