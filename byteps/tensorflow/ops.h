@@ -60,6 +60,19 @@ class TFTensor : public common::Tensor {
   ::tensorflow::Tensor tensor_;
 };
 
+class XlaTFTensor : public TFTensor {
+  XlaTFTensor(void *data, int64_t num_elem, ::tensorflow::DataType tf_dtype, int64_t size)
+  virtual const common::DataType dtype() const override;
+  virtual const common::TensorShape shape() const override;
+  virtual const void* data() const override;
+  virtual int64_t size() const override;
+
+  protected:
+    void *_data;
+    int64_t _num_elem;
+    ::tensorflow::DataType _tf_dtype;
+};
+
 extern "C" void byteps_tensorflow_declare_tensor(char* name);
 
 }  // namespace tensorflow

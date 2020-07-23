@@ -45,6 +45,8 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 
+#include <assert>
+
 using namespace byteps;
 
 namespace byteps {
@@ -155,6 +157,31 @@ const void* TFTensor::data() const {
 
 int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
+XlaTFTensor::XlaTFTensor(void *data, int64_t num_elem,
+                         ::tensorflow::DataType tf_dtype, int64_t size) {
+    _data = data;
+    _num_elem = num_elem;
+    _tf_dtype = tf_dtype;
+    _size = size;
+}
+
+const common::DataType XlaTFTensor::dtype() const {
+  return ConvertDType(_tf_dtype);
+}
+
+const common::TensorShape XlaTFTensor::shape() const {
+  common::TensorShape shape;
+  shape.AddDim(_num_elem);
+  return shape;
+}
+
+const void* XlaTFTensor::data() const {
+  return (const void*)_data;
+}
+
+int64_t XlaTFTensor::size() const { return _size; }
+
+
 // On GPU this event will signal that data is ready, and tensors are
 // allocated.
 common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
@@ -189,6 +216,7 @@ void StartTask(::tensorflow::OpKernelContext* context,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
+  assert(0 == 1);
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -372,8 +400,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // void* cpubuff = (device == CPU_DEVICE_ID)
   //                     ? const_cast<void*>(byteps_input->data())
   //                     : nullptr;
-  // void* cpubuff = nullptr;
-  void* cpubuff = const_cast<void*>(byteps_input->data());
+  void* cpubuff = nullptr;
+  // void* cpubuff = const_cast<void*>(byteps_input->data());
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
@@ -458,7 +486,8 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     //////// start
     ::tensorflow::Tensor inputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
-    auto bps_input = std::make_shared<TFTensor>(inputTensor);
+    // auto bps_input = std::make_shared<TFTensor>(inputTensor);
+    auto bps_input = std::make_shared<XlaTFTensor>(buffers[0], num_elem, dt_type, buffer_size);
     // void *inputTensor_flat = const_cast<void *>(bps_input->data());
     // cudaError_t e = cudaHostRegister(inputTensor_flat, buffer_size, cudaHostRegisterMapped);
     // void *gpu_ptr = nullptr;
@@ -471,7 +500,8 @@ void StartTaskWrapper(CUstream stream, void** buffers,
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
 
     ::tensorflow::Tensor outputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
-    auto bps_output = std::make_shared<TFTensor>(outputTensor);
+    // auto bps_output = std::make_shared<TFTensor>(outputTensor);
+    auto bps_output = std::make_shared<XlaTFTensor>(buffers[1], num_elem, dt_type, buffer_size);
 
     //////// start
     // void *outputTensor_flat = const_cast<void *>(bps_output->data());

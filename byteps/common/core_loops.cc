@@ -186,7 +186,7 @@ inline void PostNcclCalls(
   auto offset = task->offset;
   auto unit_len = tensor->size() / tensor->shape().num_elements();
   auto p = (char *)(tensor->data()) + offset;
-  if (true || task->device == CPU_DEVICE_ID) {
+  if (task->device == CPU_DEVICE_ID) {
     p = (char *)(task->gpu_ptr) + offset;
   }
 
@@ -219,11 +219,11 @@ inline void PostNcclCalls(
   if (this_op == REDUCE) {
     // We reduce to task->output except that it is a CPU tensor
     auto out_p = (char *)(task->output->data()) + offset;
-    if ((true || task->device == CPU_DEVICE_ID) && task->tensor == task->output) {
+    if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
       out_p = p;
     }
     // remove this
-      out_p = p;
+      // out_p = p;
 
     if (num_elem_per_gpu) {
       NCCLCHECK(ncclReduceScatter(
