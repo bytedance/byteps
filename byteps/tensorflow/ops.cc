@@ -372,7 +372,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // void* cpubuff = (device == CPU_DEVICE_ID)
   //                     ? const_cast<void*>(byteps_input->data())
   //                     : nullptr;
-  void* cpubuff = nullptr;
+  // void* cpubuff = nullptr;
+  void* cpubuff = const_cast<void*>(byteps_input->data());
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
@@ -383,6 +384,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   bool is_done = false;
   std::cout << " x2682  pos 16 before EnqueueTensor" << std::endl;
   // TODO: assign priority based on topological sort
+
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
@@ -395,6 +397,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // https://en.cppreference.com/w/cpp/thread/condition_variable
   while (!is_done)
     std::this_thread::yield();
+  std::cout << " x2682  pos 17 after EnqueueTensor" << std::endl;
 }
 // void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
@@ -437,6 +440,12 @@ void StartTaskWrapper(CUstream stream, void** buffers,
       new ::tensorflow::GPUMemAllocator(
         ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
         platform_gpu_id, false /*use_unified_memory*/, {}, {});
+#if 0
+    //////// start
+    ::tensorflow::GPUMemAllocator *sub_allocator =
+      new ::tensorflow::GPUMemAllocator(
+        ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
 
     ::tensorflow::GPUBFCAllocator *input_allocator =
       new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
@@ -444,24 +453,40 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     ::tensorflow::Tensor inputTensor(input_allocator, dt_type, ::tensorflow::TensorShape({num_elem}));
 
     void *inputTensor_flat = const_cast<void *>((const void *)(inputTensor.tensor_data().data()));
+    //////// end
+#endif
 
-    cudaMemcpyAsync(inputTensor_flat, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-    std::cout << " x2682  pos 9 " << std::endl;
+    //////// start
+    ::tensorflow::Tensor inputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     auto bps_input = std::make_shared<TFTensor>(inputTensor);
+    // void *inputTensor_flat = const_cast<void *>(bps_input->data());
+    // cudaError_t e = cudaHostRegister(inputTensor_flat, buffer_size, cudaHostRegisterMapped);
+    // void *gpu_ptr = nullptr;
+    // CUDA_CALL(cudaHostGetDevicePointer(&gpu_ptr, inputTensor_flat, 0));
+    //////// end
+
+    // cudaMemcpyAsync(gpu_ptr, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    std::cout << " x2682  pos 9 " << std::endl;
     auto ready_event =
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
 
-    ::tensorflow::GPUBFCAllocator *output_allocator =
-      new ::tensorflow::GPUBFCAllocator(sub_allocator, buffer_size, "GPU_0_bfc");
-    ::tensorflow::Tensor outputTensor(output_allocator, dt_type, ::tensorflow::TensorShape({num_elem}));
+    ::tensorflow::Tensor outputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     auto bps_output = std::make_shared<TFTensor>(outputTensor);
+
+    //////// start
+    // void *outputTensor_flat = const_cast<void *>(bps_output->data());
+    // cudaError_t ee = cudaHostRegister(outputTensor_flat, buffer_size, cudaHostRegisterMapped);
+    // void *out_gpu_ptr = nullptr;
+    // CUDA_CALL(cudaHostGetDevicePointer(&out_gpu_ptr, inputTensor_flat, 0));
+    //////// end
 
     std::cout << " x2682  pos 10 " << std::endl;
     auto& bps_context = common::GetContextFromName(tmp_name);
 
     StartTaskXla(context, tmp_name, bps_input, bps_output, ready_event);
 
-    cudaMemcpyAsync(buffers[1], const_cast<void *>(bps_output->data()), buffer_size, cudaMemcpyDeviceToDevice, stream);
+    // cudaMemcpyAsync(buffers[1], const_cast<void *>(bps_output->data()), buffer_size, cudaMemcpyDeviceToDevice, stream);
+    // cudaMemcpyAsync(buffers[1], out_gpu_ptr, buffer_size, cudaMemcpyDeviceToDevice, stream);
     std::cout << " x2682  pos end " << std::endl;
 }
 
