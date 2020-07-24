@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <queue>
+#include <chrono>
 #include <thread>
 #include <unordered_map>
 #include <sstream>
@@ -45,7 +46,7 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 
-#include <assert>
+#include <cassert>
 
 using namespace byteps;
 
@@ -157,7 +158,7 @@ const void* TFTensor::data() const {
 
 int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
-XlaTFTensor::XlaTFTensor(void *data, int64_t num_elem,
+XlaTensor::XlaTensor(void *data, int64_t num_elem,
                          ::tensorflow::DataType tf_dtype, int64_t size) {
     _data = data;
     _num_elem = num_elem;
@@ -165,21 +166,21 @@ XlaTFTensor::XlaTFTensor(void *data, int64_t num_elem,
     _size = size;
 }
 
-const common::DataType XlaTFTensor::dtype() const {
+const common::DataType XlaTensor::dtype() const {
   return ConvertDType(_tf_dtype);
 }
 
-const common::TensorShape XlaTFTensor::shape() const {
+const common::TensorShape XlaTensor::shape() const {
   common::TensorShape shape;
   shape.AddDim(_num_elem);
   return shape;
 }
 
-const void* XlaTFTensor::data() const {
+const void* XlaTensor::data() const {
   return (const void*)_data;
 }
 
-int64_t XlaTFTensor::size() const { return _size; }
+int64_t XlaTensor::size() const { return _size; }
 
 
 // On GPU this event will signal that data is ready, and tensors are
@@ -381,8 +382,8 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
 REGISTER_XLA_OP(Name("BytepsPushPull"), BytepsPushPullXlaOp);
 
 void StartTaskXla(::tensorflow::OpKernelContext* context,
-               std::string node_name, std::shared_ptr<TFTensor> byteps_input,
-               std::shared_ptr<TFTensor> byteps_output,
+               std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
+               std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
   std::cout << " x2682  pos 11 inside StartTaskXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
@@ -391,6 +392,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // auto device = 0;
   int device;
   CUDA_CALL(cudaGetDevice(&device));
+  int myrank =  common::byteps_rank();
   std::cout << " x2682 rank " << common::byteps_rank() << " device: " << device << std::endl;
   std::cout << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
@@ -410,23 +412,28 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                      queue_list_pull->end());
 
   bool is_done = false;
-  std::cout << " x2682  pos 16 before EnqueueTensor" << std::endl;
+  std::mutex mtx;
+  std::condition_variable cv;
+  std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
-                    [&is_done](const common::Status& status) {
+                    [&is_done, &cv, &node_name](const common::Status& status) {
                       // context->SetStatus(ConvertStatus(status));
                       is_done = true;
+                      std::cout << "node_dame: " << node_name << std::endl;
+                      cv.notify_one();
                     },
                     queue_list);
-  // OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
-  // https://en.cppreference.com/w/cpp/thread/condition_variable
-  while (!is_done)
-    std::this_thread::yield();
-  std::cout << " x2682  pos 17 after EnqueueTensor" << std::endl;
+  {
+      std::unique_lock<std::mutex> lk(mtx);
+      cv.wait(lk, [&is_done]{return is_done;});
+  }
+  std::cout << " x2682  pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
 }
+
 // void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
@@ -487,7 +494,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     //////// start
     ::tensorflow::Tensor inputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     // auto bps_input = std::make_shared<TFTensor>(inputTensor);
-    auto bps_input = std::make_shared<XlaTFTensor>(buffers[0], num_elem, dt_type, buffer_size);
+    auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
     // void *inputTensor_flat = const_cast<void *>(bps_input->data());
     // cudaError_t e = cudaHostRegister(inputTensor_flat, buffer_size, cudaHostRegisterMapped);
     // void *gpu_ptr = nullptr;
@@ -501,7 +508,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     ::tensorflow::Tensor outputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     // auto bps_output = std::make_shared<TFTensor>(outputTensor);
-    auto bps_output = std::make_shared<XlaTFTensor>(buffers[1], num_elem, dt_type, buffer_size);
+    auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
 
     //////// start
     // void *outputTensor_flat = const_cast<void *>(bps_output->data());

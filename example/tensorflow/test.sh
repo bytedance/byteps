@@ -18,4 +18,6 @@ export NCCL_DEBUG=INFO
 # export CUDA_VISIBLE_DEVICES=1
 # export NVIDIA_VISIBLE_DEVICES=1
 # export BYTEPS_LOCAL_RANK=1
-BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+
+# BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+BYTEPSRUN python3 tensorflow2_mnist.py 2>&1 | tee test.txt
