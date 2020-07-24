@@ -17,6 +17,10 @@
 #define BYTEPS_COMPRESSOR_COMMON_H
 
 #include <unordered_map>
+#if __F16C__
+#include "../half.h"
+using half_t = mshadow::half::half_t;
+#endif
 
 namespace byteps {
 namespace common {
@@ -39,6 +43,10 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
 
 #define COMPRESS_IMPL_SWITCH(dtype, func, dst, src, size)                     \
   switch (dtype) {                                                            \
+    case BYTEPS_FLOAT16:                                                      \
+      return func(reinterpret_cast<uint16_t*>(dst),                           \
+                  reinterpret_cast<const half_t*>(src),                       \
+                  size / sizeof(half_t));                                     \
     case BYTEPS_FLOAT32:                                                      \
       return func(reinterpret_cast<uint32_t*>(dst),                           \
                   reinterpret_cast<const float*>(src), size / sizeof(float)); \
@@ -52,6 +60,9 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
 
 #define DECOMPRESS_IMPL_SWITCH(dtype, func, dst, src, compressed_size)      \
   switch (dtype) {                                                          \
+    case BYTEPS_FLOAT16:                                                    \
+      return func(reinterpret_cast<half_t*>(dst),                           \
+                  reinterpret_cast<const uint16_t*>(src), compressed_size); \
     case BYTEPS_FLOAT32:                                                    \
       return func(reinterpret_cast<float*>(dst),                            \
                   reinterpret_cast<const uint32_t*>(src), compressed_size); \
@@ -62,19 +73,23 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                    \
   }
 
-#define FAST_UPDATE_ERROR_IMPL_SWITCH(dtype, func, dst, src1, src2, \
-                                                compressed_size)              \
-  switch (dtype) {                                                            \
-    case BYTEPS_FLOAT32:                                                      \
-      return func(reinterpret_cast<float*>(dst),                              \
-                  reinterpret_cast<float*>(src1),                             \
-                  reinterpret_cast<const uint32_t*>(src2), compressed_size);  \
-    case BYTEPS_FLOAT64:                                                      \
-      return func(reinterpret_cast<double*>(dst),                             \
-                  reinterpret_cast<double*>(src1),                            \
-                  reinterpret_cast<const uint64_t*>(src2), compressed_size);  \
-    default:                                                                  \
-      BPS_CHECK(0) << "Unsupported data type:" << dtype;                      \
+#define FAST_UPDATE_ERROR_IMPL_SWITCH(dtype, func, dst, src1, src2,          \
+                                      compressed_size)                       \
+  switch (dtype) {                                                           \
+    case BYTEPS_FLOAT16:                                                     \
+      return func(reinterpret_cast<half_t*>(dst),                            \
+                  reinterpret_cast<half_t*>(src1),                           \
+                  reinterpret_cast<const uint16_t*>(src2), compressed_size); \
+    case BYTEPS_FLOAT32:                                                     \
+      return func(reinterpret_cast<float*>(dst),                             \
+                  reinterpret_cast<float*>(src1),                            \
+                  reinterpret_cast<const uint32_t*>(src2), compressed_size); \
+    case BYTEPS_FLOAT64:                                                     \
+      return func(reinterpret_cast<double*>(dst),                            \
+                  reinterpret_cast<double*>(src1),                           \
+                  reinterpret_cast<const uint64_t*>(src2), compressed_size); \
+    default:                                                                 \
+      BPS_CHECK(0) << "Unsupported data type:" << dtype;                     \
   }
 
 }  // namespace compressor

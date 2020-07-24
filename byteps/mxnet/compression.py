@@ -47,7 +47,7 @@ class FP16Compressor(Compressor):
     def compress(self, tensor, *args, **kwargs):
         """Downcasts the tensor to 16-bit."""
         tensor_compressed = tensor
-        if 'float' in str(self, tensor.dtype):
+        if 'float' in str(tensor.dtype):
             # Only allow compression from other floating point types
             tensor_compressed = tensor.astype('float16', copy=False)
         return tensor_compressed, tensor.dtype
@@ -83,7 +83,7 @@ class WeightDecayMomentum(Compressor):
         if "x" not in kwargs:
             return self.compressor.decompress(tensor, ctx)
 
-        x = kwargs["x"]
+        x = kwargs["x"].astype(tensor.dtype, copy=False)
 
         if self.mom is None:
             self.mom = nd.zeros_like(tensor)

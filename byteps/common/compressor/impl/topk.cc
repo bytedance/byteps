@@ -45,7 +45,7 @@ tensor_t TopkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
   auto beg = reinterpret_cast<pair_t*>(dst);
   size_t size = 0;
-  for (index_t i = 0; i < len; ++i) {
+  for (size_t i = 0; i < len; ++i) {
     if (i < this->_k) {
       beg[size] = std::make_pair(i, src[i]);
       size++;

@@ -162,7 +162,8 @@ compression_params = {
     "ef": args.ef,
     "momentum": args.compress_momentum,
     "scaling": args.scaling,
-    "k": args.k
+    "k": args.k,
+    "fp16": args.fp16_pushpull
 }
 
 trainer = bps.DistributedTrainer(

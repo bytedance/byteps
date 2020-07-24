@@ -267,6 +267,7 @@ def get_common_options(build_ext):
     else:
         COMPILE_FLAGS = cpp_flags
         LINK_FLAGS = link_flags
+    
     LIBRARY_DIRS = []
     LIBRARIES = []
 
