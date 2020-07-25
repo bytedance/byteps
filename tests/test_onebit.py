@@ -51,7 +51,7 @@ class OnebitTestCase(unittest.TestCase):
         moms = {}
         wd_moms = {}
 
-        for i, param in tqdm(enumerate(trainer._params)):
+        for i, param in enumerate(trainer._params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
                 errors[i] = np.zeros_like(params[i])
@@ -59,7 +59,7 @@ class OnebitTestCase(unittest.TestCase):
                 moms[i] = np.zeros_like(params[i])
                 wd_moms[i] = np.zeros_like(params[i])
 
-        for it, batch in enumerate(train_data):
+        for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
             label = batch[1].as_in_context(ctx)
 

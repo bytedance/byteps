@@ -107,11 +107,11 @@ def byteps_declare_tensor(name, **kwargs):
         # remove first prefix "byteps"
         k = '_'.join(splits[1:])
         if isinstance(v, str):
-            args[k] = v
+            args[k] = v.lower()
         elif isinstance(v, (int, float,)):
             args[k] = str(v)
         elif isinstance(v, bool):
-            args[k] = str(int(v))
+            args[k] = str(int(v)).lower()
         else:
             raise ValueError("Invalid %s of type %s of %s" %
                              (v, type(v), name))

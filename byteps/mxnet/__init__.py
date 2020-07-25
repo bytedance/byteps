@@ -218,9 +218,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         self._intra_compressors = {}
         for i, param in enumerate(self._params):
             byteps_declare_tensor("parameter_" + str(i))
+            self._intra_compressors[param.name] = type(self._intra_compressor)(
+                **self._intra_compressor.__dict__)
             if param.grad_req != 'null':
-                self._intra_compressors[param.name] = type(self._intra_compressor)(
-                    **self._intra_compressor.__dict__)
                 byteps_params = dict(
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
