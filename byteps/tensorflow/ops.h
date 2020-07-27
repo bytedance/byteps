@@ -82,7 +82,7 @@ struct Xla_done_cb_args{
   bool is_done;
 };
 
-static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_flag;
+static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
 
 }  // namespace tensorflow
 }  // namespace byteps

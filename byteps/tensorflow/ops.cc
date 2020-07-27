@@ -426,10 +426,10 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                       auto& args = _name_to_done_args[node_name];
                       {
                         std::unique_lock<std::mutex> lk(args.mtx);
-                        is_done = true;
+                        args.is_done = true;
                       }
                       std::cout << "node_dame: " << node_name << std::endl;
-                      cv.notify_one();
+                      args.cv.notify_one();
                     },
                     queue_list);
   // {
