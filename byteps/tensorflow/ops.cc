@@ -589,6 +589,15 @@ class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
      std::string input_tensor_name;
 };
 
+REGISTER_OP("BytepsSyncTensor")
+    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("input_name: string = 'default_tensor_name'")
+    .Input("tensor: T")
+    .Output("sum: T")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return ::tensorflow::Status::OK();
+    })
 REGISTER_XLA_OP(Name("BytepsSyncTensor"), BytepsSyncTensorXlaOp);
 XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
