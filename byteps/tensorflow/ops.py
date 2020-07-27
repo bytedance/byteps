@@ -132,7 +132,7 @@ def _push_pull(tensor, scope='', name=None):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
-def _sync_grads(tensor, scope='', name=None):
+def _sync_tensor(tensor, scope='', name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
