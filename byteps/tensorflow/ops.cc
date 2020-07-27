@@ -573,8 +573,12 @@ class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
       std::string tmp_name;
       if (input_tensor_name == "default_tensor_name") {
         tmp_name = node_name;
+        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       } else {
         tmp_name = input_tensor_name;
+        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       }
 
       std::stringstream ss;
