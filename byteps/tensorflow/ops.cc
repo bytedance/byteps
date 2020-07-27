@@ -543,6 +543,8 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
   ss >> tmp_name;
 
   auto it = _name_to_done_args.find(tmp_name);
+  std::cout << " x2682 " << __FILE__, << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+  std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
   // OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
   assert(it != _name_to_done_args.end());
   auto& args = it->second;
