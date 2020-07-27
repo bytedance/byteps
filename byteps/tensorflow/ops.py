@@ -26,6 +26,7 @@ import ctypes
 from enum import Enum
 import random
 import string
+import sys
 
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -135,7 +136,9 @@ def _push_pull(tensor, scope='', name=None):
 def _sync_tensor(tensor, scope='', name=None):
     if name is None and not _executing_eagerly():
         # name = _normalize_name(tensor.name)
-        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+        name = tensor.name.split(":")
+        name = ":".join(name[:-1])
+        name = _normalize_name(name)
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -150,11 +153,13 @@ def _sync_tensor(tensor, scope='', name=None):
     if not full_name:
         assert False, " empty name not supported fo rnow"
 
-    print("check here1 tensor.name", tensor.name, file=sys.stderr)
-    print("check here2 nomalized ", full_name, file=sys.stderr)
+    # print("check here1 tensor.name", tensor.name, file=sys.stderr)
+    # print("check here2 nomalized ", full_name, file=sys.stderr)
+    print("check here1 tensor.name", tensor.name)
+    print("check here2 nomalized ", full_name)
     full_name_ascii = full_name.encode("ascii")
     # return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
-    return C_LIB.byteps_sync_tensor(tensor, name=name)
+    return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):

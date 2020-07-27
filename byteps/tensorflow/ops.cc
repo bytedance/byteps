@@ -416,19 +416,22 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
-  _name_to_done_args[node_name].is_done = false;
-  bool& is_done = _name_to_done_args[node_name].is_done;
+  std::string name_key(node_name);
+  std::replace(name_key.begin(), name_key.end(), '/', '_');
+  std::cout << " x2682  pos 16 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
+  _name_to_done_args[name_key].is_done = false;
+  bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
-                    [&node_name](const common::Status& status) {
+                    [&name_key](const common::Status& status) {
                       // context->SetStatus(ConvertStatus(status));
-                      auto& args = _name_to_done_args[node_name];
+                      auto& args = _name_to_done_args[name_key];
                       {
                         std::unique_lock<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
-                      std::cout << "node_dame: " << node_name << std::endl;
+                      std::cout << "name_key: " << name_key << std::endl;
                       args.cv.notify_one();
                     },
                     queue_list);
