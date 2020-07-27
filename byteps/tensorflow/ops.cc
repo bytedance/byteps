@@ -597,7 +597,7 @@ REGISTER_OP("BytepsSyncTensor")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       return ::tensorflow::Status::OK();
-    })
+    });
 REGISTER_XLA_OP(Name("BytepsSyncTensor"), BytepsSyncTensorXlaOp);
 XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
