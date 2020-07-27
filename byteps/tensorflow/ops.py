@@ -134,7 +134,7 @@ def _push_pull(tensor, scope='', name=None):
 
 def _sync_tensor(tensor, scope='', name=None):
     if name is None and not _executing_eagerly():
-        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+        name = _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
