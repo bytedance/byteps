@@ -416,8 +416,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
-  _name_to_done_flag[node_name].is_done = false;
-  bool& is_done = _name_to_done_flag[node_name].is_done;
+  _name_to_done_args[node_name].is_done = false;
+  bool& is_done = _name_to_done_args[node_name].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
