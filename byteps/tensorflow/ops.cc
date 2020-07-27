@@ -543,7 +543,8 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
   ss >> tmp_name;
 
   auto args = _name_to_done_args.find(tmp_name);
-  OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
+  // OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
+  assert(args != _name_to_done_args.end());
   {
     std::unique_lock<std::mutex> lk(args->mtx);
     args->cv.wait(lk, [&args]{return args->is_done;});
