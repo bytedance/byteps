@@ -150,8 +150,8 @@ def _sync_tensor(tensor, scope='', name=None):
     if not full_name:
         assert False, " empty name not supported fo rnow"
 
-    print("check here1 tensor.name", tensor.name)
-    print("check here2 nomalized ", full_name)
+    print("check here1 tensor.name", tensor.name, file=sys.stderr)
+    print("check here2 nomalized ", full_name, file=sys.stderr)
     full_name_ascii = full_name.encode("ascii")
     # return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
     return C_LIB.byteps_sync_tensor(tensor, name=name)
