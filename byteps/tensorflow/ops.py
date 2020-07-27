@@ -132,6 +132,24 @@ def _push_pull(tensor, scope='', name=None):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
+def _sync_grads(tensor, scope='', name=None):
+    if name is None and not _executing_eagerly():
+        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        assert False, " empty name not supported fo rnow"
+
+    full_name_ascii = full_name.encode("ascii")
+    return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):

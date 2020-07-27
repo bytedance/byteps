@@ -21,7 +21,7 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
-import pre_setup
+import pre_setup_internal as pre_setup
 
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])

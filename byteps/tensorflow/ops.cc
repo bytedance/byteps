@@ -411,26 +411,31 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   queue_list->insert(queue_list->end(), queue_list_pull->begin(),
                      queue_list_pull->end());
 
-  bool is_done = false;
   std::mutex mtx;
   std::condition_variable cv;
   std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
+  _name_to_done_flag[node_name].is_done = false;
+  bool& is_done = _name_to_done_flag[node_name].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
-                    [&is_done, &cv, &node_name](const common::Status& status) {
+                    [&node_name](const common::Status& status) {
                       // context->SetStatus(ConvertStatus(status));
-                      is_done = true;
+                      auto& args = _name_to_done_args[node_name];
+                      {
+                        std::unique_lock<std::mutex> lk(args.mtx);
+                        is_done = true;
+                      }
                       std::cout << "node_dame: " << node_name << std::endl;
                       cv.notify_one();
                     },
                     queue_list);
-  {
-      std::unique_lock<std::mutex> lk(mtx);
-      cv.wait(lk, [&is_done]{return is_done;});
-  }
+  // {
+  //     std::unique_lock<std::mutex> lk(mtx);
+  //     cv.wait(lk, [&is_done]{return is_done;});
+  // }
   std::cout << " x2682  pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
 }
 
@@ -467,6 +472,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
       num_elem *= dim;
       std::cout << " dim " << dim;
     }
+
     buffer_size = elem_size * num_elem;
     std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
     ::tensorflow::PlatformGpuId platform_gpu_id(0);
@@ -528,6 +534,59 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
+
+void SyncTensorCustomOp(CUstream stream, void** buffers,
+                      const char* opaque, size_t opaque_len) {
+  std::string tmp_name;
+  ss >> tmp_name;
+
+  auto args = _name_to_done_args.find(tmp_name);
+  OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
+  {
+    std::unique_lock<std::mutex> lk(args->mtx);
+    args->cv.wait(lk, [&args]{return args->is_done;});
+  }
+
+}
+
+class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
+  public:
+    explicit BytepsSyncTensorXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
+      context->GetAttr("input_name", &input_tensor_name);
+      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
+      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
+    }
+    ~BytepsSyncTensorXlaOp() override = default;
+
+    void Compile(::tensorflow::XlaOpKernelContext* context) override {
+      OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
+      xla::XlaOp input_tensor = context->Input(0);
+      auto input_tensor_xla_shape_or = context->InputXlaShape(0);
+
+      auto node_name = name();
+      std::string tmp_name;
+      if (input_tensor_name == "default_tensor_name") {
+        tmp_name = node_name;
+      } else {
+        tmp_name = input_tensor_name;
+      }
+
+      std::stringstream ss;
+      ss << tmp_name;
+      ss << std::endl;
+      context->SetOutput(
+        0, xla::CustomCall(context->builder(),
+          /*call_target_name=*/"SyncTensorCustomOp",
+          {input_tensor}, input_tensor_xla_shape_or.ValueOrDie(), ss.str()));
+
+    }
+
+  private:
+     std::string input_tensor_name;
+};
+
+REGISTER_XLA_OP(Name("BytepsSyncTensor"), BytepsSyncTensorXlaOp);
+XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
 }  // namespace tensorflow
 }  // namespace byteps

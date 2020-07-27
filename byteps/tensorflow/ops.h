@@ -76,6 +76,13 @@ class XlaTensor : public common::Tensor {
 };
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name);
+struct Xla_done_cb_args{
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool is_done;
+};
+
+static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_flag;
 
 }  // namespace tensorflow
 }  // namespace byteps

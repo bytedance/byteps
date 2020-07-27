@@ -49,6 +49,7 @@ def training_step(images, labels, first_batch):
     tape = bps.DistributedGradientTape(tape)
 
     grads = tape.gradient(loss_value, mnist_model.trainable_variables)
+    # add another call to sync all tensors.
     opt.apply_gradients(zip(grads, mnist_model.trainable_variables))
 
     # Note: broadcast should be done after the first gradient step to ensure optimizer

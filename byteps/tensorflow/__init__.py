@@ -371,10 +371,21 @@ if hasattr(tf, 'GradientTape'):
 
             self._push_pull_grads = push_pull_grads
 
+            def sync_grads(grads):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                    return [_sync_tensor(grad, scope,
+                                      device_dense=self._device_dense,
+                                      device_sparse=self._device_sparse,
+                                      compression=self._compression)
+                            if grad is not None else grad
+                            for grad in grads]
+
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
             if size() > 1:
                 avg_grads = self._push_pull_grads(gradients)
+                # sync here
+                avg_grads = self._sync_grads(avg_grads)
                 return avg_grads
             else:
                 return gradients
