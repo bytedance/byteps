@@ -145,6 +145,7 @@ def _sync_tensor(tensor, scope='', name=None):
     if not name:
         name = ''
     # full_name = scope + name
+    full_name = name
     if not full_name:
         assert False, " empty name not supported fo rnow"
 
