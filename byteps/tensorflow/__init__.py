@@ -373,10 +373,7 @@ if hasattr(tf, 'GradientTape'):
 
             def sync_grads(grads):
                 with tf.name_scope(self._name + "_Push_Pull") as scope:
-                    return [_sync_tensor(grad, scope,
-                                      device_dense=self._device_dense,
-                                      device_sparse=self._device_sparse,
-                                      compression=self._compression)
+                    return [_sync_tensor(grad, scope)
                             if grad is not None else grad
                             for grad in grads]
 
