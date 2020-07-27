@@ -538,6 +538,8 @@ XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
 void SyncTensorCustomOp(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
   std::string tmp_name;
+  std::stringstream ss;
+
   ss >> tmp_name;
 
   auto args = _name_to_done_args.find(tmp_name);
