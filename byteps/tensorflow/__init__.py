@@ -384,7 +384,8 @@ if hasattr(tf, 'GradientTape'):
             if size() > 1:
                 avg_grads = self._push_pull_grads(gradients)
                 # sync here
-                avg_grads = self._sync_grads(avg_grads)
+                with tf.control_dependencies(avg_grads):
+                    avg_grads = self._sync_grads(avg_grads)
                 return avg_grads
             else:
                 return gradients
