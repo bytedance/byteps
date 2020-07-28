@@ -424,15 +424,15 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
-                    [&name_key](const common::Status& status) {
+                    [name_key](const common::Status& status) {
                       // context->SetStatus(ConvertStatus(status));
                       auto& args = _name_to_done_args[name_key];
                       {
                         std::unique_lock<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
-                      std::cout << "name_key: " << name_key << std::endl;
                       args.cv.notify_one();
+                      std::cout << "inside callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
   // {
@@ -547,7 +547,7 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
 
   auto it = _name_to_done_args.find(tmp_name);
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-  std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
+  std::cout << " x2682 name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
   // OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
   assert(it != _name_to_done_args.end());
   auto& args = it->second;
@@ -555,6 +555,9 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
     std::unique_lock<std::mutex> lk(args.mtx);
     args.cv.wait(lk, [&args]{return args.is_done;});
   }
+  _name_to_done_args.erase(it);
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+  std::cout << " x2682 name_key: " << tmp_name << " rank: " << common::byteps_rank() << " sync_done"<< std::endl;
 
 }
 
