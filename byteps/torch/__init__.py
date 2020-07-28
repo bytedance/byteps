@@ -132,6 +132,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # the real handle will be created in step()
             handle, ctx = None, None
         else:
+            if type(p.grad) == type(None):
+                p.grad = p.data.new(p.size()).zero_()
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
             handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
@@ -151,6 +153,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             handle, ctx = None, None
             self._push_pull_delay[p] -= 1
             if self._push_pull_delay[p] == 0:
+                if type(p.grad) == type(None):
+                    p.grad = p.data.new(p.size()).zero_()
                 handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
         return hook
@@ -167,6 +171,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
         for p, (handle, _) in self._handles.items():
+            if type(p.grad) == type(None):
+                continue
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
