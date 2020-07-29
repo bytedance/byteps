@@ -40,7 +40,7 @@ tensor_t TopkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
   auto comp = [](const pair_t& lhs, const pair_t& rhs) {
-    return lhs.second > rhs.second;
+    return std::abs(lhs.second) > std::abs(rhs.second);
   };
 
   auto beg = reinterpret_cast<pair_t*>(dst);
