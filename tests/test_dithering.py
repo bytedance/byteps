@@ -15,13 +15,13 @@ from utils import bernoulli, fake_data
 
 @jit(nopython=True)
 def round_next_pow2(v):
-    v -= 1
-    v |= v >> 1
-    v |= v >> 2
-    v |= v >> 4
-    v |= v >> 8
-    v |= v >> 16
-    v += 1
+    v -= np.uint32(1)
+    v |= v >> np.uint32(1)
+    v |= v >> np.uint32(2)
+    v |= v >> np.uint32(4)
+    v |= v >> np.uint32(8)
+    v |= v >> np.uint32(16)
+    v += np.uint32(1)
     return v
 
 
@@ -47,9 +47,12 @@ def dithering(x, k, state, partition='linear', norm="max"):
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
-        low = round_next_pow2(int(np.ceil(y))) << 1
-        p = (y - low) / low
-        y = (1 + bernoulli(p, state)) * low
+        low = round_next_pow2((np.ceil(y).astype(np.uint32))) >> 1
+        length = low.copy()
+        length[length == 0] = 1
+        p = (y - low) / length
+        y = low + length * bernoulli(p, state)
+        y = y.astype(np.float32)
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
@@ -64,7 +67,7 @@ class DitheringTestCase(unittest.TestCase):
         print("init")
         bps.init()
 
-    @parameterized.expand([(2, "linear", "max"),])
+    @parameterized.expand([(2, "natural", "max"),])
     def test_dithering(self, k, ptype, ntype):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")

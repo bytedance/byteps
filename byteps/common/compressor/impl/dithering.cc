@@ -86,9 +86,10 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * level;
-      float floor = RoundNextPow2(std::ceil(normalized)) << 1;
+      unsigned low = RoundNextPow2(std::ceil(normalized)) >> 1;
+      unsigned length = (low != 0) ? low : 1;
       unsigned quantized =
-          floor * (1 + _rng.Bernoulli((normalized - floor) / floor));
+          low + length * _rng.Bernoulli((normalized - low) / length);
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
