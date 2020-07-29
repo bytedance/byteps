@@ -133,7 +133,7 @@ def _push_pull(tensor, scope='', name=None):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
-def _sync_tensor(tensor, scope='', name=None):
+def _sync_tensor(tensor, scope='', name=None, full_name=None):
     if name is None and not _executing_eagerly():
         # name = _normalize_name(tensor.name)
         name = tensor.name.split(":")
@@ -149,15 +149,19 @@ def _sync_tensor(tensor, scope='', name=None):
     if not name:
         name = ''
     # full_name = scope + name
-    full_name = name
-    if not full_name:
-        assert False, " empty name not supported fo rnow"
+#    full_name = name
+#    if not full_name:
+#        assert False, " empty name not supported fo rnow"
+
+    full_name = full_name.split(":")
+    full_name = ":".join(full_name[:-1])
+    full_name = _normalize_name(full_name)
 
     # print("check here1 tensor.name", tensor.name, file=sys.stderr)
     # print("check here2 nomalized ", full_name, file=sys.stderr)
-    print("check here1 tensor.name", tensor.name)
-    print("check here2 nomalized ", full_name)
-    full_name_ascii = full_name.encode("ascii")
+    # print("check here1 tensor.name", tensor.name)
+    # print("check here2 nomalized ", full_name)
+    # full_name_ascii = full_name.encode("ascii")
     # return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
     return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
 

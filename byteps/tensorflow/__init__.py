@@ -362,30 +362,36 @@ if hasattr(tf, 'GradientTape'):
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
                                  else grad for grad in grads]
-                    return [push_pull(grad, scope,
+                    new_grads = [push_pull(grad, scope,
                                       device_dense=self._device_dense,
                                       device_sparse=self._device_sparse,
                                       compression=self._compression)
                             if grad is not None else grad
                             for grad in grads]
+                    grad_names = [grad.name for grad in new_grads]
+                    return new_grads, grad_names
 
             self._push_pull_grads = push_pull_grads
 
-            def sync_grads(grads):
+            def sync_grads(grads, grad_names):
                 with tf.name_scope(self._name + "_Push_Pull") as scope:
-                    return [_sync_tensor(grad, scope)
-                            if grad is not None else grad
-                            for grad in grads]
+                    # return [_sync_tensor(tf.identity(grad), scope)
+                    return [_sync_tensor(grad, scope, full_name = name)
+                             if grad is not None else grad
+                             for grad, name in zip(grads, grad_names)]
 
             self._sync_grads = sync_grads
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
             if size() > 1:
-                avg_grads = self._push_pull_grads(gradients)
+                avg_grads, grad_names = self._push_pull_grads(gradients)
                 # sync here
+                # with tf.control_dependencies([tf.identity(grad) for grad in avg_grads]):
                 with tf.control_dependencies(avg_grads):
-                    avg_grads = self._sync_grads(avg_grads)
+                    # avg_grads = [tf.identity(grad) for grad in self._sync_grads(avg_grads)]
+                    avg_grads = [tf.identity(grad) for grad in avg_grads]
+                    avg_grads = self._sync_grads(avg_grads, grad_names)
                 return avg_grads
             else:
                 return gradients
