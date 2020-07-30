@@ -30,7 +30,7 @@ CompressorRegistry::Register reg(
       auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
                                             [](float x) { return x > 0; });
       unsigned k;
-      if (k < 1) {
+      if (factor < 1) {
         k = static_cast<unsigned>(factor * size / getDataTypeLength(dtype));
       } else {
         k = static_cast<unsigned>(factor);
