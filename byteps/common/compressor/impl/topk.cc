@@ -27,7 +27,14 @@ CompressorRegistry::Register reg(
     "topk_compressor",
     [](const kwargs_t& kwargs, size_t size,
        DataType dtype) -> std::unique_ptr<Compressor> {
-      auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
+      auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
+                                            [](float x) { return x > 0; });
+      unsigned k;
+      if (k < 1) {
+        k = static_cast<unsigned>(factor * size / getDataTypeLength(dtype));
+      } else {
+        k = static_cast<unsigned>(factor);
+      }
       return std::unique_ptr<Compressor>(new TopkCompressor(size, dtype, k));
     });
 }
