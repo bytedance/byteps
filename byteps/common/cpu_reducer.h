@@ -63,13 +63,6 @@ class CpuReducer {
   DataType GetDataType(int dtype) { return static_cast<DataType>(dtype); }
 
  private:
-  size_t GetRecommendNumThreads(size_t len) const {
-    if (len < _single_thread_threshold) {
-      return 1;
-    } else {
-      return _num_threads;
-    }
-  }
 
 #if __AVX__ && __F16C__
   // Query CPUID to determine AVX and F16C runtime support.
