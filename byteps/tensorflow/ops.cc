@@ -601,6 +601,47 @@ class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
      std::string input_tensor_name;
 };
 
+class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
+  public:
+    explicit BytePSSyncTensorOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::OpKernel(context) {
+      context->GetAttr("input_name", &input_tensor_name);
+      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
+      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
+    }
+    ~BytePSSyncTensorOp() override = default;
+
+    void Compute(::tensorflow::OpKernelContext* context) override {
+      OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
+      auto input_tensor = context->input(0);
+
+      auto node_name = name();
+      std::string tmp_name;
+      if (input_tensor_name == "default_tensor_name") {
+        tmp_name = node_name;
+        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
+      } else {
+        tmp_name = input_tensor_name;
+        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
+        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
+      }
+
+      auto it = _name_to_done_args.find(tmp_name);
+      assert(it != _name_to_done_args.end());
+      auto& args = it->second;
+      {
+        std::unique_lock<std::mutex> lk(args.mtx);
+        args.cv.wait(lk, [&args]{return args.is_done;});
+      }
+      _name_to_done_args.erase(it);
+    }
+
+  private:
+     std::string input_tensor_name;
+};
+
+REGISTER_KERNEL_BUILDER(Name("BytepsSyncTensor").Device(::tensorflow::DEVICE_GPU),
+                        BytePSSyncTensorOp);
 REGISTER_OP("BytepsSyncTensor")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Attr("input_name: string = 'default_tensor_name'")
