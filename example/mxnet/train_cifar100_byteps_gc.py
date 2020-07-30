@@ -89,7 +89,7 @@ def parse_args():
                         help='which compress momentum')
     parser.add_argument('--onebit-scaling', action='store_true', default=False,
                         help='enable scaling for onebit compressor')
-    parser.add_argument('--k', default=1, type=int,
+    parser.add_argument('--k', default=1.0, type=float,
                         help='topk or randomk')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
