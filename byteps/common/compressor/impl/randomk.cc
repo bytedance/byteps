@@ -31,6 +31,7 @@ CompressorRegistry::Register reg(
       unsigned k;
       if (factor < 1) {
         k = static_cast<unsigned>(factor * size / getDataTypeLength(dtype));
+        if (k == 0) k = 1;
       } else {
         k = static_cast<unsigned>(factor);
       }

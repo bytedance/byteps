@@ -241,6 +241,7 @@ T HyperParamFinder(const kwargs_t& kwargs, std::string name,
     }
   }
 
+  BPS_LOG(INFO) << "Register hyper-parameter '" << name << "'=" << value;
   return value;
 }
 }  // namespace compressor
