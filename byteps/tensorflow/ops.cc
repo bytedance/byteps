@@ -654,6 +654,70 @@ REGISTER_OP("BytepsSyncTensor")
 REGISTER_XLA_OP(Name("BytepsSyncTensor"), BytepsSyncTensorXlaOp);
 XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
+void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
+  const char* opaque, size_t opaque_len) {
+  int num;
+  int count = 0;
+  std::string tmp_name;
+  std::stringstream ss(opaque);
+
+  ss >> num;
+  while (ss >> tmp_name) {
+    num++;
+    auto it = _name_to_done_args.find(tmp_name);
+    assert(it != _name_to_done_args.end());
+    auto& args = it->second;
+    {
+      std::unique_lock<std::mutex> lk(args.mtx);
+      args.cv.wait(lk, [&args]{return args.is_done;});
+    }
+    _name_to_done_args.erase(it);
+  }
+  assert(num == count);
+}
+
+class BytepsSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
+  public:
+    explicit BytePSSyncAllTensorOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::OpKernel(context) {
+      context->GetAttr("tensor_names", &tensor_names_to_sync);
+    }
+
+    void Compile(XlaOpKernelContext* ctx) override {
+      std::vector<xla::XlaOp> values;
+      std::vector<TensorShape> shapes;
+      OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
+      // or, how do we get PrimitiveType or DataType from values?
+
+      // std::vector<xla::Shape> tmp_output_shapes;
+      // for (auto& tmp_shape : shapes) {
+      //   tmp_output_shapes.push_back(tmp_shape.ValueOrDie());
+      // }
+      std::vector<xla::Shape> tmp_output_shapes = GetOperandShapes(values);
+      output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
+      const int N = values.size();
+      std::stringstream ss;
+
+      ss << N;
+      for (const string& tmp_name : tensor_names_to_sync) {
+        ss << " " << tmp_name;
+      }
+      ss << std::endl;
+      xla::XlaOp results = xla::CustomCall(context->builder(),
+        /*call_target_name=*/"SyncAllTensorsCustomOp",
+        values, output_shapes, ss.str());
+
+      for (int i = 0; i < N; i++) {
+        xla::XlaOp tmp_tensor = xla::GetTupleElement(results, i);
+        context->SetOutput(i, tmp_tensor);
+      }
+    }
+
+  private:
+    std::vector<std::string> tensor_names_to_sync;
+}
+REGISTER_XLA_OP(Name("BytepsSyncAllTensors"), BytepsSyncAllTensorsXlaOp);
+XLA_REGISTER_CUSTOM_CALL_TARGET(SyncAllTensorsCustomOp, "CUDA");
+
 }  // namespace tensorflow
 }  // namespace byteps
 
