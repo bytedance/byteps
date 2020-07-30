@@ -14,6 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 """Gradient compression algorithms."""
+from functools import reduce
+
 import mxnet.ndarray as nd
 
 
@@ -64,12 +66,17 @@ class FP16Compressor(Compressor):
 class WeightDecayMomentum(Compressor):
     """For 1bit compression."""
 
-    def __init__(self, compressor, mu, wd, *args, **kwargs):
+    def __init__(self, compressor, mu, wd, threshold, *args, **kwargs):
         self.compressor = compressor
         self.mom = None
         self.cache = None
         self.mu = mu
         self.wd = wd
+        self.threshold = threshold
+
+    @staticmethod
+    def size(tensor):
+        return reduce(lambda x, y: x*y, tensor.shape) * 4
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
@@ -85,14 +92,21 @@ class WeightDecayMomentum(Compressor):
 
         x = kwargs["x"].astype(tensor.dtype, copy=False)
 
-        if self.mom is None:
-            self.mom = nd.zeros_like(tensor)
+        if self.cache is None:
             self.cache = nd.zeros_like(tensor)
 
+        # normal weight decay
         nd._internal._mul_scalar(x, self.wd, out=self.cache)
-        self.mom += self.cache
-        nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
-        tensor += self.mom
+
+        # weight decay momentum
+        if self.size(tensor) >= self.threshold:
+            if self.mom is None:
+                self.mom = nd.zeros_like(tensor)
+
+            self.mom += self.cache
+            nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
+            tensor += self.mom
+
         tensor += self.cache
         return self.compressor.decompress(tensor, ctx)
 
