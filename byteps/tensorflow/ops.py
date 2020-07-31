@@ -165,6 +165,17 @@ def _sync_tensor(tensor, scope='', name=None, full_name=None):
     # return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
     return C_LIB.byteps_sync_tensor(tensor, name=name, input_name = full_name)
 
+def _sync_all_tensors(tensors, grad_names=None):
+    tensor_names = []
+
+    for tmp_name in grad_names:
+        tmp_name = tmp_name.split(":")
+        tmp_name = ":".join(tmp_name[:-1])
+        tmp_name = _normalize_name(tmp_name)
+        tensor_names.append(tmp_name)
+
+    return C_LIB.byteps_sync_all_tensors(tensors, name=None, tensor_names = tensor_names)
+
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):
     """Gradient for push_pull op.

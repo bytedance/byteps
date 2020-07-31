@@ -665,6 +665,8 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   while (ss >> tmp_name) {
     count++;
     auto it = _name_to_done_args.find(tmp_name);
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+            << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     assert(it != _name_to_done_args.end());
     auto& args = it->second;
     {
@@ -673,6 +675,8 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     }
     _name_to_done_args.erase(it);
   }
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+    << " num: " << num << " count: " << count <<std::endl;
   assert(num == count);
 }
 
@@ -742,6 +746,16 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
     std::vector<std::string> tensor_names_to_sync;
 };
 
+REGISTER_OP("BytepsSyncAllTensors")
+    .Input("values: N * T")
+    .Output("sum: N * T")
+    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("N: int >= 1")
+    .Attr("tensor_names: list(string)")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return ::tensorflow::Status::OK();
+    });
 REGISTER_XLA_OP(Name("BytepsSyncAllTensors"), BytePSSyncAllTensorsXlaOp);
 XLA_REGISTER_CUSTOM_CALL_TARGET(SyncAllTensorsCustomOp, "CUDA");
 

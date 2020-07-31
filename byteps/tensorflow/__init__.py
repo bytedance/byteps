@@ -24,7 +24,7 @@ import os
 import warnings
 
 from byteps.tensorflow.compression import Compression
-from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor
+from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -380,15 +380,21 @@ if hasattr(tf, 'GradientTape'):
                              if grad is not None else grad
                              for grad, name in zip(grads, grad_names)]
 
+            def sync_grads_one_shot(grads, grad_names):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                    return list(_sync_all_tensors(grads, grad_names = grad_names))
+
             self._sync_grads = sync_grads
+            self._sync_grads_one_shot = sync_grads_one_shot
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
             if size() > 1:
                 avg_grads, grad_names = self._push_pull_grads(gradients)
-                x = tf.constant(2)
-                y = tf.constant(5)
-                avg_grads  = tf.cond(x < y, lambda: self._sync_grads(avg_grads, grad_names), lambda: self._sync_grads(avg_grads, grad_names))
+                avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
+                # x = tf.constant(2)
+                # y = tf.constant(5)
+                # avg_grads  = tf.cond(x < y, lambda: self._sync_grads(avg_grads, grad_names), lambda: self._sync_grads(avg_grads, grad_names))
                 # if len(avg_grads):
                 #     avg_grads = self._sync_grads(avg_grads, grad_names)
                 # sync here
