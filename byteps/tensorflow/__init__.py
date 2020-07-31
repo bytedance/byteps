@@ -369,6 +369,8 @@ if hasattr(tf, 'GradientTape'):
                             if grad is not None else grad
                             for grad in grads]
                     grad_names = [grad.name for grad in new_grads]
+                    print('num_grad_names ', len(grad_names))
+                    print('num_grads ', len(new_grads))
                     return new_grads, grad_names
 
             self._push_pull_grads = push_pull_grads

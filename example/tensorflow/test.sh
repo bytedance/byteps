@@ -3,7 +3,7 @@
 set -x
 tmux clear-history; clear;
 export BYTEPS_LOG_LEVEL=DEBUG
-export BYTEPS_LOG_LEVEL=TRACE
+#export BYTEPS_LOG_LEVEL=TRACE
 export CUDA_VISIBLE_DEVICES=0,1
 export NVIDIA_VISIBLE_DEVICES=0,1
 export NCCL_DEBUG=INFO

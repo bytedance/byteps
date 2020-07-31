@@ -661,6 +661,8 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   std::string tmp_name;
   std::stringstream ss(opaque);
 
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+	  << " size_hash_table: " << _name_to_done_args.size() << std::endl;
   ss >> num;
   while (ss >> tmp_name) {
     count++;
@@ -725,6 +727,8 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
 
       auto output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
       const int N = values.size();
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+	      << " num_values " << N << std::endl;
       std::stringstream ss;
 
       ss << N;
