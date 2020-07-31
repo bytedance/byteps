@@ -40,6 +40,8 @@
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
+#include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
@@ -662,7 +664,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   std::stringstream ss(opaque);
 
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-	  << " size_hash_table: " << _name_to_done_args.size() << std::endl;
+            << " size_hash_table: " << _name_to_done_args.size() << std::endl;
   ss >> num;
   while (ss >> tmp_name) {
     count++;
@@ -718,7 +720,10 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
        *
        * // Returns the shape of the given op.
        * StatusOr<Shape> GetShape(XlaOp op) const;
-       */ 
+       * get tensorlist shape: tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h:43
+       * Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape);
+       *
+       */
       std::vector<xla::Shape> tmp_output_shapes;
       for (auto operand : values) {
         const xla::Shape* shape = (ctx->builder()->GetShapePtr(operand)).ValueOrDie();
@@ -740,10 +745,28 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
         /*call_target_name=*/"SyncAllTensorsCustomOp",
         values, output_shapes, ss.str());
 
+      bool is_list = IsTensorListInput(ctx, 0);
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+                << " is_input_0_a_list: " << is_list << std::endl;
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+                << " num_inputs " << ctx->num_inputs()
+                << " num_outputs " << ctx->num_outputs() << std::endl;
+
+      // method 1, runtime error
+      // ctx->SetTensorListOutput(0, ctx->Input(0));
+      // method 1 end
+      // method 2
+      // for (int i = 0; i < ctx->num_inputs(); ++i) {
+      //   ctx->op_kernel_context()->set_output(i,
+      //                                        ctx->op_kernel_context()->input(i));
+      // }
+      // method 2 end
+      // method 0, wrong result
       for (int i = 0; i < N; i++) {
         xla::XlaOp tmp_tensor = xla::GetTupleElement(results, i);
         ctx->SetOutput(i, tmp_tensor);
       }
+      // method 0 end
     }
 
   private:
