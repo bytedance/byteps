@@ -527,7 +527,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     //////// end
 
     std::cout << " x2682  pos 10 " << std::endl;
-    auto& bps_context = common::GetContextFromName(tmp_name);
+    // auto& bps_context = common::GetContextFromName(tmp_name);
 
     StartTaskXla(context, tmp_name, bps_input, bps_output, ready_event);
 
@@ -663,7 +663,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
 
   ss >> num;
   while (ss >> tmp_name) {
-    num++;
+    count++;
     auto it = _name_to_done_args.find(tmp_name);
     assert(it != _name_to_done_args.end());
     auto& args = it->second;
@@ -676,15 +676,26 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   assert(num == count);
 }
 
-class BytepsSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
+// StatusOr<std::vector<xla::Shape>> MyGetOperandShapes(
+//     absl::Span<const xla::XlaOp> operands) const {
+//   std::vector<xla::Shape> operand_shapes;
+//   for (auto operand : operands) {
+//     TF_ASSIGN_OR_RETURN(const xla::Shape* shape, GetShapePtr(operand));
+//     operand_shapes.push_back(*shape);
+//   }
+//   return operand_shapes;
+// }
+
+class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
   public:
-    explicit BytePSSyncAllTensorOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::OpKernel(context) {
+    explicit BytePSSyncAllTensorsXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
       context->GetAttr("tensor_names", &tensor_names_to_sync);
     }
+    ~BytePSSyncAllTensorsXlaOp() override = default;
 
-    void Compile(XlaOpKernelContext* ctx) override {
+    void Compile(::tensorflow::XlaOpKernelContext* ctx) override {
       std::vector<xla::XlaOp> values;
-      std::vector<TensorShape> shapes;
+      std::vector<::tensorflow::TensorShape> shapes;
       OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
       // or, how do we get PrimitiveType or DataType from values?
 
@@ -692,30 +703,46 @@ class BytepsSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       // for (auto& tmp_shape : shapes) {
       //   tmp_output_shapes.push_back(tmp_shape.ValueOrDie());
       // }
-      std::vector<xla::Shape> tmp_output_shapes = GetOperandShapes(values);
-      output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
+      //
+      // std::vector<xla::Shape> tmp_output_shapes = xla::GetOperandShapes(context->builder(), values);
+
+      /**
+       * there's another function in
+       * tensorflow/compiler/xla/client/xla_builder.h
+       *
+       * // Returns the shape of the given op.
+       * StatusOr<Shape> GetShape(XlaOp op) const;
+       */ 
+      std::vector<xla::Shape> tmp_output_shapes;
+      for (auto operand : values) {
+        const xla::Shape* shape = (ctx->builder()->GetShapePtr(operand)).ValueOrDie();
+        tmp_output_shapes.push_back(*shape);
+      }
+
+      auto output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
       const int N = values.size();
       std::stringstream ss;
 
       ss << N;
-      for (const string& tmp_name : tensor_names_to_sync) {
+      for (const std::string& tmp_name : tensor_names_to_sync) {
         ss << " " << tmp_name;
       }
       ss << std::endl;
-      xla::XlaOp results = xla::CustomCall(context->builder(),
+      xla::XlaOp results = xla::CustomCall(ctx->builder(),
         /*call_target_name=*/"SyncAllTensorsCustomOp",
         values, output_shapes, ss.str());
 
       for (int i = 0; i < N; i++) {
         xla::XlaOp tmp_tensor = xla::GetTupleElement(results, i);
-        context->SetOutput(i, tmp_tensor);
+        ctx->SetOutput(i, tmp_tensor);
       }
     }
 
   private:
     std::vector<std::string> tensor_names_to_sync;
-}
-REGISTER_XLA_OP(Name("BytepsSyncAllTensors"), BytepsSyncAllTensorsXlaOp);
+};
+
+REGISTER_XLA_OP(Name("BytepsSyncAllTensors"), BytePSSyncAllTensorsXlaOp);
 XLA_REGISTER_CUSTOM_CALL_TARGET(SyncAllTensorsCustomOp, "CUDA");
 
 }  // namespace tensorflow
@@ -737,22 +764,22 @@ int main()
 //    cout<< "mystr" << mystr << endl;
     string opaque;
     stringstream ss(opaque);
-    
+
     ss << "aabbcc" << " " << a << " " << a_ptr << endl;
     cout << "string is " << ss.str() <<endl;
-    
+
     string tmp_str;
     int b = 0;
     int *b_ptr = NULL;
     string  ptr_str;
-    
+
     ss >> tmp_str;;
     ss >> b;
     ss >> hex >> ptr_str;
     b_ptr = (int *) stoul(ptr_str, nullptr, 0);
     cout << "val of b is " << *b_ptr << endl;
-    
-    
+
+
 
     return 0;
 }
