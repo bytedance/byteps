@@ -53,19 +53,22 @@ class MXTest:
         dims = [1]
         ctx = self._current_context()
         net = mx.gluon.nn.Sequential()
-        # layers may be added in a random order for all workers
-        layers = {'ones_': 1, 'zeros_': 0}
-        for name, init in layers.items():
-            net.add(mx.gluon.nn.Dense(10, in_units=10, weight_initializer=mx.init.Constant(init),
-                                      use_bias=False, prefix=name))
+        net.add(mx.gluon.nn.Dense(5, in_units=5, weight_initializer=mx.init.Constant(0),
+                                      use_bias=False))
+        net.add(mx.gluon.nn.Dense(5, in_units=10, weight_initializer=mx.init.Constant(1),
+                                      use_bias=False))
         params = net.collect_params()
         net.initialize()
         trainer = bps.DistributedTrainer(params, 'sgd')
         trainer._init_params()
         # check the result of bps_broadcast
-        for name, init in layers.items():
-            weight = params[name + 'weight'].data()[0].asnumpy()
-            expected = np.full(shape=weight.shape, fill_value=init, dtype=weight.dtype)
+        for p in params.values():
+            weight = p.data().asnumpy()
+            if weight.shape[1] == 10:
+                init_val = 1
+            else:
+                init_val = 0
+            expected = np.full(shape=weight.shape, fill_value=init_val, dtype=weight.dtype)
             assert np.array_equal(weight, expected), (weight, expected)
 
         print('test_byteps_trainer_param_order passed')
@@ -185,5 +188,5 @@ if __name__ == '__main__':
     bps.init()
     mxtest.test_byteps_push_pull()
     mxtest.test_byteps_trainer_param_order()
-    #mxtest.test_byteps_broadcast()
+    mxtest.test_byteps_broadcast()
     mxtest.test_byteps_push_pull_inplace()

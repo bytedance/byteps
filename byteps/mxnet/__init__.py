@@ -188,7 +188,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                           "as its optimizer. We have unwrapped it for you.")
 
         param_list = []
-        if isinstance(params, mx.gluon.ParameterDict):
+        if isinstance(params, dict):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
@@ -219,7 +219,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 tensors.append(param)
             else:
                 param_arrays = param._check_and_get(param._data, list)
-                idx = self._param2idx[param.name]
+                idx = self._param2idx[param._uuid]
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
