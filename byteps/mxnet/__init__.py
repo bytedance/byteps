@@ -188,7 +188,14 @@ class DistributedTrainer(mx.gluon.Trainer):
                           "as its optimizer. We have unwrapped it for you.")
 
         param_list = []
-        if isinstance(params, mx.gluon.ParameterDict):
+
+        try:
+            from mxnet.gluon.parameter import ParameterDict
+            valid_types = (dict, ParameterDict)
+        except ImportError:
+            valid_types = (dict,)
+
+        if isinstance(params, valid_types):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
@@ -219,7 +226,14 @@ class DistributedTrainer(mx.gluon.Trainer):
                 tensors.append(param)
             else:
                 param_arrays = param._check_and_get(param._data, list)
-                idx = self._param2idx[param.name]
+                # In MXNet 2.0, param.name is no longer unique
+                # and thus cannot be used as the key for the parameter.
+                if hasattr(param, '_uuid'):
+                    param_id = param._uuid
+                else:
+                    param_id = param.name
+
+                idx = self._param2idx[param_id]
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
