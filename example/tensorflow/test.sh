@@ -24,5 +24,5 @@ echo $PYTHONPATH
 #python3 -m site
 #python3 -c 'import byteps as bps'
 #exit
-BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
-# BYTEPSRUN python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+# BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+BYTEPSRUN python3 tensorflow2_mnist.py 2>&1 | tee test.txt

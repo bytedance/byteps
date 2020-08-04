@@ -24,7 +24,7 @@ import os
 import warnings
 
 from byteps.tensorflow.compression import Compression
-from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors
+from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors, broadcast_xla
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -119,7 +119,7 @@ def broadcast_variables_old(variables, root_rank, scope=''):
     return tf.group(*[_assign(var, broadcast(var, root_rank, scope))
                       for var in variables])
 
-def broadcast_variables(variables, root_rank, scope=''):
+def broadcast_variables_v1(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
     Arguments:
         variables: variables for broadcast
@@ -133,6 +133,18 @@ def broadcast_variables(variables, root_rank, scope=''):
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     return tf.group(*[_assign(old_var, _sync_tensor(new_var, scope, full_name = new_var.name))
                       for old_var, new_var in zip(variables, new_vars)])
+
+def broadcast_variables(variables, root_rank, scope=''):
+    """Broadcasts variables from root rank to all other processes.
+    Arguments:
+        variables: variables for broadcast
+        root_rank: rank of the process from which global variables will be broadcasted
+                   to all other processes.
+        scope: the graph name scope
+    """
+    _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
+    return tf.group(*[_assign(var, broadcast_xla(var, root_rank, scope))
+                      for var in variables])
 
 try:
     _get_default_graph = tf.get_default_graph
@@ -409,6 +421,7 @@ if hasattr(tf, 'GradientTape'):
             if size() > 1:
                 avg_grads, grad_names = self._push_pull_grads(gradients)
                 grad_names = ["dummy"] * len(gradients) + grad_names
+                print("xxxxxxxxxxxxxxxxx", grad_names)
                 avg_grads = self._sync_grads_one_shot(gradients + avg_grads, grad_names)
                 avg_grads = avg_grads[:len(gradients)]
                 # tf.group(*self._sync_grads_one_shot(avg_grads, grad_names))
