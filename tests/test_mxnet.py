@@ -54,9 +54,9 @@ class MXTest:
         ctx = self._current_context()
         net = mx.gluon.nn.Sequential()
         net.add(mx.gluon.nn.Dense(5, in_units=5, weight_initializer=mx.init.Constant(0),
-                                      use_bias=False))
+                                  use_bias=False))
         net.add(mx.gluon.nn.Dense(5, in_units=10, weight_initializer=mx.init.Constant(1),
-                                      use_bias=False))
+                                  use_bias=False))
         params = net.collect_params()
         net.initialize()
         trainer = bps.DistributedTrainer(params, 'sgd')
