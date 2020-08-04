@@ -188,5 +188,5 @@ if __name__ == '__main__':
     bps.init()
     mxtest.test_byteps_push_pull()
     mxtest.test_byteps_trainer_param_order()
-    mxtest.test_byteps_broadcast()
+    #mxtest.test_byteps_broadcast()
     mxtest.test_byteps_push_pull_inplace()
