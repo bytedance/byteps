@@ -3,7 +3,7 @@
 tmux clear-history
 clear
 
-export PYTHONPATH=$PYTHOHN_PATH:/usr/local/lib/python3.7/dist-packages
+export PYTHONPATH=$PYTHONPATH:/opt/tiger/conda/lib/python3.7/site-packages:/usr/local/lib/python3.7/dist-packages
 
 #export BYTEPS_WITHOUT_TENSORFLOW=1
 #export BYTEPS_WITH_TENSORFLOW=0

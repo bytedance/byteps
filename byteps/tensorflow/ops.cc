@@ -48,7 +48,7 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 
-#include <cassert>
+// #include <cassert>
 
 using namespace byteps;
 
@@ -219,7 +219,7 @@ void StartTask(::tensorflow::OpKernelContext* context,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
-  assert(0 == 1);
+  ASSERTF(0 == 1, "pos 1");
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -551,7 +551,7 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
   std::cout << " x2682 name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
   // OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
-  assert(it != _name_to_done_args.end());
+  ASSERTF(it != _name_to_done_args.end(), "post 2");
   auto& args = it->second;
   {
     std::unique_lock<std::mutex> lk(args.mtx);
@@ -629,7 +629,7 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
       }
 
       auto it = _name_to_done_args.find(tmp_name);
-      assert(it != _name_to_done_args.end());
+      ASSERTF(it != _name_to_done_args.end(), "pos 3");
       auto& args = it->second;
       {
         std::unique_lock<std::mutex> lk(args.mtx);
@@ -671,7 +671,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     auto it = _name_to_done_args.find(tmp_name);
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
             << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
-    assert(it != _name_to_done_args.end());
+    ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
     {
       std::unique_lock<std::mutex> lk(args.mtx);
@@ -681,7 +681,9 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   }
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
     << " num: " << num << " count: " << count <<std::endl;
-  assert(num == count);
+  ASSERTF(num == count, "pos 5");
+  int my_rank = common::byteps_rank();
+  BPS_LOG(DEBUG, my_rank) << "one pass ended =============================================================" << std::endl;
 }
 
 // StatusOr<std::vector<xla::Shape>> MyGetOperandShapes(
@@ -703,6 +705,7 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
 
     void Compile(::tensorflow::XlaOpKernelContext* ctx) override {
       std::vector<xla::XlaOp> values;
+      std::vector<xla::XlaOp> valid_values;
       std::vector<::tensorflow::TensorShape> shapes;
       OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
       // or, how do we get PrimitiveType or DataType from values?
@@ -724,26 +727,50 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
        * Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape);
        *
        */
+      const int N = values.size();
       std::vector<xla::Shape> tmp_output_shapes;
-      for (auto operand : values) {
-        const xla::Shape* shape = (ctx->builder()->GetShapePtr(operand)).ValueOrDie();
+      // for (auto operand : values) {
+      for (int i = 0; i < N; i++) {
+        if (tensor_names_to_sync[i] == "dummy" ||
+            tensor_names_to_sync[i].length() == 0) {
+            continue;
+        }
+        const xla::Shape* shape = (ctx->builder()->GetShapePtr(values[i])).ValueOrDie();
         tmp_output_shapes.push_back(*shape);
+	valid_values.push_back(values[i]);
       }
+	std::cout << "x2682 len of tmp_output_shapes: " << tmp_output_shapes.size() << std::endl;
 
       auto output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
-      const int N = values.size();
+      int num_valid_inputs = 0;
+      std::cout.setf(std::ios::unitbuf);
+      for (const std::string& tmp_name : tensor_names_to_sync) {
+        if (tmp_name == "dummy") {
+          continue;
+        }
+        if (tmp_name.length() == 0) {
+          continue;
+        }
+	std::cout << "counting tmp_name: " << tmp_name;
+	num_valid_inputs++;
+      }
+      std::cout << std::endl;
       std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-	      << " num_values " << N << std::endl;
+	      << " num_values " << N << " num_valid_inputs: "
+	      << num_valid_inputs <<std::endl;
       std::stringstream ss;
 
-      ss << N;
+      ss << num_valid_inputs;
       for (const std::string& tmp_name : tensor_names_to_sync) {
+        if (tmp_name == "dummy") {
+          continue;
+        }
         ss << " " << tmp_name;
       }
       ss << std::endl;
       xla::XlaOp results = xla::CustomCall(ctx->builder(),
         /*call_target_name=*/"SyncAllTensorsCustomOp",
-        values, output_shapes, ss.str());
+        valid_values, output_shapes, ss.str());
 
       bool is_list = IsTensorListInput(ctx, 0);
       std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
@@ -757,13 +784,21 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       // method 1 end
       // method 2
       // for (int i = 0; i < ctx->num_inputs(); ++i) {
+      // std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+	//         << " output_num_" << i << std::endl;
       //   ctx->op_kernel_context()->set_output(i,
       //                                        ctx->op_kernel_context()->input(i));
+      // std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+	//         << " output_num_" << i << " done " << std::endl;
       // }
       // method 2 end
       // method 0, wrong result
-      for (int i = 0; i < N; i++) {
+      for (int i = 0; i < num_valid_inputs; i++) {
         xla::XlaOp tmp_tensor = xla::GetTupleElement(results, i);
+        ctx->SetOutput(i, tmp_tensor);
+      }
+      for (int i = num_valid_inputs; i < num_valid_inputs * 2; i++) {
+        xla::XlaOp tmp_tensor = xla::GetTupleElement(results, 0);
         ctx->SetOutput(i, tmp_tensor);
       }
       // method 0 end

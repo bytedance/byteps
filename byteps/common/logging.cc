@@ -20,6 +20,9 @@
 #include <iomanip>
 #include <iostream>
 
+#define BOOST_STACKTRACE_USE_ADDR2LINE
+#include <boost/stacktrace.hpp>
+
 namespace byteps {
 namespace common {
 
@@ -67,7 +70,9 @@ LogMessageFatal::LogMessageFatal(const char* file, int line)
 LogMessageFatal::~LogMessageFatal() {
   static bool log_time = LogTimeFromEnv();
   GenerateLogMessage(log_time);
-  abort();
+  std::cout << boost::stacktrace::stacktrace() << std::endl;
+  // abort();
+  std::terminate();
 }
 
 LogLevel ParseLogLevelStr(const char* env_var_val) {

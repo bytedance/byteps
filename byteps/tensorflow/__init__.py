@@ -127,6 +127,7 @@ def broadcast_variables(variables, root_rank, scope=''):
                    to all other processes.
         scope: the graph name scope
     """
+    return variables
     new_vars = [broadcast(var, root_rank, scope) for var in variables]
     # tf.group(*new_vars)
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
@@ -407,7 +408,16 @@ if hasattr(tf, 'GradientTape'):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
             if size() > 1:
                 avg_grads, grad_names = self._push_pull_grads(gradients)
-                avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
+                grad_names = ["dummy"] * len(gradients) + grad_names
+                avg_grads = self._sync_grads_one_shot(gradients + avg_grads, grad_names)
+                avg_grads = avg_grads[:len(gradients)]
+                # tf.group(*self._sync_grads_one_shot(avg_grads, grad_names))
+                # return avg_grads
+
+                # with tf.control_dependencies(gradients + self._sync_grads_one_shot(avg_grads, grad_names)):
+                #     _tmp = tf.no_op()
+                #     avg_grads = [tf.identity(grad) for grad in avg_grads]
+
                 # with tf.control_dependencies(self._sync_grads_one_shot(avg_grads, grad_names)):
                 #     avg_grads = [tf.identity(grad) for grad in avg_grads]
                 # x = tf.constant(2)

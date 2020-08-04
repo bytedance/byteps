@@ -3,7 +3,7 @@
 set -x
 tmux clear-history; clear;
 export BYTEPS_LOG_LEVEL=DEBUG
-#export BYTEPS_LOG_LEVEL=TRACE
+export BYTEPS_LOG_LEVEL=TRACE
 export CUDA_VISIBLE_DEVICES=0,1
 export NVIDIA_VISIBLE_DEVICES=0,1
 export NCCL_DEBUG=INFO
@@ -19,5 +19,10 @@ export NCCL_DEBUG=INFO
 # export NVIDIA_VISIBLE_DEVICES=1
 # export BYTEPS_LOCAL_RANK=1
 
-# BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
-BYTEPSRUN python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+export PYTHONPATH=$PYTHONPATH:/opt/tiger/byteps-xla:/usr/local/lib/python3.7/dist-packages:/opt/tiger/conda/lib/python3.7/site-packages
+echo $PYTHONPATH
+#python3 -m site
+#python3 -c 'import byteps as bps'
+#exit
+BYTEPSRUN gdb -ex run -ex bt -batch --args python3 tensorflow2_mnist.py 2>&1 | tee test.txt
+# BYTEPSRUN python3 tensorflow2_mnist.py 2>&1 | tee test.txt

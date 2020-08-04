@@ -20,6 +20,8 @@
 #include <thread>
 #include <unordered_map>
 
+#include "../common/logging.h"
+
 namespace byteps {
 namespace common {
 
@@ -28,7 +30,10 @@ class ReadyTable {
   ReadyTable(int ready_count, const char* name) {
     _ready_count = ready_count;
     _table_name = std::string(name);
+    BPS_LOG(DEBUG) << " ready_table_name: " << _table_name
+        << " ready_count: "<< (_ready_count) << std::endl;
   }
+
   // methods to access or modify the _ready_table
   bool IsKeyReady(uint64_t key);
   int AddReadyCount(uint64_t key);
