@@ -221,8 +221,6 @@ class DistributedTrainer(mx.gluon.Trainer):
                 param_arrays = param._check_and_get(param._data, list)
                 idx = self._param2idx[param.name]
 
-                if rank() != self.root_rank:
-                    param_arrays[0].__imul__(0)
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
 
