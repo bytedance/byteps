@@ -517,7 +517,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
     std::unique_lock<std::mutex> lk(args.mtx);
     args.cv.wait(lk, [&args]{return args.is_done;});
   }
-  std::cout << " x2682  pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
+  std::cout << " x2682  blocking pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
 }
 
 void StartTaskBlockingWrapper(CUstream stream, void** buffers,
@@ -889,6 +889,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     cudaMemcpyAsync(buffers[count + num], buffers[count], buf_size, cudaMemcpyDeviceToDevice, stream);
     _name_to_done_args.erase(it);
     count++;
+    // BPS_LOG(DEBUG, my_rank) << tmp_name << " first element: " << *((float *)buffers[count + num]) << std::endl;
   }
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
     << " num: " << num << " count: " << count <<std::endl;

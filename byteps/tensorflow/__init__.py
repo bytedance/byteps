@@ -424,6 +424,7 @@ if hasattr(tf, 'GradientTape'):
                 print("xxxxxxxxxxxxxxxxx", grad_names)
                 avg_grads = self._sync_grads_one_shot(gradients + avg_grads, grad_names)
                 avg_grads = avg_grads[:len(gradients)]
+                # tf.print("rank ", rank(), " tensors after pushpull: ", avg_grads)
                 # tf.group(*self._sync_grads_one_shot(avg_grads, grad_names))
                 # return avg_grads
 
