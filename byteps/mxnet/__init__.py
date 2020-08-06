@@ -217,6 +217,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.root_rank = root_rank
         self._intra_compressors = {}
         for i, param in enumerate(self._params):
+            byteps_declare_tensor("parameter_" + str(i))
             self._intra_compressors[param.name] = type(self._intra_compressor)(
                 **self._intra_compressor.__dict__)
             if param.grad_req != 'null':
@@ -224,9 +225,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
                 )
-                byteps_declare_tensor("tensor_" + str(i), **byteps_params)
-            else:
-                byteps_declare_tensor("tensor_" + str(i))
+                byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
     def _register_compressor(self, params, optimizer_params, compression_params):
         """Register compressor for BytePS
@@ -314,7 +313,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                 compressed, ctx = self._intra_compressors[param.name].compress(
                     param._grad[0])
                 byteps_push_pull(compressed, is_average=False,
-                                 name="tensor_" + str(i), priority=-i)
+                                 name="gradient_" + str(i), priority=-i)
                 param._grad[0][:] = self._intra_compressors[param.name].decompress(
                     compressed, ctx,  x=param._data[0])
 
@@ -327,10 +326,13 @@ class DistributedTrainer(mx.gluon.Trainer):
                 param_arrays = param._check_and_get(param._data, list)
                 idx = self._param2idx[param.name]
 
+                if rank() != self.root_rank:
+                    param_arrays[0].__imul__(0)
+
                 compressed, ctx = self._intra_compressors[param.name].compress(
                     param_arrays[0])
                 byteps_push_pull(compressed, version=0, priority=0,
-                                 name="tensor_" + str(idx), is_average=False)
+                                 name="parameter_" + str(idx), is_average=False)
                 param_arrays[0][:] = self._intra_compressors[param.name].decompress(
                     compressed, ctx,  x=param._data[0])
 
