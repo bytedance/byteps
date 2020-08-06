@@ -63,7 +63,9 @@ def training_step(images, labels, first_batch):
 
 # BytePS: adjust number of steps based on number of GPUs.
 # for batch, (images, labels) in enumerate(dataset.take(10000 // bps.size())):
-for batch, (images, labels) in enumerate(dataset.take(bps.size() // bps.size())):
+# for batch, (images, labels) in enumerate(dataset.take(100 // bps.size())):
+for batch, (images, labels) in enumerate(dataset.take(bps.size() * 5 // bps.size())):
+# for batch, (images, labels) in enumerate(dataset.take(bps.size() // bps.size())):
     loss_value = training_step(images, labels, batch == 0)
 
     if batch % 10 == 0 and bps.local_rank() == 0:

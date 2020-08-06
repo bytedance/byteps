@@ -23,8 +23,10 @@ from __future__ import print_function
 import os
 import warnings
 
+import sys
+
 from byteps.tensorflow.compression import Compression
-from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors, broadcast_xla
+from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors, broadcast_xla, _print_tensors
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -419,11 +421,17 @@ if hasattr(tf, 'GradientTape'):
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
             if size() > 1:
+                gradients = _print_tensors(gradients, [aa.name for aa in gradients])
                 avg_grads, grad_names = self._push_pull_grads(gradients)
-                grad_names = ["dummy"] * len(gradients) + grad_names
+                new_grad_names = ["dummy"] * len(gradients) + grad_names
                 print("xxxxxxxxxxxxxxxxx", grad_names)
-                avg_grads = self._sync_grads_one_shot(gradients + avg_grads, grad_names)
+                avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
                 avg_grads = avg_grads[:len(gradients)]
+                # avg_grads = _print_tensors(avg_grads, [aa.name for aa in avg_grads])
+                # print("here", avg_grads)
+                # tf.print(gradients[0])
+                # tensor = tf.range(10)
+                # tf.print(tensor, output_stream=sys.stderr)
                 # tf.print("rank ", rank(), " tensors after pushpull: ", avg_grads)
                 # tf.group(*self._sync_grads_one_shot(avg_grads, grad_names))
                 # return avg_grads

@@ -176,6 +176,9 @@ def _sync_all_tensors(tensors, grad_names=None):
 
     return C_LIB.byteps_sync_all_tensors(tensors, name=None, tensor_names = tensor_names)
 
+def _print_tensors(tensors, grad_names=None):
+    return C_LIB.byteps_print_tensors(tensors, name=None, tensor_names = grad_names)
+
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):
     """Gradient for push_pull op.
