@@ -239,7 +239,7 @@ void StartTask(::tensorflow::OpKernelContext* context,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
-  ASSERTF(0 == 1, "pos 1");
+  // ASSERTF(0 == 1, "pos 1");
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -912,12 +912,12 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     }
     // cudaMemcpyAsync(buffers[count + num], buffers[count], buf_size, cudaMemcpyDeviceToDevice, stream);
     cudaMemcpyAsync(buffers[count + num], args.bps_out_buf, buf_size, cudaMemcpyDeviceToDevice, stream);
-    // cudaStreamSynchronize(stream);
     _name_to_done_args.erase(it);
     // float i0, i1, o0, o1;
     // cudaMemcpy((void *)&i0, ((float *)buffers[count + num]), sizeof(float), cudaMemcpyDeviceToHost);
     // BPS_LOG(DEBUG, my_rank) << tmp_name << " first element: " << i0 << std::endl;
     // printMatOnGPU(tmp_name, buffers[count + num], buf_size/4);
+    cudaStreamSynchronize(stream);
     printMatOnGPU(tmp_name, args.bps_out_buf, buf_size/4);
     // BPS_LOG(DEBUG, my_rank) << tmp_name << " first element: " << *((float *)buffers[count + num]) << std::endl;
     count++;

@@ -109,7 +109,7 @@ if _global_variables is not None:
 
         return broadcast_variables(_global_variables(), root_rank)
 
-def broadcast_variables_old(variables, root_rank, scope=''):
+def broadcast_variables(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
     Arguments:
         variables: variables for broadcast
@@ -136,7 +136,7 @@ def broadcast_variables_v1(variables, root_rank, scope=''):
     return tf.group(*[_assign(old_var, _sync_tensor(new_var, scope, full_name = new_var.name))
                       for old_var, new_var in zip(variables, new_vars)])
 
-def broadcast_variables(variables, root_rank, scope=''):
+def broadcast_variables_v2(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
     Arguments:
         variables: variables for broadcast
@@ -144,6 +144,8 @@ def broadcast_variables(variables, root_rank, scope=''):
                    to all other processes.
         scope: the graph name scope
     """
+    # if size() == 1:
+    #     return
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     return tf.group(*[_assign(var, broadcast_xla(var, root_rank, scope))
                       for var in variables])

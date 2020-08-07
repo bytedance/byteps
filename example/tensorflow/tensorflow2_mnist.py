@@ -34,7 +34,8 @@ mnist_model = tf.keras.Sequential([
 ])
 loss = tf.losses.SparseCategoricalCrossentropy()
 
-opt = tf.optimizers.Adam(0.001 * bps.size())
+# opt = tf.optimizers.Adam(0.001 * bps.size())
+opt = tf.keras.optimizers.Adam(0.001 * bps.size())
 
 checkpoint_dir = './checkpoints'
 checkpoint = tf.train.Checkpoint(model=mnist_model, optimizer=opt)
@@ -54,9 +55,10 @@ def training_step(images, labels, first_batch):
 
     # Note: broadcast should be done after the first gradient step to ensure optimizer
     # initialization.
-    if first_batch:
-        bps.broadcast_variables(mnist_model.variables, root_rank=0)
-        bps.broadcast_variables(opt.variables(), root_rank=0)
+    # if first_batch:
+    #     bps.broadcast_variables(mnist_model.variables, root_rank=0)
+    #     # this is the culprit
+    #     bps.broadcast_variables(opt.variables(), root_rank=0)
 
     return loss_value
 
@@ -64,11 +66,19 @@ def training_step(images, labels, first_batch):
 # BytePS: adjust number of steps based on number of GPUs.
 # for batch, (images, labels) in enumerate(dataset.take(10000 // bps.size())):
 # for batch, (images, labels) in enumerate(dataset.take(100 // bps.size())):
-for batch, (images, labels) in enumerate(dataset.take(bps.size() * 5 // bps.size())):
-# for batch, (images, labels) in enumerate(dataset.take(bps.size() // bps.size())):
+# for batch, (images, labels) in enumerate(dataset.take(bps.size() * 2 * 50 // bps.size())):
+for batch, (images, labels) in enumerate(dataset.take(bps.size() * 2 * 4 // bps.size())):
     loss_value = training_step(images, labels, batch == 0)
+    if batch == 0:
+        bps.broadcast_variables(mnist_model.variables, root_rank=0)
+        # this is the culprit
+        bps.broadcast_variables(opt.variables(), root_rank=0)
+    tf.print("step ", batch, output_stream="file:///opt/tiger/byteps-xla/example/tensorflow/print" + str(bps.rank()))
+    tf.print("mnist-model_vars", mnist_model.variables, output_stream="file:///opt/tiger/byteps-xla/example/tensorflow/print" + str(bps.rank()))
+    tf.print("opt_vars", opt.variables(), output_stream="file:///opt/tiger/byteps-xla/example/tensorflow/print" + str(bps.rank()))
 
-    if batch % 10 == 0 and bps.local_rank() == 0:
+    # if batch % 10 == 0 and bps.local_rank() == 0:
+    if bps.local_rank() == 0:
         print('Step #%d\tLoss: %.6f' % (batch, loss_value))
 
 if bps.rank() == 0:
