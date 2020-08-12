@@ -76,7 +76,7 @@ class DitheringCompressor : public Compressor {
                            const index_t* compressed, size_t compressed_size);
 
   /*! \brief number of levels */
-  unsigned int _s;
+  const unsigned int _s;
 
   PartitionType _ptype;
   NomalizeType _ntype;

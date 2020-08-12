@@ -1,3 +1,20 @@
+# Copyright 2020 Amazon Technologies, Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+import itertools
+import random
 import unittest
 
 import byteps.mxnet as bps
@@ -9,6 +26,7 @@ from mxnet import autograd, gluon
 from parameterized import parameterized
 from tqdm import tqdm
 
+from meta_test import MetaTest
 from utils import fake_data
 
 
@@ -22,12 +40,8 @@ def topk(x, k):
     return y.reshape(x.shape)
 
 
-class TopkTestCase(unittest.TestCase):
-    def setUp(self):
-        print("init")
-        bps.init()
-
-    @parameterized.expand([(1,)])
+class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
+    @parameterized.expand(itertools.product([1, 3, 5]))
     def test_topk(self, k):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
@@ -41,8 +55,6 @@ class TopkTestCase(unittest.TestCase):
 
         compression_params = {
             "compressor": "topk",
-            # "ef": "vanilla",
-            # "momentum": "nesterov",
             "k": k,
         }
 
@@ -54,18 +66,10 @@ class TopkTestCase(unittest.TestCase):
         train_data = fake_data(batch_size=batch_size)
 
         params = {}
-        errors = {}
-        errors_s = {}
-        moms = {}
-        wd_moms = {}
 
         for i, param in enumerate(trainer._params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
-                errors[i] = np.zeros_like(params[i])
-                errors_s[i] = np.zeros_like(params[i])
-                moms[i] = np.zeros_like(params[i])
-                wd_moms[i] = np.zeros_like(params[i])
 
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
@@ -90,40 +94,25 @@ class TopkTestCase(unittest.TestCase):
             for i, param in enumerate(trainer._params):
                 if param.grad_req != "null":
                     g = gs[i] / (batch_size * bps.size())
-                    # moms[i] *= 0.9
-                    # moms[i] += g
-                    # g += 0.9 * moms[i]
-                    # g += errors[i]
                     c = topk(g, k)
-                    # errors[i] = g - c
 
-                    # c += errors_s[i]
                     cs = topk(c, k)
-                    # errors_s[i] = c - cs
                     c = cs
 
-                    # c += 1e-4*xs[i]
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
         tot = 0
-        diffs = []
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
                 if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    diffs.append(np.max(diff))
                     idx = np.where(diff > np.finfo(np.float32).eps)
                     cnt += len(idx[0])
 
-        print("false=%d tot=%d false / tot = %lf" % (cnt, tot, cnt / tot))
-        if diffs:
-            print("max_diff=%f\tmin_diff=%f\tmean_diff=%f" %
-                  (np.max(diffs), np.min(diffs), np.mean(diffs)))
-
-        assert cnt == 0
+        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
 if __name__ == '__main__':

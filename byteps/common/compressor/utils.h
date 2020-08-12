@@ -87,7 +87,7 @@ class XorShift128PlusBitShifterRNG {
   double Rand() { return double(xorshift128p()) / MAX; }
 
   // Bernoulli Distributation
-  bool Bernoulli(double p) { return xorshift128p() < uint64_t(p * MAX); }
+  bool Bernoulli(double p) { return xorshift128p() < p * MAX; }
 
   void set_seed(uint64_t seed) { _state = {seed, seed}; }
 

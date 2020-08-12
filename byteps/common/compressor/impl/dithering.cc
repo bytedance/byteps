@@ -33,12 +33,14 @@ CompressorRegistry::Register reg(
       auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
                                              [](unsigned x) { return x != 0; });
 
-      auto ptype_int = HyperParamFinder<int>(
-          kwargs, "partition", true, [](int x) { return x == 0 || x == 1; });
+      auto ptype_int =
+          HyperParamFinder<int>(kwargs, "dithering_partition", true,
+                                [](int x) { return x == 0 || x == 1; });
       auto ptype = static_cast<DitheringCompressor::PartitionType>(ptype_int);
 
-      auto ntype_int = HyperParamFinder<int>(
-          kwargs, "normalize", true, [](int x) { return x == 0 || x == 1; });
+      auto ntype_int =
+          HyperParamFinder<int>(kwargs, "dithering_normalize", true,
+                                [](int x) { return x == 0 || x == 1; });
       auto ntype = static_cast<DitheringCompressor::NomalizeType>(ntype_int);
 
       return std::unique_ptr<Compressor>(
@@ -85,11 +87,11 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
     const unsigned level = 1 << (_s - 1);
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
-      float normalized = (abs_x / scale) * level;
-      unsigned low = RoundNextPow2(std::ceil(normalized)) >> 1;
-      unsigned length = (low != 0) ? low : 1;
-      unsigned quantized =
-          low + length * _rng.Bernoulli((normalized - low) / length);
+      double normalized = (abs_x / scale) * level;
+      unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
+      unsigned length = (floor != 0) ? floor : 1;
+      double p = (normalized - floor) / length;
+      unsigned quantized = floor + length * _rng.Bernoulli(p);
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;

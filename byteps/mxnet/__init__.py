@@ -227,6 +227,12 @@ class DistributedTrainer(mx.gluon.Trainer):
                 )
                 byteps_declare_tensor("gradient_" + str(i), **byteps_params)
 
+    def __del__(self):
+        if local_rank() == 0:
+            self._f.close()
+            if os.path.exists("lr.s"):
+                os.remove("lr.s")
+
     def _register_compressor(self, params, optimizer_params, compression_params):
         """Register compressor for BytePS
 
@@ -274,6 +280,22 @@ class DistributedTrainer(mx.gluon.Trainer):
             if compression_params.get("seed", None) is not None:
                 setattr(param, "byteps_seed",
                         compression_params["seed"])
+            
+            if compression_params.get("partition"):
+                if compression_params["partition"] == "linear":
+                    setattr(param, "byteps_dithering_partition", "0")
+                elif compression_params["partition"] == "natural":
+                    setattr(param, "byteps_dithering_partition", "1")
+                else:
+                    raise ValueError("Unsupported partition")
+
+            if compression_params.get("normalize"):
+                if compression_params["normalize"] == "max":
+                    setattr(param, "byteps_dithering_normalize", "0")
+                elif compression_params["normalize"] == "l2":
+                    setattr(param, "byteps_dithering_normalize", "1")
+                else:
+                    raise ValueError("Unsupported normalization")
 
         # the following code will delete some items in `optimizer_params`
         # to avoid duplication
