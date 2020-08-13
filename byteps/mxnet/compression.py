@@ -74,7 +74,6 @@ class WeightDecayMomentum(Compressor):
         self.wd = wd
         self.threshold = threshold
         self.inited = False
-        self.wdmom = False
 
     @staticmethod
     def size(shape):
@@ -93,27 +92,25 @@ class WeightDecayMomentum(Compressor):
             https://github.com/apache/incubator-mxnet/blob/master/python/mxnet/optimizer/optimizer.py#L504
         """
 
-        if not self.inited:
+        if not self.inited and self.size(tensor.shape) >= self.threshold:
             self.cache = nd.zeros_like(tensor)
-            if self.size(tensor.shape) >= self.threshold:
-                self.mom = nd.zeros_like(tensor)
+            self.mom = nd.zeros_like(tensor)
 
-                if "opt" not in kwargs or "i" not in kwargs:
-                    raise ValueError("opt or index is missing")
-                
-                # disable mxnet's wd
-                opt = kwargs["opt"]
-                opt.wd_mult[i] = 0
-                self.wdmom = True
-
+            if "opt" not in kwargs or "i" not in kwargs:
+                raise ValueError("opt or index is missing")
+            
+            # disable mxnet's wd
+            opt = kwargs["opt"]
+            opt.wd_mult[i] = 0
             self.inited = True
 
         # weight decay momentum
-        if self.wdmom:
+        if self.inited:
             if "x" not in kwargs:
                 raise ValueError("x is missing")
 
             x = kwargs["x"].astype(tensor.dtype, copy=False)   
+            
             nd._internal._mul_scalar(x, self.wd, out=self.cache)
             self.mom += self.cache
             nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
