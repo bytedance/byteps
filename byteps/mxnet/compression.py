@@ -19,6 +19,10 @@ from functools import reduce
 import mxnet.ndarray as nd
 
 
+def size(shape):
+    return reduce(lambda x, y: x*y, shape) * 4
+
+
 class Compressor(object):
     """Interface for compressing and decompressing a given tensor."""
 
@@ -63,7 +67,38 @@ class FP16Compressor(Compressor):
         return tensor_decompressed
 
 
-class WeightDecayMomentum(Compressor):
+class NagAdapter(Compressor):
+    """For uncompressed gradients"""
+
+    def __init__(self, compressor, mu, threshold, *args, **kwargs):
+        self.compressor = compressor
+        self.mu = mu
+        self.mom = None
+        self.threshold = threshold
+        self.inited = False
+
+    def compress(self, tensor, *args, **kwargs):
+        """Returns the tensor unmodified."""
+        return self.compressor.compress(tensor)
+
+    def decompress(self, tensor, ctx, *args, **kwargs):
+        """Add nesterov momentum for uncompressed gradients"""
+        tensor = self.compressor.decompress(tensor, ctx, *args, **kwargs)
+        
+        # uncompressed gradients need to do nag explicitly
+        if not self.inited and size(tensor.shape) < self.threshold:
+            self.mom = nd.zeros_like(tensor)
+            self.inited = True
+
+        if self.inited:
+            self.mom += tensor
+            nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
+            tensor += self.mom
+
+        return tensor
+
+
+class WeightDecayMomentumAdapter(Compressor):
     """For 1bit compression."""
 
     def __init__(self, compressor, mu, wd, threshold, *args, **kwargs):
@@ -74,10 +109,6 @@ class WeightDecayMomentum(Compressor):
         self.wd = wd
         self.threshold = threshold
         self.inited = False
-
-    @staticmethod
-    def size(shape):
-        return reduce(lambda x, y: x*y, shape) * 4
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
@@ -92,7 +123,7 @@ class WeightDecayMomentum(Compressor):
             https://github.com/apache/incubator-mxnet/blob/master/python/mxnet/optimizer/optimizer.py#L504
         """
 
-        if not self.inited and self.size(tensor.shape) >= self.threshold:
+        if not self.inited and size(tensor.shape) >= self.threshold:
             self.cache = nd.zeros_like(tensor)
             self.mom = nd.zeros_like(tensor)
 
@@ -117,7 +148,7 @@ class WeightDecayMomentum(Compressor):
             tensor += self.mom
             tensor += self.cache
 
-        return self.compressor.decompress(tensor, ctx)
+        return self.compressor.decompress(tensor, ctx, *args, **kwargs)
 
 
 class Compression(object):
@@ -130,4 +161,7 @@ class Compression(object):
     fp16 = FP16Compressor()
 
     """Additional Momentum for weight decay. This is only for 1bit. This is a wrapper."""
-    wdmom = WeightDecayMomentum
+    wdmom = WeightDecayMomentumAdapter
+
+    """NAG for uncompressed. This is a wrapper."""
+    nag = NagAdapter

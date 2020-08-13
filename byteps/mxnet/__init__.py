@@ -280,7 +280,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             if compression_params.get("seed", None) is not None:
                 setattr(param, "byteps_seed",
                         compression_params["seed"])
-            
+
             if compression_params.get("partition"):
                 if compression_params["partition"] == "linear":
                     setattr(param, "byteps_dithering_partition", "0")
@@ -300,14 +300,17 @@ class DistributedTrainer(mx.gluon.Trainer):
         # the following code will delete some items in `optimizer_params`
         # to avoid duplication
         if compression_params.get("momentum"):
+            threshold = int(os.environ.get(
+                "BYTEPS_MIN_COMPRESS_BYTES", 65536))
+            mu = optimizer_params["momentum"]
+
             # 1bit compressor use an additional momentum for weight decay
             if compressor == "onebit" and "wd" in optimizer_params:
-                threshold = int(os.environ.get("BYTEPS_MIN_COMPRESS_BYTES", 65536))
-                mu = optimizer_params["momentum"]
                 wd = optimizer_params["wd"]
                 intra_compressor = Compression.wdmom(intra_compressor,
                                                      mu, wd, threshold)
 
+            intra_compressor = Compression.nag(intra_compressor, mu, threshold)
             del optimizer_params['momentum']
 
         return intra_compressor
