@@ -502,9 +502,14 @@ extern "C" void byteps_server() {
   msg.ops = TERMINATE;
   for (auto q : engine_queues_) q->Push(msg);
   for (auto t : engine_threads_) t->join();
-  for (auto& it : store_) free(it.second.tensor);
-  LOG(INFO) << "byteps has been shutdown";
 
+  for (auto& it : store_) {
+    if (it.second.tensor) {
+      free(it.second.tensor);
+    }
+  }
+  
+  LOG(INFO) << "byteps has been shutdown";
   return;
 }
 
