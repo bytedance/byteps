@@ -108,6 +108,7 @@ class WeightDecayMomentumAdapter(Compressor):
         self.mu = mu
         self.wd = wd
         self.threshold = threshold
+        self.wdmom = False
         self.inited = False
 
     def compress(self, tensor, *args, **kwargs):
@@ -118,36 +119,29 @@ class WeightDecayMomentumAdapter(Compressor):
         """Returns the tensor added with additional momentum for wd
             m_t = \mu * m_{t-1} + wd * x_t
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
-
-            disable wd if wd mom is on. see 
-            https://github.com/apache/incubator-mxnet/blob/master/python/mxnet/optimizer/optimizer.py#L504
         """
+        if "x" not in kwargs:
+            raise ValueError("x is missing")
 
-        if not self.inited and size(tensor.shape) >= self.threshold:
+        x = kwargs["x"].astype(tensor.dtype, copy=False)   
+        
+        if not self.inited:
             self.cache = nd.zeros_like(tensor)
-            self.mom = nd.zeros_like(tensor)
-
-            if "opt" not in kwargs or "i" not in kwargs:
-                raise ValueError("opt or index is missing")
-            
-            # disable mxnet's wd
-            opt = kwargs["opt"]
-            opt.wd_mult[i] = 0
+            if size(tensor.shape) >= self.threshold:
+                self.mom = nd.zeros_like(tensor)
+                self.wdmom = True
             self.inited = True
+        
+        # weight decay
+        nd._internal._mul_scalar(x, self.wd, out=self.cache)
 
         # weight decay momentum
-        if self.inited:
-            if "x" not in kwargs:
-                raise ValueError("x is missing")
-
-            x = kwargs["x"].astype(tensor.dtype, copy=False)   
-            
-            nd._internal._mul_scalar(x, self.wd, out=self.cache)
+        if self.wdmom:
             self.mom += self.cache
             nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
             tensor += self.mom
-            tensor += self.cache
 
+        tensor += self.cache
         return self.compressor.decompress(tensor, ctx, *args, **kwargs)
 
 
