@@ -73,10 +73,12 @@ class WeightDecayMomentum(Compressor):
         self.mu = mu
         self.wd = wd
         self.threshold = threshold
+        self.inited = False
+        self.wdmom = False
 
     @staticmethod
-    def size(tensor):
-        return reduce(lambda x, y: x*y, tensor.shape) * 4
+    def size(shape):
+        return reduce(lambda x, y: x*y, shape) * 4
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
@@ -92,17 +94,18 @@ class WeightDecayMomentum(Compressor):
 
         x = kwargs["x"].astype(tensor.dtype, copy=False)
 
-        if self.cache is None:
+        if not self.inited:
             self.cache = nd.zeros_like(tensor)
-
+            if self.size(tensor.shape) >= self.threshold:
+                self.wdmom = True
+                self.mom = nd.zeros_like(tensor)
+            self.inited = True
+        
         # normal weight decay
         nd._internal._mul_scalar(x, self.wd, out=self.cache)
 
         # weight decay momentum
-        if self.size(tensor) >= self.threshold:
-            if self.mom is None:
-                self.mom = nd.zeros_like(tensor)
-
+        if self.wdmom:        
             self.mom += self.cache
             nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
             tensor += self.mom
