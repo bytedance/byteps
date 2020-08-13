@@ -76,6 +76,7 @@ class NagAdapter(Compressor):
         self.mom = None
         self.threshold = threshold
         self.inited = False
+        self.nag = False
 
     def compress(self, tensor, *args, **kwargs):
         """Returns the tensor unmodified."""
@@ -86,11 +87,13 @@ class NagAdapter(Compressor):
         tensor = self.compressor.decompress(tensor, ctx, *args, **kwargs)
         
         # uncompressed gradients need to do nag explicitly
-        if not self.inited and size(tensor.shape) < self.threshold:
-            self.mom = nd.zeros_like(tensor)
+        if not self.inited:
+            if size(tensor.shape) < self.threshold:
+                self.mom = nd.zeros_like(tensor)
+                self.nag = True
             self.inited = True
 
-        if self.inited:
+        if self.nag:
             self.mom += tensor
             nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
             tensor += self.mom
