@@ -88,29 +88,38 @@ class WeightDecayMomentum(Compressor):
         """Returns the tensor added with additional momentum for wd
             m_t = \mu * m_{t-1} + wd * x_t
             x_{t+1} = x_t - \eta_t (tensor + \mu m_t + wd * x_t)
-        """
-        if "x" not in kwargs:
-            return self.compressor.decompress(tensor, ctx)
 
-        x = kwargs["x"].astype(tensor.dtype, copy=False)
+            disable wd if wd mom is on. see 
+            https://github.com/apache/incubator-mxnet/blob/master/python/mxnet/optimizer/optimizer.py#L504
+        """
 
         if not self.inited:
             self.cache = nd.zeros_like(tensor)
             if self.size(tensor.shape) >= self.threshold:
-                self.wdmom = True
                 self.mom = nd.zeros_like(tensor)
+
+                if "opt" not in kwargs or "i" not in kwargs:
+                    raise ValueError("opt or index is missing")
+                
+                # disable mxnet's wd
+                opt = kwargs["opt"]
+                opt.wd_mult[i] = 0
+                self.wdmom = True
+
             self.inited = True
-        
-        # normal weight decay
-        nd._internal._mul_scalar(x, self.wd, out=self.cache)
 
         # weight decay momentum
-        if self.wdmom:        
+        if self.wdmom:
+            if "x" not in kwargs:
+                raise ValueError("x is missing")
+
+            x = kwargs["x"].astype(tensor.dtype, copy=False)   
+            nd._internal._mul_scalar(x, self.wd, out=self.cache)
             self.mom += self.cache
             nd._internal._mul_scalar(self.mom, self.mu, out=self.mom)
             tensor += self.mom
+            tensor += self.cache
 
-        tensor += self.cache
         return self.compressor.decompress(tensor, ctx)
 
 
