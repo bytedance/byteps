@@ -13,9 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
+#include "onebit.h"
+
 #include <cstring>
 
-#include "onebit.h"
 #include "../compressor_registry.h"
 
 namespace byteps {
@@ -34,8 +35,6 @@ CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
 template <typename index_t, typename scalar_t>
 tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                         size_t len) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
   constexpr size_t PACKING_SIZE = sizeof(scalar_t) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
@@ -73,8 +72,6 @@ tensor_t OnebitCompressor::Compress(tensor_t grad) {
 template <typename scalar_t, typename index_t>
 tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                           size_t compressed_size) {
-  static_assert(sizeof(scalar_t) == sizeof(index_t),
-                "scalar_t should be the same size as index_t");
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
 

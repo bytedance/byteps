@@ -13,11 +13,12 @@
 // limitations under the License.
 // =============================================================================
 
+#include "dithering.h"
+
 #include <cmath>
 #include <cstring>
 
 #include "../compressor_registry.h"
-#include "dithering.h"
 
 namespace byteps {
 namespace common {
@@ -51,9 +52,6 @@ CompressorRegistry::Register reg(
 template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                            size_t len) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-
   // normalize
   double scale = 0.0;
   if (_ntype == NomalizeType::MAX) {
@@ -123,9 +121,6 @@ tensor_t DitheringCompressor::Compress(tensor_t grad) {
 template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                              size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(src + blocks);
@@ -176,9 +171,6 @@ void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
                                               scalar_t* corrected,
                                               const index_t* compressed,
                                               size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(compressed + blocks);

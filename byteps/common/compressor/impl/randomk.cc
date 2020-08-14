@@ -13,10 +13,11 @@
 // limitations under the License.
 // =============================================================================
 
+#include "randomk.h"
+
 #include <cstring>
 
 #include "../compressor_registry.h"
-#include "randomk.h"
 
 namespace byteps {
 namespace common {
@@ -47,8 +48,6 @@ CompressorRegistry::Register reg(
 template <typename index_t, typename scalar_t>
 tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                          size_t len) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
   auto ptr = reinterpret_cast<pair_t*>(dst);
@@ -69,8 +68,6 @@ tensor_t RandomkCompressor::Compress(tensor_t grad) {
 template <typename index_t, typename scalar_t>
 tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                            size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
   using pair_t = std::pair<index_t, scalar_t>;
 
   auto ptr = reinterpret_cast<const pair_t*>(src);
@@ -106,8 +103,6 @@ void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
                                             scalar_t* corrected,
                                             const index_t* compressed,
                                             size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
   using pair_t = std::pair<index_t, scalar_t>;
 
   std::memcpy(error, corrected, _size);
