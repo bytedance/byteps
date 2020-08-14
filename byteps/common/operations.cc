@@ -13,15 +13,20 @@
 // limitations under the License.
 // =============================================================================
 
-#include "operations.h"
 #include <cuda_runtime.h>
+#include <unistd.h>
+
 #include <cstring>
 #include <memory>
 #include <thread>
-#include <unistd.h>
+
+#include "compressor/compressor.h"
+#include "compressor/compressor_registry.h"
+#include "compressor/utils.h"
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
+#include "operations.h"
 
 namespace byteps {
 namespace common {
@@ -43,6 +48,7 @@ void byteps_lazy_init() {
   if (BytePSGlobal::IsDistributed()) {
     if (BytePSGlobal::IsRootDevice()) {
       func.push_back(PullLoop);
+      func.push_back(DecompressLoop);
     }
   }
 
@@ -58,6 +64,7 @@ void byteps_lazy_init() {
       // PUSH can be a real push in distributed mode
       // Or a dummy barrier in cross-pcie-switch mode
       func.push_back(PushLoop);
+      func.push_back(CompressLoop);
       func.push_back(RootCopyHost2DeviceLoop);
     } else {
       func.push_back(CoordinatePushLoop);
@@ -88,8 +95,10 @@ void byteps_shutdown() {
 
 void byteps_resume(int num_workers, int num_servers) {
   // set ps, worker numbers
-  BPS_LOG(DEBUG) << "Resume worker number: " << num_workers << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
-  BPS_LOG(DEBUG) << "Resume server number: " << num_workers << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
+  BPS_LOG(DEBUG) << "Resume worker number: " << num_workers
+                 << "DMLC_NUM_WORKER: " << getenv("DMLC_NUM_WORKER");
+  BPS_LOG(DEBUG) << "Resume server number: " << num_workers
+                 << "DMLC_NUM_SERVER: " << getenv("DMLC_NUM_SERVER");
   BPS_LOG(DEBUG) << "Start resuming BytePS";
 
   BytePSGlobal::SetResumingFlag(true);
@@ -152,6 +161,9 @@ void PartitionTensor(
     e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
+    if (!entry->context->compressor_list.empty()) {
+      e->compressor = entry->context->compressor_list[i];
+    }
 
     accumulated += e->len;
     ++i;
@@ -176,6 +188,14 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
         << name << " output tensor size does not match";
   }
 
+  // add queue
+  if (BytePSGlobal::IsRootDevice() && !context.compressor_list.empty()) {
+    auto it = std::find(queue_list->begin(), queue_list->end(), PUSH);
+    it = queue_list->insert(it, COMPRESS);  // before PUSH
+    it = std::find(queue_list->begin(), queue_list->end(), PULL);
+    queue_list->insert(it + 1, DECOMPRESS);  // after PULL
+  }
+
   std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
   e->tensor_name = name;
   e->context = &context;
@@ -188,11 +208,14 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->callback = callback;
 
   if (device == CPU_DEVICE_ID) {
-    cudaError_t err = cudaHostRegister(const_cast<void*>(input->data()), input->size(), cudaHostRegisterMapped);
+    cudaError_t err = cudaHostRegister(const_cast<void *>(input->data()),
+                                       input->size(), cudaHostRegisterMapped);
     if (err == cudaSuccess) {
-      BPS_LOG(DEBUG) << name << " cpu address has changed, so it is pinned again.";
+      BPS_LOG(DEBUG) << name
+                     << " cpu address has changed, so it is pinned again.";
     }
-    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
+    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr),
+                                       const_cast<void *>(input->data()), 0));
   }
 
   e->cpubuff = context.cpubuff;
@@ -302,7 +325,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
     cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
     if (e != cudaSuccess) {
-      BPS_LOG(INFO) << cudaGetErrorString(e) 
+      BPS_LOG(INFO) << cudaGetErrorString(e)
                     << " (You may ignore this if your program continues)";
     }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
@@ -311,19 +334,27 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // We always allocate our own cpu buffer
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+
+  size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
+    context.pcie_cpubuff =
+        shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
-                                                key_list[0], size);
+                                                key_list[0], aligned_size);
   }
-  BPS_LOG(TRACE) << name << ": open shared memory size " << size;
+  BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
 
   // Init tensors with BytePS server
   char *data = const_cast<char *>(static_cast<const char *>(context.cpubuff));
   accumulated = 0;
   size_t i = 0;
+  BPS_LOG(INFO) << "tensor size=" << size;
+  // small tensor does not need to be compressed
+  if (size < BytePSGlobal::GetMinCompressBound()) {
+    context.kwargs.clear();
+  }
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
@@ -338,6 +369,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+
+      // register
+      if (!context.kwargs.empty()) {
+        auto compressor_ptr = compressor::CompressorRegistry::Create(
+            context.kwargs, Align(len, dtype), static_cast<DataType>(dtype));
+        context.compressor_list.push_back(std::move(compressor_ptr));
+      }
     }
 
     accumulated += len;
@@ -346,6 +384,21 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   BPS_CHECK_EQ(accumulated, size);
   BPS_CHECK_EQ(i, key_list.size());
+
+  // send to server
+  if (!context.kwargs.empty() && BytePSGlobal::IsDistributed() &&
+      BytePSGlobal::IsRootDevice()) {
+    auto ps = BytePSGlobal::GetOrInitPS();
+    auto content = compressor::Serialize(context.kwargs);
+    auto len = content.size();
+    auto data = const_cast<char *>(content.c_str());
+    for (auto key : key_list) {
+      auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
+      ps::SArray<char> vals(data, len, false);
+      int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+      ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
+    }
+  }
 
   context.initialized = true;
 
@@ -359,6 +412,11 @@ BPSContext &GetContextFromName(const std::string &name) {
 
 bool IsTensorDeclared(const std::string &name) {
   return BytePSGlobal::IsTensorDeclared(name);
+}
+
+void RegisterCompressor(const std::string &name,
+                        std::unordered_map<std::string, std::string> &kwargs) {
+  return BytePSGlobal::RegisterCompressor(name, kwargs);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {

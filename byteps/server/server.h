@@ -23,6 +23,8 @@
 #include <unistd.h>
 #include "ps/ps.h"
 #include "../common/cpu_reducer.h"
+#include "../common/compressor/compressor.h"
+#include "../common/compressor/compressor_registry.h"
 
 namespace byteps {
 namespace server {
@@ -39,7 +41,7 @@ enum class RequestType {
 };
 
 enum BytePSEngineOperation {
-  SUM_RECV, COPY_MERGED, TERMINATE
+  SUM_RECV, COPY_FIRST, ALL_RECV, TERMINATE
 };
 
 struct PSKV {
@@ -107,6 +109,7 @@ std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 // byteps handler
 std::mutex handle_mu_;
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
+std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
 
 // address map
 std::mutex store_mu_;

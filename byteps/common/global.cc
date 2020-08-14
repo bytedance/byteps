@@ -13,10 +13,13 @@
 // limitations under the License.
 // =============================================================================
 
-#include "global.h"
 #include <malloc.h>
 #include <numa.h>
+
 #include <sstream>
+
+#include "compressor/compressor.h"
+#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -37,6 +40,7 @@ bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
+uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
@@ -77,6 +81,7 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
+std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
 
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
 unsigned int BytePSGlobal::_built_in_hash_coefficient;
@@ -106,10 +111,17 @@ void BytePSGlobal::Init() {
   }
 
   // Set the profiling-related variables
-  _is_trace = getenv("BYTEPS_TRACE_ON") ? atoi(getenv("BYTEPS_TRACE_ON")) : _is_trace;
-  _start_step = getenv("BYTEPS_TRACE_START_STEP") ? atoi(getenv("BYTEPS_TRACE_START_STEP")) : _start_step;
-  _end_step = getenv("BYTEPS_TRACE_END_STEP") ? atoi(getenv("BYTEPS_TRACE_END_STEP")) : _end_step;
-  _trace_dir = getenv("BYTEPS_TRACE_DIR") ? std::string(getenv("BYTEPS_TRACE_DIR")) : "./trace";
+  _is_trace =
+      getenv("BYTEPS_TRACE_ON") ? atoi(getenv("BYTEPS_TRACE_ON")) : _is_trace;
+  _start_step = getenv("BYTEPS_TRACE_START_STEP")
+                    ? atoi(getenv("BYTEPS_TRACE_START_STEP"))
+                    : _start_step;
+  _end_step = getenv("BYTEPS_TRACE_END_STEP")
+                  ? atoi(getenv("BYTEPS_TRACE_END_STEP"))
+                  : _end_step;
+  _trace_dir = getenv("BYTEPS_TRACE_DIR")
+                   ? std::string(getenv("BYTEPS_TRACE_DIR"))
+                   : "./trace";
 
   _basic_comm = std::make_shared<BytePSCommSocket>();
 
@@ -122,10 +134,14 @@ void BytePSGlobal::Init() {
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
   }
+  if (getenv("BYTEPS_MIN_COMPRESS_BYTES")) {
+    _min_compress_bytes = atoi(getenv("BYTEPS_MIN_COMPRESS_BYTES"));
+  }
   _pagesize = sysconf(_SC_PAGESIZE);
   BPS_CHECK_GT(_pagesize, 0);
   _partition_bytes = RoundUp(_partition_bytes, _local_size * _pagesize);
-  BPS_LOG(DEBUG) << "Partition size round up to " << _partition_bytes << " (bytes)";
+  BPS_LOG(DEBUG) << "Partition size round up to " << _partition_bytes
+                 << " (bytes)";
 
   BPS_CHECK(getenv("DMLC_NUM_WORKER")) << "error: env DMLC_NUM_WORKER not set";
   _num_worker = atoi(getenv("DMLC_NUM_WORKER"));
@@ -140,15 +156,22 @@ void BytePSGlobal::Init() {
         << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
 
     // set hash function
-    _hash_knob = std::string(getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
-    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE") ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE")) : false;
+    _hash_knob = std::string(
+        getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
+    _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE")
+                      ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE"))
+                      : false;
     if (_mixed_mode) {
       _hash_knob = std::string("mixed");
     }
     BPS_LOG(DEBUG) << "Using key hash function type: " << _hash_knob;
     if (!_hash_knob.compare(std::string("built_in"))) {
-      _built_in_hash_coefficient = getenv("BYTEPS_BUILT_IN_HASH_COEF") ? atoi(getenv("BYTEPS_BUILT_IN_HASH_COEF")) : 1;
-      BPS_LOG(DEBUG) << "The built in hash coefficient is set to " << _built_in_hash_coefficient;
+      _built_in_hash_coefficient =
+          getenv("BYTEPS_BUILT_IN_HASH_COEF")
+              ? atoi(getenv("BYTEPS_BUILT_IN_HASH_COEF"))
+              : 1;
+      BPS_LOG(DEBUG) << "The built in hash coefficient is set to "
+                     << _built_in_hash_coefficient;
     }
 
     // set server load counter
@@ -188,6 +211,14 @@ void BytePSGlobal::Init() {
     _copy_table = new ReadyTable(1, "COPY");
   }
 
+  if (_is_root_device) {
+    size_t pool_size = 4;
+    if (getenv("BYTEPS_THREADPOOL_SIZE")) {
+      pool_size = atoi(getenv("BYTEPS_THREADPOOL_SIZE"));
+      _thread_pool.reset(new ThreadPool(pool_size));
+    }
+  }
+
   // ReadyTable for cross-PCIe-switch reduce
   if (_is_cross_pcie_switch) {
     if (_cpu_reducer->isRoot()) {
@@ -205,8 +236,8 @@ void BytePSGlobal::Init() {
 
   // Configure the reduce strategy
   if (getenv("BYTEPS_REDUCE_ROOTS")) {
-    BPS_CHECK(!_is_cross_pcie_switch) <<
-      "BYTEPS_REDUCE_ROOTS cannot be used with BYTEPS_PCIE_SWITCH_SIZE.";
+    BPS_CHECK(!_is_cross_pcie_switch)
+        << "BYTEPS_REDUCE_ROOTS cannot be used with BYTEPS_PCIE_SWITCH_SIZE.";
     _is_using_reduce = true;
     auto roots_str = std::string(getenv("BYTEPS_REDUCE_ROOTS"));
     BPS_LOG(DEBUG) << "Setting roots for reduce:" << roots_str;
@@ -253,14 +284,13 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
   // we reuse _init_mutex, because BytePS should have been inited
   std::lock_guard<std::mutex> lock(_init_mutex);
   if (!_ps && IsDistributed() &&
-      _my_role ==
-          BytePSRole::LOCAL_ROOT) {  // only the root needs networking
-      // init low-level ps implementation
-      _ps = new ps::KVWorker<char>(0, 0);
-      ps::StartAsync(0, "byteps\0");
-      if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
-        ps::Postoffice::Get()->Barrier(
-            0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+      _my_role == BytePSRole::LOCAL_ROOT) {  // only the root needs networking
+    // init low-level ps implementation
+    _ps = new ps::KVWorker<char>(0, 0);
+    ps::StartAsync(0, "byteps\0");
+    if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
+      ps::Postoffice::Get()->Barrier(
+          0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
     }
   }
   return _ps;
@@ -382,7 +412,8 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
 bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
-    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) ==
+        _declared_tensors.end()) {
       _declared_tensors.push_back(name);
     }
     _name_to_cxt[name].initialized = false;
@@ -398,25 +429,34 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
 }
 
 void BytePSGlobal::ReDeclareTensor() {
-  for (auto name: _declared_tensors) {
+  for (auto name : _declared_tensors) {
     BPS_LOG(DEBUG) << "Redeclare tensor " << name;
     BytePSGlobal::IsTensorDeclared(name);
   }
 }
 
+void BytePSGlobal::RegisterCompressor(
+    const std::string& name,
+    std::unordered_map<std::string, std::string>& kwargs) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
+      << name << " is not initialized";
+  _name_to_cxt[name].kwargs = std::move(kwargs);
+}
+
 // Append for communication traces
-void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
+void BytePSGlobal::SetProfileFlag(BytePSContext* ctxt) {
   if (_is_trace == 1) {
     // Enable trace, check the start and end step
     BPS_CHECK(_start_step >= 1 && _end_step > _start_step)
-                << "BYTEPS_TRACE_START_STEP must be larger than 1, "
-                << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
-    if(ctxt->step_cnt == _start_step-1){
+        << "BYTEPS_TRACE_START_STEP must be larger than 1, "
+        << "BYTEPS_TRACE_END_STEP must be larger than BYTEPS_TRACE_START_STEP.";
+    if (ctxt->step_cnt == _start_step - 1) {
       ctxt->profile_flag = true;
       BytePSGlobal::Who2beOutput(ctxt->tensor_name);
-    } else if(ctxt->step_cnt == _end_step){
+    } else if (ctxt->step_cnt == _end_step) {
       ctxt->profile_flag = false;
-      if (BytePSGlobal::IsAllTensorOutput(ctxt->tensor_name)){
+      if (BytePSGlobal::IsAllTensorOutput(ctxt->tensor_name)) {
         std::thread _t(BytePSGlobal::OutputTraces);
         _t.detach();
       }
@@ -426,22 +466,24 @@ void BytePSGlobal::SetProfileFlag(BytePSContext *ctxt) {
   }
 }
 
-void BytePSGlobal::EmitTrace(std::ostream *os, const BPSCommTime *ret, BytePSContext *ctxt){
-    std::string tid = (ret->key == -1) ? "total" : std::to_string(ret->key);
-    std::string para_name = "Comm." + ctxt->tensor_name;
-    std::string para_name_type = (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
-    (*os) << "        {\n"
-          << "            \"ph\": \"X\",\n"
-          << "            \"args\": {\n"
-          << "                \"name\": \"" << para_name << "\"\n"
-          << "            },\n"
-          << "            \"pid\": \"" << para_name << "\",\n"
-          << "            \"name\": \"" << para_name_type << "\",\n"
-          << "            \"ts\": " << ret->start_t << ",\n"
-          << "            \"dur\": " << ret->dur << ",\n"
-          << "            \"tid\": \"" << tid << "\",\n"
-          << "            \"cat\": \"Comm\"\n"
-          << "        }";
+void BytePSGlobal::EmitTrace(std::ostream* os, const BPSCommTime* ret,
+                             BytePSContext* ctxt) {
+  std::string tid = (ret->key == -1) ? "total" : std::to_string(ret->key);
+  std::string para_name = "Comm." + ctxt->tensor_name;
+  std::string para_name_type =
+      (ret->key == -1) ? para_name : para_name + "." + LogStrings[ret->type];
+  (*os) << "        {\n"
+        << "            \"ph\": \"X\",\n"
+        << "            \"args\": {\n"
+        << "                \"name\": \"" << para_name << "\"\n"
+        << "            },\n"
+        << "            \"pid\": \"" << para_name << "\",\n"
+        << "            \"name\": \"" << para_name_type << "\",\n"
+        << "            \"ts\": " << ret->start_t << ",\n"
+        << "            \"dur\": " << ret->dur << ",\n"
+        << "            \"tid\": \"" << tid << "\",\n"
+        << "            \"cat\": \"Comm\"\n"
+        << "        }";
 }
 
 void BytePSGlobal::Who2beOutput(const std::string& name) {
@@ -454,50 +496,61 @@ void BytePSGlobal::Who2beOutput(const std::string& name) {
 
 bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
-  BPS_CHECK(_name2end.find(name) != _name2end.end()) << "Output tensor must been registered to recorder first";
-  //  _output_counter decreases by 1 to confirm the arrival of this tensor
+  BPS_CHECK(_name2end.find(name) != _name2end.end())
+      << "Output tensor must been registered to recorder first";
+  //  _output_counter decreases by 1 to confirm the arrival of this tensro
   _output_counter -= 1;
-  if (_output_counter == 0) return true;
-  else return false;
+  if (_output_counter == 0)
+    return true;
+  else
+    return false;
 }
 
-void BytePSGlobal::OutputTraces(){
+void BytePSGlobal::OutputTraces() {
   // Asynchronously output communication traces
-  auto trace_path = _trace_dir + "/" + std::to_string(_local_rank) + "/comm.json";
+  auto trace_path =
+      _trace_dir + "/" + std::to_string(_local_rank) + "/comm.json";
   // Output these traces
   std::ofstream file;
   file.open(trace_path);
   file << "{" << std::endl;
   file << "    \"traceEvents\": [" << std::endl;
   auto first = true;
-  for(std::unordered_map<std::string, int>::iterator iter = _name2end.begin();
-    iter != _name2end.end(); iter++){
-    BPSContext *ctxt = &_name_to_cxt[iter->first];
+  for (std::unordered_map<std::string, int>::iterator iter = _name2end.begin();
+       iter != _name2end.end(); iter++) {
+    BPSContext* ctxt = &_name_to_cxt[iter->first];
     while (ctxt->comm_time.size() > 0) {
-      BPSCommTime *ret = ctxt->comm_time.front();
-      if (!first) file << ",\n";
-      else first = false;
+      BPSCommTime* ret = ctxt->comm_time.front();
+      if (!first)
+        file << ",\n";
+      else
+        first = false;
       BytePSGlobal::EmitTrace(&file, ret, ctxt);
       ctxt->comm_time.pop();
     }
-    while (!ctxt->part_comm_time.empty()){
+    while (!ctxt->part_comm_time.empty()) {
       auto part_id = ctxt->part_comm_time.begin()->first;
       auto& type2part_comm_time = ctxt->part_comm_time.begin()->second;
-      BPS_CHECK(!type2part_comm_time.empty()) << "type2part_comm_time should not be empty";
-      while (!type2part_comm_time.empty()){
+      BPS_CHECK(!type2part_comm_time.empty())
+          << "type2part_comm_time should not be empty";
+      while (!type2part_comm_time.empty()) {
         auto type = type2part_comm_time.begin()->first;
         auto& _part_comm_time_queue = type2part_comm_time.begin()->second;
-        BPS_CHECK(_part_comm_time_queue.size() > 0) << "_part_comm_time_queue should not be empty";
-        while (_part_comm_time_queue.size() > 0){
-          BPSCommTime *ret = _part_comm_time_queue.front();
-          if (!first) file << ",\n";
-          else first = false;
+        BPS_CHECK(_part_comm_time_queue.size() > 0)
+            << "_part_comm_time_queue should not be empty";
+        while (_part_comm_time_queue.size() > 0) {
+          BPSCommTime* ret = _part_comm_time_queue.front();
+          if (!first)
+            file << ",\n";
+          else
+            first = false;
           BytePSGlobal::EmitTrace(&file, ret, ctxt);
           _part_comm_time_queue.pop();
         }
         type2part_comm_time.erase(type);
       }
-      // if the unordered_map becomes empty, all the traces of this part_id has been read, delete this part_id
+      // if the unordered_map becomes empty, all the traces of this part_id has
+      // been read, delete this part_id
       ctxt->part_comm_time.erase(part_id);
     }
   }
@@ -506,22 +559,28 @@ void BytePSGlobal::OutputTraces(){
   file << "    \"displayTimeUnit\": \"ms\"" << std::endl;
   file << "}" << std::endl;
   // BPS_LOG(TRACE) << "Communication traces output done!";
-  std::cout << "Local rank " << _local_rank << ": communication traces output done!" << std::endl;
+  std::cout << "Local rank " << _local_rank
+            << ": communication traces output done!" << std::endl;
 }
 
 uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
-  const int num_server_total = ps::Postoffice::Get()->GetServerKeyRanges().size();
+  const int num_server_total =
+      ps::Postoffice::Get()->GetServerKeyRanges().size();
   const int num_worker_total = GetNumWorker();
-  size_t num_server_noncolocate = num_server_total-num_worker_total;
+  size_t num_server_noncolocate = num_server_total - num_worker_total;
   size_t num_server_colocate = num_worker_total;
 
   // The bound should be larger than num_server_total
   // in order to cover each server, but it also
   // cannot be too large because it might cause unbalance
-  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND") ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND")) : 101;
+  auto bound = getenv("BYTEPS_MIXED_MODE_BOUND")
+                   ? atoi(getenv("BYTEPS_MIXED_MODE_BOUND"))
+                   : 101;
   BPS_CHECK_GE(bound, num_server_total);
-  auto ratio = (2.0 * num_server_noncolocate * (num_worker_total - 1)) /
-                  ((num_worker_total) * (num_worker_total+num_server_noncolocate) - 2 * num_server_noncolocate);
+  auto ratio =
+      (2.0 * num_server_noncolocate * (num_worker_total - 1)) /
+      ((num_worker_total) * (num_worker_total + num_server_noncolocate) -
+       2 * num_server_noncolocate);
   BPS_CHECK_LE(ratio, 1)
       << "number of (non-colocate servers) > number of (worker)"
       << ", which is not permitted in the mixed mode";
@@ -529,9 +588,9 @@ uint64_t BytePSGlobal::Hash_Mixed_Mode(uint64_t key) {
   auto threshold = ratio * bound;
 
   auto hash_res = Hash_DJB2(key) % bound;
-  if (hash_res < threshold) { // assign for non-colocate servers
+  if (hash_res < threshold) {  // assign for non-colocate servers
     return Hash_DJB2(hash_res) % num_server_noncolocate;
-  } else { // assign for colocate servers
+  } else {  // assign for colocate servers
     return num_server_noncolocate + (Hash_DJB2(hash_res) % num_server_colocate);
   }
 }
@@ -548,7 +607,7 @@ uint64_t BytePSGlobal::Hash_DJB2(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 5381;
   int c;
-  while ((c = *str)) { // hash(i) = hash(i-1) * 33 ^ str[i]
+  while ((c = *str)) {  // hash(i) = hash(i-1) * 33 ^ str[i]
     hash = ((hash << 5) + hash) + c;
     str++;
   }
@@ -559,7 +618,7 @@ uint64_t BytePSGlobal::Hash_SDBM(uint64_t key) {
   auto str = std::to_string(key).c_str();
   uint64_t hash = 0;
   int c;
-  while ((c = *str)) { // hash(i) = hash(i-1) * 65599 + str[i]
+  while ((c = *str)) {  // hash(i) = hash(i-1) * 65599 + str[i]
     hash = c + (hash << 6) + (hash << 16) - hash;
     str++;
   }
@@ -570,8 +629,10 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(_encode_mutex);
   PSKV& pskv = ps_kv_[key];
   if (!pskv.keys.empty()) {
-    BPS_CHECK_EQ(static_cast<size_t>(pskv.size), len)
-        << "The value size cannot be changed " << len << ". Key is " << key;
+    if (len > 0 && pskv.size != len) {
+      pskv.size = len;
+      pskv.lens[0] = len;
+    }
   } else {
     auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
     const int num_servers = krs.size();
@@ -600,8 +661,9 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
     _total_accumulated_len += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
                    << ", accumulated workload for this server is "
-                   << _server_accumulated_len[server]
-                   << " (" << (100.0 * _server_accumulated_len[server] / _total_accumulated_len)
+                   << _server_accumulated_len[server] << " ("
+                   << (100.0 * _server_accumulated_len[server] /
+                       _total_accumulated_len)
                    << "%)";
 
     ps::Key ps_key = krs[server].begin() + key;
@@ -629,7 +691,7 @@ cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
 
 bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
   int k = BytePSGlobal::joined_thread_cnt.fetch_add(0);
-  return (k==total_thread_num);
+  return (k == total_thread_num);
 };
 
 }  // namespace common

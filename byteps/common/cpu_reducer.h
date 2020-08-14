@@ -21,8 +21,8 @@
 #include <immintrin.h>
 #endif
 
-#include <memory>
 #include <cstring>
+#include <memory>
 #include "common.h"
 #include "logging.h"
 
@@ -45,21 +45,25 @@ class CpuReducer {
     BPS_LOG(DEBUG) << "Clear CpuReducer";
   }
 
-  int sum(void* dst, void* src, size_t len, DataType dtype);
-  int sum(void* dst, void* src1, void* src2, size_t len, DataType dtype);
-  int copy(void* dst, void* src, size_t len);
+  int sum(void* dst, const void* src, size_t len, DataType dtype);
+  int sum(void* dst, const void* src1, const void* src2, size_t len,
+          DataType dtype);
+
+  int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
+  int sum(void* dst, const void* src1, const void* src2, size_t len,
+          DataType dtype, float alpha);
+
+  int copy(void* dst, const void* src, size_t len);
 
 #ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();
   std::shared_ptr<BytePSComm> getComm() { return _comm; }
 #endif
 
-
-  DataType GetDataType(int dtype) {
-    return static_cast<DataType>(dtype);
-  }
+  DataType GetDataType(int dtype) { return static_cast<DataType>(dtype); }
 
  private:
+
 #if __AVX__ && __F16C__
   // Query CPUID to determine AVX and F16C runtime support.
   bool is_avx_and_f16c() {
@@ -76,7 +80,7 @@ class CpuReducer {
   }
 #endif
 
-  inline void HalfBits2Float(unsigned short* src, float* res) {
+  inline void HalfBits2Float(const unsigned short* src, float* res) {
     unsigned h = *src;
     int sign = ((h >> 15) & 1);
     int exp = ((h >> 10) & 0x1f);
@@ -112,7 +116,7 @@ class CpuReducer {
     *res = *reinterpret_cast<float const*>(&f);
   }
 
-  inline void Float2HalfBits(float* src, unsigned short* dest) {
+  inline void Float2HalfBits(const float* src, unsigned short* dest) {
     // software implementation rounds toward nearest even
     unsigned const& s = *reinterpret_cast<unsigned const*>(src);
     uint16_t sign = uint16_t((s >> 16) & 0x8000);
@@ -175,19 +179,29 @@ class CpuReducer {
   }
 
   template <typename T>
-  int _sum(T* dst, T* src, size_t len);
+  int _sum(T* dst, const T* src, size_t len);
+  template <typename T>
+  int _sum(T* dst, const T* src1, const T* src2, size_t len);
+
+  int _sum_float16(void* dst, const void* src, size_t len);
+  int _sum_float16(void* dst, const void* src1, const void* src2, size_t len);
 
   template <typename T>
-  int _sum(T* dst, T* src1, T* src2, size_t len);
+  int _sum(T* dst, const T* src, size_t len, float alpha);
 
-  int _sum_float16(void* dst, void* src, size_t len);
-  int _sum_float16(void* dst, void* src1, void* src2, size_t len);
+  template <typename T>
+  int _sum(T* dst, const T* src1, const T* src2, size_t len, float alpha);
+
+  int _sum_float16(void* dst, const void* src, size_t len, float alpha);
+  int _sum_float16(void* dst, const void* src1, const void* src2, size_t len,
+                   float alpha);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
 
   std::shared_ptr<BytePSComm> _comm;
   int _num_threads;
+  size_t _single_thread_threshold; 
 };
 
 }  // namespace common

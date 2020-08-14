@@ -31,16 +31,23 @@
 #include <vector>
 
 // Add for profiling communication events
-#include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <iostream>
-#include <thread>
+
 #include <chrono>
+#include <fstream>
+#include <iostream>
 #include <queue>
+#include <thread>
 
 namespace byteps {
 namespace common {
+namespace compressor {
+struct BPSTensor;
+typedef BPSTensor tensor_t;
+class Compressor;
+class ErrorFeedback;
+}  // namespace compressor
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
@@ -83,8 +90,10 @@ enum QueueType {
   COPYD2H,
   PCIE_REDUCE,
   COORDINATE_PUSH,
+  COMPRESS,
   PUSH,
   PULL,
+  DECOMPRESS,
   COPYH2D,
   COORDINATE_BROADCAST,
   BROADCAST,
@@ -94,10 +103,18 @@ enum QueueType {
 const int QueueNum =
     (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
 
-const std::vector<std::string> LogStrings = {
-    "COORDINATE_REDUCE",    "REDUCE",   "COPYD2H", "PCIE_REDUCE",
-    "COORDINATE_PUSH",      "PUSH",     "PULL",    "COPYH2D",
-    "COORDINATE_BROADCAST", "BROADCAST"};
+const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
+                                             "REDUCE",
+                                             "COPYD2H",
+                                             "PCIE_REDUCE",
+                                             "COORDINATE_PUSH",
+                                             "COMPRESS",
+                                             "PUSH",
+                                             "PULL",
+                                             "DECOMPRESS",
+                                             "COPYH2D",
+                                             "COORDINATE_BROADCAST",
+                                             "BROADCAST"};
 
 class Status {
  public:
@@ -173,11 +190,17 @@ typedef struct BytePSContext {
   std::vector<void*> pcie_cpubuff;
   size_t buff_len;
   // Used for profiling communication events
-  std::queue<BPSCommTime *> comm_time;
+  std::queue<BPSCommTime*> comm_time;
   bool profile_flag = false;
   int step_cnt = 0;
   int local_rank = 0;
-  std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime *>>> part_comm_time;
+  std::unordered_map<uint64_t,
+                     std::unordered_map<int, std::queue<BPSCommTime*>>>
+      part_comm_time;
+  // Compressor list
+  std::vector<std::shared_ptr<compressor::Compressor>> compressor_list;
+  // kwargs
+  std::unordered_map<std::string, std::string> kwargs;
 } BPSContext;
 
 class Tensor {
@@ -233,6 +256,10 @@ struct TensorTableEntry {
   std::shared_ptr<std::atomic_int> counter_ptr;
   // How many partitions
   unsigned int total_partnum = 0;
+  // Compressor
+  std::shared_ptr<compressor::Compressor> compressor;
+  // Compressed
+  std::shared_ptr<compressor::tensor_t> compressed;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 
@@ -250,6 +277,11 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
+inline size_t Align(size_t size, int dtype) {
+  const size_t min_size =
+      (getDataTypeLength(dtype) * getDataTypeLength(dtype)) * 8;
+  return size + (min_size - size % min_size) % min_size;
+}
 }  // namespace common
 }  // namespace byteps
 

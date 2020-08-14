@@ -21,6 +21,7 @@ from __future__ import print_function
 # Load all the necessary MXNet C types.
 import ctypes
 import os
+import warnings
 
 import mxnet as mx
 from mxnet.base import c_str, check_call, string_types
@@ -78,5 +79,46 @@ def byteps_push_pull(tensor, version=0, priority=0, name=None, is_average=True):
     return
 
 
-def byteps_declare_tensor(name):
-    check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(c_str(name)))
+def byteps_declare_tensor(name, **kwargs):
+    """create ctx for tensors and register compressor 
+
+    Warpper of the c++ function. Build parameter dict.
+
+    Arguments:
+        name : str, tensor name
+        **kwargs: extra params w.r.t gradient compression  
+
+    Returns:
+        None
+    """
+    def _create_c_style_string_array(strings):
+        byte_arr = [bytes(string, 'utf-8') for string in strings]
+        arr = (ctypes.c_char_p*len(byte_arr))()
+        arr[:] = byte_arr
+        return arr
+
+    args = {}
+    for k, v in kwargs.items():
+        splits = k.split('_')
+        if len(splits) < 2 and not all(splits):
+            warnings.warn("Ignore invalid params %s of %s" % (k, name))
+            continue
+        
+        # remove first prefix "byteps"
+        k = '_'.join(splits[1:])
+        if isinstance(v, str):
+            args[k] = v.lower()
+        elif isinstance(v, (int, float,)):
+            args[k] = str(v)
+        elif isinstance(v, bool):
+            args[k] = str(int(v)).lower()
+        else:
+            raise ValueError("Invalid %s of type %s of %s" %
+                             (v, type(v), name))
+
+    check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(
+        c_str(name),
+        ctypes.c_int(len(args)),
+        _create_c_style_string_array(list(args.keys())),
+        _create_c_style_string_array(list(args.values()))
+    ))

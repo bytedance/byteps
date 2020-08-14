@@ -16,6 +16,8 @@
 #ifndef BYTEPS_GLOBAL_H
 #define BYTEPS_GLOBAL_H
 
+#include <unistd.h>
+
 #include <map>
 #include <memory>
 #include <mutex>
@@ -24,7 +26,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <unistd.h>
+
 #include "common.h"
 #include "communicator.h"
 #include "cpu_reducer.h"
@@ -34,6 +36,7 @@
 #include "ready_table.h"
 #include "scheduled_queue.h"
 #include "shared_memory.h"
+#include "thread_pool.h"
 
 namespace byteps {
 namespace common {
@@ -86,6 +89,8 @@ class BytePSGlobal {
   static bool IsResuming() { return _is_resuming; }
   static void SetResumingFlag(bool flag) {_is_resuming = flag; }
 
+  static void RegisterCompressor(const std::string& name, 
+                                 std::unordered_map<std::string, std::string>& kwargs);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
@@ -96,6 +101,7 @@ class BytePSGlobal {
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 
   static uint32_t GetPartitionBound() { return _partition_bytes; }
+  static uint32_t GetMinCompressBound() { return _min_compress_bytes; }
 
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
@@ -120,8 +126,9 @@ class BytePSGlobal {
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
-  static void SetProfileFlag(BPSContext *ctxt);
-  static void EmitTrace(std::ostream *os, const BPSCommTime *ret, BPSContext *ctxt);
+  static void SetProfileFlag(BPSContext* ctxt);
+  static void EmitTrace(std::ostream* os, const BPSCommTime* ret,
+                        BPSContext* ctxt);
   static void OutputTraces();
   static bool IsAllTensorOutput(const std::string& name);
   static void Who2beOutput(const std::string& name);
@@ -130,6 +137,8 @@ class BytePSGlobal {
   static bool IsAllThreadFinish(int total_thread_num);
   static std::atomic_int joined_thread_cnt;
   static int RoundUpToPageSize(int x) { return RoundUp(x, _pagesize); }
+
+  static std::shared_ptr<ThreadPool>& GetThreadPool() { return _thread_pool; }
 
  private:
   static std::mutex _init_mutex;
@@ -172,6 +181,7 @@ class BytePSGlobal {
   static cudaStream_t* _copy_host2device_stream;
 
   static uint32_t _partition_bytes;
+  static uint32_t _min_compress_bytes;
 
   // (key, ready_signal_count) pair, only valid for root device
   static ReadyTable* _reduce_table;
@@ -181,6 +191,8 @@ class BytePSGlobal {
 
   // (key, ready_signal_count) pair, only valid for non-root device
   static ReadyTable* _copy_table;
+
+  static std::shared_ptr<ThreadPool> _thread_pool;
 
   // for reduce strategies
   static bool _is_using_reduce;
@@ -192,7 +204,9 @@ class BytePSGlobal {
   // for debug sampling
   static uint64_t _sample_key;
 
-  static int AlignTo(int input, int alignment) { return input / alignment * alignment; }
+  static int AlignTo(int input, int alignment) {
+    return input / alignment * alignment;
+  }
 
   static int _pagesize;
   static int DivUp(int x, int y) { return (x + y - 1) / y; }

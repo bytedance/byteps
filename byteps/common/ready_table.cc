@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "ready_table.h"
+
 #include "logging.h"
 
 namespace byteps {
@@ -30,6 +31,11 @@ int ReadyTable::AddReadyCount(uint64_t key) {
   BPS_CHECK_LT(_ready_table[key], _ready_count)
       << _table_name << ": " << _ready_table[key] << ", " << (_ready_count);
   return ++_ready_table[key];
+}
+
+int ReadyTable::SetReadyCount(uint64_t key, int cnt) {
+  std::lock_guard<std::mutex> lock(_table_mutex);
+  _ready_table[key] = cnt;
 }
 
 void ReadyTable::ClearReadyCount(uint64_t key) {

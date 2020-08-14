@@ -14,7 +14,9 @@
 // =============================================================================
 
 #include "scheduled_queue.h"
+
 #include <algorithm>
+
 #include "global.h"
 #include "logging.h"
 
@@ -31,15 +33,16 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
   size_t credit_in_partition = BytePSGlobal::GetNccl()->GetGroupSize() + 1;
 
   auto byteps_scheduling_credit = getenv("BYTEPS_SCHEDULING_CREDIT");
-  credit_in_partition = byteps_scheduling_credit ? atoi(byteps_scheduling_credit) : 0;
-  if (!credit_in_partition) { // disable scheduling by default
+  credit_in_partition =
+      byteps_scheduling_credit ? atoi(byteps_scheduling_credit) : 0;
+  if (!credit_in_partition) {  // disable scheduling by default
     _is_scheduled = false;
   }
 
   _qt = type;
   _credits = _is_scheduled
-              ? BytePSGlobal::GetPartitionBound() * credit_in_partition
-              : 34359738368;  // 32GB, basically disabling credit control
+                 ? BytePSGlobal::GetPartitionBound() * credit_in_partition
+                 : 34359738368;  // 32GB, basically disabling credit control
   _rt = nullptr;
 
   switch (_qt) {
@@ -55,6 +58,7 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
         }
       }
       break;
+    case COMPRESS:
     case PUSH:
       if (BytePSGlobal::IsRootDevice()) {
         _rt = BytePSGlobal::GetPushTable();
@@ -158,7 +162,6 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
   return nullptr;
 }
 
-
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
   BPS_CHECK(!_is_scheduled);
   std::lock_guard<std::mutex> lock(_mutex);
@@ -197,6 +200,13 @@ void BytePSScheduledQueue::reportFinish(int size) {
     _credits += size;
   }
   return;
+}
+
+void BytePSScheduledQueue::reset(uint64_t key, int cnt) {
+  std::lock_guard<std::mutex> lock(_mutex);
+  if(_rt) {
+    _rt->SetReadyCount(key, cnt);
+  }
 }
 
 }  // namespace common

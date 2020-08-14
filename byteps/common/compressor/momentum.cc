@@ -1,4 +1,4 @@
-// Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,43 +13,28 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_CORE_LOOPS_H
-#define BYTEPS_CORE_LOOPS_H
+#include "momentum.h"
 
 namespace byteps {
 namespace common {
+namespace compressor {
 
-void CoordinateReduceLoop();
+tensor_t Momentum::Compress(tensor_t grad) {
+  // 1. m_t = \mu * m_{t-1} + g_t
+  UpdateMom(grad);
 
-void CoordinateBroadcastLoop();
+  // 2. p_t = \mu m_t + g_t
+  UpdateGradient(grad);
 
-void CoordinatePushLoop();
+  // 3. compress
+  return _cptr->Compress(grad);
+}
 
-void PcieReduceLoop();
+tensor_t Momentum::Decompress(tensor_t compressed) {
+  // directly forward to internal compressor
+  return _cptr->Decompress(compressed);
+}
 
-void RootNcclLoop();
-
-void NonRootNcclLoop();
-
-void SyncNcclLoop();
-
-void CopyDevice2HostLoop();
-
-void CompressLoop();
-
-void PushLoop();
-
-void PullLoop();
-
-void DecompressLoop();
-
-void RootCopyHost2DeviceLoop();
-
-void NonRootCopyListenLoop();
-
-void NonRootCopyHost2DeviceLoop();
-
+}  // namespace compressor
 }  // namespace common
 }  // namespace byteps
-
-#endif  // BYTEPS_CORE_LOOPS_H

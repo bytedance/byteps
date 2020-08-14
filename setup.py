@@ -171,19 +171,14 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
-    avx_flags = ['-mf16c', '-mavx']
+    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native']
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
-        flags_to_try = [default_flags + ['-stdlib=libc++'] + avx_flags,
-                        default_flags + avx_flags,
-                        default_flags + ['-stdlib=libc++'],
+        flags_to_try = [default_flags + ['-stdlib=libc++'],
                         default_flags]
     else:
-        flags_to_try = [default_flags + avx_flags,
-                        default_flags + ['-stdlib=libc++'] + avx_flags,
-                        default_flags,
+        flags_to_try = [default_flags ,
                         default_flags + ['-stdlib=libc++']]
     for cpp_flags in flags_to_try:
         try:
@@ -254,7 +249,16 @@ def get_common_options(build_ext):
                'byteps/common/ready_table.cc',
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
-               'byteps/common/cpu_reducer.cc']
+               'byteps/common/cpu_reducer.cc'] + [
+               'byteps/common/compressor/compressor_registry.cc',
+               'byteps/common/compressor/error_feedback.cc',
+               'byteps/common/compressor/momentum.cc',
+               'byteps/common/compressor/impl/dithering.cc',
+               'byteps/common/compressor/impl/onebit.cc',
+               'byteps/common/compressor/impl/randomk.cc',
+               'byteps/common/compressor/impl/topk.cc',
+               'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+               'byteps/common/compressor/impl/nesterov_momentum.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + \
@@ -263,6 +267,7 @@ def get_common_options(build_ext):
     else:
         COMPILE_FLAGS = cpp_flags
         LINK_FLAGS = link_flags
+    
     LIBRARY_DIRS = []
     LIBRARIES = []
 
@@ -297,7 +302,15 @@ def build_server(build_ext, options):
     server_lib.include_dirs = options['INCLUDES']
     server_lib.sources = ['byteps/server/server.cc',
                           'byteps/common/cpu_reducer.cc',
-                          'byteps/common/logging.cc']
+                          'byteps/common/logging.cc',
+                          'byteps/common/common.cc'] + [
+                          'byteps/common/compressor/compressor_registry.cc',
+                          'byteps/common/compressor/error_feedback.cc',
+                          'byteps/common/compressor/impl/dithering.cc',
+                          'byteps/common/compressor/impl/onebit.cc',
+                          'byteps/common/compressor/impl/randomk.cc',
+                          'byteps/common/compressor/impl/topk.cc',
+                          'byteps/common/compressor/impl/vanilla_error_feedback.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']

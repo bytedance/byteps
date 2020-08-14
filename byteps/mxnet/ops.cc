@@ -15,7 +15,10 @@
 // =============================================================================
 
 #include "ops.h"
+
 #include <atomic>
+
+#include "../common/logging.h"
 #include "../common/operations.h"
 #include "adapter.h"
 #include "cuda_util.h"
@@ -73,7 +76,7 @@ void DoPushPull(void*, void* on_complete_ptr, void* param) {
   auto push_pull_param = static_cast<PushPullParam*>(param);
   int priority = push_pull_param->priority;
   int version = push_pull_param->version;
-  NDArray* input = push_pull_param->input.get();
+  auto input = push_pull_param->input.get();
   BPSContext& context = *push_pull_param->context;
 
   auto device = TensorUtil::GetDevice(input);
@@ -118,10 +121,12 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
   // Use MXEnginePushAsync instead of Engine::Get()->PushAsync to avoid ABI
   // compatibility issues
   MXEnginePushAsync(DoPushPull, push_pull_param, DeletePushPullParam,
-                    &MX_EXEC_CTX, nullptr, 0, &var, 1,
-                    &MX_FUNC_PROP, 0, "BytePSPushPull");
+                    &MX_EXEC_CTX, nullptr, 0, &var, 1, &MX_FUNC_PROP, 0,
+                    "BytePSPushPull");
 
-  if (is_average) {
+  auto use_ef =
+      context.kwargs.find("error_feedback_type") != context.kwargs.end();
+  if (is_average && !(!context.kwargs.empty() && use_ef)) {
     // average the aggregated gradient
     auto num_worker = byteps_size();
     *tensor /= num_worker;
@@ -130,9 +135,25 @@ extern "C" int byteps_mxnet_push_pull_async(NDArray* tensor, char* name,
   MX_API_END();
 }
 
-extern "C" void byteps_mxnet_declare_tensor(char* name) {
+extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
+                                            char** args_keys,
+                                            char** args_vals) {
   std::string tensor_name = GetOpName("byteps", name);
   common::IsTensorDeclared(tensor_name);
+
+  std::unordered_map<std::string, std::string> kwargs;
+  std::string key, val;
+  std::string::size_type pos;
+  for (int i = 0; i < num_args; ++i) {
+    key = args_keys[i];
+    val = args_vals[i];
+    kwargs[key] = val;
+  }
+
+  if (num_args > 0) {
+    common::RegisterCompressor(tensor_name, kwargs);
+  }
+
   return;
 }
 
