@@ -233,7 +233,8 @@ def main():
             "ef": opt.ef,
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
-            "k": opt.k
+            "k": opt.k,
+            "fp16": opt.fp16_pushpull
         }
 
         optimizer_params = {'lr_scheduler': lr_scheduler,
