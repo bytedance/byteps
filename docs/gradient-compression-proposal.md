@@ -282,7 +282,7 @@ The above figure shows that our implementation of dist-EF-SGDM reduces the train
 - [x] support onebit compressor
 - [x] support error-feedback
 - [x] support momentum
-- [ ] support other compressors
+- [x] support other compressors
 - [ ] support PyTorch and Tensorflow
 
 ## Precautions
