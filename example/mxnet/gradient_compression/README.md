@@ -66,15 +66,15 @@ export BYTEPS_NUMA_ON=1
 
 if [[ $1 == *"baseline"* ]]; then
   export BYTEPS_THREADPOOL_SIZE=0
-  cmd="bpslaunch python ~/repos/byteps/example/mxnet/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 20 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1}"
+  cmd="bpslaunch python example/mxnet/gradient_compression/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 20 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1}"
 elif [[ $1 == *"onebit"* ]]; then
-  cmd="bpslaunch python ~/repos/byteps/example/mxnet/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov"
+  cmd="bpslaunch python example/mxnet/gradient_compression/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov"
 elif [[ $1 == *"topk"* ]]; then
-  cmd="bpslaunch python ~/repos/byteps/example/mxnet/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor topk --k 0.001"
+  cmd="bpslaunch python example/mxnet/gradient_compression/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor topk --k 0.001"
 elif [[ $1 == *"randomk"* ]]; then
-  cmd="bpslaunch python ~/repos/byteps/example/mxnet/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor randomk --k 0.001"
+  cmd="bpslaunch python example/mxnet/gradient_compression/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor randomk --k 0.001"
 elif [[ $1 == *"dithering"* ]]; then
-  cmd="bpslaunch python ~/repos/byteps/example/mxnet/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor dithering --k 2 --normalize l2"
+  cmd="bpslaunch python example/mxnet/gradient_compression/train_cifar100_byteps_gc.py --model resnet18_v2 --mode hybrib --batch-size 32 --num-gpus 1 --num-epochs 200 -j 2 --warmup-epochs 10 --warmup-lr 0.1 --lr 0.1 --logging-file ${1} --compressor dithering --k 2 --normalize l2"
 else
   echo "unsupport compressor"
   exit
@@ -141,6 +141,7 @@ pssh -i -l ubuntu -H hosts './run.sh'
 ### Scripts
 
 Replace your scheduler's IP with `192.168.80.230`.
+And replace with your scripts path.
 
 
 worker.sh for ResNet50_v2
@@ -164,14 +165,16 @@ export BYTEPS_NUMA_ON=1
 
 if [ $1 == "baseline" ]; then
   export BYTEPS_THREADPOOL_SIZE=0
-  nohup bpslaunch python3 ~/repos/byteps/example/mxnet/train_gluon_imagenet_byteps_gc.py --model resnet50_v2 --mode hybrid --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 64 --num-gpus 1 --num-epochs 120 -j 2 --warmup-epochs 5 --warmup-lr 0.2 --lr 0.2 --lr-mode cosine --logging-file baseline >>/dev/null 2>&1 &
+  nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model resnet50_v2 --mode hybrid --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 64 --num-gpus 1 --num-epochs 120 -j 2 --warmup-epochs 5 --warmup-lr 0.2 --lr 0.2 --lr-mode cosine --logging-file baseline >>/dev/null 2>&1 &
 elif [ $1 == "onebit" ]; then
-  nohup bpslaunch python3 ~/repos/byteps/example/mxnet/train_gluon_imagenet_byteps_gc.py --model resnet50_v2 --mode hybrid --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 64 --num-gpus 1 --num-epochs 120 -j 2 --warmup-epochs 5 --warmup-lr 0.1 --lr 0.1 --lr-mode cosine  --logging-file onebit --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov >>/dev/null 2>&1 &
+  nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model resnet50_v2 --mode hybrid --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 64 --num-gpus 1 --num-epochs 120 -j 2 --warmup-epochs 5 --warmup-lr 0.1 --lr 0.1 --lr-mode cosine  --logging-file onebit --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov >>/dev/null 2>&1 &
 else
   echo "unsupport compressor"
 fi
 ```
 
+
+We found VGG16 suffers from the generalization gap with 8 nodes even with full-precision SGDM. So we use 4 nodes for VGG16.
 
 worker.sh for VGG16
 ```sh
@@ -194,9 +197,9 @@ export BYTEPS_NUMA_ON=1
  
 if [ $1 == "baseline" ]; then  
   export BYTEPS_THREADPOOL_SIZE=0
-  nohup bpslaunch python3 ~/repos/byteps/example/mxnet/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.01 --lr 0.01 --lr-decay-epoch 50,80 --logging-file baseline >>/dev/null 2>&1 &
+  nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.01 --lr 0.01 --lr-decay-epoch 50,80 --logging-file baseline >>/dev/null 2>&1 &
 elif [ $1 == "onebit" ]; then
-  nohup bpslaunch python3 ~/repos/byteps/example/mxnet/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.01 --lr 0.01 --lr-decay-epoch 50,80 --logging-file onebit --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov >>/dev/null 2>&1 &
+  nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.01 --lr 0.01 --lr-decay-epoch 50,80 --logging-file onebit --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov >>/dev/null 2>&1 &
 else
   echo "unsupport compressor"
 fi
