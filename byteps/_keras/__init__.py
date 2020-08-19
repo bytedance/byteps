@@ -44,6 +44,10 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             gradients = [grad for grad, var in grads_and_vars]
             return self._push_pull(gradients)
 
+        def sync_grads_one_shot(self, grads, grad_names):
+            with tf.name_scope(self._name + "_Push_Pull") as scope:
+                return list(bps._sync_all_tensors(grads, grad_names = grad_names))
+
         def _push_pull(self, gradients):
             self._aggregated_gradients = True
             if bps.size() > 1:
@@ -61,6 +65,13 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
                             averaged_gradients.append(avg_grad)
                         else:
                             averaged_gradients.append(None)
+                    dummy_half = ["Adam_Push_Pull/xxxxxxx" for i in range(len(averaged_gradients))]
+                    grad_names = dummy_half + [tmp.name for tmp in averaged_gradients]
+                    tf.print("vvvv", [tmp.device for tmp in averaged_gradients])
+                    # tf.print("vvvvv ", grad_names)
+                    # grad_names = [tmp.name for tmp in averaged_gradients] + [tmp.name for tmp in averaged_gradients]
+                    averaged_gradients = self.sync_grads_one_shot(gradients + averaged_gradients, grad_names)
+                    averaged_gradients = averaged_gradients[:len(gradients)]
                     return averaged_gradients
             else:
                 return gradients

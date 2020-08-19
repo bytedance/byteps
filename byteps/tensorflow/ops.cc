@@ -60,6 +60,7 @@ namespace tensorflow {
 namespace {
 
 int printMatOnGPU(std::string &name, const void *buffer, int num_elem) {
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   std::ofstream outfile;
   int my_rank = common::byteps_rank();
   outfile.open("output-" + std::to_string(my_rank), std::ios_base::out | std::ios_base::app);
@@ -483,7 +484,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
                std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
-  std::cout << " x2682  pos 11 inside StartTaskXla" << std::endl;
+  std::cout << " x2682  pos 11 inside StartTaskBlockingXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
   std::cout << " x2682  pos 12 " << std::endl;
   // auto device = GetDeviceID(context);
@@ -587,7 +588,7 @@ void StartTaskBlockingWrapper(CUstream stream, void** buffers,
     StartTaskBlockingXla(context, tmp_name, bps_input, bps_output, ready_event);
 
     // cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-    printMatOnGPU(tmp_name, buffers[1], num_elem);
+    // printMatOnGPU(tmp_name, buffers[1], num_elem);
     std::cout << " x2682  pushpullblocking " << std::endl;
 }
 
@@ -674,6 +675,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 // void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
+    cudaStreamSynchronize(stream);
+
     std::cout << " x2682  pos 4 " << std::endl;
     void *a = buffers[0];
     std::cout << " x2682  pos 5 " << std::endl;
@@ -705,7 +708,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
       std::cout << " dim " << dim;
     }
 
-    // printMatOnGPU(tmp_name, buffers[0], num_elem);
+    printMatOnGPU(tmp_name, buffers[0], num_elem);
 
     buffer_size = elem_size * num_elem;
     std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
@@ -918,7 +921,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     // BPS_LOG(DEBUG, my_rank) << tmp_name << " first element: " << i0 << std::endl;
     // printMatOnGPU(tmp_name, buffers[count + num], buf_size/4);
     cudaStreamSynchronize(stream);
-    printMatOnGPU(tmp_name, args.bps_out_buf, buf_size/4);
+    // printMatOnGPU(tmp_name, args.bps_out_buf, buf_size/4);
     // BPS_LOG(DEBUG, my_rank) << tmp_name << " first element: " << *((float *)buffers[count + num]) << std::endl;
     count++;
   }
@@ -989,7 +992,7 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       std::vector<xla::Shape> tmp_output_shapes;
       // for (auto operand : values) {
       for (int i = 0; i < N; i++) {
-        if (tensor_names_to_sync[i] == "dummy" ||
+        if (tensor_names_to_sync[i] == "throwaway_dummy" ||
             tensor_names_to_sync[i].length() == 0) {
             continue;
         }
@@ -1007,7 +1010,7 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       std::cout.setf(std::ios::unitbuf);
       for (const std::string& tmp_name : tensor_names_to_sync) {
 	      std::cout << "x2682 got_name: " << tmp_name << " ";
-        if (tmp_name == "dummy") {
+        if (tmp_name == "throwaway_dummy") {
           continue;
         }
         if (tmp_name.length() == 0) {
@@ -1026,7 +1029,7 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       // for (const std::string& tmp_name : tensor_names_to_sync) {
       for (int i = 0; i < N; i++) {
           auto& tmp_name = tensor_names_to_sync[i];
-          if (tmp_name == "dummy" ||
+          if (tmp_name == "throwaway_dummy" ||
             tmp_name.length() == 0) {
               continue;
           }
@@ -1082,7 +1085,12 @@ REGISTER_OP("BytepsSyncAllTensors")
     .Attr("N: int >= 1")
     .Attr("tensor_names: list(string)")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
+      // c->set_output(0, c->input(0));
+      // return ::tensorflow::Status::OK();
+      const int n = c->num_inputs();
+      for (int i = 0; i < n; i++) {
+        c->set_output(i, c->input(i));
+      }
       return ::tensorflow::Status::OK();
     });
 REGISTER_XLA_OP(Name("BytepsSyncAllTensors"), BytePSSyncAllTensorsXlaOp);

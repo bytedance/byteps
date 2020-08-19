@@ -35,6 +35,8 @@ class BroadcastGlobalVariablesCallbackImpl(object):
         if bps.size() <= 1:
             return
 
+        tf.keras.backend.clear_session()
+        tf.config.optimizer.set_jit(True) # Enable XLA.
         with tf.device(self.device):
             if bps._executing_eagerly() and hasattr(self.model, 'variables'):
                 # TensorFlow 2.0 or TensorFlow eager
@@ -45,6 +47,8 @@ class BroadcastGlobalVariablesCallbackImpl(object):
             else:
                 bcast_op = bps.broadcast_global_variables(self.root_rank)
                 self.backend.get_session().run(bcast_op)
+        tf.keras.backend.clear_session()
+        tf.config.optimizer.set_jit(False)
 
         self.broadcast_done = True
 
