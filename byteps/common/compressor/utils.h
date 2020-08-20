@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_UTILS_H
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <random>
