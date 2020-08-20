@@ -247,7 +247,7 @@ T HyperParamFinder(
   return value;
 }
 
-int memcpy_multithread(void* dst, const void* src, size_t len) {
+inline int memcpy_multithread(void* dst, const void* src, size_t len) {
   auto in = (float*)src;
   auto out = (float*)dst;
 #pragma omp parallel for simd
