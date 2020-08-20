@@ -206,9 +206,11 @@ export BYTEPS_MIN_COMPRESS_BYTES=1024000 # compression threshold
 export BYTEPS_NUMA_ON=1   # enable NUMA turning
  
 if [ $1 == "baseline" ]; then  
+  # disable threadpool size for full-precision
   export BYTEPS_THREADPOOL_SIZE=0
   nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.01 --lr 0.01 --lr-decay-epoch 50,80 --logging-file baseline >>/dev/null 2>&1 &
 elif [ $1 == "onebit" ]; then
+  # scaled onebit + error-feedback + nesterov momentum
   nohup bpslaunch python3 example/mxnet/gradient_compression/train_gluon_imagenet_byteps_gc.py --model vgg16 --mode hybrid  --rec-train ~/data/ILSVRC2012/train.rec --rec-train-idx ~/data/ILSVRC2012/train.idx --rec-val ~/data/ILSVRC2012/val.rec --rec-val-idx ~/data/ILSVRC2012/val.idx --use-rec --batch-size 32 --num-gpus 1 --num-epochs 100 -j 2 --warmup-epochs 5 --warmup-lr 0.015 --lr 0.015 --lr-decay-epoch 50,80 --logging-file onebit --compressor onebit --onebit-scaling --ef vanilla --compress-momentum nesterov >>/dev/null 2>&1 &
 else
   echo "unsupport compressor"
