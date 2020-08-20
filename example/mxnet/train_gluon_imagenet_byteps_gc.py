@@ -122,8 +122,10 @@ def parse_args():
                         help='which compress momentum')
     parser.add_argument('--onebit-scaling', action='store_true', default=False,
                         help='enable scaling for onebit compressor')
-    parser.add_argument('--k', default=1, type=int,
+    parser.add_argument('--k', default=1, type=float,
                         help='topk or randomk')
+    parser.add_argument('--normalize', default='max', type=str,
+                        help='max or l2')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
 
@@ -410,7 +412,8 @@ def main():
             "ef": opt.ef,
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
-            "k": opt.k
+            "k": opt.k,
+            "normalize": opt.normalize
         }
 
         trainer = bps.DistributedTrainer(

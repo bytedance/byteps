@@ -105,7 +105,7 @@ void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
                                             size_t compressed_size) {
   using pair_t = std::pair<index_t, scalar_t>;
 
-  std::memcpy(error, corrected, _size);
+  memcpy_multithread(error, corrected, _size);
 
   auto ptr = reinterpret_cast<const pair_t*>(compressed);
   for (size_t i = 0; i < this->_k; ++i) {

@@ -50,10 +50,11 @@ tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < chunk_len; ++i) {
-    index_t x = src[i * PACKING_SIZE] < 0;
+    size_t idx = i * PACKING_SIZE;
+    index_t x = src[idx] < 0;
     for (size_t j = 1; j < PACKING_SIZE; ++j) {
       x <<= 1;
-      x |= src[i * PACKING_SIZE + j] < 0;
+      x |= src[idx + j] < 0;
     }
     dst[i] = x;
   }
@@ -87,9 +88,10 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
 #pragma omp parallel for simd
   for (int i = chunk_len - 1; i >= 0; --i) {
     index_t x = ptr[i];
+    size_t idx = i * PACKING_SIZE;
     for (int j = PACKING_SIZE - 1; j >= 0; --j) {
       int sign = 1 - ((x & 0x01) << 1);
-      dst[i * PACKING_SIZE + j] = sign * scale;
+      dst[idx + j] = sign * scale;
       x >>= 1;
     }
   }
@@ -120,10 +122,10 @@ void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
 #pragma omp parallel for simd
   for (int i = chunk_len - 1; i >= 0; --i) {
     index_t x = compressed[i];
+    size_t idx = i * PACKING_SIZE;
     for (int j = PACKING_SIZE - 1; j >= 0; --j) {
       int sign = ((x & 0x01) << 1) - 1;
-      error[i * PACKING_SIZE + j] =
-          corrected[i * PACKING_SIZE + j] + sign * scale;
+      error[idx + j] = corrected[idx + j] + sign * scale;
       x >>= 1;
     }
   }

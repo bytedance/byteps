@@ -179,7 +179,7 @@ void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
   auto* p_scale = reinterpret_cast<const float*>(compressed + blocks + 1);
   const float scale = *p_scale;
 
-  std::memcpy(error, corrected, _size);
+  memcpy_multithread(error, corrected, _size);
 
   unsigned int s = _s;
   if (_ptype == PartitionType::NATURAL) {
