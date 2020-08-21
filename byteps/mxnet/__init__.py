@@ -305,7 +305,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             mu = optimizer_params["momentum"]
 
             # 1bit compressor use an additional momentum for weight decay
-            if compressor == "onebit" and "wd" in optimizer_params:
+            if "wd" in optimizer_params:
                 wd = optimizer_params["wd"]
                 intra_compressor = Compression.wdmom(intra_compressor,
                                                      mu, wd, threshold)
