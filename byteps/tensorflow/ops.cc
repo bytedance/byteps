@@ -653,7 +653,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   // to delete
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
   _name_to_done_args[name_key].bps_buf_size = size;
-  return;
+  // return;
   // to delete end
   bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
@@ -927,11 +927,11 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
     // to delete
-    cudaMemcpyAsync(args.bps_out_buf, args.bps_in_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(buffers[count + num], args.bps_out_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
-    _name_to_done_args.erase(it);
-    count++;
-    continue;
+    // cudaMemcpyAsync(args.bps_out_buf, args.bps_in_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
+    // cudaMemcpyAsync(buffers[count + num], args.bps_out_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
+    // _name_to_done_args.erase(it);
+    // count++;
+    // continue;
     // to delete end
     {
       std::unique_lock<std::mutex> lk(args.mtx);
