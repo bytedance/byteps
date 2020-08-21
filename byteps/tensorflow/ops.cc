@@ -747,10 +747,11 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     void *in_ptr;
     void *out_ptr;
     cudaMalloc(&in_ptr, buffer_size);
-    cudaMalloc(&out_ptr, buffer_size);
-    cudaMemcpyAsync(in_ptr, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    // cudaMalloc(&out_ptr, buffer_size);
+    // cudaMemcpyAsync(in_ptr, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
     cudaStreamSynchronize(stream);
-    auto bps_input = std::make_shared<XlaTensor>(in_ptr, num_elem, dt_type, buffer_size);
+    // auto bps_input = std::make_shared<XlaTensor>(in_ptr, num_elem, dt_type, buffer_size);
     // auto bps_output = std::make_shared<XlaTensor>(out_ptr, num_elem, dt_type, buffer_size);
     // tmp end
 
@@ -780,7 +781,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     std::cout << " x2682  pos 10 " << std::endl;
     // auto& bps_context = common::GetContextFromName(tmp_name);
 
-    StartTaskXla(context, tmp_name, bps_input, bps_output, ready_event);
+    StartTaskXla(context, tmp_name, bps_output, bps_output, ready_event);
 
     // cudaMemcpyAsync(buffers[1], const_cast<void *>(bps_output->data()), buffer_size, cudaMemcpyDeviceToDevice, stream);
     // cudaMemcpyAsync(buffers[1], out_gpu_ptr, buffer_size, cudaMemcpyDeviceToDevice, stream);
