@@ -751,7 +751,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
     cudaMemcpyAsync(in_ptr, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
     cudaStreamSynchronize(stream);
     auto bps_input = std::make_shared<XlaTensor>(in_ptr, num_elem, dt_type, buffer_size);
-    auto bps_output = std::make_shared<XlaTensor>(out_ptr, num_elem, dt_type, buffer_size);
+    // auto bps_output = std::make_shared<XlaTensor>(out_ptr, num_elem, dt_type, buffer_size);
     // tmp end
 
     // auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
@@ -768,7 +768,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     ::tensorflow::Tensor outputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     // auto bps_output = std::make_shared<TFTensor>(outputTensor);
-    // auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
+    auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
 
     //////// start
     // void *outputTensor_flat = const_cast<void *>(bps_output->data());
