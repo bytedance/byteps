@@ -649,7 +649,12 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::replace(name_key.begin(), name_key.end(), '/', '_');
   std::cout << " x2682  pos 16 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
   _name_to_done_args[name_key].is_done = false;
-  _name_to_done_args[name_key].bps_out_buf = byteps_output->data();
+  _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
+  // to delete
+  _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
+  _name_to_done_args[name_key].bps_buf_size = size;
+  return;
+  // to delete end
   bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
@@ -712,11 +717,6 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     buffer_size = elem_size * num_elem;
     std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
-  // to delete
-  cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-  // cudaStreamSynchronize(stream);
-  return;
-  // to delte end
 #if 0
     ::tensorflow::PlatformGpuId platform_gpu_id(0);
 
@@ -741,9 +741,20 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 #endif
 
     //////// start
-    ::tensorflow::Tensor inputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
+    // ::tensorflow::Tensor inputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     // auto bps_input = std::make_shared<TFTensor>(inputTensor);
-    auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
+    // tmp
+    void *in_ptr;
+    void *out_ptr;
+    cudaMalloc(&in_ptr, buffer_size);
+    cudaMalloc(&out_ptr, buffer_size);
+    cudaMemcpyAsync(in_ptr, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    cudaStreamSynchronize(stream);
+    auto bps_input = std::make_shared<XlaTensor>(in_ptr, num_elem, dt_type, buffer_size);
+    auto bps_output = std::make_shared<XlaTensor>(out_ptr, num_elem, dt_type, buffer_size);
+    // tmp end
+
+    // auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
     // void *inputTensor_flat = const_cast<void *>(bps_input->data());
     // cudaError_t e = cudaHostRegister(inputTensor_flat, buffer_size, cudaHostRegisterMapped);
     // void *gpu_ptr = nullptr;
@@ -757,7 +768,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     ::tensorflow::Tensor outputTensor(dt_type, ::tensorflow::TensorShape({num_elem}));
     // auto bps_output = std::make_shared<TFTensor>(outputTensor);
-    auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
+    // auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
 
     //////// start
     // void *outputTensor_flat = const_cast<void *>(bps_output->data());
@@ -910,18 +921,18 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   while (ss >> tmp_name) {
     int buf_size;
     ss >> buf_size;
-    // to delete
-    // cudaMemcpyAsync(buffers[1], buffers[0], buf_size, cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(buffers[count + num], buffers[count], buf_size, cudaMemcpyDeviceToDevice, stream);
-    // cudaStreamSynchronize(stream);
-    count++;
-    continue;
-    // to delte end
     auto it = _name_to_done_args.find(tmp_name);
     std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
       << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
+    // to delete
+    cudaMemcpyAsync(args.bps_out_buf, args.bps_in_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(buffers[count + num], args.bps_out_buf, args.bps_buf_size, cudaMemcpyDeviceToDevice, stream);
+    _name_to_done_args.erase(it);
+    count++;
+    continue;
+    // to delete end
     {
       std::unique_lock<std::mutex> lk(args.mtx);
       args.cv.wait(lk, [&args]{return args.is_done;});

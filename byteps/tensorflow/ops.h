@@ -80,7 +80,9 @@ struct Xla_done_cb_args{
   std::mutex mtx;
   std::condition_variable cv;
   bool is_done;
-  const void *bps_out_buf;
+  void *bps_out_buf;
+  void *bps_in_buf;
+  int bps_buf_size;
 };
 
 static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
