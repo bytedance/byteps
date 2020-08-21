@@ -675,7 +675,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 // void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
-    cudaStreamSynchronize(stream);
+  cudaStreamSynchronize(stream);
 
     std::cout << " x2682  pos 4 " << std::endl;
     void *a = buffers[0];
@@ -712,13 +712,19 @@ void StartTaskWrapper(CUstream stream, void** buffers,
 
     buffer_size = elem_size * num_elem;
     std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
+  // to delete
+  cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+  // cudaStreamSynchronize(stream);
+  return;
+  // to delte end
+#if 0
     ::tensorflow::PlatformGpuId platform_gpu_id(0);
 
-    ::tensorflow::GPUMemAllocator *sub_allocator =
-      new ::tensorflow::GPUMemAllocator(
-        ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
-        platform_gpu_id, false /*use_unified_memory*/, {}, {});
-#if 0
+    // ::tensorflow::GPUMemAllocator *sub_allocator =
+    //   new ::tensorflow::GPUMemAllocator(
+    //     ::tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+    //     platform_gpu_id, false /*use_unified_memory*/, {}, {});
+
     //////// start
     ::tensorflow::GPUMemAllocator *sub_allocator =
       new ::tensorflow::GPUMemAllocator(
@@ -904,6 +910,13 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   while (ss >> tmp_name) {
     int buf_size;
     ss >> buf_size;
+    // to delete
+    // cudaMemcpyAsync(buffers[1], buffers[0], buf_size, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(buffers[count + num], buffers[count], buf_size, cudaMemcpyDeviceToDevice, stream);
+    // cudaStreamSynchronize(stream);
+    count++;
+    continue;
+    // to delte end
     auto it = _name_to_done_args.find(tmp_name);
     std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
       << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;

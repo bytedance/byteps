@@ -75,7 +75,7 @@ tf.profiler.experimental.start(LOG_DIR)
 # for batch, (images, labels) in enumerate(dataset.take(10000 // bps.size())):
 # for batch, (images, labels) in enumerate(dataset.take(100 // bps.size())):
 # for batch, (images, labels) in enumerate(dataset.take(bps.size() * 2 * 50 // bps.size())):
-for batch, (images, labels) in enumerate(dataset.take(bps.size() * 2 * 2 // bps.size())):
+for batch, (images, labels) in enumerate(dataset.take(bps.size() * 10 // bps.size())):
     # with tf.profiler.experimental.Trace("Train", step_num=batch):
     loss_value = training_step(images, labels, batch == 0)
     if batch == 0:
