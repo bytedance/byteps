@@ -402,8 +402,6 @@ if hasattr(tf, 'GradientTape'):
                             if grad is not None else grad
                             for grad in grads]
                     grad_names = [grad.name for grad in new_grads]
-                    print('num_grad_names ', len(grad_names))
-                    print('num_grads ', len(new_grads))
                     return new_grads, grad_names
 
             self._push_pull_grads = push_pull_grads
@@ -427,42 +425,9 @@ if hasattr(tf, 'GradientTape'):
             if size() > 1:
                 # gradients = _print_tensors(gradients, [aa.name for aa in gradients])
                 avg_grads, grad_names = self._push_pull_grads(gradients)
-                new_grad_names = ["throwaway_dummy"] * len(gradients) + grad_names
-                print("xxxxxxxxxxxxxxxxx", grad_names)
-                avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
-                avg_grads = avg_grads[:len(gradients)]
-                # avg_grads = [tf.identity(grad) for grad in avg_grads]
 
-                # avg_grads = _print_tensors(avg_grads, [aa.name for aa in avg_grads])
-                # print("here", avg_grads)
-                # tf.print(gradients[0])
-                # tensor = tf.range(10)
-                # tf.print(tensor, output_stream=sys.stderr)
-                # tf.print("rank ", rank(), " tensors after pushpull: ", avg_grads)
-                # tf.group(*self._sync_grads_one_shot(avg_grads, grad_names))
-                # return avg_grads
+                avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
 
-                # with tf.control_dependencies(gradients + self._sync_grads_one_shot(avg_grads, grad_names)):
-                #     _tmp = tf.no_op()
-                #     avg_grads = [tf.identity(grad) for grad in avg_grads]
-
-                # with tf.control_dependencies(self._sync_grads_one_shot(avg_grads, grad_names)):
-                #     avg_grads = [tf.identity(grad) for grad in avg_grads]
-                # x = tf.constant(2)
-                # y = tf.constant(5)
-                # avg_grads  = tf.cond(x < y, lambda: self._sync_grads(avg_grads, grad_names), lambda: self._sync_grads(avg_grads, grad_names))
-                # if len(avg_grads):
-                #     avg_grads = self._sync_grads(avg_grads, grad_names)
-                # sync here
-                # with tf.control_dependencies([tf.identity(grad) for grad in avg_grads]):
-                # with tf.xla.experimental.jit_scope(compile_ops=False):
-                #     avg_grads = self._sync_grads(avg_grads, grad_names)
-                #     with tf.control_dependencies(avg_grads):
-                #         barrier_op = tf.no_op()
-                # with tf.control_dependencies([barrier_op]):
-                #     # avg_grads = [tf.identity(grad) for grad in self._sync_grads(avg_grads)]
-                #     avg_grads = [tf.identity(grad) for grad in avg_grads]
-                #     avg_grads = self._sync_grads(avg_grads, grad_names)
                 return avg_grads
             else:
                 return gradients
