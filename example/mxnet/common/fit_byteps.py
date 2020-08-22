@@ -158,7 +158,7 @@ def fit(args, network, data_loader, **kwargs):
     logging.info('start with arguments %s', args)
 
     # data iterators
-    (train, val) = data_loader(args, (bps.rank(), bps.size()))
+    (train, val) = data_loader(args, (bps.rank(), bps.size(), bps.local_rank()))
     if args.test_io:
         tic = time.time()
         for i, batch in enumerate(train):

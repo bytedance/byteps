@@ -116,9 +116,9 @@ def get_rec_iter(args, rank=None):
                 args.num_examples / args.batch_size, np.float32)
         return (train, None)
     if rank:
-        (rank, nworker) = (rank[0], rank[1])
+        (rank, nworker, local_rank) = (rank[0], rank[1], rank[2])
     else:
-        (rank, nworker) = (0, 1)
+        (rank, nworker, local_rank) = (0, 1, 0)
     rgb_mean = [float(i) for i in args.rgb_mean.split(',')]
     train = mx.io.ImageRecordIter(
         path_imgrec         = args.data_train,
@@ -146,7 +146,8 @@ def get_rec_iter(args, rank=None):
         preprocess_threads  = args.data_nthreads,
         shuffle             = True,
         num_parts           = nworker,
-        part_index          = rank)
+        part_index          = rank,
+        device_id           = local_rank)
     if args.data_val is None:
         return (train, None)
     val = mx.io.ImageRecordIter(
@@ -164,5 +165,6 @@ def get_rec_iter(args, rank=None):
         rand_crop           = False,
         rand_mirror         = False,
         num_parts           = nworker,
-        part_index          = rank)
+        part_index          = rank,
+        device_id           = local_rank)
     return (train, val)
