@@ -213,7 +213,6 @@ class DistributedTrainer(mx.gluon.Trainer):
             self._f = open("lr.s", "wb")
             self._f.truncate(8)
 
-        self._parallel = Parallel()
         self._bps_size = size()
         self.root_rank = root_rank
         self._intra_compressors = {}
