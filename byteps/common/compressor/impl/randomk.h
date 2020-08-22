@@ -42,8 +42,9 @@ class RandomkCompressor : public Compressor {
       : Compressor(size, dtype), _k(k) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
-      _rng.set_seed(seed);
+      gen.seed(seed);
     }
+    gen.seed(_rd());
   };
   virtual ~RandomkCompressor() = default;
 
@@ -95,7 +96,7 @@ class RandomkCompressor : public Compressor {
  private:
   unsigned int _k;
   std::random_device _rd;
-  XorShift128PlusBitShifterRNG _rng;
+  std::mt19937 gen;
 };
 }  // namespace compressor
 }  // namespace common

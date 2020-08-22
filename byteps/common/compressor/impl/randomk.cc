@@ -52,8 +52,9 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   using pair_t = std::pair<index_t, scalar_t>;
   auto ptr = reinterpret_cast<pair_t*>(dst);
 
+  std::uniform_int_distribution<> dis(0, len - 1);
   for (size_t i = 0; i < this->_k; ++i) {
-    auto index = _rng.Randint(0, len);
+    auto index = dis(_gen);
     ptr[i] = std::make_pair(index, src[index]);
   }
 
