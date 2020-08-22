@@ -25,7 +25,6 @@ import mxnet as mx
 import mxnet.ndarray as nd
 
 from byteps.mxnet.compression import Compression
-from byteps.mxnet.parallel import Parallel
 from byteps.mxnet.ops import (byteps_declare_tensor, byteps_push_pull, init,
                               local_rank, local_size, rank, resume, shutdown,
                               size, suspend)
