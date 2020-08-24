@@ -41,7 +41,8 @@ CompressorRegistry::Register reg(
                                              [](unsigned x) { return x != 0; });
 
       bool is_scale = false;
-      if (kwargs.find("ef_type") != kwargs.end()) {
+      // ef not enabled
+      if (kwargs.find("ef_type") == kwargs.end()) {
         is_scale = true;
       }
 
