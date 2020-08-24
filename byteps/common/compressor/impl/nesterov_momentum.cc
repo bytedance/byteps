@@ -28,6 +28,8 @@ CompressorRegistry::Register reg(
       BPS_CHECK_NE(cptr, nullptr);
       // find \mu
       auto mu = HyperParamFinder<float>(kwargs, "momentum_mu");
+
+      BPS_LOG(INFO) << "nesterov momentum is registered.";
       return std::unique_ptr<NesterovMomentumCompressor>(
           new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
     });

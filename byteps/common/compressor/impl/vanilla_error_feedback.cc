@@ -31,6 +31,8 @@ CompressorRegistry::Register reg(
        std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
       BPS_CHECK_NE(cptr, nullptr);
+
+      BPS_LOG(INFO) << "error feedback is registered.";
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(size, dtype, std::move(cptr)));
     });

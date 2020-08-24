@@ -44,6 +44,7 @@ CompressorRegistry::Register reg(
                                 [](int x) { return x == 0 || x == 1; });
       auto ntype = static_cast<DitheringCompressor::NomalizeType>(ntype_int);
 
+      BPS_LOG(INFO) << "dithering compressor is registered.";
       return std::unique_ptr<Compressor>(
           new DitheringCompressor(size, dtype, k, seed, ptype, ntype));
     });

@@ -36,6 +36,8 @@ CompressorRegistry::Register reg(
       } else {
         k = static_cast<unsigned>(factor);
       }
+
+      BPS_LOG(INFO) << "topk compressor is registered.";
       return std::unique_ptr<Compressor>(new TopkCompressor(size, dtype, k));
     });
 }
