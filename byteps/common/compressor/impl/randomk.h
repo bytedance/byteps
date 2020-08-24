@@ -48,7 +48,7 @@ class RandomkCompressor : public Compressor {
     }
     _rng.set_seed(_rd());
 #ifdef BYTEPS_BUILDING_SERVER
-    _gen.seed(rd());
+    _gen.seed(_rd());
 #endif
   };
   virtual ~RandomkCompressor() = default;
