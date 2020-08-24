@@ -11,7 +11,7 @@ lr=$1
 shift
 model=resnet50_v2
 epochs=120
-batch_size=128
+batch_size=64
 
 # finetune params
 threadpool_size=16

@@ -52,7 +52,7 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   using pair_t = std::pair<index_t, scalar_t>;
   auto ptr = reinterpret_cast<pair_t*>(dst);
   // to be unbiased
-  float scale = len / this->_k;
+  float scale = static_cast<float>(len) / this->_k;
 
   for (size_t i = 0; i < this->_k; ++i) {
     auto index = _rng.Randint(0, len);
