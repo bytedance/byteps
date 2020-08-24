@@ -46,7 +46,10 @@ CompressorRegistry::Register reg(
         is_scale = true;
       }
 
-      BPS_LOG(INFO) << "randomk compressor is registered.";
+      BPS_LOG(INFO) << "randomk compressor is registered. "
+                    << "\tsize=" << size << "\tk=" << k << "\tseed=" << seed
+                    << "\tis_scale=" << is_scale;
+
       return std::unique_ptr<Compressor>(
           new RandomkCompressor(size, dtype, k, seed, is_scale));
     });

@@ -28,7 +28,8 @@ CompressorRegistry::Register reg(
                             std::unique_ptr<Compressor> cptr) {
       auto scaled =
           HyperParamFinder<bool>(kwargs, "compressor_onebit_scaling", true);
-      BPS_LOG(INFO) << "onebit compressor is registered.";
+      BPS_LOG(INFO) << "onebit compressor is registered."
+                    << "\tsize=" << size << "\tscaled=" << scaled;
       return std::unique_ptr<Compressor>(
           new OnebitCompressor(size, dtype, scaled));
     });

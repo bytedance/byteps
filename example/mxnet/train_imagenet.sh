@@ -44,7 +44,7 @@ elif [[ $algo == "topk" ]]; then
 elif [[ $algo == "randomk" ]]; then
   k=$1
   shift
-  compression_args='--compressor randomk --k '${k}' --compress-momentum nesterov'
+  compression_args='--compressor randomk --k '${k}' --ef vanilla --compress-momentum nesterov'
   log_file=$log_file"-k${k}"
 elif [[ $algo == "dithering" ]]; then
   k=$1
