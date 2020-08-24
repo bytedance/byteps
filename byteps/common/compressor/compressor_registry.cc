@@ -59,7 +59,7 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
     }
   }
 
-  return nullptr;
+  return internal_cptr;
 }
 
 }  // namespace compressor
