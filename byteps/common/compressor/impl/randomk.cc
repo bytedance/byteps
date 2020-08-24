@@ -51,6 +51,9 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
   auto ptr = reinterpret_cast<pair_t*>(dst);
+
+#ifndef BYTEPS_BUILDING_SERVER
+  // for workers
   // to be unbiased
   float scale = static_cast<float>(len) / this->_k;
 
@@ -58,6 +61,15 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
     auto index = _rng.Randint(0, len);
     ptr[i] = std::make_pair(index, src[index] * scale);
   }
+#else
+  // for servers
+  for (size_t i = 0; i < _non_zero_idx_list.size(); ++i) {
+    auto& index = _non_zero_idx_list[i];
+    ptr[i] = std::make_pair(index, src[index]);
+  }
+
+  _non_zero_idx_list.clear();
+#endif
 
   return {dst, this->_k * sizeof(pair_t)};
 }
@@ -85,6 +97,9 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   for (size_t i = 0; i < len; ++i) {
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
+#ifdef BYTEPS_BUILDING_SERVER
+    _non_zero_idx_list.push_back(pair.first);
+#endif
   }
 
   return {dst, _size};

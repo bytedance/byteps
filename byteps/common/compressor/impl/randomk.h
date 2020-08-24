@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -96,6 +97,10 @@ class RandomkCompressor : public Compressor {
   unsigned int _k;
   std::random_device _rd;
   XorShift128PlusBitShifterRNG _rng;
+
+#ifdef BYTEPS_BUILDING_SERVER
+  std::vector<uint32_t> _non_zero_idx_list;
+#endif
 };
 }  // namespace compressor
 }  // namespace common
