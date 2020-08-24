@@ -17,7 +17,7 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
-#include <vector>
+#include <set>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -39,7 +39,8 @@ namespace compressor {
  */
 class RandomkCompressor : public Compressor {
  public:
-  RandomkCompressor(size_t size, DataType dtype, unsigned int k, unsigned int seed = 0)
+  RandomkCompressor(size_t size, DataType dtype, unsigned int k,
+                    unsigned int seed = 0)
       : Compressor(size, dtype), _k(k) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
@@ -99,7 +100,7 @@ class RandomkCompressor : public Compressor {
   XorShift128PlusBitShifterRNG _rng;
 
 #ifdef BYTEPS_BUILDING_SERVER
-  std::vector<uint32_t> _non_zero_idx_list;
+  std::set<uint32_t> _non_zero_idx;
 #endif
 };
 }  // namespace compressor

@@ -63,12 +63,12 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   }
 #else
   // for servers
-  for (size_t i = 0; i < _non_zero_idx_list.size(); ++i) {
-    auto& index = _non_zero_idx_list[i];
-    ptr[i] = std::make_pair(index, src[index]);
+  size_t i = 0;
+  for (auto& index : _non_zero_idx) {
+    ptr[i++] = std::make_pair(index, src[index]);
   }
 
-  _non_zero_idx_list.clear();
+  _non_zero_idx.clear();
 #endif
 
   return {dst, this->_k * sizeof(pair_t)};
@@ -98,7 +98,7 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
 #ifdef BYTEPS_BUILDING_SERVER
-    _non_zero_idx_list.push_back(pair.first);
+    _non_zero_idx.insert(pair.first);
 #endif
   }
 
