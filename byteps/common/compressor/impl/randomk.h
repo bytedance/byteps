@@ -17,7 +17,7 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
-#include <set>
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -47,6 +47,9 @@ class RandomkCompressor : public Compressor {
       _rng.set_seed(seed);
     }
     _rng.set_seed(_rd());
+#ifdef BYTEPS_BUILDING_SERVER
+    _gen.seed(rd());
+#endif
   };
   virtual ~RandomkCompressor() = default;
 
@@ -102,7 +105,8 @@ class RandomkCompressor : public Compressor {
   bool _is_scale;
 
 #ifdef BYTEPS_BUILDING_SERVER
-  std::set<uint32_t> _non_zero_idx;
+  std::mt19937 _gen;
+  std::vector<uint32_t> _non_zero_idx;
 #endif
 };
 }  // namespace compressor
