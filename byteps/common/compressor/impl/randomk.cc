@@ -61,12 +61,19 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 #ifndef BYTEPS_BUILDING_SERVER
   // for workers
   // to be unbiased
-  float scale = static_cast<float>(len) / this->_k;
-
-  for (size_t i = 0; i < this->_k; ++i) {
-    auto index = _rng.Randint(0, len);
-    ptr[i] = std::make_pair(index, src[index] * scale);
+  if (_is_scale) {
+    float scale = static_cast<float>(len) / this->_k;
+    for (size_t i = 0; i < this->_k; ++i) {
+      auto index = _rng.Randint(0, len);
+      ptr[i] = std::make_pair(index, src[index] * scale);
+    }
+  } else {
+    for (size_t i = 0; i < this->_k; ++i) {
+      auto index = _rng.Randint(0, len);
+      ptr[i] = std::make_pair(index, src[index]);
+    }
   }
+
 #else
   // for servers
   size_t i = 0;
