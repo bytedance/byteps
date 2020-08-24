@@ -27,12 +27,9 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "vanilla_ef",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
-      auto kwargs_clone = kwargs;
-      kwargs_clone.erase("ef_type");
-      auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       return std::unique_ptr<VanillaErrorFeedbackCompressor>(
           new VanillaErrorFeedbackCompressor(size, dtype, std::move(cptr)));

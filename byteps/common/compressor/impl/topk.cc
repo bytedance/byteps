@@ -25,8 +25,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "topk_compressor",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
                                             [](float x) { return x > 0; });
       unsigned k;

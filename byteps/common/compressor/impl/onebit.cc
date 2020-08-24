@@ -23,13 +23,14 @@ namespace byteps {
 namespace common {
 namespace compressor {
 namespace {
-CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
-                                                         size_t size,
-                                                         DataType dtype) {
-  auto scaled =
-      HyperParamFinder<bool>(kwargs, "compressor_onebit_scaling", true);
-  return std::unique_ptr<Compressor>(new OnebitCompressor(size, dtype, scaled));
-});
+CompressorRegistry::Register reg(
+    "onebit_compressor", [](const kwargs_t& kwargs, size_t size, DataType dtype,
+                            std::unique_ptr<Compressor> cptr) {
+      auto scaled =
+          HyperParamFinder<bool>(kwargs, "compressor_onebit_scaling", true);
+      return std::unique_ptr<Compressor>(
+          new OnebitCompressor(size, dtype, scaled));
+    });
 }
 
 template <typename index_t, typename scalar_t>

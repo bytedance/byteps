@@ -25,8 +25,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "randomk_compressor",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
                                             [](float x) { return x > 0; });
       unsigned k;
@@ -40,8 +40,13 @@ CompressorRegistry::Register reg(
       auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
                                              [](unsigned x) { return x != 0; });
 
+      bool is_scale = false;
+      if (kwargs.find("ef_type") != kwargs.end()) {
+        is_scale = true;
+      }
+
       return std::unique_ptr<Compressor>(
-          new RandomkCompressor(size, dtype, k, seed));
+          new RandomkCompressor(size, dtype, k, seed, is_scale));
     });
 }
 

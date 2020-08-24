@@ -37,18 +37,24 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
 }
 
 std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
-                                                       size_t size, DataType dtype) {
+                                                       size_t size,
+                                                       DataType dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
-  const std::string types[] = {"momentum_type", "ef_type", "compressor_type"};
+  const std::string types[] = {
+      "compressor_type",
+      "ef_type",
+      "momentum_type",
+  };
 #else
   // server do not need momentum
-  const std::string types[] = {"ef_type", "compressor_type"};
+  const std::string types[] = {"compressor_type", "ef_type"};
 #endif
+  std::unique_ptr<Compressor> internal_cptr = nullptr;
   for (auto& type : types) {
     auto iter = kwargs.find(type);
     if (iter != kwargs.end()) {
       auto ctor = CompressorRegistry::Find(iter->second + "_" + type);
-      return ctor(kwargs, size, dtype);
+      internal_cptr = std::move(ctor(kwargs, size, dtype, internal_cptr));
     }
   }
 

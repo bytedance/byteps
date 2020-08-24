@@ -40,12 +40,13 @@ namespace compressor {
 class RandomkCompressor : public Compressor {
  public:
   RandomkCompressor(size_t size, DataType dtype, unsigned int k,
-                    unsigned int seed = 0)
-      : Compressor(size, dtype), _k(k) {
+                    unsigned int seed = 0, bool is_scale = false)
+      : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
       _rng.set_seed(seed);
     }
+    _rng.set_seed(_rd());
   };
   virtual ~RandomkCompressor() = default;
 
@@ -98,6 +99,7 @@ class RandomkCompressor : public Compressor {
   unsigned int _k;
   std::random_device _rd;
   XorShift128PlusBitShifterRNG _rng;
+  bool _is_scale;
 
 #ifdef BYTEPS_BUILDING_SERVER
   std::set<uint32_t> _non_zero_idx;

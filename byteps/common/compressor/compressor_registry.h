@@ -37,8 +37,9 @@ class CompressorRegistry {
 
   static ctor_t Find(const std::string& name);
 
-  static std::unique_ptr<Compressor> Create(const kwargs_t& kwargs, size_t size,
-                                            DataType dtype);
+  static std::unique_ptr<Compressor> Create(
+      const kwargs_t& kwargs, size_t size, DataType dtype,
+      std::unique_ptr<Compressor> cptr = nullptr);
 
  private:
   static map_t _ctor_map;

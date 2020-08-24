@@ -26,8 +26,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "dithering_compressor",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       std::tuple<> params;
       auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
