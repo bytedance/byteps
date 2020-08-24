@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_UTILS_H
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <random>
@@ -215,8 +216,9 @@ unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
 }
 
 template <typename T, class F = std::function<bool(T)>>
-T HyperParamFinder(const kwargs_t& kwargs, std::string name,
-                   bool optional = false, F&& check = [](T) { return true; }) {
+T HyperParamFinder(
+    const kwargs_t& kwargs, std::string name, bool optional = false,
+    F&& check = [](T) { return true; }) {
   static_assert(std::is_fundamental<T>::value,
                 "custom type is not allow for HyperParamFinder");
   T value{T()};
@@ -243,6 +245,19 @@ T HyperParamFinder(const kwargs_t& kwargs, std::string name,
 
   BPS_LOG(INFO) << "Register hyper-parameter '" << name << "'=" << value;
   return value;
+}
+
+inline int memcpy_multithread(void* dst, const void* src, size_t len) {
+  auto in = (float*)src;
+  auto out = (float*)dst;
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len / 4; ++i) {
+    out[i] = in[i];
+  }
+  if (len % 4) {
+    std::memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+  return 0;
 }
 }  // namespace compressor
 }  // namespace common

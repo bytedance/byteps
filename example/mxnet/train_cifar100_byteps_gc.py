@@ -91,6 +91,8 @@ def parse_args():
                         help='enable scaling for onebit compressor')
     parser.add_argument('--k', default=1.0, type=float,
                         help='topk or randomk')
+    parser.add_argument('--normalize', default='max', type=str,
+                        help='max or l2')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
     opt = parser.parse_args()
@@ -102,13 +104,7 @@ def main():
 
     bps.init()
 
-    gpu_name = subprocess.check_output(
-        ['nvidia-smi', '--query-gpu=gpu_name', '--format=csv'])
-    gpu_name = gpu_name.decode('utf8').split('\n')[-2]
-    gpu_name = '-'.join(gpu_name.split())
-    filename = "cifar100-%d-%s-%s.log" % (bps.size(),
-                                          gpu_name, opt.logging_file)
-    filehandler = logging.FileHandler(filename)
+    filehandler = logging.FileHandler(opt.logging_file)
     streamhandler = logging.StreamHandler()
 
     logger = logging.getLogger('')
@@ -234,7 +230,8 @@ def main():
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
             "k": opt.k,
-            "fp16": opt.fp16_pushpull
+            "fp16": opt.fp16_pushpull,
+            "normalize": opt.normalize
         }
 
         optimizer_params = {'lr_scheduler': lr_scheduler,

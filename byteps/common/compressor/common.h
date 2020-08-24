@@ -44,7 +44,7 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
 #define COMPRESS_IMPL_SWITCH(dtype, func, dst, src, size)                     \
   switch (dtype) {                                                            \
     case BYTEPS_FLOAT16:                                                      \
-      return func(reinterpret_cast<uint16_t*>(dst),                           \
+      return func(reinterpret_cast<uint32_t*>(dst),                           \
                   reinterpret_cast<const half_t*>(src),                       \
                   size / sizeof(half_t));                                     \
     case BYTEPS_FLOAT32:                                                      \
@@ -62,7 +62,7 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
   switch (dtype) {                                                          \
     case BYTEPS_FLOAT16:                                                    \
       return func(reinterpret_cast<half_t*>(dst),                           \
-                  reinterpret_cast<const uint16_t*>(src), compressed_size); \
+                  reinterpret_cast<const uint32_t*>(src), compressed_size); \
     case BYTEPS_FLOAT32:                                                    \
       return func(reinterpret_cast<float*>(dst),                            \
                   reinterpret_cast<const uint32_t*>(src), compressed_size); \
@@ -79,7 +79,7 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
     case BYTEPS_FLOAT16:                                                     \
       return func(reinterpret_cast<half_t*>(dst),                            \
                   reinterpret_cast<half_t*>(src1),                           \
-                  reinterpret_cast<const uint16_t*>(src2), compressed_size); \
+                  reinterpret_cast<const uint32_t*>(src2), compressed_size); \
     case BYTEPS_FLOAT32:                                                     \
       return func(reinterpret_cast<float*>(dst),                             \
                   reinterpret_cast<float*>(src1),                            \

@@ -247,8 +247,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         if compression_params.get("fp16"):
             intra_compressor = Compression.fp16
 
-        if "compressor" not in compression_params:
-            warnings.warn("Compressor is not defined")
+        if not compression_params.get("compressor"):
             return intra_compressor
 
         check_list = ["compressor", "ef", "momentum"]
@@ -305,7 +304,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             mu = optimizer_params["momentum"]
 
             # 1bit compressor use an additional momentum for weight decay
-            if compressor == "onebit" and "wd" in optimizer_params:
+            if "wd" in optimizer_params:
                 wd = optimizer_params["wd"]
                 intra_compressor = Compression.wdmom(intra_compressor,
                                                      mu, wd, threshold)

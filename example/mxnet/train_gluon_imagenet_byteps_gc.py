@@ -122,8 +122,10 @@ def parse_args():
                         help='which compress momentum')
     parser.add_argument('--onebit-scaling', action='store_true', default=False,
                         help='enable scaling for onebit compressor')
-    parser.add_argument('--k', default=1, type=int,
+    parser.add_argument('--k', default=1, type=float,
                         help='topk or randomk')
+    parser.add_argument('--normalize', default='max', type=str,
+                        help='max or l2')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
 
@@ -135,14 +137,9 @@ def main():
     opt = parse_args()
 
     bps.init()
-    gpu_name = subprocess.check_output(
-        ['nvidia-smi', '--query-gpu=gpu_name', '--format=csv'])
-    gpu_name = gpu_name.decode('utf8').split('\n')[-2]
-    gpu_name = '-'.join(gpu_name.split())
-    filename = "imagenet-%d-%s-%s.log" % (bps.size(),
-                                          gpu_name, opt.logging_file)
-    filehandler = logging.FileHandler(filename)
-    streamhandler = logging.StreamHandler()
+ 
+    filehandler = logging.FileHandler(opt.logging_file)
+    streamhandler=logging.StreamHandler()
 
     logger = logging.getLogger('')
     logger.setLevel(logging.INFO)
@@ -412,7 +409,8 @@ def main():
             "ef": opt.ef,
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
-            "k": opt.k
+            "k": opt.k,
+            "normalize": opt.normalize
         }
 
         trainer = bps.DistributedTrainer(
@@ -436,7 +434,7 @@ def main():
 
         best_val_score = 1
 
-        # bps.byteps_declare_tensor("acc")
+        bps.byteps_declare_tensor("acc")
         for epoch in range(opt.resume_epoch, opt.num_epochs):
             tic = time.time()
             if opt.use_rec:
@@ -507,18 +505,16 @@ def main():
 
             err_top1_val, err_top5_val = test(ctx, val_data)
 
-            # acc = mx.nd.array([train_metric_score, err_top1_val, err_top5_val],
-            #                   ctx=ctx[0])
-            # bps.byteps_push_pull(acc, name="acc", is_average=False)
-            # acc /= bps.size()
-            # train_metric_score, err_top1_val, err_top5_val = acc[0].asscalar(
-            # ), acc[1].asscalar(), acc[2].asscalar()
+            acc = mx.nd.array([train_metric_score, err_top1_val, err_top5_val],
+                              ctx=ctx[0])
+            bps.byteps_push_pull(acc, name="acc", is_average=False)
+            acc /= bps.size()
 
-            # if bps.rank() == 0:
-            logger.info('[Epoch %d] training: %s=%f' %
-                        (epoch, train_metric_name, train_metric_score))
-            logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
-                        (epoch, err_top1_val, err_top5_val))
+            if bps.rank() == 0:
+                logger.info('[Epoch %d] training: %s=%f' %
+                            (epoch, train_metric_name, acc[0].asscalar()))
+                logger.info('[Epoch %d] validation: err-top1=%f err-top5=%f' %
+                            (epoch, acc[1].asscalar(), acc[2].asscalar()))
 
             if err_top1_val < best_val_score:
                 best_val_score = err_top1_val
