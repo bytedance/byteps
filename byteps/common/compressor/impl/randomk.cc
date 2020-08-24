@@ -51,10 +51,12 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
   auto ptr = reinterpret_cast<pair_t*>(dst);
+  // to be unbiased
+  float scale = len / this->_k;
 
   for (size_t i = 0; i < this->_k; ++i) {
     auto index = _rng.Randint(0, len);
-    ptr[i] = std::make_pair(index, src[index]);
+    ptr[i] = std::make_pair(index, src[index] * scale);
   }
 
   return {dst, this->_k * sizeof(pair_t)};
