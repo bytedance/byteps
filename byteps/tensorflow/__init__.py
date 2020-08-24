@@ -26,7 +26,7 @@ import warnings
 import sys
 
 from byteps.tensorflow.compression import Compression
-from byteps.tensorflow.ops import broadcast, _push_pull, _sync_tensor, _sync_all_tensors, broadcast_xla, _print_tensors
+from byteps.tensorflow.ops import broadcast, _push_pull, _push_pull_xla, _sync_tensor, _sync_all_tensors, broadcast_xla, _print_tensors
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -38,6 +38,57 @@ from tensorflow.python.ops import control_flow_ops
 Average = "Average"
 Sum = "Sum"
 Adasum = "Adasum"
+
+def push_pull_xla(tensor, scope='', average=None, device_dense='', device_sparse='',
+              compression=Compression.none, op=None, enable_async=False):
+    """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
+    Arguments:
+        tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
+                The shape of the input must be identical across all ranks.
+        average:
+            .. warning:: .. deprecated
+
+                Use `op` instead. Will be removed.
+
+        scope: the graph name scope
+        average: If True, computes the average over all ranks.
+                 Otherwise, computes the sum over all ranks.
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
+        compression: Compression algorithm used to reduce the amount of data
+                     sent and received by each worker node.  Defaults to not
+                     using compression.
+        op: The reduction operation to combine tensors across different ranks.
+            Defaults to Average if None is given.
+
+    Returns:
+        A tensor of the same shape and type as `tensor`, summed across all
+        processes.
+    """
+    op = handle_average_backwards_compatibility(op, average)
+    # Averaging happens in framework code, so translate that to Sum for the actual call
+    true_op = Sum if op == Average else op
+
+    with tf.device(device_dense):
+        byteps_size = tf.cast(size(), dtype=tensor.dtype)
+        tensor_compressed, ctx = compression.compress(tensor)
+        summed_tensor_compressed = _push_pull_xla(tensor_compressed, scope)
+        handle = summed_tensor_compressed[1]
+        summed_tensor_compressed = summed_tensor_compressed[0]
+        tensor_name = summed_tensor_compressed.name
+        handle = tf.reshape(handle, [-1])
+
+        summed_tensor_compressed = tf.cond(handle[0] < handle[1],
+                lambda: tf.identity(summed_tensor_compressed),
+                lambda: tf.identity(summed_tensor_compressed))
+        summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
+        if not enable_async:
+            _div = tf.div if hasattr(tf, 'div') else tf.math.divide
+            new_tensor = (_div(summed_tensor, byteps_size)
+                          if op == Average else summed_tensor)
+        else: # no need to average for async training
+            new_tensor = summed_tensor
+    return new_tensor, tensor_name
 
 def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
               compression=Compression.none, op=None, enable_async=False):
@@ -72,7 +123,16 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
+        summed_tensor_compressed = _push_pull_xla(tensor_compressed, scope)
+        handle = summed_tensor_compressed[1]
+        summed_tensor_compressed = summed_tensor_compressed[0]
+        handle = tf.reshape(handle, [-1])
+
+        summed_tensor_compressed = tf.cond(handle[0] < handle[1],
+                lambda: summed_tensor_compressed,
+                lambda: summed_tensor_compressed)
+                # lambda: tf.identity(summed_tensor_compressed),
+                # lambda: tf.identity(summed_tensor_compressed))
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
             _div = tf.div if hasattr(tf, 'div') else tf.math.divide
@@ -395,14 +455,14 @@ if hasattr(tf, 'GradientTape'):
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
                                  else grad for grad in grads]
-                    new_grads = [push_pull(grad, scope,
+                    new_grads_names = [push_pull_xla(grad, scope,
                                       device_dense=self._device_dense,
                                       device_sparse=self._device_sparse,
                                       compression=self._compression)
                             if grad is not None else grad
                             for grad in grads]
-                    grad_names = [grad.name for grad in new_grads]
-                    return new_grads, grad_names
+                    grads_and_names = list(zip(*new_grads_names))
+                    return list(grads_and_names[0]), list(grads_and_names[1])
 
             self._push_pull_grads = push_pull_grads
 
@@ -425,8 +485,12 @@ if hasattr(tf, 'GradientTape'):
             if size() > 1:
                 # gradients = _print_tensors(gradients, [aa.name for aa in gradients])
                 avg_grads, grad_names = self._push_pull_grads(gradients)
+                new_grad_names = ["throwaway_dummy"] * len(gradients) + grad_names
+                tmp_avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
+                tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
+                avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
 
-                avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
+                # avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
 
                 return avg_grads
             else:

@@ -133,6 +133,33 @@ def _push_pull(tensor, scope='', name=None):
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
+def _push_pull_xla(tensor, scope='', name=None):
+    """An op which sums an input tensor over all the BytePS processes.
+    The reduction operation is keyed by the name of the op. The tensor type and
+    shape must be the same on all BytePS processes for a given name. The reduction
+    will not start until all processes are ready to send and receive the tensor.
+    Returns:
+      A tensor of the same shape and type as `tensor`, summed across all
+      processes.
+    """
+    if name is None and not _executing_eagerly():
+        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    return C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+
 def _sync_tensor(tensor, scope='', name=None, full_name=None):
     if name is None and not _executing_eagerly():
         # name = _normalize_name(tensor.name)
@@ -174,7 +201,9 @@ def _sync_all_tensors(tensors, grad_names=None):
         tmp_name = _normalize_name(tmp_name)
         tensor_names.append(tmp_name)
 
-    return C_LIB.byteps_sync_all_tensors(tensors, name=None, tensor_names = tensor_names)
+    # return C_LIB.byteps_sync_all_tensors(tensors, name=None, tensor_names = tensor_names)
+    return C_LIB.byteps_sync_all_tensors(tensors, name=None, tensor_names =
+            tensor_names, M = len(tensor_names) // 2 + 1)
 
 def _print_tensors(tensors, grad_names=None):
     return C_LIB.byteps_print_tensors(tensors, name=None, tensor_names = grad_names)
