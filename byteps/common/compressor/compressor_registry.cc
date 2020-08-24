@@ -54,7 +54,8 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
     auto iter = kwargs.find(type);
     if (iter != kwargs.end()) {
       auto ctor = CompressorRegistry::Find(iter->second + "_" + type);
-      internal_cptr = std::move(ctor(kwargs, size, dtype, internal_cptr));
+      internal_cptr =
+          std::move(ctor(kwargs, size, dtype, std::move(internal_cptr)));
     }
   }
 
