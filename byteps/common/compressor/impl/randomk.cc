@@ -80,10 +80,8 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
 #else
   // for servers
-  // should be exactly be k
-  BPS_LOG(INFO) << "_non_zero_idx.size()=" << _non_zero_idx.size()
-                << "\t k=" << this->_k;
-  BPS_CHECK(_non_zero_idx.size() == this->_k);
+  // should be not greater than k
+  BPS_CHECK_LE(_non_zero_idx.size(), this->_k);
   size_t i = 0;
   for (auto& index : _non_zero_idx) {
     ptr[i++] = std::make_pair(index, src[index]);
