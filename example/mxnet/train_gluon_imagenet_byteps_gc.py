@@ -410,7 +410,8 @@ def main():
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
             "k": opt.k,
-            "normalize": opt.normalize
+            "normalize": opt.normalize,
+            "seed": mx.random.randomint(0, 10000)
         }
 
         trainer = bps.DistributedTrainer(

@@ -17,7 +17,7 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
-#include <vector>
+#include <set>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -45,8 +45,9 @@ class RandomkCompressor : public Compressor {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
       _rng.set_seed(seed);
+    } else {
+      _rng.set_seed(_rd());
     }
-    _rng.set_seed(_rd());
 #ifdef BYTEPS_BUILDING_SERVER
     _gen.seed(_rd());
 #endif
@@ -106,7 +107,7 @@ class RandomkCompressor : public Compressor {
 
 #ifdef BYTEPS_BUILDING_SERVER
   std::mt19937 _gen;
-  std::vector<uint32_t> _non_zero_idx;
+  std::set<uint32_t> _non_zero_idx;
 #endif
 };
 }  // namespace compressor

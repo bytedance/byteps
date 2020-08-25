@@ -15,7 +15,6 @@
 
 #include "randomk.h"
 
-#include <algorithm>
 #include <cstring>
 
 #include "../compressor_registry.h"
@@ -81,11 +80,11 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
 #else
   // for servers
-  std::shuffle(_non_zero_idx.begin(), _non_zero_idx.end(), _gen);
-
-  for (size_t i = 0; i < this->_k; ++i) {
-    auto index = _non_zero_idx[i];
-    ptr[i] = std::make_pair(index, src[index]);
+  // should be exactly be k
+  BPS_CHECK(_non_zero_idx.size() == this->_k);
+  size_t i = 0;
+  for (auto& index : _non_zero_idx) {
+    ptr[i++] = std::make_pair(index, src[index]);
   }
 
   _non_zero_idx.clear();
@@ -118,7 +117,7 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
 #ifdef BYTEPS_BUILDING_SERVER
-    _non_zero_idx.push_back(pair.first);
+    _non_zero_idx.insert(pair.first);
 #endif
   }
 
