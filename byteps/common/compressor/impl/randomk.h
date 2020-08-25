@@ -42,7 +42,7 @@ class RandomkCompressor : public Compressor {
  public:
   RandomkCompressor(size_t size, DataType dtype, unsigned int k,
                     unsigned int seed = 0, bool is_scale = false)
-      : Compressor(size, dtype), _k(k), _is_scale(is_scale), _is_first(true) {
+      : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
       _rng.set_seed(seed);
