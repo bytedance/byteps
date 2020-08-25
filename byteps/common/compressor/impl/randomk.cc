@@ -89,7 +89,7 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   }
 
   _non_zero_idx.clear();
-  return {dst, _non_zero_idx.size() * sizeof(pair_t)};
+  return {dst, i * sizeof(pair_t)};
 #endif
 }
 

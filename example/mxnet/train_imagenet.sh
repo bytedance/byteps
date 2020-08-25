@@ -18,7 +18,7 @@ threadpool_size=16
 omp_num_threads=4
 partition_bytes=4096000
 min_compress_bytes=1024000
-server_engine_thread=4
+server_engine_thread=8
 data_threads=2
 
 # path
