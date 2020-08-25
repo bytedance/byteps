@@ -65,14 +65,15 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
   }
 
   // to be unbiased
+  size_t i = 0;
   if (_is_scale) {
     float scale = static_cast<float>(len) / this->_k;
     for (auto idx : _selected_idx) {
-      dst[i] = src[idx] * scale;
+      dst[i++] = src[idx] * scale;
     }
   } else {
     for (auto idx : _selected_idx) {
-      dst[i] = src[idx];
+      dst[i++] = src[idx];
     }
   }
 #endif
