@@ -183,10 +183,10 @@ int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
 
 XlaTensor::XlaTensor(void *data, int64_t num_elem,
                          ::tensorflow::DataType tf_dtype, int64_t size) {
-    _data = data;
-    _num_elem = num_elem;
-    _tf_dtype = tf_dtype;
-    _size = size;
+  _data = data;
+  _num_elem = num_elem;
+  _tf_dtype = tf_dtype;
+  _size = size;
 }
 
 const common::DataType XlaTensor::dtype() const {
@@ -218,7 +218,6 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
 
 std::shared_ptr<common::ReadyEvent> RecordReadyEvent(cudaStream_t stream) {
   return std::make_shared<XlaReadyEvent>(stream);
-
 }
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name) {
@@ -240,7 +239,6 @@ void StartTask(::tensorflow::OpKernelContext* context,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
-  // ASSERTF(0 == 1, "pos 1");
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -326,23 +324,21 @@ Output
 )doc");
 
 REGISTER_OP("BytepsPushPullXla")
-    .Attr("T: {int32, int64, float16, float32, float64}")
-    .Attr("input_name: string = 'default_tensor_name'")
-    .Input("tensor: T")
-    .Output("sum: M * T")
-    .Attr("M: int >= 1")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
-      return ::tensorflow::Status::OK();
-    });
+  .Attr("T: {int32, int64, float16, float32, float64}")
+  .Attr("input_name: string = 'default_tensor_name'")
+  .Input("tensor: T")
+  .Output("sum: M * T")
+  .Attr("M: int >= 1")
+  .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    c->set_output(0, c->input(0));
+    return ::tensorflow::Status::OK();
+  });
 
 
 class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
   public:
     explicit BytepsPushPullXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
-      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
-      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
     }
     ~BytepsPushPullXlaOp() override = default;
 
@@ -350,29 +346,9 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
       xla::XlaOp input_tensor = context->Input(0);
-      // auto shape_or = context->InputXlaShape(0);
       auto input_tensor_xla_shape_or = context->InputXlaShape(0);
       xla::Shape output_tensor_shape = input_tensor_xla_shape_or.ValueOrDie();
 
-      // auto input_shape = context->InputShape(0);
-      // xla::Shape input_xla_shape = TensorShapeToXLAShape(dst_type_, input_shape);
-      std::cout << " x2682  " << output_tensor_shape.ToString(true) << std::endl;
-      std::cout << " x2682  has_layout? " << xla::LayoutUtil::HasLayout(output_tensor_shape) << std::endl;
-      std::cout << " x2682  num dimensions " << output_tensor_shape.rank() << std::endl;
-      std::cout << " x2682  dimensions are ";
-      for (int i = 0; i < output_tensor_shape.rank(); i++) {
-        std::cout << " " << output_tensor_shape.dimensions(i) ;
-      }
-      std::cout << std::endl;
-      std::cout << " x2682  memory_space " << output_tensor_shape.layout().memory_space() << std::endl;
-      // std::cout << " x2682  " << input_xla_shape.ToProto() << std::endl;
-      std::cout << " x2682  end shape test" << std::endl;
-
-      std::cout << " x2682  pos 1 " << std::endl;
-      // OP_REQUIRES_OK(context, shape_or.status());
-
-      // OP_REQUIRES_OK(
-      //   context, context->allocate_output(0, tensor.shape(), &output));
       auto node_name = name();
       std::string tmp_name;
       if (input_tensor_name == "default_tensor_name") {
@@ -380,15 +356,9 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
       } else {
         tmp_name = input_tensor_name;
       }
-      // auto ready_event =
-      //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context->op_kernel_context()));
-      // std::cout << "x2682 device_id " << GetDeviceID(context->op_kernel_context()) << std::endl;
 
       std::stringstream ss;
-      // ss << tmp_name << " " << context->op_kernel_context();
-      // ss << tmp_name << " " << ready_event;
       ss << tmp_name;
-      // ss << " " << ::tensorflow::EncodePrimitiveTypeAsDataType(output_tensor_shape.element_type()).ValueOrDie();
       ss << " " << context->input_type(0);
       ss << " " << xla::ShapeUtil::ByteSizeOfPrimitiveType(output_tensor_shape.element_type());
       ss << " " << output_tensor_shape.rank();
@@ -396,11 +366,6 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
         ss << " " << output_tensor_shape.dimensions(i) ;
       }
       ss << std::endl;
-      std::cout << " x2682  pos 2 " << std::endl;
-      std::cout << " x2682  passing opaque: " << ss.str() << std::endl;
-      std::vector<xla::Shape> tmp_output_shapes;
-      // tmp_output_shapes.push_back(xla::ShapeUtil::MakeShape(xla::F32, {2}));
-      // auto output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
       auto output_shapes = xla::ShapeUtil::MakeShape(xla::F32, {2});
       context->SetOutput(
         1, xla::CustomCall(context->builder(),
@@ -409,15 +374,9 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
 
       context->op_kernel_context()->set_output(0,
         context->op_kernel_context()->input(0));
-      // private:
-      //   TF_DISALLOW_COPY_AND_ASSIGN(BytepsPushPullXlaOp);
-      std::cout << " x2682  pos 3 " << std::endl;
     }
   private:
      std::string input_tensor_name;
-  // protected:
-  //    DataType dst_dtype_;
-  //    xla::PrimitiveType  dst_type_;
 };
 
 REGISTER_XLA_OP(Name("BytepsPushPullXla"), BytepsPushPullXlaOp);
@@ -426,8 +385,6 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
   public:
     explicit BytepsPushPullBlockingXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
-      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
-      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
     }
     ~BytepsPushPullBlockingXlaOp() override = default;
 
@@ -435,29 +392,9 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
       xla::XlaOp input_tensor = context->Input(0);
-      // auto shape_or = context->InputXlaShape(0);
       auto input_tensor_xla_shape_or = context->InputXlaShape(0);
       xla::Shape output_tensor_shape = input_tensor_xla_shape_or.ValueOrDie();
 
-      // auto input_shape = context->InputShape(0);
-      // xla::Shape input_xla_shape = TensorShapeToXLAShape(dst_type_, input_shape);
-      std::cout << " x2682  " << output_tensor_shape.ToString(true) << std::endl;
-      std::cout << " x2682  has_layout? " << xla::LayoutUtil::HasLayout(output_tensor_shape) << std::endl;
-      std::cout << " x2682  num dimensions " << output_tensor_shape.rank() << std::endl;
-      std::cout << " x2682  dimensions are ";
-      for (int i = 0; i < output_tensor_shape.rank(); i++) {
-        std::cout << " " << output_tensor_shape.dimensions(i) ;
-      }
-      std::cout << std::endl;
-      std::cout << " x2682  memory_space " << output_tensor_shape.layout().memory_space() << std::endl;
-      // std::cout << " x2682  " << input_xla_shape.ToProto() << std::endl;
-      std::cout << " x2682  end shape test" << std::endl;
-
-      std::cout << " x2682  pos 1 " << std::endl;
-      // OP_REQUIRES_OK(context, shape_or.status());
-
-      // OP_REQUIRES_OK(
-      //   context, context->allocate_output(0, tensor.shape(), &output));
       auto node_name = name();
       std::string tmp_name;
       if (input_tensor_name == "default_tensor_name") {
@@ -465,15 +402,9 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
       } else {
         tmp_name = input_tensor_name;
       }
-      // auto ready_event =
-      //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context->op_kernel_context()));
-      // std::cout << "x2682 device_id " << GetDeviceID(context->op_kernel_context()) << std::endl;
 
       std::stringstream ss;
-      // ss << tmp_name << " " << context->op_kernel_context();
-      // ss << tmp_name << " " << ready_event;
       ss << tmp_name;
-      // ss << " " << ::tensorflow::EncodePrimitiveTypeAsDataType(output_tensor_shape.element_type()).ValueOrDie();
       ss << " " << context->input_type(0);
       ss << " " << xla::ShapeUtil::ByteSizeOfPrimitiveType(output_tensor_shape.element_type());
       ss << " " << output_tensor_shape.rank();
@@ -487,15 +418,9 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
         0, xla::CustomCall(context->builder(),
           /*call_target_name=*/"StartTaskBlockingWrapper",
           {input_tensor}, input_tensor_xla_shape_or.ValueOrDie(), ss.str()));
-      // private:
-      //   TF_DISALLOW_COPY_AND_ASSIGN(BytepsPushPullXlaOp);
-      std::cout << " x2682  pos 3 " << std::endl;
     }
   private:
      std::string input_tensor_name;
-  // protected:
-  //    DataType dst_dtype_;
-  //    xla::PrimitiveType  dst_type_;
 };
 
 void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
@@ -505,8 +430,6 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
   std::cout << " x2682  pos 11 inside StartTaskBlockingXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
   std::cout << " x2682  pos 12 " << std::endl;
-  // auto device = GetDeviceID(context);
-  // auto device = 0;
   int device;
   CUDA_CALL(cudaGetDevice(&device));
   int myrank =  common::byteps_rank();
@@ -516,11 +439,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
   std::cout << " x2682  pos 14 " << std::endl;
   auto dtype = byteps_input->dtype();
   std::cout << " x2682  pos 15 " << std::endl;
-  // void* cpubuff = (device == CPU_DEVICE_ID)
-  //                     ? const_cast<void*>(byteps_input->data())
-  //                     : nullptr;
   void* cpubuff = nullptr;
-  // void* cpubuff = const_cast<void*>(byteps_input->data());
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
@@ -528,27 +447,21 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
   queue_list->insert(queue_list->end(), queue_list_pull->begin(),
                      queue_list_pull->end());
 
-  // std::mutex mtx;
-  // std::condition_variable cv;
-  std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  std::cout << " x2682  pos 16 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
   _name_to_done_args[name_key].is_done = false;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
                     [name_key](const common::Status& status) {
-                      // context->SetStatus(ConvertStatus(status));
                       auto& args = _name_to_done_args[name_key];
                       {
                         std::unique_lock<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
                       args.cv.notify_one();
-                      std::cout << "inside callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
   {
@@ -556,7 +469,6 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
     std::unique_lock<std::mutex> lk(args.mtx);
     args.cv.wait(lk, [&args]{return args.is_done;});
   }
-  std::cout << " x2682  blocking pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
 }
 
 void StartTaskBlockingWrapper(CUstream stream, void** buffers,
@@ -632,25 +544,13 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
                std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
-  std::cout << " x2682  pos 11 inside StartTaskXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
-  std::cout << " x2682  pos 12 " << std::endl;
-  // auto device = GetDeviceID(context);
-  // auto device = 0;
   int device;
   CUDA_CALL(cudaGetDevice(&device));
   int myrank =  common::byteps_rank();
-  std::cout << " x2682 rank " << common::byteps_rank() << " device: " << device << std::endl;
-  std::cout << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
-  std::cout << " x2682  pos 14 " << std::endl;
   auto dtype = byteps_input->dtype();
-  std::cout << " x2682  pos 15 " << std::endl;
-  // void* cpubuff = (device == CPU_DEVICE_ID)
-  //                     ? const_cast<void*>(byteps_input->data())
-  //                     : nullptr;
   void* cpubuff = nullptr;
-  // void* cpubuff = const_cast<void*>(byteps_input->data());
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
   auto queue_list = common::GetPushQueueList(device);
@@ -660,7 +560,6 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::mutex mtx;
   std::condition_variable cv;
-  std::cout << " x2682  pos 16 before EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
   // TODO: assign priority based on topological sort
 
   std::string name_key(node_name);
@@ -675,70 +574,49 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
                     [name_key](const common::Status& status) {
-                      // context->SetStatus(ConvertStatus(status));
                       auto& args = _name_to_done_args[name_key];
                       {
                         std::unique_lock<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
                       args.cv.notify_one();
-                      std::cout << "inside callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
-  std::cout << " x2682  pos 17 after EnqueueTensor name: " << node_name << " rank: " << myrank << std::endl;
 }
 
-// void StartTaskWrapper(void* out, const void** in) {
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
-  cudaStreamSynchronize(stream);
+  std::stringstream ss(opaque);
+  std::string tmp_name;
+  ::tensorflow::OpKernelContext* context = nullptr;
 
-    std::cout << " x2682  pos 4 " << std::endl;
-    std::cout << " x2682  pos 5 " << std::endl;
-    std::cout << " x2682  pos 6 " << std::endl;
-    std::cout << " x2682  pos 7 " << std::endl;
-    std::cout << " x2682  pos 8 " << std::endl;
+  ss >> tmp_name;
+  ::tensorflow::DataType dt_type;
+  int tmp_dt_type;
+  ss >> std::dec >> tmp_dt_type;
+  dt_type = static_cast<::tensorflow::DataType>(tmp_dt_type);
+  size_t elem_size;
+  ss >> elem_size;
+  int ndim = 0;
+  ss >> std::dec >> ndim;
+  size_t buffer_size = 0;
+  size_t num_elem = 1;
+  for (int i = 0; i < ndim; i++) {
+    size_t dim;
+    ss >> std::dec >> dim;
+    num_elem *= dim;
+  }
 
-    std::cout << " x2682  received opaque: " << opaque << std::endl;
-    std::stringstream ss(opaque);
-    std::string tmp_name;
-    ::tensorflow::OpKernelContext* context = nullptr;
+  buffer_size = elem_size * num_elem;
 
-    ss >> tmp_name;
-    ::tensorflow::DataType dt_type;
-    int tmp_dt_type;
-    ss >> std::dec >> tmp_dt_type;
-    dt_type = static_cast<::tensorflow::DataType>(tmp_dt_type);
-    size_t elem_size;
-    ss >> elem_size;
-    int ndim = 0;
-    ss >> std::dec >> ndim;
-    size_t buffer_size = 0;
-    size_t num_elem = 1;
-    for (int i = 0; i < ndim; i++) {
-      size_t dim;
-      ss >> std::dec >> dim;
-      num_elem *= dim;
-      std::cout << " dim " << dim;
-    }
+  auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
+  auto ready_event =
+    std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
 
-    printMatOnGPU(tmp_name, buffers[0], num_elem);
+  // auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
+  auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
-    buffer_size = elem_size * num_elem;
-    std::cout << " ndim " << ndim << " num_elem " << num_elem << " buffer_size " << buffer_size << std::endl;
-
-    std::cout << " x2682  pos 9 " << std::endl;
-    auto bps_input = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
-    auto ready_event =
-        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
-
-    // auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
-    auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
-    std::cout << " x2682  pos 10 " << std::endl;
-
-    StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
-
-    std::cout << " x2682  pos end " << std::endl;
+  StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
@@ -751,9 +629,6 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
   ss >> tmp_name;
 
   auto it = _name_to_done_args.find(tmp_name);
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-  std::cout << " x2682 name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
-  // OP_REQUIRES_OK(context,  args != _name_to_done_args.end());
   ASSERTF(it != _name_to_done_args.end(), "post 2");
   auto& args = it->second;
   {
@@ -761,17 +636,12 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
     args.cv.wait(lk, [&args]{return args.is_done;});
   }
   _name_to_done_args.erase(it);
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-  std::cout << " x2682 name_key: " << tmp_name << " rank: " << common::byteps_rank() << " sync_done"<< std::endl;
-
 }
 
 class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
   public:
     explicit BytepsSyncTensorXlaOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::XlaOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
-      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
-      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
     }
     ~BytepsSyncTensorXlaOp() override = default;
 
@@ -784,12 +654,8 @@ class BytepsSyncTensorXlaOp : public ::tensorflow::XlaOpKernel {
       std::string tmp_name;
       if (input_tensor_name == "default_tensor_name") {
         tmp_name = node_name;
-        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       } else {
         tmp_name = input_tensor_name;
-        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       }
 
       std::stringstream ss;
@@ -810,8 +676,6 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
   public:
     explicit BytePSSyncTensorOp(::tensorflow::OpKernelConstruction* context) : ::tensorflow::OpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
-      // OP_REQUIRES_OK(context, context->GetAttr("type", &dst_dtype_));
-      // OP_REQUIRES_OK(context, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
     }
     ~BytePSSyncTensorOp() override = default;
 
@@ -823,12 +687,8 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
       std::string tmp_name;
       if (input_tensor_name == "default_tensor_name") {
         tmp_name = node_name;
-        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       } else {
         tmp_name = input_tensor_name;
-        std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ <<std::endl;
-        std::cout << " x2682 tmp_name: " << tmp_name << std::endl;
       }
 
       auto it = _name_to_done_args.find(tmp_name);
@@ -868,9 +728,6 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   std::stringstream ss(opaque);
   int my_rank = common::byteps_rank();
 
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-            << " size_hash_table: " << _name_to_done_args.size() << std::endl;
-  BPS_LOG(DEBUG, my_rank) << " x2682 got opaque: " << opaque << std::endl;
   ss >> num;
   while (ss >> tmp_name) {
     int buf_size;
@@ -880,34 +737,18 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       continue;
     }
     auto it = _name_to_done_args.find(tmp_name);
-    std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-      << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
     {
       std::unique_lock<std::mutex> lk(args.mtx);
       args.cv.wait(lk, [&args]{return args.is_done;});
     }
-    // cudaMemcpyAsync(buffers[count + num], args.bps_out_buf, buf_size, cudaMemcpyDeviceToDevice, stream);
     _name_to_done_args.erase(it);
-    cudaStreamSynchronize(stream);
+    // cudaStreamSynchronize(stream);
     seen_count++;
   }
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-    << " num: " << num << " seen_count: " << seen_count <<std::endl;
   ASSERTF(num == seen_count, "pos 5");
-  BPS_LOG(DEBUG, my_rank) << "one pass ended =============================================================" << std::endl;
 }
-
-// StatusOr<std::vector<xla::Shape>> MyGetOperandShapes(
-//     absl::Span<const xla::XlaOp> operands) const {
-//   std::vector<xla::Shape> operand_shapes;
-//   for (auto operand : operands) {
-//     TF_ASSIGN_OR_RETURN(const xla::Shape* shape, GetShapePtr(operand));
-//     operand_shapes.push_back(*shape);
-//   }
-//   return operand_shapes;
-// }
 
 /**
  * get the buffer size of the i-th input tensor
@@ -937,32 +778,10 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
       std::vector<xla::XlaOp> valid_values;
       std::vector<::tensorflow::TensorShape> shapes;
       OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
-      // or, how do we get PrimitiveType or DataType from values?
 
-      // std::vector<xla::Shape> tmp_output_shapes;
-      // for (auto& tmp_shape : shapes) {
-      //   tmp_output_shapes.push_back(tmp_shape.ValueOrDie());
-      // }
-
-      // std::vector<xla::Shape> tmp_output_shapes = xla::GetOperandShapes(context->builder(), values);
-
-      /**
-       * there's another function in
-       * tensorflow/compiler/xla/client/xla_builder.h
-       *
-       * // Returns the shape of the given op.
-       * StatusOr<Shape> GetShape(XlaOp op) const;
-       * get tensorlist shape: tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h:43
-       * Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape);
-       *
-       */
       const int N = values.size();
       std::vector<xla::Shape> tmp_output_shapes;
-      // for (int i = 0; i < N; i++) {
-      //   valid_values.push_back(values[i]);
-      // }
       tmp_output_shapes.push_back(xla::ShapeUtil::MakeShape(xla::F32, {2}));
-      std::cout << "x2682 len of tmp_output_shapes: " << tmp_output_shapes.size() << std::endl;
 
       auto output_shapes = xla::ShapeUtil::MakeTupleShape(tmp_output_shapes);
 
@@ -1036,7 +855,7 @@ void PrintTensorsCustomOp(CUstream stream, void** buffers,
     ss >> buf_size;
     cudaMemcpyAsync(buffers[count + num], buffers[count], buf_size, cudaMemcpyDeviceToDevice, stream);
     // cudaStreamSynchronize(stream);
-    printMatOnGPU(tmp_name, buffers[count], buf_size/4);
+    // printMatOnGPU(tmp_name, buffers[count], buf_size/4);
     count++;
   }
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__

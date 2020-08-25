@@ -123,15 +123,6 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull_xla(tensor_compressed, scope)
-        handle = summed_tensor_compressed[1]
-        summed_tensor_compressed = summed_tensor_compressed[0]
-        handle = tf.reshape(handle, [-1])
-
-        summed_tensor_compressed = tf.cond(handle[0] < handle[1],
-                lambda: summed_tensor_compressed,
-                lambda: summed_tensor_compressed)
-                # lambda: tf.identity(summed_tensor_compressed),
                 # lambda: tf.identity(summed_tensor_compressed))
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
@@ -489,8 +480,6 @@ if hasattr(tf, 'GradientTape'):
                 tmp_avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
                 tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
                 avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
-
-                # avg_grads = self._sync_grads_one_shot(avg_grads, grad_names)
 
                 return avg_grads
             else:

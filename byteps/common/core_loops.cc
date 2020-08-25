@@ -222,8 +222,6 @@ inline void PostNcclCalls(
     if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
       out_p = p;
     }
-    // remove this
-      // out_p = p;
 
     if (num_elem_per_gpu) {
       NCCLCHECK(ncclReduceScatter(
@@ -232,18 +230,8 @@ inline void PostNcclCalls(
           (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
           (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
           (cudaStream_t)nccl_stream));
-      BPS_LOG(TRACE) << task->tensor_name << " calling ncclReduceScatter" << LogStrings[this_op]
-        << " (rank=" << nccl_rank << ") key=" << key
-        << ", elements=" << len / unit_len
-        << ", device=" << task->device;
-
     }
     if (left_elem) {
-    BPS_LOG(TRACE) << task->tensor_name << " calling ncclReduce " << LogStrings[this_op]
-                   << " (rank=" << nccl_rank << ") key=" << key
-                   << ", elements=" << len / unit_len
-                   << ", device=" << task->device;
-
       NCCLCHECK(ncclReduce((const void *)(p + len - left_elem * unit_len),
                            (void *)(out_p + len - left_elem * unit_len),
                            (size_t)left_elem, (ncclDataType_t)nccl_dtype,
