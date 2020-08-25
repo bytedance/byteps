@@ -82,6 +82,11 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
 }
 
 tensor_t RandomkCompressor::Compress(tensor_t grad) {
+#ifndef BYTEPS_BUILDING_SERVER
+  auto dst = _buf.get();
+#else
+  auto dst = grad.data;
+#endif
   COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, _buf.get(), grad.data,
                         grad.size);
 }
