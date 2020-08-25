@@ -87,7 +87,7 @@ tensor_t RandomkCompressor::Compress(tensor_t grad) {
 #else
   auto dst = grad.data;
 #endif
-  COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, _buf.get(), grad.data,
+  COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, dst, grad.data,
                         grad.size);
 }
 
