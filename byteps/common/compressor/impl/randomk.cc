@@ -55,83 +55,63 @@ CompressorRegistry::Register reg(
     });
 }
 
-template <typename index_t, typename scalar_t>
-tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
+template <typename scalar_t>
+tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
                                          size_t len) {
-  BPS_CHECK_LE(this->_k, len / 2);
-  using pair_t = std::pair<index_t, scalar_t>;
-  auto ptr = reinterpret_cast<pair_t*>(dst);
-
 #ifndef BYTEPS_BUILDING_SERVER
-  // for workers
+  // generate k
+  for (size_t i = 0; i < this->_k; ++i) {
+    _selected_idx.push_back(_rng.Randint(0, len));
+  }
+
   // to be unbiased
   if (_is_scale) {
     float scale = static_cast<float>(len) / this->_k;
-    for (size_t i = 0; i < this->_k; ++i) {
-      auto index = _rng.Randint(0, len);
-      ptr[i] = std::make_pair(index, src[index] * scale);
+    for (auto idx : _selected_idx) {
+      dst[i] = src[idx] * scale;
     }
   } else {
-    for (size_t i = 0; i < this->_k; ++i) {
-      auto index = _rng.Randint(0, len);
-      ptr[i] = std::make_pair(index, src[index]);
+    for (auto idx : _selected_idx) {
+      dst[i] = src[idx];
     }
   }
-
-  return {dst, this->_k * sizeof(pair_t)};
-#else
-  // for servers
-  // should be not greater than k
-  BPS_CHECK_LE(_non_zero_idx.size(), this->_k);
-  size_t i = 0;
-  for (auto& index : _non_zero_idx) {
-    ptr[i++] = std::make_pair(index, src[index]);
-  }
-
-  _non_zero_idx.clear();
-  return {dst, i * sizeof(pair_t)};
 #endif
+  // server does nothing
+  return {dst, this->_k * sizeof(scalar_t)};
 }
 
 tensor_t RandomkCompressor::Compress(tensor_t grad) {
-  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
-                       grad.size);
+  COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, _buf.get(), grad.data,
+                        grad.size);
 }
 
-template <typename index_t, typename scalar_t>
-tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
+template <typename scalar_t>
+tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const scalar_t* src,
                                            size_t compressed_size) {
-  using pair_t = std::pair<index_t, scalar_t>;
-
-  auto ptr = reinterpret_cast<const pair_t*>(src);
+#ifndef BYTEPS_BUILDING_SERVER
+  auto buf = reinterpret_cast<scalar_t*>(_buf.get());
   if ((void*)dst == (void*)src) {
-    auto buf = reinterpret_cast<pair_t*>(_buf.get());
-    std::memcpy(buf, ptr, compressed_size);
-    ptr = const_cast<const pair_t*>(buf);
+    std::memcpy(buf, src, compressed_size);
   }
 
   // reset to zeros
   std::memset(dst, 0, _size);
-  size_t len = compressed_size / sizeof(pair_t);
-  for (size_t i = 0; i < len; ++i) {
-    auto& pair = ptr[i];
-    dst[pair.first] = pair.second;
-#ifdef BYTEPS_BUILDING_SERVER
-    _non_zero_idx.insert(pair.first);
-#endif
+  size_t i = 0;
+  for (auto idx : _selected_idx) {
+    dst[idx] = buf[i++];
   }
-
+  _selected_idx.clear();
   return {dst, _size};
-}
+#else
+  // do nothing
+  return {dst, compressed_size};
+#endif
+}  // namespace compressor
 
 tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
-#ifdef BYTEPS_BUILDING_SERVER
-  auto dst = _buf.get();
-#else
   auto dst = compressed.data;
-#endif
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
-                         compressed.size);
+  DECOMPRESS_IMPL_SWITCH2(_dtype, DecompressImpl, dst, compressed.data,
+                          compressed.size);
 }
 
 template <typename index_t, typename scalar_t>

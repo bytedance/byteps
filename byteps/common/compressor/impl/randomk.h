@@ -18,6 +18,7 @@
 
 #include <random>
 #include <set>
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -41,16 +42,13 @@ class RandomkCompressor : public Compressor {
  public:
   RandomkCompressor(size_t size, DataType dtype, unsigned int k,
                     unsigned int seed = 0, bool is_scale = false)
-      : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
+      : Compressor(size, dtype), _k(k), _is_scale(is_scale), _is_first(true) {
     if (seed != 0) {
       BPS_LOG(INFO) << "SET SEED = " << seed;
       _rng.set_seed(seed);
     } else {
-      _rng.set_seed(_rd());
+      _rng.set_seed(2020);
     }
-#ifdef BYTEPS_BUILDING_SERVER
-    _gen.seed(_rd());
-#endif
   };
   virtual ~RandomkCompressor() = default;
 
@@ -88,11 +86,11 @@ class RandomkCompressor : public Compressor {
                        tensor_t compressed) override;
 
  private:
-  template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  template <typename scalar_t>
+  tensor_t CompressImpl(scalar_t* dst, const scalar_t* src, size_t len);
 
-  template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+  template <typename scalar_t>
+  tensor_t DecompressImpl(scalar_t* dst, const scalar_t* src,
                           size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
@@ -101,14 +99,9 @@ class RandomkCompressor : public Compressor {
 
  private:
   unsigned int _k;
-  std::random_device _rd;
   XorShift128PlusBitShifterRNG _rng;
   bool _is_scale;
-
-#ifdef BYTEPS_BUILDING_SERVER
-  std::mt19937 _gen;
-  std::set<uint32_t> _non_zero_idx;
-#endif
+  std::vector<uint32_t> _selected_idx;
 };
 }  // namespace compressor
 }  // namespace common

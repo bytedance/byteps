@@ -102,6 +102,7 @@ void BytePSServerEngineThread(int i) {
             reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype);
         auto decompressed = iter->second->Decompress(compressed);
         msg.src = decompressed.data;
+        msg.len = decompressed.size;
       }
     } else {
       if (msg.ops == ALL_RECV) {
@@ -508,7 +509,7 @@ extern "C" void byteps_server() {
       free(it.second.tensor);
     }
   }
-  
+
   LOG(INFO) << "byteps has been shutdown";
   return;
 }
