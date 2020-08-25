@@ -411,7 +411,7 @@ def main():
             "scaling": opt.onebit_scaling,
             "k": opt.k,
             "normalize": opt.normalize,
-            "seed": mx.random.randomint(0, 10000)
+            "seed": mx.random.randint(0, 10000)
         }
 
         trainer = bps.DistributedTrainer(
