@@ -78,6 +78,7 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
     }
   }
 
+  return {dst, this->_k * sizeof(pair_t)};
 #else
   // for servers
   // should be not greater than k
@@ -88,9 +89,8 @@ tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   }
 
   _non_zero_idx.clear();
+  return {dst, _non_zero_idx.size() * sizeof(pair_t)};
 #endif
-
-  return {dst, this->_k * sizeof(pair_t)};
 }
 
 tensor_t RandomkCompressor::Compress(tensor_t grad) {
