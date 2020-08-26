@@ -9,15 +9,25 @@ BytePS is a high performance and general distributed training framework. It supp
 BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on BERT-large training, BytePS can achieve ~90% scaling efficiency with 256 GPUs (see below), which is much higher than [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl). In certain scenarios, BytePS can double the training speed compared with Horovod+NCCL.
 
 ## News
-
-- [BytePS-0.2.0](CHANGELOG.rst) has been released.
-- Now pip install is available, refer to the [install tutorial](https://github.com/bytedance/byteps#quick-start).
-- [Largely improve RDMA performance](https://github.com/bytedance/byteps/pull/184). Now support colocating servers and workers with high performance.
-- Fix [RDMA fork problem](https://github.com/bytedance/byteps/pull/192) caused by multi-processing.
-- [New Server](https://github.com/bytedance/byteps/pull/151): We improve the server performance by a large margin, and it is now independent of MXNet KVStore. Try our [new docker images](docker/).
-- Use [the ssh launcher](launcher/) to launch your distributed jobs
-- [Improved key distribution strategy for better load-balancing](https://github.com/bytedance/byteps/pull/116)
-- [Improved RDMA robustness](https://github.com/bytedance/byteps/pull/91)
+- More BytePS examples are available [here](https://github.com/byteps/examples).
+- Support [gradient compression](https://github.com/bytedance/byteps/pull/225).
+- [v0.2.4](https://github.com/bytedance/byteps/tree/v0.2.4)
+    * Fix compatibility issue with tf2 + standalone keras
+    * Add support for tensorflow.keras
+    * Improve robustness of broadcast
+- [v0.2.3](https://github.com/bytedance/byteps/tree/v0.2.3)
+    * Add DistributedDataParallel module for PyTorch
+    * Fix the problem of different CPU tensor using the same name
+    * Add skip_synchronize api for PyTorch
+    * Add the option for lazy/non-lazy init
+- [v0.2.0](https://github.com/bytedance/byteps/tree/v0.2)
+    * Largely improve RDMA performance by enforcing page aligned memory.
+    * Add IPC support for RDMA. Now support colocating servers and workers without sacrificing much performance.
+    * Fix a hanging bug in BytePS server.
+    * Fix RDMA-related segmentation fault problem during fork() (e.g., used by PyTorch data loader).
+    * New feature: Enable mixing use of colocate and non-colocate servers, along with a smart tensor allocation strategy.
+    * New feature: Add ``bpslaunch`` as the command to launch tasks.
+    * Add support for pip install: ``pip3 install byteps``
 
 ## Performance
 
