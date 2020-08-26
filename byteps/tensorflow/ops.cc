@@ -564,7 +564,6 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  std::cout << " x2682  pos 16 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
   _name_to_done_args[name_key].is_done = false;
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());

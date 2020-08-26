@@ -50,7 +50,7 @@ model = getattr(applications, args.model)(weights=None)
 opt = tf.optimizers.SGD(0.01)
 
 data = tf.random.uniform([args.batch_size, 224, 224, 3])
-target = tf.random.uniform([args.batch_size, 1], minval=0, maxval=999, dtype=tf.int64)
+target = tf.random.uniform([args.batch_size, 1000], minval=0, maxval=999, dtype=tf.int64)
 
 
 @tf.function
@@ -75,9 +75,9 @@ def benchmark_step(first_batch):
     #
     # Note: broadcast should be done after the first gradient step to ensure optimizer
     # initialization.
-    if first_batch:
-        bps.broadcast_variables(model.variables, root_rank=0)
-        bps.broadcast_variables(opt.variables(), root_rank=0)
+    # if first_batch:
+    #     bps.broadcast_variables(model.variables, root_rank=0)
+    #     bps.broadcast_variables(opt.variables(), root_rank=0)
 
 
 def log(s, nl=True):
