@@ -172,6 +172,7 @@ def get_mpi_flags():
 def get_cpp_flags(build_ext):
     last_err = None
     default_flags = ['-std=c++11', '-fPIC', '-O2', '-Wall', '-fopenmp']
+    default_flags += ['-L' + get_tf_lib_dirs()[0] + '/python/']
     default_flags += ['-l:_pywrap_tensorflow_internal.so']
     avx_flags = ['-mf16c', '-mavx']
     flags_to_try = []
@@ -209,6 +210,7 @@ def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
     ld_flags = ['-Wl,--version-script=byteps.lds', '-fopenmp']
+    ld_flags += ['-L' + get_tf_lib_dirs()[0] + '/python/']
     ld_flags += ['-l:_pywrap_tensorflow_internal.so']
     ld_flags += ['-ldl']
     flags_to_try = []
