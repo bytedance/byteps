@@ -210,8 +210,6 @@ def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
     ld_flags = ['-Wl,--version-script=byteps.lds', '-fopenmp']
-    ld_flags += ['-L' + get_tf_lib_dirs()[0] + '/python/']
-    ld_flags += ['-l:_pywrap_tensorflow_internal.so']
     ld_flags += ['-ldl']
     flags_to_try = []
     if sys.platform == 'darwin':
@@ -406,7 +404,7 @@ def get_tf_abi(build_ext, include_dirs, lib_dirs, libs, cpp_flags):
 def get_tf_flags(build_ext, cpp_flags):
     import tensorflow as tf
     try:
-        return tf.sysconfig.get_compile_flags(), tf.sysconfig.get_link_flags()
+        return tf.sysconfig.get_compile_flags(), tf.sysconfig.get_link_flags() + ['-L' + get_tf_lib_dirs()[0] + '/python/'] + ['-l:_pywrap_tensorflow_internal.so']
     except AttributeError:
         # fallback to the previous logic
         tf_include_dirs = get_tf_include_dirs()
@@ -427,6 +425,11 @@ def get_tf_flags(build_ext, cpp_flags):
         for lib in tf_libs:
             link_flags.append('-l%s' % lib)
 
+        compile_flags.append('-Og -g')
+        compile_flags.eppand('-L' + get_tf_lib_dirs()[0] + '/python/')
+        compile_flags.eppend('-l:_pywrap_tensorflow_internal.so')
+        link_flags.eppand('-L' + get_tf_lib_dirs()[0] + '/python/')
+        link_flags.eppend('-l:_pywrap_tensorflow_internal.so')
         return compile_flags, link_flags
 
 
