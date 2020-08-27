@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <sstream>
 #include <fstream>
+#include <iostream>
 
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -343,6 +344,7 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
     ~BytepsPushPullXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* context) override {
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
       xla::XlaOp input_tensor = context->Input(0);
@@ -374,6 +376,7 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
 
       context->op_kernel_context()->set_output(0,
         context->op_kernel_context()->input(0));
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
     }
   private:
      std::string input_tensor_name;
@@ -585,6 +588,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
   std::stringstream ss(opaque);
   std::string tmp_name;
   ::tensorflow::OpKernelContext* context = nullptr;
@@ -616,6 +620,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
   auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
   StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
@@ -720,6 +725,7 @@ XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
 void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   const char* opaque, size_t opaque_len) {
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
   int num;
   int seen_count = 0;
   std::vector<int> buf_sizes;
@@ -747,6 +753,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     seen_count++;
   }
   ASSERTF(num == seen_count, "pos 5");
+  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << " one pass ended ===========================================" << std::endl;
 }
 
 /**
@@ -773,6 +780,7 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
     ~BytePSSyncAllTensorsXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* ctx) override {
+      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
       std::vector<xla::XlaOp> values;
       std::vector<xla::XlaOp> valid_values;
       std::vector<::tensorflow::TensorShape> shapes;
