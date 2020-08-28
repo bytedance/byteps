@@ -119,6 +119,23 @@ tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
                           compressed.size);
 }
 
+template <typename scalar_t>
+void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
+                                            scalar_t* corrected,
+                                            const scalar_t* compressed,
+                                            size_t compressed_size) {
+  memcpy_multithread(error, corrected, _size);
+  for (auto idx : _selected_idx) {
+    error[idx] = 0;
+  }
+}
+
+void RandomkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
+                                        tensor_t compressed) {
+  FAST_UPDATE_ERROR_IMPL_SWITCH2(_dtype, FastUpdateErrorImpl, error.data,
+                                 corrected.data, compressed.data,
+                                 compressed.size);
+}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

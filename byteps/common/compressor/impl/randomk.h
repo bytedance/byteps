@@ -71,6 +71,16 @@ class RandomkCompressor : public Compressor {
    */
   tensor_t Decompress(tensor_t compressed) override;
 
+  /*!
+   * \brief faster version of `UpdateError` via operation fusion
+   *
+   * \param corrected gradient corrected with error
+   * \param error error
+   * \param compressed compressed gradient
+   */
+  void FastUpdateError(tensor_t error, tensor_t corrected,
+                       tensor_t compressed) override;
+
  private:
   template <typename scalar_t>
   tensor_t CompressImpl(scalar_t* dst, const scalar_t* src, size_t len);
@@ -78,6 +88,12 @@ class RandomkCompressor : public Compressor {
   template <typename scalar_t>
   tensor_t DecompressImpl(scalar_t* dst, const scalar_t* src,
                           size_t compressed_size);
+
+  template <typename scalar_t>
+  void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
+                                              scalar_t* corrected,
+                                              const scalar_t* compressed,
+                                              size_t compressed_size);
 
  private:
   unsigned int _k;

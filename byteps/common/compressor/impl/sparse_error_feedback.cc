@@ -79,6 +79,11 @@ SparseErrorFeedbackCompressor::~SparseErrorFeedbackCompressor() {
 void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   _cur_lr = *reinterpret_cast<double*>(_mm);
 
+#ifndef BYTEPS_BUILDING_SERVER
+  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
+                          static_cast<DataType>(grad.dtype),
+                          (_pre_lr / _cur_lr));
+#else
   size_t len = grad.size / getDataTypeLength(grad.dtype);
 
   for (size_t i = 0; i < this->_k; ++i) {
@@ -88,7 +93,7 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
                                  static_cast<DataType>(grad.dtype),
                                  (_pre_lr / _cur_lr), _selected_idx);
-
+#endif
   _pre_lr = _cur_lr;
 }
 
@@ -102,6 +107,10 @@ void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
 
 void SparseErrorFeedbackCompressor::UpdateError(tensor_t corrected,
                                                 tensor_t compressed) {
+#ifndef BYTEPS_BUILDING_SERVER
+  tensor_t error{_error.get(), _size, corrected.dtype};
+  _cptr->FastUpdateError(error, corrected, compressed);
+#else
   switch (corrected.dtype) {
     case BYTEPS_FLOAT16:
       return UpdateErrorImpl(reinterpret_cast<half_t*>(_error.get()));
@@ -112,7 +121,8 @@ void SparseErrorFeedbackCompressor::UpdateError(tensor_t corrected,
     default:
       BPS_CHECK(0) << "Unsupported data type:" << corrected.dtype;
   }
-}
+#endif
+}  // namespace compressor
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

@@ -124,6 +124,25 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                     \
   }
 
+#define FAST_UPDATE_ERROR_IMPL_SWITCH2(dtype, func, dst, src1, src2,       \
+                                       compressed_size)                    \
+  switch (dtype) {                                                         \
+    case BYTEPS_FLOAT16:                                                   \
+      return func(reinterpret_cast<half_t*>(dst),                          \
+                  reinterpret_cast<half_t*>(src1),                         \
+                  reinterpret_cast<const half_t*>(src2), compressed_size); \
+    case BYTEPS_FLOAT32:                                                   \
+      return func(reinterpret_cast<float*>(dst),                           \
+                  reinterpret_cast<float*>(src1),                          \
+                  reinterpret_cast<const float*>(src2), compressed_size);  \
+    case BYTEPS_FLOAT64:                                                   \
+      return func(reinterpret_cast<double*>(dst),                          \
+                  reinterpret_cast<double*>(src1),                         \
+                  reinterpret_cast<const double*>(src2), compressed_size); \
+    default:                                                               \
+      BPS_CHECK(0) << "Unsupported data type:" << dtype;                   \
+  }
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
