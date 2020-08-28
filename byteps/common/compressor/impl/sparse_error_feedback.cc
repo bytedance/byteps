@@ -93,7 +93,7 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
 template <typename scalar_t>
 void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
   for (auto idx : _selected_idx) {
-    error[i] = 0;
+    error[idx] = 0;
   }
   _selected_idx.clear();
 }
