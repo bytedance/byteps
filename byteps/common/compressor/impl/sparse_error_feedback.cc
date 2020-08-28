@@ -31,7 +31,8 @@ CompressorRegistry::Register reg(
        std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
       BPS_CHECK_NE(cptr, nullptr);
-
+      auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
+                                            [](float x) { return x > 0; });
       unsigned k;
       if (factor < 1) {
         k = static_cast<unsigned>(factor * size / getDataTypeLength(dtype));
