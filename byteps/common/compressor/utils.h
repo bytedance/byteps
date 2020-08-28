@@ -260,27 +260,6 @@ inline int memcpy_multithread(void* dst, const void* src, size_t len) {
   return 0;
 }
 
-template <typename T>
-inline T* get_ptr(void* ptr, DataType dtype) {
-  switch (dtype) {
-    case BYTEPS_FLOAT32:
-      return reinterpret_cast<float*>(ptr);
-    case BYTEPS_FLOAT64:
-      return reinterpret_cast<double*>(ptr);
-    case BYTEPS_FLOAT16:
-      return reinterpret_cast<half_t*>(ptr);
-    case BYTEPS_UINT8:
-      return reinterpret_cast<uint8_t*>(ptr);
-    case BYTEPS_INT32:
-      return reinterpret_cast<int32_t*>(ptr);
-    case BYTEPS_INT8:
-      return reinterpret_cast<int8_t*>(ptr);
-    case BYTEPS_INT64:
-      return reinterpret_cast<int64_t*>(ptr);
-    default:
-      BPS_CHECK(0) << "Unsupported data type: " << dtype;
-  }
-}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

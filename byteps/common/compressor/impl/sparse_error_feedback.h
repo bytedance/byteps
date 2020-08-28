@@ -43,6 +43,8 @@ class SparseErrorFeedbackCompressor : public ErrorFeedback {
   void UpdateError(tensor_t corrected, tensor_t compressed) override;
 
  private:
+  template <typename scalar_t>
+  void UpdateErrorImpl(scalar_t* error);
   /*!
    * \brief learning rate
    *

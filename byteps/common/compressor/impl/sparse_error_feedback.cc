@@ -90,14 +90,26 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   _pre_lr = _cur_lr;
 }
 
+template <typename scalar_t>
+void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
+  for (auto idx : _selected_idx) {
+    error[i] = 0;
+  }
+  _selected_idx.clear();
+}
+
 void SparseErrorFeedbackCompressor::UpdateError(tensor_t corrected,
                                                 tensor_t compressed) {
-  auto error = get_ptr(_error.get(), corrected.dtype);
-  for (auto idx : _selected_idx) {
-    error[idx] = 0;
+  switch (corrected.dtype) {
+    case BYTEPS_FLOAT16:
+      return UpdateErrorImpl(reinterpret_cast<half_t*>(_error.get()));
+    case BYTEPS_FLOAT32:
+      return UpdateErrorImpl(reinterpret_cast<float*>(_error.get()));
+    case BYTEPS_FLOAT64:
+      return UpdateErrorImpl(reinterpret_cast<double*>(_error.get()));
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << corrected.dtype;
   }
-
-  _selected_idx.clear();
 }
 }  // namespace compressor
 }  // namespace common
