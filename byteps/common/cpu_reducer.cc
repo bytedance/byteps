@@ -21,7 +21,7 @@
 
 #include "cpu_reducer.h"
 #if __F16C__
-#include "../half.h"
+#include "half.h"
 using half_t = mshadow::half::half_t;
 #endif
 
