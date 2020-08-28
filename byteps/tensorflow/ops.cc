@@ -567,6 +567,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
+  std::cout << " x2682 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
   _name_to_done_args[name_key].is_done = false;
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
@@ -582,6 +583,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                         args.is_done = true;
                       }
                       args.cv.notify_one();
+                      std::cout << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
 }
@@ -742,6 +744,8 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       continue;
     }
     auto it = _name_to_done_args.find(tmp_name);
+    std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+      << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
     {
