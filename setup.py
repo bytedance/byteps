@@ -258,6 +258,7 @@ def get_common_options(build_ext):
                'byteps/common/compressor/impl/randomk.cc',
                'byteps/common/compressor/impl/topk.cc',
                'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+               'byteps/common/compressor/impl/sparse_error_feedback.cc',
                'byteps/common/compressor/impl/nesterov_momentum.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
@@ -310,7 +311,8 @@ def build_server(build_ext, options):
                           'byteps/common/compressor/impl/onebit.cc',
                           'byteps/common/compressor/impl/randomk.cc',
                           'byteps/common/compressor/impl/topk.cc',
-                          'byteps/common/compressor/impl/vanilla_error_feedback.cc']
+                          'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+                          'byteps/common/compressor/impl/sparse_error_feedback.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']
