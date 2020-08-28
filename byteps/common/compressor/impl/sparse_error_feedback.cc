@@ -86,7 +86,7 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   }
 
   this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
-                                 static_cast<DataType>(gard.dtype),
+                                 static_cast<DataType>(grad.dtype),
                                  (_pre_lr / _cur_lr), _selected_idx);
 
   _pre_lr = _cur_lr;
