@@ -79,6 +79,8 @@ SparseErrorFeedbackCompressor::~SparseErrorFeedbackCompressor() {
 void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   _cur_lr = *reinterpret_cast<double*>(_mm);
 
+  size_t len = grad.size / getDataTypeLength(grad.dtype);
+
   for (size_t i = 0; i < this->_k; ++i) {
     _selected_idx.push_back(_rng.Randint(0, len));
   }
