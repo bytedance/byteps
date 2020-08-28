@@ -108,8 +108,7 @@ void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
 void SparseErrorFeedbackCompressor::UpdateError(tensor_t corrected,
                                                 tensor_t compressed) {
 #ifndef BYTEPS_BUILDING_SERVER
-  tensor_t error{_error.get(), _size, corrected.dtype};
-  _cptr->FastUpdateError(error, corrected, compressed);
+  ErrorFeedback::UpdateError(corrected, compressed);
 #else
   switch (corrected.dtype) {
     case BYTEPS_FLOAT16:
