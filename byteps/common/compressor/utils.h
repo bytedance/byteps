@@ -260,7 +260,7 @@ inline int memcpy_multithread(void* dst, const void* src, size_t len) {
   return 0;
 }
 
-template <typenamt T>
+template <typename T>
 inline T* get_ptr(void* ptr, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
