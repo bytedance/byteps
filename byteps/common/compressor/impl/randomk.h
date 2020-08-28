@@ -99,11 +99,9 @@ class RandomkCompressor : public Compressor {
  private:
   unsigned int _k;
 
-#ifndef BYTEPS_BUILDING_SERVER
   XorShift128PlusBitShifterRNG _rng;
   std::vector<uint32_t> _selected_idx;
   bool _is_scale;
-#endif
 };
 }  // namespace compressor
 }  // namespace common
