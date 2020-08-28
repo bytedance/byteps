@@ -45,8 +45,7 @@ CompressorRegistry::Register reg(
                                              [](unsigned x) { return x != 0; });
 
       BPS_LOG(INFO) << "sparse error feedback is registered. "
-                    << "\tsize=" << size << "\tk=" << k << "\tseed=" << seed
-                    << "\tis_scale=" << is_scale;
+                    << "\tsize=" << size << "\tk=" << k << "\tseed=" << seed;
 
       return std::unique_ptr<SparseErrorFeedbackCompressor>(
           new SparseErrorFeedbackCompressor(size, dtype, std::move(cptr), k,
