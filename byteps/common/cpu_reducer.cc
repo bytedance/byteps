@@ -20,6 +20,7 @@
 #include <cmath>
 
 #include "cpu_reducer.h"
+#include "half.h"
 
 namespace byteps {
 namespace common {
@@ -432,6 +433,54 @@ int CpuReducer::copy(void* dst, const void* src, size_t len) {
   }
   if (len % 4) {
     std::memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+  return 0;
+}
+
+int CpuReducer::sparse_sum(void* dst, const void* src, size_t size,
+                           DataType dtype, float alpha,
+                           const std::vector<uint32_t>& idx_list) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _sparse_sum(reinterpret_cast<float*>(dst),
+                         reinterpret_cast<const float*>(src),
+                         size / sizeof(float), alpha, idx_list);
+    case BYTEPS_FLOAT64:
+      return _sparse_sum(reinterpret_cast<double*>(dst),
+                         reinterpret_cast<const double*>(src),
+                         size / sizeof(double), alpha, idx_list);
+    case BYTEPS_FLOAT16:
+      return _sparse_sum(reinterpret_cast<half_t*>(dst),
+                         reinterpret_cast<const half_t*>(src),
+                         size / sizeof(half_t), alpha, idx_list);
+    case BYTEPS_UINT8:
+      return _sparse_sum(reinterpret_cast<uint8_t*>(dst),
+                         reinterpret_cast<const uint8_t*>(src),
+                         size / sizeof(uint8_t), alpha, idx_list);
+    case BYTEPS_INT32:
+      return _sparse_sum(reinterpret_cast<int32_t*>(dst),
+                         reinterpret_cast<const int32_t*>(src),
+                         size / sizeof(int32_t), alpha, idx_list);
+    case BYTEPS_INT8:
+      return _sparse_sum(reinterpret_cast<int8_t*>(dst),
+                         reinterpret_cast<const int8_t*>(src),
+                         size / sizeof(int8_t), alpha, idx_list);
+    case BYTEPS_INT64:
+      return _sparse_sum(reinterpret_cast<int64_t*>(dst),
+                         reinterpret_cast<const int64_t*>(src),
+                         size / sizeof(int64_t), alpha, idx_list);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+  return 0;
+}
+
+template <typename T>
+int CpuReducer::_sparse_sum(T* dst, const T* src, size_t len, float alpha,
+                            const std::vector<uint32_t>& idx_list) {
+  size_t i = 0;
+  for (auto idx : idx_list) {
+    dst[i++] += src[idx] * alpha;
   }
   return 0;
 }

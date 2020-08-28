@@ -23,6 +23,7 @@
 
 #include <cstring>
 #include <memory>
+#include <vector>
 #include "common.h"
 #include "logging.h"
 
@@ -53,6 +54,9 @@ class CpuReducer {
   int sum(void* dst, const void* src1, const void* src2, size_t len,
           DataType dtype, float alpha);
 
+  int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
+                 float alpha, const std::vector<uint32_t>& idx_list);
+
   int copy(void* dst, const void* src, size_t len);
 
 #ifndef BYTEPS_BUILDING_SERVER
@@ -63,7 +67,6 @@ class CpuReducer {
   DataType GetDataType(int dtype) { return static_cast<DataType>(dtype); }
 
  private:
-
 #if __AVX__ && __F16C__
   // Query CPUID to determine AVX and F16C runtime support.
   bool is_avx_and_f16c() {
@@ -196,12 +199,15 @@ class CpuReducer {
   int _sum_float16(void* dst, const void* src1, const void* src2, size_t len,
                    float alpha);
 
+  int _sparse_sum(void* dst, const void* src, size_t len, DataType dtype,
+                  float alpha, const std::vector<uint32_t>& idx_list);
+
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
 
   std::shared_ptr<BytePSComm> _comm;
   int _num_threads;
-  size_t _single_thread_threshold; 
+  size_t _single_thread_threshold;
 };
 
 }  // namespace common

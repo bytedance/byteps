@@ -17,7 +17,8 @@ batch_size=64
 threadpool_size=16
 omp_num_threads=4
 partition_bytes=4096000
-min_compress_bytes=1024000
+min_compress_bytes=$1
+shift 
 server_engine_thread=8
 data_threads=2
 
@@ -44,7 +45,7 @@ elif [[ $algo == "topk" ]]; then
 elif [[ $algo == "randomk" ]]; then
   k=$1
   shift
-  compression_args='--compressor randomk --k '${k}' --compress-momentum nesterov'
+  compression_args='--compressor randomk --k '${k}' --ef sparse --compress-momentum nesterov'
   log_file=$log_file"-k${k}"
 elif [[ $algo == "dithering" ]]; then
   k=$1

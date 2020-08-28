@@ -87,8 +87,7 @@ tensor_t RandomkCompressor::Compress(tensor_t grad) {
 #else
   auto dst = grad.data;
 #endif
-  COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, dst, grad.data,
-                        grad.size);
+  COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, dst, grad.data, grad.size);
 }
 
 template <typename scalar_t>
@@ -120,28 +119,6 @@ tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
                           compressed.size);
 }
 
-template <typename index_t, typename scalar_t>
-void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                            scalar_t* corrected,
-                                            const index_t* compressed,
-                                            size_t compressed_size) {
-  using pair_t = std::pair<index_t, scalar_t>;
-
-  memcpy_multithread(error, corrected, _size);
-
-  auto ptr = reinterpret_cast<const pair_t*>(compressed);
-  for (size_t i = 0; i < this->_k; ++i) {
-    auto& pair = ptr[i];
-    error[pair.first] = 0;
-  }
-}
-
-void RandomkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
-                                        tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                corrected.data, compressed.data,
-                                compressed.size);
-}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

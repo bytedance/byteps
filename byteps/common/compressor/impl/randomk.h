@@ -17,7 +17,6 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
-#include <set>
 #include <vector>
 
 #include "../compressor.h"
@@ -99,9 +98,12 @@ class RandomkCompressor : public Compressor {
 
  private:
   unsigned int _k;
+
+#ifndef BYTEPS_BUILDING_SERVER
   XorShift128PlusBitShifterRNG _rng;
-  bool _is_scale;
   std::vector<uint32_t> _selected_idx;
+  bool _is_scale;
+#endif
 };
 }  // namespace compressor
 }  // namespace common

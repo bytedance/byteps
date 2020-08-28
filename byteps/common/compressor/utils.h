@@ -25,6 +25,7 @@
 #include <string>
 #include <type_traits>
 
+#include "../half.h"
 #include "common.h"
 
 namespace byteps {
@@ -216,9 +217,8 @@ unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
 }
 
 template <typename T, class F = std::function<bool(T)>>
-T HyperParamFinder(
-    const kwargs_t& kwargs, std::string name, bool optional = false,
-    F&& check = [](T) { return true; }) {
+T HyperParamFinder(const kwargs_t& kwargs, std::string name,
+                   bool optional = false, F&& check = [](T) { return true; }) {
   static_assert(std::is_fundamental<T>::value,
                 "custom type is not allow for HyperParamFinder");
   T value{T()};
@@ -258,6 +258,28 @@ inline int memcpy_multithread(void* dst, const void* src, size_t len) {
     std::memcpy(out + len / 4, in + len / 4, len % 4);
   }
   return 0;
+}
+
+template <typenamt T>
+inline T* get_ptr(void* ptr, DataType dtype) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return reinterpret_cast<float*>(ptr);
+    case BYTEPS_FLOAT64:
+      return reinterpret_cast<double*>(ptr);
+    case BYTEPS_FLOAT16:
+      return reinterpret_cast<half_t*>(ptr);
+    case BYTEPS_UINT8:
+      return reinterpret_cast<uint8_t*>(ptr);
+    case BYTEPS_INT32:
+      return reinterpret_cast<int32_t*>(ptr);
+    case BYTEPS_INT8:
+      return reinterpret_cast<int8_t*>(ptr);
+    case BYTEPS_INT64:
+      return reinterpret_cast<int64_t*>(ptr);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
 }
 }  // namespace compressor
 }  // namespace common
