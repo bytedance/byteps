@@ -90,10 +90,8 @@ class RandomkCompressor : public Compressor {
                           size_t compressed_size);
 
   template <typename scalar_t>
-  void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                              scalar_t* corrected,
-                                              const scalar_t* compressed,
-                                              size_t compressed_size);
+  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
+                           const scalar_t* compressed, size_t compressed_size);
 
  private:
   unsigned int _k;
