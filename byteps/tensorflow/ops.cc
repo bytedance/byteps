@@ -567,7 +567,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  std::cout << " x2682 before EnqueueTensor name_key: " << name_key << " rank: " << myrank << std::endl;
+  std::cout << " x2682 name_key: " << name_key << " rank: " << myrank << " before EnqueueTensor " << std::endl;
   _name_to_done_args[name_key].is_done = false;
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
@@ -745,7 +745,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     }
     auto it = _name_to_done_args.find(tmp_name);
     std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
-      << " \nname_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
+      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
     {
@@ -755,6 +755,8 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     _name_to_done_args.erase(it);
     // cudaStreamSynchronize(stream);
     seen_count++;
+    std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " done" << std::endl;
   }
   ASSERTF(num == seen_count, "pos 5");
   std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << " one pass ended ===========================================" << std::endl;
