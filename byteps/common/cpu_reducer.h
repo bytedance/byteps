@@ -199,8 +199,8 @@ class CpuReducer {
   int _sum_float16(void* dst, const void* src1, const void* src2, size_t len,
                    float alpha);
 
-  int _sparse_sum(void* dst, const void* src, size_t len, DataType dtype,
-                  float alpha, const std::vector<uint32_t>& idx_list);
+  int _sparse_sum(void* dst, const void* src, size_t len, float alpha,
+                  const std::vector<uint32_t>& idx_list);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
