@@ -55,7 +55,7 @@ CompressorRegistry::Register reg(
 
 SparseErrorFeedbackCompressor::SparseErrorFeedbackCompressor(
     size_t size, DataType dtype, std::unique_ptr<Compressor> cptr, size_t k,
-    unsigned int seed = 0)
+    unsigned int seed)
     : ErrorFeedback(size, dtype, std::move(cptr)), _k(k) {
   if (seed != 0) {
     BPS_LOG(INFO) << "SET SEED = " << seed;
