@@ -344,7 +344,8 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
     ~BytepsPushPullXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* context) override {
-      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
+      int my_rank = common::byteps_rank();
+      BPS_LOG(DEBUG, my_rank) << " x2682  in " <<__func__ << std::endl;
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
       xla::XlaOp input_tensor = context->Input(0);
@@ -376,7 +377,7 @@ class BytepsPushPullXlaOp : public ::tensorflow::XlaOpKernel {
 
       context->op_kernel_context()->set_output(0,
         context->op_kernel_context()->input(0));
-      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
+      BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
     }
   private:
      std::string input_tensor_name;
@@ -392,6 +393,7 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
     ~BytepsPushPullBlockingXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* context) override {
+      int my_rank = common::byteps_rank();
       OP_REQUIRES_OK(context, ConvertStatus(common::CheckInitialized()));
 
       xla::XlaOp input_tensor = context->Input(0);
@@ -415,8 +417,8 @@ class BytepsPushPullBlockingXlaOp : public ::tensorflow::XlaOpKernel {
         ss << " " << output_tensor_shape.dimensions(i) ;
       }
       ss << std::endl;
-      std::cout << " x2682  pos 2 " << std::endl;
-      std::cout << " x2682  passing opaque: " << ss.str() << std::endl;
+      BPS_LOG(DEBUG, my_rank) << " x2682  pos 2 " << std::endl;
+      BPS_LOG(DEBUG, my_rank) << " x2682  passing opaque: " << ss.str() << std::endl;
       context->SetOutput(
         0, xla::CustomCall(context->builder(),
           /*call_target_name=*/"StartTaskBlockingWrapper",
@@ -430,18 +432,19 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
                std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
-  std::cout << " x2682  pos 11 inside StartTaskBlockingXla" << std::endl;
+  int my_rank = common::byteps_rank();
+  BPS_LOG(DEBUG, my_rank) << " x2682  pos 11 inside StartTaskBlockingXla" << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
-  std::cout << " x2682  pos 12 " << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682  pos 12 " << std::endl;
   int device;
   CUDA_CALL(cudaGetDevice(&device));
   int myrank =  common::byteps_rank();
-  std::cout << " x2682 rank " << common::byteps_rank() << " device: " << device << std::endl;
-  std::cout << " x2682  pos 13 " << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 rank " << common::byteps_rank() << " device: " << device << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682  pos 13 " << std::endl;
   auto size = byteps_input->size();
-  std::cout << " x2682  pos 14 " << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682  pos 14 " << std::endl;
   auto dtype = byteps_input->dtype();
-  std::cout << " x2682  pos 15 " << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682  pos 15 " << std::endl;
   void* cpubuff = nullptr;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
 
@@ -567,7 +570,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  std::cout << " x2682 name_key: " << name_key << " rank: " << myrank << " before EnqueueTensor " << std::endl;
+  int my_rank = common::byteps_rank();
+  BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << myrank << " before EnqueueTensor " << std::endl;
   _name_to_done_args[name_key].is_done = false;
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
@@ -583,14 +587,16 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                         args.is_done = true;
                       }
                       args.cv.notify_one();
-                      std::cout << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
+                      int my_rank = common::byteps_rank();
+                      BPS_LOG(DEBUG, my_rank) << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
 }
 
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
+  int my_rank = common::byteps_rank();
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
   std::stringstream ss(opaque);
   std::string tmp_name;
   ::tensorflow::OpKernelContext* context = nullptr;
@@ -622,7 +628,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
   auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
   StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
@@ -727,7 +733,6 @@ XLA_REGISTER_CUSTOM_CALL_TARGET(SyncTensorCustomOp, "CUDA");
 
 void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   const char* opaque, size_t opaque_len) {
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
   int num;
   int seen_count = 0;
   std::vector<int> buf_sizes;
@@ -735,6 +740,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
   std::stringstream ss(opaque);
   int my_rank = common::byteps_rank();
 
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
   ss >> num;
   while (ss >> tmp_name) {
     int buf_size;
@@ -744,7 +750,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       continue;
     }
     auto it = _name_to_done_args.find(tmp_name);
-    std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
       << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
@@ -755,11 +761,11 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     _name_to_done_args.erase(it);
     // cudaStreamSynchronize(stream);
     seen_count++;
-    std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
       << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " done" << std::endl;
   }
   ASSERTF(num == seen_count, "pos 5");
-  std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << " one pass ended ===========================================" << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << " one pass ended ===========================================" << std::endl;
 }
 
 /**
@@ -786,7 +792,8 @@ class BytePSSyncAllTensorsXlaOp : public ::tensorflow::XlaOpKernel {
     ~BytePSSyncAllTensorsXlaOp() override = default;
 
     void Compile(::tensorflow::XlaOpKernelContext* ctx) override {
-      std::cout << " x2682 " << __FILE__ << ":" << __LINE__ << " in " <<__func__ << std::endl;
+      int my_rank = common::byteps_rank();
+      BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
       std::vector<xla::XlaOp> values;
       std::vector<xla::XlaOp> valid_values;
       std::vector<::tensorflow::TensorShape> shapes;
