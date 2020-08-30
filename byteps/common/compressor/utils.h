@@ -260,6 +260,11 @@ inline int memcpy_multithread(void* dst, const void* src, size_t len) {
   return 0;
 }
 
+
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

@@ -15,6 +15,7 @@
 
 #include "dithering.h"
 
+#include <omp.h>
 #include <cmath>
 #include <cstring>
 
@@ -55,18 +56,13 @@ CompressorRegistry::Register reg(
 template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                            size_t len) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::L2);
   // normalize
   double scale = 0.0;
-  if (_ntype == NomalizeType::MAX) {
-    for (size_t i = 0; i < len; i++) {
-      scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
-    }
-  } else if (_ntype == NomalizeType::L2) {
-    for (size_t i = 0; i < len; ++i) {
-      scale += src[i] * src[i];
-    }
-    scale = std::sqrt(scale);
+  for (size_t i = 0; i < len; ++i) {
+    scale += src[i] * src[i];
   }
+  scale = std::sqrt(scale);
 
   BitWriter<index_t> bit_writer(dst);
   size_t last_non_zero_pos = -1;
@@ -114,16 +110,115 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
   return {dst, bit_writer.blocks() * sizeof(index_t) + sizeof(index_t) +
                    sizeof(float)};
+}  // namespace compressor
+
+template <typename scalar_t>
+tensor_t DitheringCompressor::CompressImpl<int8_t, scalar_t>(
+    int8_t* dst, const scalar_t* src, size_t len) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::MAX);
+  BPS_CHECK_LE(this->_s, (1 << 7));
+
+  double scale = 0.0;
+  for (size_t i = 0; i < len; i++) {
+    scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
+  }
+
+  if (_ptype == PartitionType::LINEAR) {
+#pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+    for (size_t i = 0; i < len; ++i) {
+      float abs_x = std::abs(src[i]);
+      float normalized = (abs_x / scale) * _s;
+      float floor = std::floor(normalized);
+      int8_t quantized = floor + _rng.Bernoulli(normalized - floor);
+      dst[i] = sgn(src[i]) * quantized;
+    }
+  } else if (_ptype == PartitionType::NATURAL) {
+    const unsigned level = 1 << (_s - 1);
+#pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+    for (size_t i = 0; i < len; ++i) {
+      float abs_x = std::abs(src[i]);
+      double normalized = (abs_x / scale) * level;
+      unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
+      unsigned length = (floor != 0) ? floor : 1;
+      double p = (normalized - floor) / length;
+      int8_t quantized = floor + length * _rng.Bernoulli(p);
+      dst[i] = sng(src[i]) * quantized;
+    }
+  }
+
+  auto ptr = reinterpret_cast<float*>(&dst[len]);
+  *ptr = scale;
+
+  return {dst, len * sizeof(int8_t) + sizeof(float)};
+}
+
+template <typename scalar_t>
+tensor_t DitheringCompressor::CompressImpl<int16_t, scalar_t>(
+    int16_t* dst, const scalar_t* src, size_t len) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::MAX);
+  BPS_CHECK_LE(this->_s, (1 << 15));
+
+  double scale = 0.0;
+  for (size_t i = 0; i < len; i++) {
+    scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
+  }
+
+  if (_ptype == PartitionType::LINEAR) {
+#pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+    for (size_t i = 0; i < len; ++i) {
+      float abs_x = std::abs(src[i]);
+      float normalized = (abs_x / scale) * _s;
+      float floor = std::floor(normalized);
+      int16_t quantized = floor + _rng.Bernoulli(normalized - floor);
+      dst[i] = sgn(src[i]) * quantized;
+    }
+  } else if (_ptype == PartitionType::NATURAL) {
+    const unsigned level = 1 << (_s - 1);
+#pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+    for (size_t i = 0; i < len; ++i) {
+      float abs_x = std::abs(src[i]);
+      double normalized = (abs_x / scale) * level;
+      unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
+      unsigned length = (floor != 0) ? floor : 1;
+      double p = (normalized - floor) / length;
+      int16_t quantized = floor + length * _rng.Bernoulli(p);
+      dst[i] = sgn(src[i]) * quantized;
+    }
+  }
+
+  auto ptr = reinterpret_cast<float*>(&dst[len]);
+  *ptr = scale;
+
+  return {dst, len * sizeof(int16_t) + sizeof(float)};
 }
 
 tensor_t DitheringCompressor::Compress(tensor_t grad) {
-  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
-                       grad.size);
+  switch (this->_ntype) {
+    case NomalizeType::L2: {
+      COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
+                           grad.size);
+    } break;
+    case NormalizeType::MAX: {
+      if (this->_s < (1 << 7)) {
+        using index_t = int8_t;
+        COMPRESS_IMPL_SCALAR_SWITCH(grad.dtype, CompressImpl, _buf.get(),
+                                    grad.data, grad.size);
+      } else if (this->_s < (1 << 15)) {
+        using index_t = int16_t;
+        COMPRESS_IMPL_SCALAR_SWITCH(grad.dtype, CompressImpl, _buf.get(),
+                                    grad.data, grad.size);
+      } else {
+        BPS_CHECK(0) << "k exceeds the maximum limit."
+      }
+    } break;
+  }
 }
 
 template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                              size_t compressed_size) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::L2);
+
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(src + blocks);
@@ -159,14 +254,73 @@ tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   return {dst, _size};
 }
 
+template <typename scalar_t>
+tensor_t DitheringCompressor::DecompressImpl<int8_t, scalar_t>(
+    scalar_t* dst, const int8_t* src, size_t compressed_size) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::MAX);
+  BPS_CHECK_LE(this->_s, (1 << 7));
+  size_t len = (compressed_size - sizeof(float)) / sizeof(int8_t);
+  auto* p_scale = reinterpret_cast<const float*>(src + len);
+  const float scale = *p_scale;
+
+  unsigned int s = _s;
+  if (_ptype == PartitionType::NATURAL) {
+    s = 1 << (_s - 1);
+  }
+
+  for (int i = len - 1; i >= 0; --i) {
+    dst[i] = src[i] * scale;
+  }
+
+  return {dst, _size};
+}
+
+template <typename scalar_t>
+tensor_t DitheringCompressor::DecompressImpl<int16_t, scalar_t>(
+    scalar_t* dst, const int16_t* src, size_t compressed_size) {
+  BPS_CHECK_EQ(_ntype, NomalizeType::MAX);
+  BPS_CHECK_LE(this->_s, (1 << 15));
+  size_t len = (compressed_size - sizeof(float)) / sizeof(int16_t);
+  auto* p_scale = reinterpret_cast<const float*>(src + len);
+  const float scale = *p_scale;
+
+  unsigned int s = _s;
+  if (_ptype == PartitionType::NATURAL) {
+    s = 1 << (_s - 1);
+  }
+
+  for (int i = len - 1; i >= 0; --i) {
+    dst[i] = src[i] * scale;
+  }
+
+  return {dst, _size};
+}
+
 tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
   auto dst = _buf.get();
 #else
   auto dst = compressed.data;
 #endif
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
-                         compressed.size);
+  switch (this->_ntype) {
+    case NomalizeType::L2: {
+      DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
+                             compressed.size);
+    } break;
+    case NormalizeType::MAX: {
+      if (this->_s <= (1 << 7)) {
+        using index_t = int8_t;
+        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst,
+                                      compressed.data, compressed.size);
+      } else if (this->_s <= (1 << 15)) {
+        using index_t = int16_t;
+        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst,
+                                      compressed.data, compressed.size);
+      } else {
+        BPS_CHECK(0) << "k exceeds the maximum limit."
+      }
+    } break;
+  }
 }
 
 template <typename index_t, typename scalar_t>
