@@ -175,7 +175,7 @@ tensor_t DitheringCompressor::Compress(tensor_t grad) {
         COMPRESS_IMPL_SCALAR_SWITCH(grad.dtype, CompressImpl, _buf.get(),
                                     grad.data, grad.size);
       } else {
-        BPS_CHECK(0) << "k exceeds the maximum limit."
+        BPS_CHECK(0) << "k exceeds the maximum limit.";
       }
     } break;
   }
