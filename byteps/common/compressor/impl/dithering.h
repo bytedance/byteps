@@ -68,6 +68,20 @@ class DitheringCompressor : public Compressor {
   tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
 
   template <typename index_t, typename scalar_t>
+  tensor_t CompressImplMax(index_t* dst, const scalar_t* src, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  tensor_t CompressImplL2(index_t* dst, const scalar_t* src, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  tensor_t DecompressImplL2(scalar_t* dst, const index_t* src,
+                            size_t compressed_size);
+
+  template <typename index_t, typename scalar_t>
+  tensor_t DecompressImplMax(scalar_t* dst, const index_t* src,
+                             size_t compressed_size);
+
+  template <typename index_t, typename scalar_t>
   tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
                           size_t compressed_size);
 
