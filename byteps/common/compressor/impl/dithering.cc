@@ -157,7 +157,7 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
   } else {
     CompressImplL2<index_t, scalar_t>(dst, src, len);
   }
-}  // namespace compressor
+}
 
 tensor_t DitheringCompressor::Compress(tensor_t grad) {
   switch (this->_ntype) {
