@@ -178,6 +178,8 @@ tensor_t DitheringCompressor::Compress(tensor_t grad) {
         BPS_CHECK(0) << "k exceeds the maximum limit.";
       }
     } break;
+    default:
+      BPS_CHECK(0) << "Unsupport ntype";
   }
 }
 
@@ -275,6 +277,8 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
         BPS_CHECK(0) << "k exceeds the maximum limit.";
       }
     } break;
+    default:
+      BPS_CHECK(0) << "Unsupport ntype";
   }
 }
 
