@@ -43,7 +43,7 @@ CompressorRegistry::Register reg(
       auto ntype_int =
           HyperParamFinder<int>(kwargs, "dithering_normalize", true,
                                 [](int x) { return x == 0 || x == 1; });
-      auto ntype = static_cast<DitheringCompressor::NomalizeType>(ntype_int);
+      auto ntype = static_cast<DitheringCompressor::NormalizeType>(ntype_int);
 
       BPS_LOG(INFO) << "dithering compressor is registered."
                     << "\tsize=" << size << "\tk=" << k << "\tseed=" << seed
@@ -161,7 +161,7 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
 
 tensor_t DitheringCompressor::Compress(tensor_t grad) {
   switch (this->_ntype) {
-    case NomalizeType::L2: {
+    case NormalizeType::L2: {
       COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
                            grad.size);
     } break;
@@ -258,7 +258,7 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
   auto dst = compressed.data;
 #endif
   switch (this->_ntype) {
-    case NomalizeType::L2: {
+    case NormalizeType::L2: {
       DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
                              compressed.size);
     } break;
