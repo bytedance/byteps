@@ -138,7 +138,7 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* dst, const scalar_t* src,
       unsigned length = (floor != 0) ? floor : 1;
       double p = (normalized - floor) / length;
       index_t quantized = floor + length * _rng.Bernoulli(p);
-      dst[i] = sng(src[i]) * quantized;
+      dst[i] = sgn(src[i]) * quantized;
     }
   }
 
