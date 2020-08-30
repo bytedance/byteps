@@ -591,6 +591,9 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                       BPS_LOG(DEBUG, my_rank) << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
                     queue_list);
+  if (ConvertStatus(enqueue_result) != ::tensorflow::Status::OK()) {
+    std::cout<< "ERROR enqueue_result is " << enqueue_result.type() << std::endl;
+  }
 }
 
 void StartTaskWrapper(CUstream stream, void** buffers,
