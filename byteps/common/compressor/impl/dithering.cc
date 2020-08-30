@@ -272,7 +272,7 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
         DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst,
                                       compressed.data, compressed.size);
       } else {
-        BPS_CHECK(0) << "k exceeds the maximum limit."
+        BPS_CHECK(0) << "k exceeds the maximum limit.";
       }
     } break;
   }
