@@ -186,9 +186,9 @@ tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                              size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
-    DecompressImplMax<index_t, scalar_t>(dst, src, len);
+    DecompressImplMax<index_t, scalar_t>(dst, src, compressed_size);
   } else {
-    DecompressImplL2<index_t, scalar_t>(dst, src, len);
+    DecompressImplL2<index_t, scalar_t>(dst, src, compressed_size);
   }
 }
 
