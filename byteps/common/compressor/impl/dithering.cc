@@ -232,8 +232,9 @@ tensor_t DitheringCompressor::DecompressImplL2(scalar_t* dst,
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DecompressImplMax(scalar_t* dst, const index_t* src,
-                           size_t compressed_size) {
+tensor_t DitheringCompressor::DecompressImplMax(scalar_t* dst,
+                                                const index_t* src,
+                                                size_t compressed_size) {
   size_t len = (compressed_size - sizeof(float)) / sizeof(index_t);
   auto* p_scale = reinterpret_cast<const float*>(src + len);
   const float scale = *p_scale;
