@@ -195,7 +195,7 @@ def main():
     if opt.last_gamma:
         kwargs['last_gamma'] = True
 
-    if opt.compressor:
+    if opt.compressor and opt.compressor != "dithering":
         optimizer = 'sgd'
     else:
         optimizer = 'nag'
