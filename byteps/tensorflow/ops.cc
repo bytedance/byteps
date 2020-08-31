@@ -550,14 +550,17 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
                std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
+  BPS_LOG(DEBUG, my_rank) << " x2682 enter " << __func__ << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
   int device;
   CUDA_CALL(cudaGetDevice(&device));
-  int myrank =  common::byteps_rank();
+  int my_rank =  common::byteps_rank();
   auto size = byteps_input->size();
   auto dtype = byteps_input->dtype();
   void* cpubuff = nullptr;
+  BPS_LOG(DEBUG, my_rank) << " x2682 before InitTensor " << __func__ << std::endl;
   common::InitTensor(byteps_context, size, dtype, cpubuff);
+  BPS_LOG(DEBUG, my_rank) << " x2682 after InitTensor " << __func__ << std::endl;
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -571,7 +574,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
   int my_rank = common::byteps_rank();
-  BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << myrank << " before EnqueueTensor " << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " before EnqueueTensor " << std::endl;
 
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   _name_to_done_args[name_key].is_done = false;
@@ -602,7 +605,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 void StartTaskWrapper(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
   int my_rank = common::byteps_rank();
-  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 enter " << __func__ << std::endl;
   std::stringstream ss(opaque);
   std::string tmp_name;
   ::tensorflow::OpKernelContext* context = nullptr;
@@ -634,7 +637,7 @@ void StartTaskWrapper(CUstream stream, void** buffers,
   auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
   StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
-  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 exit " << __func__ << std::endl;
 }
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(StartTaskWrapper, "CUDA");
