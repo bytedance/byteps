@@ -581,6 +581,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
   _name_to_done_args[name_key].bps_buf_size = size;
   my_lk.unlock();
+  BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " key inserted " << std::endl;
   _name_to_done_args_cv.notify_one();
   bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
@@ -600,6 +601,7 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   if (ConvertStatus(enqueue_result) != ::tensorflow::Status::OK()) {
     std::cout<< "ERROR enqueue_result is " << enqueue_result.type() << std::endl;
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " after  EnqueueTensor " << std::endl;
 }
 
 void StartTaskWrapper(CUstream stream, void** buffers,

@@ -166,6 +166,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      const int priority, const int version,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list) {
+  int my_rank = common::byteps_rank();
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
@@ -187,6 +188,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->version = version;
   e->callback = callback;
 
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
   if (device == CPU_DEVICE_ID) {
     cudaError_t err = cudaHostRegister(const_cast<void*>(input->data()), input->size(), cudaHostRegisterMapped);
     if (err == cudaSuccess) {
@@ -194,6 +196,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
 
   e->cpubuff = context.cpubuff;
   e->gpu_ptr = context.gpu_ptr;
@@ -239,6 +242,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
     accumulated += task->len;
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
 
   auto tensor = (e->tensor ? e->tensor : e->output);
   BPS_CHECK(tensor);
