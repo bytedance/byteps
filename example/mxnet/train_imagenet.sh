@@ -49,7 +49,7 @@ elif [[ $algo == "randomk" ]]; then
 elif [[ $algo == "dithering" ]]; then
   k=$1
   shift
-  compression_args='--compressor dithering --k '${k}' --normalize max'
+  compression_args='--compressor dithering --k '${k}' --partition natural --normalize max'
   log_file=$log_file"-k${k}"
 else
   echo "unknown compressor. aborted."

@@ -124,6 +124,8 @@ def parse_args():
                         help='enable scaling for onebit compressor')
     parser.add_argument('--k', default=1, type=float,
                         help='topk or randomk')
+    parser.add_argument('--partition', default='linear', type=str,
+                        help='linear or natural')
     parser.add_argument('--normalize', default='max', type=str,
                         help='max or l2')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
@@ -410,6 +412,7 @@ def main():
             "momentum": opt.compress_momentum,
             "scaling": opt.onebit_scaling,
             "k": opt.k,
+            "partition": opt.partition,
             "normalize": opt.normalize,
             "seed": int(mx.random.randint(0, 10000).asscalar())
         }
