@@ -473,7 +473,9 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
   {
     auto& args = _name_to_done_args[name_key];
     std::unique_lock<std::mutex> lk(args.mtx);
-    args.cv.wait(lk, [&args]{return args.is_done;});
+    args.cv.wait(lk, [&args]{
+      std::this_thread::yield();
+      return args.is_done;});
   }
 }
 
@@ -657,7 +659,9 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
   auto& args = it->second;
   {
     std::unique_lock<std::mutex> lk(args.mtx);
-    args.cv.wait(lk, [&args]{return args.is_done;});
+    args.cv.wait(lk, [&args]{
+      std::this_thread::yield();
+      return args.is_done;});
   }
   _name_to_done_args.erase(it);
 }
@@ -720,7 +724,9 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
       auto& args = it->second;
       {
         std::unique_lock<std::mutex> lk(args.mtx);
-        args.cv.wait(lk, [&args]{return args.is_done;});
+        args.cv.wait(lk, [&args]{
+          std::this_thread::yield();
+          return args.is_done;});
       }
       _name_to_done_args.erase(it);
     }
@@ -765,6 +771,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     std::unique_lock<std::mutex> my_big_lk(_name_to_done_args_mtx);
     _name_to_done_args_cv.wait(my_big_lk,
       [&tmp_name]{
+        std::this_thread::yield();
         return _name_to_done_args.find(tmp_name) != _name_to_done_args.end();
       });
     auto it = _name_to_done_args.find(tmp_name);
@@ -774,7 +781,9 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
     {
       std::unique_lock<std::mutex> lk(args.mtx);
-      args.cv.wait(lk, [&args]{return args.is_done;});
+      args.cv.wait(lk, [&args]{
+        std::this_thread::yield();
+        return args.is_done;});
     }
     std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
     _name_to_done_args.erase(it);
