@@ -208,16 +208,24 @@ class DistributedTrainer(mx.gluon.Trainer):
         self._scale /= size()
         self.root_rank = root_rank
         for i, param in enumerate(self._params):
-            byteps_declare_tensor("parameter_" + str(i))
+            # In MXNet 2.0, param.name is no longer unique
+            # and thus cannot be used as the key for the parameter.
+            if hasattr(param, '_uuid'):
+                param_id = param._uuid
+            else:
+                param_id = param.name
+            idx = self._param2idx[param_id]
+            byteps_declare_tensor("parameter_" + str(idx))
             if param.grad_req != 'null':
-                byteps_declare_tensor("gradient_" + str(i))
+                byteps_declare_tensor("gradient_" + str(idx))
 
 
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
+                idx = self._param2idx[param._uuid]
                 byteps_push_pull(param.list_grad()[0], is_average=False,
-                                 name="gradient_" + str(i), priority=-i)
+                                 name="gradient_" + str(idx), priority=-i)
 
     def _init_params(self):
         tensors = []
