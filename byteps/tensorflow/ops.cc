@@ -550,11 +550,11 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                std::string node_name, std::shared_ptr<common::Tensor> byteps_input,
                std::shared_ptr<common::Tensor> byteps_output,
                std::shared_ptr<common::ReadyEvent> ready_event) {
+  int my_rank =  common::byteps_rank();
   BPS_LOG(DEBUG, my_rank) << " x2682 enter " << __func__ << std::endl;
   auto& byteps_context = common::GetContextFromName(node_name);
   int device;
   CUDA_CALL(cudaGetDevice(&device));
-  int my_rank =  common::byteps_rank();
   auto size = byteps_input->size();
   auto dtype = byteps_input->dtype();
   void* cpubuff = nullptr;
@@ -573,7 +573,6 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  int my_rank = common::byteps_rank();
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " before EnqueueTensor " << std::endl;
 
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
