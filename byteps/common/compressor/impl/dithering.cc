@@ -247,7 +247,7 @@ tensor_t DitheringCompressor::DecompressImplMax(scalar_t* dst,
   }
 
   for (int i = len - 1; i >= 0; --i) {
-    dst[i] = src[i] * scale;
+    dst[i] = src[i] * scale / s;
   }
 
   return {dst, _size};
