@@ -753,10 +753,10 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       continue;
     }
     auto it = _name_to_done_args.find(tmp_name);
-    BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
-      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
+      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
     {
       std::unique_lock<std::mutex> lk(args.mtx);
       args.cv.wait(lk, [&args]{return args.is_done;});
