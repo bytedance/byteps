@@ -577,10 +577,11 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
 
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   _name_to_done_args[name_key].is_done = false;
-  my_lk.unlock();
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
   _name_to_done_args[name_key].bps_buf_size = size;
+  my_lk.unlock();
+  _name_to_done_args_cv.notify_one();
   bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
@@ -758,6 +759,12 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       seen_count++;
       continue;
     }
+
+    std::unique_lock<std::mutex> my_big_lk(_name_to_done_args_mtx);
+    _name_to_done_args_cv.wait(my_big_lk,
+      [&tmp_name]{
+        return _name_to_done_args.find(tmp_name) != _name_to_done_args.end();
+      });
     auto it = _name_to_done_args.find(tmp_name);
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
