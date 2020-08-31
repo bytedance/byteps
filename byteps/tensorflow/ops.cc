@@ -635,7 +635,8 @@ void StartTaskWrapper(CUstream stream, void** buffers,
   // auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
   auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
-  StartTaskXla(context, tmp_name, bps_input, bps_input, ready_event);
+  std::thread t(StartTaskXla, context, tmp_name, bps_input, bps_input, ready_event);
+  t.detach();
   BPS_LOG(DEBUG, my_rank) << " x2682 exit " << __func__ << std::endl;
 }
 

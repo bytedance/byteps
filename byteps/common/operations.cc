@@ -251,6 +251,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 }
 
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
+  int my_rank = common::byteps_rank();
   std::lock_guard<std::mutex> lock(context.init_mutex);
   if (context.initialized) {
     return;
@@ -307,6 +308,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
 
   // We always allocate our own cpu buffer
   // use the first key in key_list as the index
@@ -314,9 +316,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (BytePSGlobal::IsCrossPcieSwitch()) {
     context.pcie_cpubuff = shm_obj->openPcieSharedMemory(key_list[0], size);
     context.cpubuff = context.pcie_cpubuff.back();
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
   } else {
     context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
                                                 key_list[0], size);
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
@@ -343,6 +347,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     accumulated += len;
     ++i;
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
 
   BPS_CHECK_EQ(accumulated, size);
   BPS_CHECK_EQ(i, key_list.size());
@@ -351,6 +356,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   BPS_LOG(TRACE) << "Finish Init " << name << ", size=" << size
                  << ", parts=" << key_list.size();
+  BPS_LOG(DEBUG, my_rank) << " x2682 in " << __func__ << std::endl;
 }
 
 BPSContext &GetContextFromName(const std::string &name) {
