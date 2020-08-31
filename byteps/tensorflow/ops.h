@@ -86,6 +86,7 @@ struct Xla_done_cb_args{
 };
 
 static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
+std::mutex _name_to_done_args_mtx;
 
 }  // namespace tensorflow
 }  // namespace byteps

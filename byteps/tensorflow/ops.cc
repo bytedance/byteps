@@ -572,7 +572,10 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::replace(name_key.begin(), name_key.end(), '/', '_');
   int my_rank = common::byteps_rank();
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << myrank << " before EnqueueTensor " << std::endl;
+
+  std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   _name_to_done_args[name_key].is_done = false;
+  my_lk.unlock();
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
   _name_to_done_args[name_key].bps_buf_size = size;
@@ -761,7 +764,9 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       std::unique_lock<std::mutex> lk(args.mtx);
       args.cv.wait(lk, [&args]{return args.is_done;});
     }
+    std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
     _name_to_done_args.erase(it);
+    my_lk.unlock();
     // cudaStreamSynchronize(stream);
     seen_count++;
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
