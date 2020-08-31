@@ -153,9 +153,9 @@ tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                            size_t len) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
-    CompressImplMax<index_t, scalar_t>(dst, src, len);
+    return CompressImplMax<index_t, scalar_t>(dst, src, len);
   } else {
-    CompressImplL2<index_t, scalar_t>(dst, src, len);
+    return CompressImplL2<index_t, scalar_t>(dst, src, len);
   }
 }
 
@@ -188,9 +188,9 @@ tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
                                              size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
-    DecompressImplMax<index_t, scalar_t>(dst, src, compressed_size);
+    return DecompressImplMax<index_t, scalar_t>(dst, src, compressed_size);
   } else {
-    DecompressImplL2<index_t, scalar_t>(dst, src, compressed_size);
+    return DecompressImplL2<index_t, scalar_t>(dst, src, compressed_size);
   }
 }
 

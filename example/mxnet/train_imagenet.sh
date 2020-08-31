@@ -10,15 +10,14 @@ shift
 lr=$1
 shift
 model=resnet50_v2
-epochs=120
+epochs=121
 batch_size=64
 
 # finetune params
 threadpool_size=16
 omp_num_threads=4
 partition_bytes=4096000
-min_compress_bytes=$1
-shift 
+min_compress_bytes=1024000
 server_engine_thread=8
 data_threads=2
 
