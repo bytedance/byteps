@@ -338,8 +338,10 @@ void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
 }
 
 template <typename index_t, typename scalar_t>
-void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                         const index_t* compressed, size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
+                                              scalar_t* corrected,
+                                              const index_t* compressed,
+                                              size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
     FastUpdateErrorImplMax<index_t, scalar_t>(error, corrected, compressed,
