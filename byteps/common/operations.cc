@@ -188,7 +188,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->version = version;
   e->callback = callback;
 
-  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
   if (device == CPU_DEVICE_ID) {
     cudaError_t err = cudaHostRegister(const_cast<void*>(input->data()), input->size(), cudaHostRegisterMapped);
     if (err == cudaSuccess) {
@@ -196,7 +196,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     }
     CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
   }
-  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
 
   e->cpubuff = context.cpubuff;
   e->gpu_ptr = context.gpu_ptr;
@@ -217,6 +217,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     e->callback(Status::OK());
     return Status::OK();
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
 
   // add for profiling
   if (context.profile_flag) {
@@ -228,6 +229,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     ret->start_t = (long long)(us.count());
     context.comm_time.push(ret);
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
 
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
@@ -242,7 +244,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
     accumulated += task->len;
   }
-  BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__ << std::endl;
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
 
   auto tensor = (e->tensor ? e->tensor : e->output);
   BPS_CHECK(tensor);
@@ -251,6 +253,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 
   BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
                  << ", rank=" << BytePSGlobal::GetLocalRank();
+  BPS_LOG(DEBUG, my_rank) << " x2682 tensor_name " << name << " in " <<__func__ << std::endl;
   return Status::OK();
 }
 
