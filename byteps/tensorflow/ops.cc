@@ -476,6 +476,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
     args.cv.wait(lk, [&args]{
       std::this_thread::yield();
       return args.is_done;});
+    lk.unlock();
   }
 }
 
@@ -662,6 +663,7 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
     args.cv.wait(lk, [&args]{
       std::this_thread::yield();
       return args.is_done;});
+    lk.unlock();
   }
   _name_to_done_args.erase(it);
 }
@@ -727,6 +729,7 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
         args.cv.wait(lk, [&args]{
           std::this_thread::yield();
           return args.is_done;});
+        lk.unlock();
       }
       _name_to_done_args.erase(it);
     }
@@ -785,6 +788,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       args.cv.wait(lk, [&args]{
         std::this_thread::yield();
         return args.is_done;});
+      lk.unlock();
     }
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
       << " name_key: " << tmp_name << std::endl;
