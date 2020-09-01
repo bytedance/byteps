@@ -121,3 +121,5 @@ sshlog/
 hosts
 example/mxnet/nohup.out
 example/mxnet/run.sh
+example/mxnet/server-hosts
+example/mxnet/worker-hosts
