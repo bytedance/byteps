@@ -642,7 +642,14 @@ void StartTaskWrapper(CUstream stream, void** buffers,
   auto bps_output = std::make_shared<XlaTensor>(buffers[0], num_elem, dt_type, buffer_size);
 
   std::thread t(StartTaskXla, context, tmp_name, bps_input, bps_input, ready_event);
-  t.detach();
+  try {
+    t.detach();
+  } catch(const std::system_error& e) {
+    BPS_LOG(DEBUG, my_rank)
+      << "x2682 in " << __func__ << " Caught system_error with code " << e.code()
+      << " meaning " << e.what() <<  std::endl;
+  }
+
   BPS_LOG(DEBUG, my_rank) << " x2682 exit " << __func__ << std::endl;
 }
 
