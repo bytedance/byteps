@@ -785,8 +785,10 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
         std::this_thread::yield();
         return args.is_done;});
     }
+    BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
+      << " name_key: " << tmp_name << " done" << std::endl;
     std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
-    _name_to_done_args.erase(it);
+    _name_to_done_args.erase(tmp_name);
     my_lk.unlock();
     // cudaStreamSynchronize(stream);
     seen_count++;
