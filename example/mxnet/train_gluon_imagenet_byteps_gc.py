@@ -439,6 +439,7 @@ def main():
         best_val_score = 1
 
         bps.byteps_declare_tensor("acc")
+        bps.byteps_push_pull(nd.array([0, 0, 0], ctx=ctx[0]))
         for epoch in range(opt.resume_epoch, opt.num_epochs):
             tic = time.time()
             if opt.use_rec:
