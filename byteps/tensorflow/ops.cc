@@ -794,11 +794,14 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     }
     {
       std::unique_lock<std::mutex> lk(args.mtx);
-      args.cv.wait(lk, [&args, my_rank, tmp_name]{
-        BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
-        << " name_key: " << tmp_name << " inside lambda " << std::endl;
-        std::this_thread::yield();
-        return args.is_done;});
+      while (!args.is_done) {
+        args.cv.wait(lk);
+      }
+      // args.cv.wait(lk, [&args, my_rank, tmp_name]{
+      //   BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
+      //   << " name_key: " << tmp_name << " inside lambda " << std::endl;
+      //   std::this_thread::yield();
+      //   return args.is_done;});
       lk.unlock();
     }
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
