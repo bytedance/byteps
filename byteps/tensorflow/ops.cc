@@ -774,6 +774,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
         std::this_thread::yield();
         return _name_to_done_args.find(tmp_name) != _name_to_done_args.end();
       });
+    my_big_lk.unlock();
     auto it = _name_to_done_args.find(tmp_name);
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
@@ -786,7 +787,7 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
         return args.is_done;});
     }
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
-      << " name_key: " << tmp_name << " done" << std::endl;
+      << " name_key: " << tmp_name << std::endl;
     std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
     _name_to_done_args.erase(tmp_name);
     my_lk.unlock();
