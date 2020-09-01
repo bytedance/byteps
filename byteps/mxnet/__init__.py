@@ -207,9 +207,9 @@ class DistributedTrainer(mx.gluon.Trainer):
         # average in push_pull, has better performance.
         self._scale /= size()
         self.root_rank = root_rank
-        for i, param in enumerate(self._params):
-            # In MXNet 2.0, param.name is no longer unique
-            # and thus cannot be used as the key for the parameter.
+        for param in self._params:
+            # we need use the indexes in self._param2idx as the key,
+            # to ensure the correctness when the model uses share_parameters
             if hasattr(param, '_uuid'):
                 param_id = param._uuid
             else:
@@ -223,7 +223,13 @@ class DistributedTrainer(mx.gluon.Trainer):
     def _allreduce_grads(self):
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
-                idx = self._param2idx[param._uuid]
+                # In MXNet 2.0, param.name is no longer unique
+                # and thus cannot be used as the key for the parameter.
+                if hasattr(param, '_uuid'):
+                    param_id = param._uuid
+                else:
+                    param_id = param.name
+                idx = self._param2idx[param_id]
                 byteps_push_pull(param.list_grad()[0], is_average=False,
                                  name="gradient_" + str(idx), priority=-i)
 
