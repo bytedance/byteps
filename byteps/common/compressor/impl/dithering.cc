@@ -317,10 +317,12 @@ void DitheringCompressor::FastUpdateErrorImplL2(scalar_t* error,
 }
 
 template <typename index_t, typename scalar_t>
-void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
-                            const index_t* compressed, size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImplMax(scalar_t* error,
+                                                 scalar_t* corrected,
+                                                 const index_t* compressed,
+                                                 size_t compressed_size) {
   size_t len = (compressed_size - sizeof(float)) / sizeof(index_t);
-  auto* p_scale = reinterpret_cast<const float*>(src + len);
+  auto* p_scale = reinterpret_cast<const float*>(compressed + len);
   const float scale = *p_scale;
 
   memcpy_multithread(error, corrected, _size);
@@ -331,10 +333,8 @@ void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
   }
 
   for (int i = len - 1; i >= 0; --i) {
-    errpr[i] -= src[i] * scale / s;
+    error[i] -= compressed[i] * scale / s;
   }
-
-  return {dst, _size};
 }
 
 template <typename index_t, typename scalar_t>
