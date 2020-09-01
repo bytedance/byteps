@@ -106,6 +106,6 @@ We would like to have below features, and there is no fundamental difficulty to 
 
 ## Publications
 
-1. [OSDI'20] "A Unified Architecture for Accelerating Distributed DNN Training in Heterogeneous GPU/CPU Clusters". Yimin Jiang, Yibo Zhu, Chang Lan, Bairen Yi, Yong Cui, Chuanxiong Guo. (Paper to appear soon)
+1. [OSDI'20] "[A Unified Architecture for Accelerating Distributed DNN Training in Heterogeneous GPU/CPU Clusters](https://www.usenix.org/conference/osdi20/presentation/jiang)". Yimin Jiang, Yibo Zhu, Chang Lan, Bairen Yi, Yong Cui, Chuanxiong Guo. (Paper to appear soon)
 
-2. [SOSP'19] "A Generic Communication Scheduler for Distributed DNN Training Acceleration". Yanghua Peng, Yibo Zhu, Yangrui Chen, Yixin Bao, Bairen Yi, Chang Lan, Chuan Wu, Chuanxiong Guo. (Code is at [bytescheduler branch](https://github.com/bytedance/byteps/tree/bytescheduler/bytescheduler))
+2. [SOSP'19] "[A Generic Communication Scheduler for Distributed DNN Training Acceleration](https://i.cs.hku.hk/~cwu/papers/yhpeng-sosp19.pdf)". Yanghua Peng, Yibo Zhu, Yangrui Chen, Yixin Bao, Bairen Yi, Chang Lan, Chuan Wu, Chuanxiong Guo. (Code is at [bytescheduler branch](https://github.com/bytedance/byteps/tree/bytescheduler/bytescheduler))
