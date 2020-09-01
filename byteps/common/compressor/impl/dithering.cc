@@ -342,9 +342,11 @@ void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
                          const index_t* compressed, size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
-    FastUpdateErrorImplMax<index_t, scalar_t>(dst, src, compressed_size);
+    FastUpdateErrorImplMax<index_t, scalar_t>(error, corrected, compressed,
+                                              compressed_size);
   } else {
-    FastUpdateErrorImplL2<index_t, scalar_t>(dst, src, compressed_size);
+    FastUpdateErrorImplL2<index_t, scalar_t>(error, corrected, compressed,
+                                             compressed_size);
   }
 }
 
