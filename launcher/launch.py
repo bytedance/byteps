@@ -62,7 +62,7 @@ def worker(local_rank, local_size, command):
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
             command = "python " + command
-        command = "gdb -ex 'catch throw' -ex 'run' -ex 'bt' -batch --args " + command
+        command = "gdb -ex 'catch throw std::system_error' -ex 'run' -ex 'bt' -batch --args " + command
 
     if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
         print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" %
