@@ -16,6 +16,7 @@
 #include "dithering.h"
 
 #include <omp.h>
+
 #include <cmath>
 #include <cstring>
 
@@ -283,10 +284,10 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
 }
 
 template <typename index_t, typename scalar_t>
-void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                              scalar_t* corrected,
-                                              const index_t* compressed,
-                                              size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImplL2(scalar_t* error,
+                                                scalar_t* corrected,
+                                                const index_t* compressed,
+                                                size_t compressed_size) {
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(compressed + blocks);
@@ -315,11 +316,64 @@ void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
   }
 }
 
+template <typename index_t, typename scalar_t>
+void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
+                            const index_t* compressed, size_t compressed_size) {
+  size_t len = (compressed_size - sizeof(float)) / sizeof(index_t);
+  auto* p_scale = reinterpret_cast<const float*>(src + len);
+  const float scale = *p_scale;
+
+  memcpy_multithread(error, corrected, _size);
+
+  unsigned int s = _s;
+  if (_ptype == PartitionType::NATURAL) {
+    s = 1 << (_s - 1);
+  }
+
+  for (int i = len - 1; i >= 0; --i) {
+    errpr[i] -= src[i] * scale / s;
+  }
+
+  return {dst, _size};
+}
+
+template <typename index_t, typename scalar_t>
+void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
+                         const index_t* compressed, size_t compressed_size) {
+  if (std::is_same<index_t, int8_t>::value ||
+      std::is_same<index_t, int16_t>::value) {
+    FastUpdateErrorImplMax<index_t, scalar_t>(dst, src, compressed_size);
+  } else {
+    FastUpdateErrorImplL2<index_t, scalar_t>(dst, src, compressed_size);
+  }
+}
+
 void DitheringCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                           tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                corrected.data, compressed.data,
-                                compressed.size);
+  switch (this->_ntype) {
+    case NormalizeType::L2: {
+      FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
+                                    corrected.data, compressed.data,
+                                    compressed.size);
+    } break;
+    case NormalizeType::MAX: {
+      if (this->_s <= (1 << 7)) {
+        using index_t = int8_t;
+        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(_dtype, FastUpdateErrorImpl,
+                                             error.data, corrected.data,
+                                             compressed.data, compressed.size);
+      } else if (this->_s <= (1 << 15)) {
+        using index_t = int16_t;
+        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(_dtype, FastUpdateErrorImpl,
+                                             error.data, corrected.data,
+                                             compressed.data, compressed.size);
+      } else {
+        BPS_CHECK(0) << "k exceeds the maximum limit.";
+      }
+    } break;
+    default:
+      BPS_CHECK(0) << "Unsupport ntype";
+  }
 }
 }  // namespace compressor
 }  // namespace common

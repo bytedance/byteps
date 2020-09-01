@@ -20,6 +20,8 @@
 #if __F16C__
 #include "../half.h"
 using half_t = mshadow::half::half_t;
+#else
+using half_t = unsigned short;
 #endif
 
 namespace byteps {
@@ -173,6 +175,25 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
                   reinterpret_cast<const double*>(src2), compressed_size); \
     default:                                                               \
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                   \
+  }
+
+#define FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(dtype, func, dst, src1, src2,  \
+                                             compressed_size)               \
+  switch (dtype) {                                                          \
+    case BYTEPS_FLOAT16:                                                    \
+      return func(reinterpret_cast<half_t*>(dst),                           \
+                  reinterpret_cast<half_t*>(src1),                          \
+                  reinterpret_cast<const index_t*>(src2), compressed_size); \
+    case BYTEPS_FLOAT32:                                                    \
+      return func(reinterpret_cast<float*>(dst),                            \
+                  reinterpret_cast<float*>(src1),                           \
+                  reinterpret_cast<const index_t*>(src2), compressed_size); \
+    case BYTEPS_FLOAT64:                                                    \
+      return func(reinterpret_cast<double*>(dst),                           \
+                  reinterpret_cast<double*>(src1),                          \
+                  reinterpret_cast<const index_t*>(src2), compressed_size); \
+    default:                                                                \
+      BPS_CHECK(0) << "Unsupported data type:" << dtype;                    \
   }
 
 }  // namespace compressor

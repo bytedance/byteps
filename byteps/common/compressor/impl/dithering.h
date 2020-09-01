@@ -86,6 +86,15 @@ class DitheringCompressor : public Compressor {
                           size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
+  void FastUpdateErrorImplL2(scalar_t* error, scalar_t* corrected,
+                             const index_t* compressed, size_t compressed_size);
+
+  template <typename index_t, typename scalar_t>
+  void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
+                              const index_t* compressed,
+                              size_t compressed_size);
+
+  template <typename index_t, typename scalar_t>
   void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
                            const index_t* compressed, size_t compressed_size);
 
