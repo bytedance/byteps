@@ -784,6 +784,15 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
       << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
     {
+      int test_var = 0;
+      std::unique_lock<std::mutex> lk(args.mtx);
+      test_var = 1;
+      BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
+        << " name_key: " << tmp_name << " can you see this " << std::endl;
+      lk.unlock();
+      ASSERTF(test_var == 1, "test_var not set");
+    }
+    {
       std::unique_lock<std::mutex> lk(args.mtx);
       args.cv.wait(lk, [&args]{
         std::this_thread::yield();
