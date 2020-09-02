@@ -579,6 +579,8 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " before EnqueueTensor " << std::endl;
 
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
+  auto it = _name_to_done_args.find(name_key);
+  ASSERTF(it == _name_to_done_args.end(), "x2682 duplicate tensor_name");
   _name_to_done_args[name_key].is_done = false;
   _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
   _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
