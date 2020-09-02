@@ -591,9 +591,11 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
                     [name_key](const common::Status& status) {
+                      auto it = _name_to_done_args.find(name_key);
+                      ASSERTF(it != _name_to_done_args.end(), "YOU SHOULD NOT SEE ME");
                       auto& args = _name_to_done_args[name_key];
                       {
-                        std::unique_lock<std::mutex> lk(args.mtx);
+                        std::lock_guard<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
                       args.cv.notify_one();
