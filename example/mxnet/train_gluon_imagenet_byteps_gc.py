@@ -415,7 +415,7 @@ def main():
             "k": opt.k,
             "partition": opt.partition,
             "normalize": opt.normalize,
-            "seed": int(mx.random.randint(0, 10000).asscalar())
+            "seed": 2020
         }
 
         trainer = bps.DistributedTrainer(
