@@ -65,15 +65,16 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
   }
 
   // to be unbiased
-  size_t i = 0;
   if (_is_scale) {
     float scale = static_cast<float>(len) / this->_k;
-    for (auto idx : _selected_idx) {
-      dst[i++] = src[idx] * scale;
+#pragma omp parallel for
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]] * scale;
     }
   } else {
-    for (auto idx : _selected_idx) {
-      dst[i++] = src[idx];
+#pragma omp parallel for
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]];
     }
   }
 #endif
@@ -101,10 +102,12 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const scalar_t* src,
 
   // reset to zeros
   std::memset(dst, 0, _size);
-  size_t i = 0;
-  for (auto idx : _selected_idx) {
-    dst[idx] = buf[i++];
+
+#pragma omp parallel for
+  for (size_t i = 0; i < this->_k; ++i) {
+    dst[_selected_idx[i]] = buf[i];
   }
+
   _selected_idx.clear();
   return {dst, _size};
 #else
@@ -125,8 +128,10 @@ void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
                                             const scalar_t* compressed,
                                             size_t compressed_size) {
   memcpy_multithread(error, corrected, _size);
-  for (auto idx : _selected_idx) {
-    error[idx] = 0;
+
+#pragma omp parallel for
+  for (size_t i = 0; i < this->_k; ++i) {
+    error[_selected_idx[i]] = 0;
   }
 }
 

@@ -99,8 +99,9 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
 
 template <typename scalar_t>
 void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
-  for (auto idx : _selected_idx) {
-    error[idx] = 0;
+#pragma omp parallel for
+  for (size_t i = 0; i < this->_k; ++i) {
+    error[_selected_idx[i]] = 0;
   }
   _selected_idx.clear();
 }

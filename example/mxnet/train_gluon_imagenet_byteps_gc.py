@@ -201,6 +201,7 @@ def main():
         optimizer = 'sgd'
     else:
         optimizer = 'nag'
+    logger.info("optimizer:%s" % optimizer)
 
     optimizer_params = {'wd': opt.wd,
                         'momentum': opt.momentum, 'lr_scheduler': lr_scheduler}
