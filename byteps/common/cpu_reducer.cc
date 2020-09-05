@@ -230,6 +230,19 @@ int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
   return 0;
 }
 
+int CpuReducer::copy(void* dst, const void* src, size_t len) {
+  auto in = (float*)src;
+  auto out = (float*)dst;
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / 4; ++i) {
+    out[i] = in[i];
+  }
+  if (len % 4) {
+    std::memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+  return 0;
+}
+
 int CpuReducer::sparse_sum(void* dst, const void* src, size_t size,
                            DataType dtype, float alpha,
                            const std::vector<uint32_t>& idx_list) {
