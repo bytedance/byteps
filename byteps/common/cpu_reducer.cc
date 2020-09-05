@@ -271,10 +271,10 @@ int CpuReducer::sparse_sum(void* dst, const void* src, size_t size,
 template <typename T>
 int CpuReducer::_sparse_sum(T* dst, const T* src, size_t len, float alpha,
                             const std::vector<uint32_t>& idx_list) {
-  size_t len = idx_list.size();
+  size_t size = idx_list.size();
 
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     dst[i] += src[idx_list[i]] * alpha;
   }
 
