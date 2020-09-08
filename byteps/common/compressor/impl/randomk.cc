@@ -65,7 +65,7 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
     _selected_set.insert(_rng.Randint(0, len));
   }
   std::copy(_selected_set.begin(), _selected_set.end(),
-            std::bacK_inserter(_selected_idx));
+            std::back_inserter(_selected_idx));
   _selected_set.clear();
 
   // to be unbiased
