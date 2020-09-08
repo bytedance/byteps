@@ -87,12 +87,14 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
 #else
   size_t len = grad.size / getDataTypeLength(grad.dtype);
 
-  while (_selected_set.size() < this->_k) {
-    _selected_set.insert(_rng.Randint(0, len));
+  while (_selected_idx.size() < this->_k) {
+    auto idx = _rng.Randint(0, len);
+    if (!_vis[idx]) {
+      _selected_idx.push_back(idx);
+      _vis[idx] = 1;
+    }
   }
-  std::copy(_selected_set.begin(), _selected_set.end(),
-            std::back_inserter(_selected_idx));
-  _selected_set.clear();
+  _vis.clear();
 
   this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
                                  static_cast<DataType>(grad.dtype),

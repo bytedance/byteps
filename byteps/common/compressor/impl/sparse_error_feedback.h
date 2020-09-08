@@ -16,7 +16,7 @@
 #ifndef BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
 #define BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
 
-#include <set>
+#include <unordered_map>
 
 #include "../error_feedback.h"
 #include "../utils.h"
@@ -60,7 +60,7 @@ class SparseErrorFeedbackCompressor : public ErrorFeedback {
   size_t _k;
   XorShift128PlusBitShifterRNG _rng;
   std::vector<uint32_t> _selected_idx;
-  std::set<uint32_t> _selected_set;
+  std::unordered_map<uint32_t, bool> _vis;
 };
 }  // namespace compressor
 }  // namespace common

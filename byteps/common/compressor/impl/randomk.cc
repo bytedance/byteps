@@ -16,7 +16,6 @@
 #include "randomk.h"
 
 #include <cstring>
-#include <iterator>
 
 #include "../compressor_registry.h"
 
@@ -61,12 +60,14 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
                                          size_t len) {
 #ifndef BYTEPS_BUILDING_SERVER
   // generate non-overlap k
-  while (_selected_set.size() < this->_k) {
-    _selected_set.insert(_rng.Randint(0, len));
+  while (_selected_idx.size() < this->_k) {
+    auto idx = _rng.Randint(0, len);
+    if (!_vis[idx]) {
+      _selected_idx.push_back(idx);
+      _vis[idx] = 1;
+    }
   }
-  std::copy(_selected_set.begin(), _selected_set.end(),
-            std::back_inserter(_selected_idx));
-  _selected_set.clear();
+  _vis.clear();
 
   // to be unbiased
   if (_is_scale) {
