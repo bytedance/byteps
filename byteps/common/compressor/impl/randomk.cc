@@ -59,10 +59,13 @@ template <typename scalar_t>
 tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
                                          size_t len) {
 #ifndef BYTEPS_BUILDING_SERVER
-  // generate k
-  for (size_t i = 0; i < this->_k; ++i) {
-    _selected_idx.push_back(_rng.Randint(0, len));
+  // generate non-overlap k
+  while (_selected_set.size() < this->_k) {
+    _selected_set.insert(_rng.Randint(0, len));
   }
+  std::copy(_selected_set.begin(), _selected_set.end(),
+            std::bacK_inserter(_selected_idx));
+  _selected_set.clear();
 
   // to be unbiased
   if (_is_scale) {
