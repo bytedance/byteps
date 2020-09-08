@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <iterator>
 
 #include "../compressor_registry.h"
 #include "sparse_error_feedback.h"
@@ -92,7 +93,7 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   std::copy(_selected_set.begin(), _selected_set.end(),
             std::bacK_inserter(_selected_idx));
   _selected_set.clear();
-  
+
   this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
                                  static_cast<DataType>(grad.dtype),
                                  (_pre_lr / _cur_lr), _selected_idx);

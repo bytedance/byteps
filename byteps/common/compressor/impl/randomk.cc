@@ -16,6 +16,7 @@
 #include "randomk.h"
 
 #include <cstring>
+#include <iterator>
 
 #include "../compressor_registry.h"
 
