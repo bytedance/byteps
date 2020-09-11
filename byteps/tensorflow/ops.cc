@@ -58,6 +58,10 @@ using namespace byteps;
 namespace byteps {
 namespace tensorflow {
 
+std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
+std::mutex _name_to_done_args_mtx;
+std::condition_variable _name_to_done_args_cv;
+
 namespace {
 
 int printMatOnGPU(std::string &name, const void *buffer, int num_elem) {

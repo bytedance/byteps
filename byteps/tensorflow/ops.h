@@ -85,9 +85,9 @@ struct Xla_done_cb_args{
   int bps_buf_size;
 };
 
-static std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
-std::mutex _name_to_done_args_mtx;
-std::condition_variable _name_to_done_args_cv;
+extern std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
+extern std::mutex _name_to_done_args_mtx;
+extern std::condition_variable _name_to_done_args_cv;
 
 }  // namespace tensorflow
 }  // namespace byteps
