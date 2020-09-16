@@ -597,13 +597,16 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
                     [name_key](const common::Status& status) {
+                      std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
                       auto it = _name_to_done_args.find(name_key);
                       ASSERTF(it != _name_to_done_args.end(), "YOU SHOULD NOT SEE ME");
                       auto& args = _name_to_done_args[name_key];
+                      my_lk.unlock();
                       {
                         std::lock_guard<std::mutex> lk(args.mtx);
                         args.is_done = true;
                       }
+
                       args.cv.notify_one();
                       int my_rank = common::byteps_rank();
                       BPS_LOG(DEBUG, my_rank) << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
@@ -792,10 +795,11 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
         std::this_thread::yield();
         return _name_to_done_args.find(tmp_name) != _name_to_done_args.end();
       });
-    my_big_lk.unlock();
+
     auto it = _name_to_done_args.find(tmp_name);
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
     auto& args = it->second;
+    my_big_lk.unlock();
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
       << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
     {
