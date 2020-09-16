@@ -58,7 +58,7 @@ using namespace byteps;
 namespace byteps {
 namespace tensorflow {
 
-std::unordered_map<std::string, Xla_done_cb_args> _name_to_done_args;
+std::unordered_map<std::string, std::shared_ptr<Xla_done_cb_args>> _name_to_done_args;
 std::mutex _name_to_done_args_mtx;
 std::condition_variable _name_to_done_args_cv;
 
@@ -461,25 +461,25 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
 
   std::string name_key(node_name);
   std::replace(name_key.begin(), name_key.end(), '/', '_');
-  _name_to_done_args[name_key].is_done = false;
+  _name_to_done_args[name_key]->is_done = false;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
                     [name_key](const common::Status& status) {
-                      auto& args = _name_to_done_args[name_key];
+                      auto args = _name_to_done_args[name_key];
                       {
-                        std::unique_lock<std::mutex> lk(args.mtx);
-                        args.is_done = true;
+                        std::unique_lock<std::mutex> lk(args->mtx);
+                        args->is_done = true;
                       }
-                      args.cv.notify_one();
+                      args->cv.notify_one();
                     },
                     queue_list);
   {
-    auto& args = _name_to_done_args[name_key];
-    std::unique_lock<std::mutex> lk(args.mtx);
-    args.cv.wait(lk, [&args]{
+    auto args = _name_to_done_args[name_key];
+    std::unique_lock<std::mutex> lk(args->mtx);
+    args->cv.wait(lk, [args]{
       std::this_thread::yield();
-      return args.is_done;});
+      return args->is_done;});
     lk.unlock();
   }
 }
@@ -582,17 +582,24 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
   std::replace(name_key.begin(), name_key.end(), '/', '_');
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " before EnqueueTensor " << std::endl;
 
+  std::shared_ptr<Xla_done_cb_args> new_args(new Xla_done_cb_args);
+  new_args->is_done = false;
+  new_args->bps_out_buf = const_cast<void *>(byteps_output->data());
+  new_args->bps_in_buf = const_cast<void *>(byteps_input->data());
+  new_args->bps_buf_size = size;
+
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   auto it = _name_to_done_args.find(name_key);
   ASSERTF(it == _name_to_done_args.end(), "x2682 duplicate tensor_name");
-  _name_to_done_args[name_key].is_done = false;
-  _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
-  _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
-  _name_to_done_args[name_key].bps_buf_size = size;
+  _name_to_done_args[name_key] = new_args;
+  // _name_to_done_args[name_key].is_done = false;
+  // _name_to_done_args[name_key].bps_out_buf = const_cast<void *>(byteps_output->data());
+  // _name_to_done_args[name_key].bps_in_buf = const_cast<void *>(byteps_input->data());
+  // _name_to_done_args[name_key].bps_buf_size = size;
   my_lk.unlock();
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key: " << name_key << " rank: " << my_rank << " key inserted " << std::endl;
   _name_to_done_args_cv.notify_one();
-  bool& is_done = _name_to_done_args[name_key].is_done;
+  // bool& is_done = _name_to_done_args[name_key].is_done;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
@@ -600,14 +607,14 @@ void StartTaskXla(::tensorflow::OpKernelContext* context,
                       std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
                       auto it = _name_to_done_args.find(name_key);
                       ASSERTF(it != _name_to_done_args.end(), "YOU SHOULD NOT SEE ME");
-                      auto& args = _name_to_done_args[name_key];
+                      auto args = _name_to_done_args[name_key];
                       my_lk.unlock();
                       {
-                        std::lock_guard<std::mutex> lk(args.mtx);
-                        args.is_done = true;
+                        std::lock_guard<std::mutex> lk(args->mtx);
+                        args->is_done = true;
                       }
 
-                      args.cv.notify_one();
+                      args->cv.notify_one();
                       int my_rank = common::byteps_rank();
                       BPS_LOG(DEBUG, my_rank) << "inside enqueue callback name_key: " << name_key <<" rank: " << common::byteps_rank() << " notified" << std::endl;
                     },
@@ -675,12 +682,12 @@ void SyncTensorCustomOp(CUstream stream, void** buffers,
 
   auto it = _name_to_done_args.find(tmp_name);
   ASSERTF(it != _name_to_done_args.end(), "post 2");
-  auto& args = it->second;
+  auto args = it->second;
   {
-    std::unique_lock<std::mutex> lk(args.mtx);
-    args.cv.wait(lk, [&args]{
+    std::unique_lock<std::mutex> lk(args->mtx);
+    args->cv.wait(lk, [args]{
       std::this_thread::yield();
-      return args.is_done;});
+      return args->is_done;});
     lk.unlock();
   }
   _name_to_done_args.erase(it);
@@ -741,12 +748,12 @@ class BytePSSyncTensorOp : public ::tensorflow::OpKernel {
 
       auto it = _name_to_done_args.find(tmp_name);
       ASSERTF(it != _name_to_done_args.end(), "pos 3");
-      auto& args = it->second;
+      auto args = it->second;
       {
-        std::unique_lock<std::mutex> lk(args.mtx);
-        args.cv.wait(lk, [&args]{
+        std::unique_lock<std::mutex> lk(args->mtx);
+        args->cv.wait(lk, [args]{
           std::this_thread::yield();
-          return args.is_done;});
+          return args->is_done;});
         lk.unlock();
       }
       _name_to_done_args.erase(it);
@@ -798,13 +805,13 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
 
     auto it = _name_to_done_args.find(tmp_name);
     ASSERTF(it != _name_to_done_args.end(), "pos 4");
-    auto& args = it->second;
+    auto args = _name_to_done_args[tmp_name];
     my_big_lk.unlock();
     BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
-      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args.is_done << std::endl;
+      << " name_key: " << tmp_name << " rank: " << common::byteps_rank() << " waiting" << " is_done: " << args->is_done << std::endl;
     {
       int test_var = 0;
-      std::unique_lock<std::mutex> lk(args.mtx);
+      std::unique_lock<std::mutex> lk(args->mtx);
       test_var = 1;
       BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
         << " name_key: " << tmp_name << " can you see this " << std::endl;
@@ -812,9 +819,9 @@ void SyncAllTensorsCustomOp(CUstream stream, void** buffers,
       ASSERTF(test_var == 1, "test_var not set");
     }
     {
-      std::unique_lock<std::mutex> lk(args.mtx);
-      while (!args.is_done) {
-        args.cv.wait(lk);
+      std::unique_lock<std::mutex> lk(args->mtx);
+      while (!args->is_done) {
+        args->cv.wait(lk);
       }
       // args.cv.wait(lk, [&args, my_rank, tmp_name]{
       //   BPS_LOG(DEBUG, my_rank) << " x2682 in " <<__func__
