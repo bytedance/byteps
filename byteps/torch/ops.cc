@@ -160,6 +160,7 @@ pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor,
 
 PYBIND11_MODULE(c_lib, m) {
   // push_pull
+  m.def("byteps_torch_push_pull_async_torch_ByteTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_IntTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_LongTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_HalfTensor", &DoPushPull);
@@ -168,6 +169,7 @@ PYBIND11_MODULE(c_lib, m) {
 
   m.def("byteps_torch_set_num_grads", &SetNumGrads);
 
+  m.def("byteps_torch_push_pull_group_sync_torch_ByteTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_IntTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_LongTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_HalfTensor", &DoPushPullGroupSync);
@@ -175,12 +177,14 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor", &DoPushPullGroupSync);
 
 #if HAVE_CUDA
+  m.def("byteps_torch_push_pull_async_torch_cuda_ByteTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_IntTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_LongTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_HalfTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_FloatTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_DoubleTensor", &DoPushPull);
 
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_ByteTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_IntTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_LongTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor", &DoPushPullGroupSync);
