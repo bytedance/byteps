@@ -38,7 +38,7 @@ CompressorRegistry::Register reg(
 template <typename index_t, typename scalar_t>
 tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
                                         size_t len) {
-  constexpr size_t PACKING_SIZE = sizeof(scalar_t) * 8;
+  constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
 
