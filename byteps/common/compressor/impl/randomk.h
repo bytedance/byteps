@@ -49,7 +49,7 @@ class RandomkCompressor : public Compressor {
       _rng.set_seed(2020);
     }
   };
-  ~RandomkCompressor() override;
+  ~RandomkCompressor() override = default;
 
   /*!
    * \brief Compress function

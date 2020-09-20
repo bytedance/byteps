@@ -54,7 +54,7 @@ class DitheringCompressor : public Compressor {
       _rng.set_seed(seed);
     }
   };
-  ~DitheringCompressor() override;
+  ~DitheringCompressor() override = default;
 
   tensor_t Compress(tensor_t grad) override;
 

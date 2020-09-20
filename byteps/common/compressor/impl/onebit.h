@@ -40,7 +40,7 @@ class OnebitCompressor : public Compressor {
  public:
   OnebitCompressor(size_t size, DataType dtype, bool use_scale = false)
       : Compressor(size, dtype), _use_scale(use_scale) {}
-  ~OnebitCompressor() override;
+  ~OnebitCompressor() override = default;
 
   /*!
    * \brief Compress function

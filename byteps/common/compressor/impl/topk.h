@@ -35,7 +35,7 @@ class TopkCompressor : public Compressor {
  public:
   TopkCompressor(size_t size, DataType dtype, unsigned int k)
       : Compressor(size, dtype), _k(k){};
-  ~TopkCompressor() override;
+  ~TopkCompressor() override = default;
 
   /*!
    * \brief Compress function
