@@ -30,7 +30,7 @@ class MetaTest(type):
                 "DMLC_PS_ROOT_PORT": "1234",
                 "BYTEPS_LOG_LEVEL": "INFO",
                 "BYTEPS_MIN_COMPRESS_BYTES": "0",
-                "OMP_NUM_THREADS": "4",
+                "OMP_NUM_THREADS": "1",
                 "BYTEPS_OMP_THREAD_PER_GPU": "4",
                 "BYTEPS_PARTITION_BYTES": "2147483647"}
     for name, value in os.environ.items():
