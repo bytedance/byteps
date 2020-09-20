@@ -126,7 +126,7 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
-#pragma omp parallel for simd
+    // #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
