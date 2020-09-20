@@ -64,8 +64,9 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
             "seed": seed
         }
 
-        trainer = bps.DistributedTrainer(net.collect_params(
-        ), "sgd", optimizer_params, compression_params=compression_params)
+        params = net.collect_params()
+        trainer = bps.DistributedTrainer(
+            params, "sgd", optimizer_params, compression_params=compression_params)
 
         loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
 
@@ -75,11 +76,11 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
         rngs = {}
         rngs_s = {}
 
-        for i, param in enumerate(trainer._params):
+        for i, param in enumerate(params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
-                rngs[i] = np.array([seed, seed], dtype=np.uint64)
-                rngs_s[i] = np.array([seed, seed], dtype=np.uint64)
+                rngs[i] = np.array([seed+i+k, seed+i+k], dtype=np.uint64)
+                rngs_s[i] = np.array([seed+i+k, seed+i+k], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
@@ -107,6 +108,18 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
                     c = randomk(g, k, rngs[i])
 
                     params[i] -= optimizer_params["learning_rate"] * c
+
+                    np_g = c.flatten()
+                    mx_g = param._grad[0].asnumpy().flatten()
+                    if not np.allclose(np_g, mx_g, atol=np.finfo(np.float32).eps):
+                        diff = np.abs(np_g - mx_g)
+                        print("np", np_g)
+                        print("mx", mx_g)
+                        print("diff", diff)
+                        print("max diff", np.max(diff))
+                        idx = np.nonzero(diff > 1e-5)
+                        print("idx", idx, np_g[idx], mx_g[idx])
+                        input()
 
         cnt = 0
         tot = 0
