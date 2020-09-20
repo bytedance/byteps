@@ -62,15 +62,17 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   BitWriter<index_t> bit_writer(dst);
-  size_t last_non_zero_pos = -1;
+  size_t last_non_zero_pos = -1;  // it's not a bug here...
   if (_ptype == PartitionType::LINEAR) {
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      int bernoulli = _rand_list[i] < (normalized - floor);
+      double p = normalized - floor;
+      int bernoulli = _rand_list[i] < p * MAX;
       unsigned quantized = floor + bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
@@ -88,7 +90,7 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
       double p = (normalized - floor) / length;
-      int bernoulli = _rand_list[i] < p;
+      int bernoulli = _rand_list[i] < p * MAX;
       unsigned quantized = floor + length * bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
@@ -121,6 +123,7 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   for (size_t i = 0; i < len; i++) {
     scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
   }
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
@@ -128,7 +131,8 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      int bernoulli = _rand_list[i] < (normalized - floor);
+      double p = normalized - floor;
+      int bernoulli = _rand_list[i] < p * MAX;
       index_t quantized = floor + bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
@@ -141,7 +145,7 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
       double p = (normalized - floor) / length;
-      int bernoulli = _rand_list[i] < p;
+      int bernoulli = _rand_list[i] < p * MAX;
       index_t quantized = floor + length * bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
@@ -158,7 +162,7 @@ tensor_t DitheringCompressor::CompressImpl(index_t* __restrict__ dst,
                                            const scalar_t* __restrict__ src,
                                            size_t len) {
   for (size_t i = 0; i < len; ++i) {
-    _rand_list.push_back(_rng.Rand());
+    _rand_list.push_back(_rng.xorshift128p());
   }
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {

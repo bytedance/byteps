@@ -93,11 +93,6 @@ class XorShift128PlusBitShifterRNG {
 
   void set_seed(uint64_t seed) { _state = {seed, seed}; }
 
- private:
-  struct xorshift128p_state {
-    uint64_t a, b;
-  };
-
   uint64_t xorshift128p() {
     uint64_t t = _state.a;
     uint64_t const s = _state.b;
@@ -107,6 +102,11 @@ class XorShift128PlusBitShifterRNG {
     t ^= s ^ (s >> 26);  // c
     _state.b = t;
     return t + s;
+  };
+
+ private:
+  struct xorshift128p_state {
+    uint64_t a, b;
   };
 
   xorshift128p_state _state;

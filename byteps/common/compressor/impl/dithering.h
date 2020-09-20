@@ -117,7 +117,7 @@ class DitheringCompressor : public Compressor {
   PartitionType _ptype;
   NormalizeType _ntype;
   XorShift128PlusBitShifterRNG _rng;
-  std::vector<double> _rand_list;
+  std::vector<uint64_t> _rand_list;
 };
 }  // namespace compressor
 }  // namespace common
