@@ -208,7 +208,7 @@ class DistributedTrainer(mx.gluon.Trainer):
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
 
         self._intra_compressor = self._register_compressor(
-            params, optimizer_params, compression_params)
+            optimizer_params, compression_params)
 
         if local_rank() == 0:
             self._f = open("lr.s", "wb")
