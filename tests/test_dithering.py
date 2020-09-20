@@ -60,7 +60,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         y *= k
         low = np.floor(y)
         p = y - low  # whether to ceil
-        y = low  # + bernoulli(p, state)
+        y = low + bernoulli(p, state)
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)

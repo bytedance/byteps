@@ -126,14 +126,14 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
-#pragma omp parallel for simd
+    // #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       double p = normalized - floor;
-      // int bernoulli = _rand_list[i] < p * MAX;
-      index_t quantized = floor;
+      int bernoulli = _rng.Bernoulli(p);
+      index_t quantized = floor + bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
   } else if (_ptype == PartitionType::NATURAL) {
@@ -161,16 +161,16 @@ template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::CompressImpl(index_t* __restrict__ dst,
                                            const scalar_t* __restrict__ src,
                                            size_t len) {
-  for (size_t i = 0; i < len; ++i) {
-    _rand_list.push_back(_rng.xorshift128p());
-  }
+  // for (size_t i = 0; i < len; ++i) {
+  //   _rand_list.push_back(_rng.xorshift128p());
+  // }
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
     return CompressImplMax<index_t, scalar_t>(dst, src, len);
   } else {
     return CompressImplL2<index_t, scalar_t>(dst, src, len);
   }
-  _rand_list.clear();
+  // _rand_list.clear();
 }
 
 tensor_t DitheringCompressor::Compress(tensor_t grad) {
