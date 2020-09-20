@@ -115,8 +115,9 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
         for i, param in enumerate(trainer._params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
-                rngs[i] = np.array([seed, seed], dtype=np.uint64)
-                rngs_s[i] = np.array([seed, seed], dtype=np.uint64)
+                s = seed + i
+                rngs[i] = np.array([s, s], dtype=np.uint64)
+                rngs_s[i] = np.array([s, s], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
