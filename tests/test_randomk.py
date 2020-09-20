@@ -64,9 +64,9 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
             "seed": seed
         }
 
-        params = net.collect_params()
+        net_params = net.collect_params()
         trainer = bps.DistributedTrainer(
-            params, "sgd", optimizer_params, compression_params=compression_params)
+            net_params, "sgd", optimizer_params, compression_params=compression_params)
 
         loss_fn = gluon.loss.SoftmaxCrossEntropyLoss()
 
@@ -76,7 +76,7 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
         rngs = {}
         rngs_s = {}
 
-        for i, param in enumerate(params):
+        for i, param in enumerate(net_params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
                 rngs[i] = np.array([seed+i+k, seed+i+k], dtype=np.uint64)
