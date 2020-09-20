@@ -132,7 +132,7 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       double p = normalized - floor;
-      int bernoulli = _rng.Bernoulli(p);
+      int bernoulli = _rng.xorshift128p() < p * MAX;
       index_t quantized = floor + bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
