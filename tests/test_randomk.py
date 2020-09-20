@@ -39,8 +39,9 @@ def randomk(x, k, state):
                         for _ in range(k)], dtype=np.uint64)
     vals = y[indices]
     y.fill(0)
+    scale = len(y) / k
     for idx, val in zip(indices, vals):
-        y[idx] = val
+        y[idx] = val * scale
     return y.reshape(x.shape)
 
 

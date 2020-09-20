@@ -43,10 +43,10 @@ class RandomkCompressor : public Compressor {
                     unsigned int seed = 0, bool is_scale = false)
       : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
     if (seed != 0) {
-      BPS_LOG(INFO) << "SET SEED = " << seed;
-      _rng.set_seed(seed);
+      BPS_LOG(INFO) << "SET SEED = " << seed + k;
+      _rng.set_seed(seed + k);
     } else {
-      _rng.set_seed(2020);
+      _rng.set_seed(k);
     }
   };
   ~RandomkCompressor() override = default;
