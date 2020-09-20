@@ -124,11 +124,9 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
     scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
   }
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
-  for (size_t i = 0; i < len; ++i) {
-    _rand_list.push_back(_rng.xorshift128p());
-  }
+
   if (_ptype == PartitionType::LINEAR) {
-    // #pragma omp parallel for simd
+#pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
@@ -155,7 +153,6 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
 
   auto ptr = reinterpret_cast<float*>(&dst[len]);
   *ptr = scale;
-  _rand_list.clear();
 
   return {dst, len * sizeof(index_t) + sizeof(float)};
 }
@@ -164,6 +161,10 @@ template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::CompressImpl(index_t* __restrict__ dst,
                                            const scalar_t* __restrict__ src,
                                            size_t len) {
+  _rand_list.clear();
+  for (size_t i = 0; i < len; ++i) {
+    _rand_list.push_back(_rng.xorshift128p());
+  }
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
     return CompressImplMax<index_t, scalar_t>(dst, src, len);
