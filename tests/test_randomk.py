@@ -105,9 +105,6 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
                     g = gs[i] / (batch_size * bps.size())
                     c = randomk(g, k, rngs[i])
 
-                    cs = randomk(c, k, rngs_s[i])
-                    c = cs
-
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
