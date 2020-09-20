@@ -80,7 +80,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
 
 
 class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([2, 4, 8], ["linear, natural"], ["max", "l2"], np.random.randint(0, 2020, size=3).tolist()))
+    @parameterized.expand(itertools.product([2, 4, 8], ["linear", "natural"], ["max", "l2"], np.random.randint(0, 2020, size=3).tolist()))
     def test_dithering(self, k, ptype, ntype, seed):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")

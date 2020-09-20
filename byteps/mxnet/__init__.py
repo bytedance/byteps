@@ -298,7 +298,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 elif compression_params["normalize"] == "l2":
                     setattr(param, "byteps_dithering_normalize", "1")
                 else:
-                    raise ValueError("Unsupported normalization")
+                    raise ValueError("Unsupported normalization %s" %
+                                     compression_params["normalize"])
 
         # the following code will delete some items in `optimizer_params`
         # to avoid duplication
