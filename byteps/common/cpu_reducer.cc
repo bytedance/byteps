@@ -23,6 +23,8 @@
 #if __F16C__
 #include "half.h"
 using half_t = mshadow::half::half_t;
+#else
+using half_t = void;
 #endif
 
 namespace byteps {
@@ -90,7 +92,8 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype) {
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, const T* src, size_t len) {
+int CpuReducer::_sum(T* __restrict__ dst, const T* __restrict__ src,
+                     size_t len) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + src[i];
@@ -136,7 +139,8 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len) {
+int CpuReducer::_sum(T* __restrict__ dst, const T* __restrict__ src1,
+                     const T* __restrict__ src2, size_t len) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = src1[i] + src2[i];
@@ -175,7 +179,8 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, const T* src, size_t len, float alpha) {
+int CpuReducer::_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+                     float alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = dst[i] + alpha * src[i];
@@ -221,8 +226,8 @@ int CpuReducer::sum(void* dst, const void* src1, const void* src2, size_t len,
 }
 
 template <typename T>
-int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
-                     float alpha) {
+int CpuReducer::_sum(T* __restrict__ dst, const T* __restrict__ src1,
+                     const T* __restrict__ src2, size_t len, float alpha) {
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
     dst[i] = src1[i] + alpha * src2[i];
@@ -230,7 +235,8 @@ int CpuReducer::_sum(T* dst, const T* src1, const T* src2, size_t len,
   return 0;
 }
 
-int CpuReducer::copy(void* dst, const void* src, size_t len) {
+int CpuReducer::copy(void* __restrict__ dst, const void* __restrict__ src,
+                     size_t len) {
   auto in = (float*)src;
   auto out = (float*)dst;
 #pragma omp parallel for simd num_threads(_num_threads)
@@ -282,7 +288,8 @@ int CpuReducer::sparse_sum(void* dst, const void* src, size_t size,
 }
 
 template <typename T>
-int CpuReducer::_sparse_sum(T* dst, const T* src, size_t len, float alpha,
+int CpuReducer::_sparse_sum(T* __restrict__ dst, const T* __restrict__ src,
+                            size_t len, float alpha,
                             const std::vector<uint32_t>& idx_list) {
   size_t size = idx_list.size();
 

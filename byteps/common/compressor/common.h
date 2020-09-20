@@ -21,7 +21,7 @@
 #include "../half.h"
 using half_t = mshadow::half::half_t;
 #else
-using half_t = unsigned short;
+using half_t = void;
 #endif
 
 namespace byteps {

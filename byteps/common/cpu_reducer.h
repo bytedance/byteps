@@ -24,6 +24,7 @@
 #include <cstring>
 #include <memory>
 #include <vector>
+
 #include "common.h"
 #include "logging.h"
 
@@ -33,7 +34,7 @@
 typedef void BytePSComm;
 #endif
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace byteps {
 namespace common {
@@ -57,7 +58,7 @@ class CpuReducer {
   int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
                  float alpha, const std::vector<uint32_t>& idx_list);
 
-  int copy(void* dst, const void* src, size_t len);
+  int copy(void* __restrict__ dst, const void* __restrict__ src, size_t len);
 
 #ifndef BYTEPS_BUILDING_SERVER
   bool isRoot();
@@ -68,20 +69,23 @@ class CpuReducer {
 
  private:
   template <typename T>
-  int _sum(T* dst, const T* src, size_t len);
+  int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len);
 
   template <typename T>
-  int _sum(T* dst, const T* src1, const T* src2, size_t len);
+  int _sum(T* __restrict__ dst, const T* __restrict__ src1,
+           const T* __restrict__ src2, size_t len);
 
   template <typename T>
-  int _sum(T* dst, const T* src, size_t len, float alpha);
+  int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+           float alpha);
 
   template <typename T>
-  int _sum(T* dst, const T* src1, const T* src2, size_t len, float alpha);
+  int _sum(T* __restrict__ dst, const T* __restrict__ src1,
+           const T* __restrict__ src2, size_t len, float alpha);
 
   template <typename T>
-  int _sparse_sum(T* dst, const T* src, size_t len, float alpha,
-                  const std::vector<uint32_t>& idx_list);
+  int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+                  float alpha, const std::vector<uint32_t>& idx_list);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);
