@@ -176,7 +176,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         The set of parameters to optimize.
     optimizer : str or Optimizer
         The optimizer to use. See
-        #the-mxnet-optimizer-package>`_
+        # the-mxnet-optimizer-package>`_
         `help <http://mxnet.io/api/python/optimization/optimization.html
         on Optimizer for a list of available optimizers.
     optimizer_params : dict
@@ -204,11 +204,11 @@ class DistributedTrainer(mx.gluon.Trainer):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
-        self._intra_compressor = self._register_compressor(
-            params, optimizer_params, compression_params)
-
         super(DistributedTrainer, self).__init__(
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
+
+        self._intra_compressor = self._register_compressor(
+            params, optimizer_params, compression_params)
 
         if local_rank() == 0:
             self._f = open("lr.s", "wb")
@@ -234,10 +234,9 @@ class DistributedTrainer(mx.gluon.Trainer):
             if os.path.exists("lr.s"):
                 os.remove("lr.s")
 
-    def _register_compressor(self, params, optimizer_params, compression_params):
+    def _register_compressor(self, optimizer_params, compression_params):
         """Register compressor for BytePS
 
-        params : mx.gluon.ParameterDict
         optimizer_params : dict
         compression_params : dict
         """
@@ -253,7 +252,10 @@ class DistributedTrainer(mx.gluon.Trainer):
 
         check_list = ["compressor", "ef", "momentum"]
 
-        for i, (_, param) in enumerate(params.items()):
+        for i, param in enumerate(self._params):
+            if param.grad_req == 'null':
+                continue
+
             # generic
             for item in check_list:
                 if compression_params.get(item):
