@@ -13,8 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
-#define BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
+#ifndef BYTEPS_COMPRESSOR_IMPL_DITHERING_H
+#define BYTEPS_COMPRESSOR_IMPL_DITHERING_H
+
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -115,9 +117,10 @@ class DitheringCompressor : public Compressor {
   PartitionType _ptype;
   NormalizeType _ntype;
   XorShift128PlusBitShifterRNG _rng;
+  std::vector<double> _rand_list;
 };
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
+#endif  // BYTEPS_COMPRESSOR_IMPL_DITHERING_H

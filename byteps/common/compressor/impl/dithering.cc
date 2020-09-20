@@ -70,7 +70,8 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      unsigned quantized = floor + _rng.Bernoulli(normalized - floor);
+      int bernoulli = _rand_list[i] < (normalized - floor);
+      unsigned quantized = floor + bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
@@ -87,7 +88,8 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
       double p = (normalized - floor) / length;
-      unsigned quantized = floor + length * _rng.Bernoulli(p);
+      int bernoulli = _rand_list[i] < p;
+      unsigned quantized = floor + length * bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
         last_non_zero_pos = i;
@@ -121,24 +123,26 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   }
 
   if (_ptype == PartitionType::LINEAR) {
-    // #pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+#pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      index_t quantized = floor + _rng.Bernoulli(normalized - floor);
+      int bernoulli = _rand_list[i] < (normalized - floor);
+      index_t quantized = floor + bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
   } else if (_ptype == PartitionType::NATURAL) {
     const unsigned level = 1 << (_s - 1);
-#pragma omp parallel for simd firstprivate(_rng) lastprivate(_rng)
+#pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
       double normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
       double p = (normalized - floor) / length;
-      index_t quantized = floor + length * _rng.Bernoulli(p);
+      int bernoulli = _rand_list[i] < p;
+      index_t quantized = floor + length * bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
   }
@@ -153,12 +157,16 @@ template <typename index_t, typename scalar_t>
 tensor_t DitheringCompressor::CompressImpl(index_t* __restrict__ dst,
                                            const scalar_t* __restrict__ src,
                                            size_t len) {
+  for (size_t i = 0; i < len; ++i) {
+    _rand_list.push_back(_rng.Rand());
+  }
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
     return CompressImplMax<index_t, scalar_t>(dst, src, len);
   } else {
     return CompressImplL2<index_t, scalar_t>(dst, src, len);
   }
+  _rand_list.clear();
 }
 
 tensor_t DitheringCompressor::Compress(tensor_t grad) {
