@@ -289,7 +289,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 elif compression_params["partition"] == "natural":
                     setattr(param, "byteps_dithering_partition", "1")
                 else:
-                    raise ValueError("Unsupported partition")
+                    raise ValueError("Unsupported partition %s" %
+                                     compression_params["partition"])
 
             if compression_params.get("normalize"):
                 if compression_params["normalize"] == "max":
