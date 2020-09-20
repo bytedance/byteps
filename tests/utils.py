@@ -37,13 +37,14 @@ def xorshift128p(state):
     t ^= t >> np.uint64(17)
     t ^= s ^ (s >> np.uint64(26))
     state[1] = t
-    return int(t + s)
+    return np.uint64(t + s)
 
 
 @jit(nopython=True)
 def bernoulli(p, state):
     t = p * np.iinfo(np.uint64).max
-    r = np.array([xorshift128p(state) for _ in range(len(p))], dtype=np.float32)
+    r = np.array([xorshift128p(state)
+                  for _ in range(len(p))], dtype=np.float32)
     return r < t
 
 

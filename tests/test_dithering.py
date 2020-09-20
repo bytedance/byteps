@@ -28,7 +28,7 @@ from parameterized import parameterized
 from tqdm import tqdm
 
 from meta_test import MetaTest
-from utils import bernoulli, fake_data
+from utils import xorshift128p, fake_data
 
 
 @jit(nopython=True)
@@ -54,13 +54,15 @@ def dithering(x, k, state, partition='linear', norm="max"):
     y /= scale
     sign = np.sign(y)
     y = np.abs(y)
+    rands = [xorshift128p(state) for _ in len(y)]
 
     # stocastic rounding
     if partition == 'linear':
         y *= k
         low = np.floor(y)
         p = y - low  # whether to ceil
-        y = low + bernoulli(p, state)
+        bernoulli = rands < p
+        y = low + bernoulli
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -68,7 +70,8 @@ def dithering(x, k, state, partition='linear', norm="max"):
         length = copy.deepcopy(low)
         length[length == 0] = 1
         p = (y - low) / length
-        y = low + length * bernoulli(p, state)
+        bernoulli = rands < p
+        y = low + length * bernoulli
         y = y.astype(np.float32)
         y /= 2**(k-1)
     else:
