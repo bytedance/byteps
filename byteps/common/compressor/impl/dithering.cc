@@ -71,8 +71,8 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      double p = normalized - floor;
-      int bernoulli = _rand_list[i] < p * MAX;
+      float p = normalized - floor;
+      int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
       unsigned quantized = floor + bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
@@ -86,11 +86,11 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
     const unsigned level = 1 << (_s - 1);
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
-      double normalized = (abs_x / scale) * level;
+      float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
-      double p = (normalized - floor) / length;
-      int bernoulli = _rand_list[i] < p * MAX;
+      float p = (normalized - floor) / length;
+      int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
       unsigned quantized = floor + length * bernoulli;
       if (quantized) {
         size_t diff = i - last_non_zero_pos;
@@ -131,8 +131,8 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
       float abs_x = std::abs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
-      double p = normalized - floor;
-      int bernoulli = _rand_list[i] < p * MAX;
+      float p = normalized - floor;
+      int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
       index_t quantized = floor + bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
@@ -141,11 +141,11 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::abs(src[i]);
-      double normalized = (abs_x / scale) * level;
+      float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
-      double p = (normalized - floor) / length;
-      int bernoulli = _rand_list[i] < p * MAX;
+      float p = (normalized - floor) / length;
+      int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
       index_t quantized = floor + length * bernoulli;
       dst[i] = sgn(src[i]) * quantized;
     }
