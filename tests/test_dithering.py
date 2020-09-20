@@ -54,7 +54,8 @@ def dithering(x, k, state, partition='linear', norm="max"):
     y /= scale
     sign = np.sign(y)
     y = np.abs(y)
-    rands = [xorshift128p(state) for _ in range(len(y))]
+    rands = [xorshift128p(
+        state)/np.iinfo(np.uint64).max for _ in range(len(y))]
 
     # stocastic rounding
     if partition == 'linear':
