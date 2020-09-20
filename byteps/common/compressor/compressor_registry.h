@@ -41,11 +41,11 @@ class CompressorRegistry {
   static std::unique_ptr<Compressor> Create(const kwargs_t& kwargs, size_t size,
                                             DataType dtype);
 
- private:
-  static map_t _ctor_map;
-
   CompressorRegistry() = delete;
   ~CompressorRegistry() = delete;
+
+ private:
+  static map_t _ctor_map;
 };
 
 }  // namespace compressor

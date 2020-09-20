@@ -50,11 +50,11 @@ class Momentum : public Compressor {
         _mu(mu),
         _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)){};
-  virtual ~Momentum() = default;
+  ~Momentum() override;
 
-  virtual tensor_t Compress(tensor_t grad) final;
+  tensor_t Compress(tensor_t grad) final;
 
-  virtual tensor_t Decompress(tensor_t compressed) final;
+  tensor_t Decompress(tensor_t compressed) final;
 
  protected:
   /*!

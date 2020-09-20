@@ -56,18 +56,12 @@ CompressorRegistry::Register reg(
 }
 
 template <typename scalar_t>
-tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
+tensor_t RandomkCompressor::CompressImpl(scalar_t* __restrict__ dst,
+                                         const scalar_t* __restrict__ src,
                                          size_t len) {
-#ifndef BYTEPS_BUILDING_SERVER
-  // generate non-overlap k
-  while (_selected_idx.size() < this->_k) {
-    auto idx = _rng.Randint(0, len);
-    if (!_vis[idx]) {
-      _selected_idx.push_back(idx);
-      _vis[idx] = 1;
-    }
+  for (size_t i = 0; i < this->_k; ++i) {
+    _selected_idx.push_back(_rng.Randint(0, len));
   }
-  _vis.clear();
 
   // to be unbiased
   if (_is_scale) {
@@ -82,7 +76,6 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
       dst[i] = src[_selected_idx[i]];
     }
   }
-#endif
   // server does nothing
   return {dst, this->_k * sizeof(scalar_t)};
 }
@@ -90,16 +83,17 @@ tensor_t RandomkCompressor::CompressImpl(scalar_t* dst, const scalar_t* src,
 tensor_t RandomkCompressor::Compress(tensor_t grad) {
 #ifndef BYTEPS_BUILDING_SERVER
   auto dst = _buf.get();
-#else
-  auto dst = grad.data;
-#endif
   COMPRESS_IMPL_SWITCH2(grad.dtype, CompressImpl, dst, grad.data, grad.size);
+#else
+  // server do nothing
+  return {grad.data, this->_k * getDataTypeLength(grad.dtype)};
+#endif
 }
 
 template <typename scalar_t>
-tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const scalar_t* src,
+tensor_t RandomkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                           const scalar_t* __restrict__ src,
                                            size_t compressed_size) {
-#ifndef BYTEPS_BUILDING_SERVER
   auto buf = reinterpret_cast<scalar_t*>(_buf.get());
   if ((void*)dst == (void*)src) {
     std::memcpy(buf, src, compressed_size);
@@ -115,23 +109,24 @@ tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const scalar_t* src,
 
   _selected_idx.clear();
   return {dst, _size};
-#else
-  // do nothing
-  return {dst, compressed_size};
-#endif
 }  // namespace compressor
 
 tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
-  auto dst = compressed.data;
-  DECOMPRESS_IMPL_SWITCH2(_dtype, DecompressImpl, dst, compressed.data,
+#ifdef BYTEPS_BUILDING_SERVER
+  // server
+  // do nothing
+  return {compressed.data, compressed.size};
+#else
+  // worker
+  DECOMPRESS_IMPL_SWITCH2(_dtype, DecompressImpl, compressed.data, _buf.get(),
                           compressed.size);
+#endif
 }
 
 template <typename scalar_t>
-void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                            scalar_t* corrected,
-                                            const scalar_t* compressed,
-                                            size_t compressed_size) {
+void RandomkCompressor::FastUpdateErrorImpl(
+    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
+    const scalar_t* __restrict__ compressed, size_t compressed_size) {
   memcpy_multithread(error, corrected, _size);
 
 #pragma omp parallel for simd

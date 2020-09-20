@@ -31,10 +31,9 @@
 #include <vector>
 
 // Add for profiling communication events
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <queue>

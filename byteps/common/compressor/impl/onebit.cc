@@ -36,7 +36,8 @@ CompressorRegistry::Register reg(
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
+tensor_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
+                                        const scalar_t* __restrict__ src,
                                         size_t len) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
@@ -62,7 +63,7 @@ tensor_t OnebitCompressor::CompressImpl(index_t* dst, const scalar_t* src,
     dst[i] = x;
   }
 
-  float* p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
+  auto p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
   *p_scale = scale;
 
   return {dst, chunk_len * sizeof(index_t) + sizeof(float)};
@@ -74,7 +75,8 @@ tensor_t OnebitCompressor::Compress(tensor_t grad) {
 }
 
 template <typename scalar_t, typename index_t>
-tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
+tensor_t OnebitCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                          const index_t* __restrict__ src,
                                           size_t compressed_size) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
@@ -82,15 +84,9 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
   auto* pf = reinterpret_cast<const float*>(src + chunk_len);
   float scale = *pf;
 
-  index_t* ptr = const_cast<index_t*>(src);
-  if ((void*)dst == (void*)src) {
-    ptr = reinterpret_cast<index_t*>(_buf.get());
-    std::memcpy(ptr, src, compressed_size);
-  }
-
 #pragma omp parallel for simd
   for (int i = chunk_len - 1; i >= 0; --i) {
-    index_t x = ptr[i];
+    index_t x = src[i];
     size_t idx = i * PACKING_SIZE;
     for (int j = PACKING_SIZE - 1; j >= 0; --j) {
       int sign = 1 - ((x & 0x01) << 1);
@@ -104,18 +100,20 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
 
 tensor_t OnebitCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
-  auto dst = _buf.get();
-#else
-  auto dst = compressed.data;
-#endif
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
+  // server
+  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, _buf.get(), compressed.data,
                          compressed.size);
+#else
+  // worker
+  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, compressed.data, _buf.get(),
+                         compressed.size);
+#endif
 }
 
 template <typename scalar_t, typename index_t>
-void OnebitCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                                           const index_t* compressed,
-                                           size_t compressed_size) {
+void OnebitCompressor::FastUpdateErrorImpl(
+    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
+    const index_t* __restrict__ compressed, size_t compressed_size) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
 

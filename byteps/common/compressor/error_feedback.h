@@ -54,11 +54,11 @@ class ErrorFeedback : public Compressor {
         _error(new byte_t[size]()),
         _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)) {}
-  virtual ~ErrorFeedback() = default;
+  ~ErrorFeedback() override;
 
-  virtual tensor_t Compress(tensor_t grad) final;
+  tensor_t Compress(tensor_t grad) final;
 
-  virtual tensor_t Decompress(tensor_t compressed) final;
+  tensor_t Decompress(tensor_t compressed) final;
 
  protected:
   /*!

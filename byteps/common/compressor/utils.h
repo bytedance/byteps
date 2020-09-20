@@ -178,7 +178,7 @@ class BitReader {
   T _accum;
 };
 
-inline uint32_t RoundNextPow2(uint32_t v) {
+inline auto RoundNextPow2(uint32_t v) -> uint32_t {
   v -= 1;
   v |= v >> 1;
   v |= v >> 2;
@@ -200,7 +200,7 @@ void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned long x) {
 }
 
 template <typename T>
-unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
+auto EliasDeltaDecode(BitReader<T>& bit_reader) -> unsigned long {
   unsigned long num = 1;
   int len = 1;
   int lenth_of_len = 0;
@@ -217,8 +217,9 @@ unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
 }
 
 template <typename T, class F = std::function<bool(T)>>
-T HyperParamFinder(const kwargs_t& kwargs, std::string name,
-                   bool optional = false, F&& check = [](T) { return true; }) {
+auto HyperParamFinder(
+    const kwargs_t& kwargs, std::string name, bool optional = false,
+    F&& check = [](T) -> bool { return true; }) -> T {
   static_assert(std::is_fundamental<T>::value,
                 "custom type is not allow for HyperParamFinder");
   T value{T()};
@@ -247,7 +248,8 @@ T HyperParamFinder(const kwargs_t& kwargs, std::string name,
   return value;
 }
 
-inline int memcpy_multithread(void* dst, const void* src, size_t len) {
+inline void memcpy_multithread(void* __restrict__ dst,
+                               const void* __restrict__ src, size_t len) {
   auto in = (float*)src;
   auto out = (float*)dst;
 #pragma omp parallel for simd
@@ -257,12 +259,11 @@ inline int memcpy_multithread(void* dst, const void* src, size_t len) {
   if (len % 4) {
     std::memcpy(out + len / 4, in + len / 4, len % 4);
   }
-  return 0;
 }
 
-
-template <typename T> int sgn(T val) {
-    return (T(0) < val) - (val < T(0));
+template <typename T>
+auto sgn(T val) -> int {
+  return (T(0) < val) - (val < T(0));
 }
 
 }  // namespace compressor

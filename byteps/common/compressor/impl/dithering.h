@@ -54,7 +54,7 @@ class DitheringCompressor : public Compressor {
       _rng.set_seed(seed);
     }
   };
-  virtual ~DitheringCompressor() = default;
+  ~DitheringCompressor() override;
 
   tensor_t Compress(tensor_t grad) override;
 
@@ -65,38 +65,49 @@ class DitheringCompressor : public Compressor {
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImpl(index_t* __restrict__ dst,
+                        const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImplMax(index_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImplMax(index_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImplL2(index_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImplL2(index_t* __restrict__ dst,
+                          const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImplL2(scalar_t* dst, const index_t* src,
+  tensor_t DecompressImplL2(scalar_t* __restrict__ dst,
+                            const index_t* __restrict__ src,
                             size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImplMax(scalar_t* dst, const index_t* src,
+  tensor_t DecompressImplMax(scalar_t* __restrict__ dst,
+                             const index_t* __restrict__ src,
                              size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
+                          const index_t* __restrict__ src,
                           size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImplL2(scalar_t* error, scalar_t* corrected,
-                             const index_t* compressed, size_t compressed_size);
+  void FastUpdateErrorImplL2(scalar_t* __restrict__ error,
+                             scalar_t* __restrict__ corrected,
+                             const index_t* __restrict__ compressed,
+                             size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImplMax(scalar_t* error, scalar_t* corrected,
-                              const index_t* compressed,
+  void FastUpdateErrorImplMax(scalar_t* __restrict__ error,
+                              scalar_t* __restrict__ corrected,
+                              const index_t* __restrict__ compressed,
                               size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
+                           scalar_t* __restrict__ corrected,
+                           const index_t* __restrict__ compressed,
+                           size_t compressed_size);
 
   /*! \brief number of levels */
   const unsigned int _s;

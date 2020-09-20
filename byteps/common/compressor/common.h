@@ -31,15 +31,16 @@ typedef char byte_t;
 /*!
  * \brief Tensor type
  */
-typedef struct BPSTensor {
-  byte_t* data;
-  size_t size;
-  int dtype;
+struct BPSTensor {
+  byte_t* data{nullptr};
+  size_t size{0};
+  int dtype{0};
 
-  BPSTensor() : data(nullptr), size(0), dtype(0) {}
+  BPSTensor() = default;
   BPSTensor(void* data, size_t size = 0, int dtype = 0)
       : data(reinterpret_cast<byte_t*>(data)), size(size), dtype(dtype) {}
-} tensor_t;
+};
+using tensor_t = BPSTensor;
 
 using kwargs_t = std::unordered_map<std::string, std::string>;
 

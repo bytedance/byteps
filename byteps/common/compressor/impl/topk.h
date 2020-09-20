@@ -35,7 +35,7 @@ class TopkCompressor : public Compressor {
  public:
   TopkCompressor(size_t size, DataType dtype, unsigned int k)
       : Compressor(size, dtype), _k(k){};
-  virtual ~TopkCompressor() = default;
+  ~TopkCompressor() override;
 
   /*!
    * \brief Compress function
@@ -74,15 +74,19 @@ class TopkCompressor : public Compressor {
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImpl(index_t* __restrict__ dst,
+                        const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
+                          const index_t* __restrict__ src,
                           size_t compressed_size);
 
   template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
+                           scalar_t* __restrict__ corrected,
+                           const index_t* __restrict__ compressed,
+                           size_t compressed_size);
 
  private:
   unsigned int _k;

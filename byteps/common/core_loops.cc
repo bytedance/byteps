@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include "core_loops.h"
+
 #include <cuda_runtime.h>
 
 #include <chrono>
@@ -20,7 +22,6 @@
 
 #include "common.h"
 #include "compressor/compressor.h"
-#include "core_loops.h"
 #include "global.h"
 #include "logging.h"
 
@@ -322,7 +323,7 @@ bool RunNonRootNcclLoopOnce() {
   struct BytePSCommMsg msg = {};
 
   NCCLCHECK(ncclGroupStart());
-  while (1) {
+  while (true) {
     signal_comm->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
     if (BytePSGlobal::ShouldShutdown()) return true;
     if (msg.signal == DO_GROUP) {
@@ -554,7 +555,6 @@ bool RunPushLoopOnce() {
         BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
         data = task->compressed->data;
         len = task->compressed->size;
-        task->compressed = nullptr;
       }
 
       // false means not to delete data when SArray is deleted
@@ -594,6 +594,13 @@ bool RunPullLoopOnce() {
     // get metadata
     const int dtype = task->output->dtype();
 
+    // use compressed data/len
+    if (task->compressed) {
+      BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
+      data = task->compressed->data;
+      task->compressed = nullptr;
+    }
+
     // false means not to delete data when SArray is deleted
     auto vals = new ps::SArray<char>(data, len, false);
 
@@ -629,7 +636,6 @@ bool RunDecompressLoopOnce() {
       int dtype = task->tensor->dtype();
       compressor::tensor_t compressed(data, len, dtype);
       auto decompressed = task->compressor->Decompress(compressed);
-      BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
 
       FinishOrProceed(task);
     });

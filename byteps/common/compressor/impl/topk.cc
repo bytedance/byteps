@@ -13,11 +13,12 @@
 // limitations under the License.
 // =============================================================================
 
+#include "topk.h"
+
 #include <cstring>
 #include <queue>
 
 #include "../compressor_registry.h"
-#include "topk.h"
 
 namespace byteps {
 namespace common {
@@ -44,7 +45,8 @@ CompressorRegistry::Register reg(
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t TopkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
+tensor_t TopkCompressor::CompressImpl(index_t* __restrict__ dst,
+                                      const scalar_t* __restrict__ src,
                                       size_t len) {
   BPS_CHECK_LE(this->_k, len / 2);
   using pair_t = std::pair<index_t, scalar_t>;
@@ -79,17 +81,12 @@ tensor_t TopkCompressor::Compress(tensor_t grad) {
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t TopkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
+tensor_t TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                        const index_t* __restrict__ src,
                                         size_t compressed_size) {
   using pair_t = std::pair<index_t, scalar_t>;
 
   auto ptr = reinterpret_cast<const pair_t*>(src);
-  if ((void*)dst == (void*)src) {
-    auto buf = reinterpret_cast<pair_t*>(_buf.get());
-    std::memcpy(buf, ptr, compressed_size);
-    ptr = const_cast<const pair_t*>(buf);
-  }
-
   // reset to zeros
   std::memset(dst, 0, _size);
   size_t len = compressed_size / sizeof(pair_t);
@@ -103,17 +100,20 @@ tensor_t TopkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
 
 tensor_t TopkCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
-  auto dst = _buf.get();
-#else
-  auto dst = compressed.data;
-#endif
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
+  // server
+  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, _buf.get(), compressed.data,
                          compressed.size);
+#else
+  // worker
+  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, compressed.data, _buf.get(),
+                         compressed.size);
+#endif
 }
 
 template <typename index_t, typename scalar_t>
-void TopkCompressor::FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                                         const index_t* compressed,
+void TopkCompressor::FastUpdateErrorImpl(scalar_t* __restrict__ error,
+                                         scalar_t* __restrict__ corrected,
+                                         const index_t* __restrict__ compressed,
                                          size_t compressed_size) {
   using pair_t = std::pair<index_t, scalar_t>;
 

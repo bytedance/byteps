@@ -15,6 +15,8 @@
 
 #include "compressor_registry.h"
 
+#include <array>
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -40,14 +42,17 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
                                                        size_t size,
                                                        DataType dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
-  const std::string types[] = {
+  const std::array<std::string, 3> types = {
       "compressor_type",
       "ef_type",
       "momentum_type",
   };
 #else
   // server do not need momentum
-  const std::string types[] = {"compressor_type", "ef_type"};
+  const std::array<std::string, 2> types = {
+      "compressor_type",
+      "ef_type",
+  };
 #endif
   std::unique_ptr<Compressor> internal_cptr = nullptr;
   for (auto& type : types) {

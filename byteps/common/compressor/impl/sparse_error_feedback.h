@@ -16,8 +16,6 @@
 #ifndef BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
 #define BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
 
-#include <unordered_map>
-
 #include "../error_feedback.h"
 #include "../utils.h"
 
@@ -37,7 +35,7 @@ class SparseErrorFeedbackCompressor : public ErrorFeedback {
   SparseErrorFeedbackCompressor(size_t size, DataType dtype,
                                 std::unique_ptr<Compressor> cptr, size_t k,
                                 unsigned int seed = 0);
-  virtual ~SparseErrorFeedbackCompressor();
+  ~SparseErrorFeedbackCompressor() override;
 
  protected:
   void UpdateGradient(tensor_t grad) override;
@@ -60,7 +58,6 @@ class SparseErrorFeedbackCompressor : public ErrorFeedback {
   size_t _k;
   XorShift128PlusBitShifterRNG _rng;
   std::vector<uint32_t> _selected_idx;
-  std::unordered_map<uint32_t, bool> _vis;
 };
 }  // namespace compressor
 }  // namespace common

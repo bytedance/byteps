@@ -45,7 +45,7 @@ class VanillaErrorFeedbackCompressor : public ErrorFeedback {
  public:
   VanillaErrorFeedbackCompressor(size_t size, DataType dtype,
                                  std::unique_ptr<Compressor> cptr);
-  virtual ~VanillaErrorFeedbackCompressor();
+  ~VanillaErrorFeedbackCompressor() override;
 
  protected:
   void UpdateGradient(tensor_t grad) override;

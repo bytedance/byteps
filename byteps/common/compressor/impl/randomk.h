@@ -17,7 +17,6 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
-#include <unordered_map>
 #include <vector>
 
 #include "../compressor.h"
@@ -50,7 +49,7 @@ class RandomkCompressor : public Compressor {
       _rng.set_seed(2020);
     }
   };
-  virtual ~RandomkCompressor() = default;
+  ~RandomkCompressor() override;
 
   /*!
    * \brief Compress function
@@ -84,22 +83,25 @@ class RandomkCompressor : public Compressor {
 
  private:
   template <typename scalar_t>
-  tensor_t CompressImpl(scalar_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImpl(scalar_t* __restrict__ dst,
+                        const scalar_t* __restrict__ src, size_t len);
 
   template <typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const scalar_t* src,
+  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
+                          const scalar_t* __restrict__ src,
                           size_t compressed_size);
 
   template <typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const scalar_t* compressed, size_t compressed_size);
+  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
+                           scalar_t* __restrict__ corrected,
+                           const scalar_t* __restrict__ compressed,
+                           size_t compressed_size);
 
  private:
   unsigned int _k;
 
   XorShift128PlusBitShifterRNG _rng;
   std::vector<uint32_t> _selected_idx;
-  std::unordered_map<uint32_t, bool> _vis;
   bool _is_scale;
 };
 }  // namespace compressor

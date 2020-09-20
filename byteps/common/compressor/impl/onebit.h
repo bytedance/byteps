@@ -40,7 +40,7 @@ class OnebitCompressor : public Compressor {
  public:
   OnebitCompressor(size_t size, DataType dtype, bool use_scale = false)
       : Compressor(size, dtype), _use_scale(use_scale) {}
-  virtual ~OnebitCompressor() = default;
+  ~OnebitCompressor() override;
 
   /*!
    * \brief Compress function
@@ -75,15 +75,19 @@ class OnebitCompressor : public Compressor {
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  tensor_t CompressImpl(index_t* __restrict__ dst,
+                        const scalar_t* __restrict__ src, size_t len);
 
   template <typename scalar_t, typename index_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
+  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
+                          const index_t* __restrict__ src,
                           size_t compressed_size);
 
   template <typename scalar_t, typename index_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
+                           scalar_t* __restrict__ corrected,
+                           const index_t* __restrict__ compressed,
+                           size_t compressed_size);
 
  private:
   bool _use_scale;

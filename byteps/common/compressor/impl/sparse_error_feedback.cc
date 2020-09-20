@@ -13,14 +13,16 @@
 // limitations under the License.
 // =============================================================================
 
-#include <errno.h>
+#include "sparse_error_feedback.h"
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#include <cerrno>
 #include <iterator>
 
 #include "../compressor_registry.h"
-#include "sparse_error_feedback.h"
 
 namespace byteps {
 namespace common {
@@ -66,7 +68,7 @@ SparseErrorFeedbackCompressor::SparseErrorFeedbackCompressor(
   }
   _fd = open("lr.s", O_RDONLY);
   BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
-  void* ptr = mmap(0, 8, PROT_READ, MAP_SHARED, _fd, 0);
+  void* ptr = mmap(nullptr, 8, PROT_READ, MAP_SHARED, _fd, 0);
   BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed, errno=" << strerror(errno);
   _mm = ptr;
   _pre_lr = _cur_lr = *reinterpret_cast<double*>(_mm);
@@ -87,14 +89,9 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
 #else
   size_t len = grad.size / getDataTypeLength(grad.dtype);
 
-  while (_selected_idx.size() < this->_k) {
-    auto idx = _rng.Randint(0, len);
-    if (!_vis[idx]) {
-      _selected_idx.push_back(idx);
-      _vis[idx] = 1;
-    }
+  for (size_t i = 0; i < this->_k; ++i) {
+    _selected_idx.push_back(_rng.Randint(0, len));
   }
-  _vis.clear();
 
   this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
                                  static_cast<DataType>(grad.dtype),

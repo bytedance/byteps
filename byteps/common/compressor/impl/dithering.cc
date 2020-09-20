@@ -15,8 +15,6 @@
 
 #include "dithering.h"
 
-#include <omp.h>
-
 #include <cmath>
 #include <cstring>
 
@@ -55,7 +53,8 @@ CompressorRegistry::Register reg(
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::CompressImplL2(index_t* dst, const scalar_t* src,
+tensor_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
+                                             const scalar_t* __restrict__ src,
                                              size_t len) {
   // normalize
   double scale = 0.0;
@@ -101,11 +100,11 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* dst, const scalar_t* src,
   bit_writer.Flush();
 
   // bits
-  index_t* p_bits = reinterpret_cast<index_t*>(&dst[bit_writer.blocks()]);
+  auto p_bits = reinterpret_cast<index_t*>(&dst[bit_writer.blocks()]);
   *p_bits = bit_writer.bits();
 
   // l2
-  float* p_scale = reinterpret_cast<float*>(&dst[bit_writer.blocks() + 1]);
+  auto p_scale = reinterpret_cast<float*>(&dst[bit_writer.blocks() + 1]);
   *p_scale = scale;
 
   return {dst, bit_writer.blocks() * sizeof(index_t) + sizeof(index_t) +
@@ -113,7 +112,8 @@ tensor_t DitheringCompressor::CompressImplL2(index_t* dst, const scalar_t* src,
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::CompressImplMax(index_t* dst, const scalar_t* src,
+tensor_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
+                                              const scalar_t* __restrict__ src,
                                               size_t len) {
   double scale = 0.0;
   for (size_t i = 0; i < len; i++) {
@@ -150,7 +150,8 @@ tensor_t DitheringCompressor::CompressImplMax(index_t* dst, const scalar_t* src,
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::CompressImpl(index_t* dst, const scalar_t* src,
+tensor_t DitheringCompressor::CompressImpl(index_t* __restrict__ dst,
+                                           const scalar_t* __restrict__ src,
                                            size_t len) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
@@ -185,7 +186,8 @@ tensor_t DitheringCompressor::Compress(tensor_t grad) {
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
+tensor_t DitheringCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                             const index_t* __restrict__ src,
                                              size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
@@ -196,8 +198,8 @@ tensor_t DitheringCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::DecompressImplL2(scalar_t* dst,
-                                               const index_t* src,
+tensor_t DitheringCompressor::DecompressImplL2(scalar_t* __restrict__ dst,
+                                               const index_t* __restrict__ src,
                                                size_t compressed_size) {
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
@@ -207,11 +209,6 @@ tensor_t DitheringCompressor::DecompressImplL2(scalar_t* dst,
   auto* p_scale = reinterpret_cast<const float*>(src + blocks + 1);
   const float scale = *p_scale;
 
-  auto ptr = const_cast<index_t*>(src);
-  if ((void*)dst == (void*)src) {
-    ptr = reinterpret_cast<index_t*>(_buf.get());
-    std::memcpy(ptr, src, compressed_size);
-  }
   std::memset(dst, 0, _size);
 
   unsigned int s = _s;
@@ -219,7 +216,7 @@ tensor_t DitheringCompressor::DecompressImplL2(scalar_t* dst,
     s = 1 << (_s - 1);
   }
 
-  BitReader<index_t> bit_reader(ptr);
+  BitReader<index_t> bit_reader(src);
   size_t last_non_zero_pos = -1;
   while (bit_reader.bits() < bits) {
     size_t diff = EliasDeltaDecode(bit_reader);
@@ -235,8 +232,8 @@ tensor_t DitheringCompressor::DecompressImplL2(scalar_t* dst,
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t DitheringCompressor::DecompressImplMax(scalar_t* dst,
-                                                const index_t* src,
+tensor_t DitheringCompressor::DecompressImplMax(scalar_t* __restrict__ dst,
+                                                const index_t* __restrict__ src,
                                                 size_t compressed_size) {
   size_t len = (compressed_size - sizeof(float)) / sizeof(index_t);
   auto* p_scale = reinterpret_cast<const float*>(src + len);
@@ -247,7 +244,8 @@ tensor_t DitheringCompressor::DecompressImplMax(scalar_t* dst,
     s = 1 << (_s - 1);
   }
 
-  for (int i = len - 1; i >= 0; --i) {
+#pragma omp parallel for simd
+  for (int i = 0; i < len; ++i) {
     dst[i] = src[i] * scale / s;
   }
 
@@ -256,24 +254,25 @@ tensor_t DitheringCompressor::DecompressImplMax(scalar_t* dst,
 
 tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
+  auto src = compressed.data;
   auto dst = _buf.get();
 #else
+  auto src = _buf.get();
   auto dst = compressed.data;
 #endif
   switch (this->_ntype) {
     case NormalizeType::L2: {
-      DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
-                             compressed.size);
+      DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, src, compressed.size);
     } break;
     case NormalizeType::MAX: {
       if (this->_s <= (1 << 7)) {
         using index_t = int8_t;
-        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst,
-                                      compressed.data, compressed.size);
+        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst, src,
+                                      compressed.size);
       } else if (this->_s <= (1 << 15)) {
         using index_t = int16_t;
-        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst,
-                                      compressed.data, compressed.size);
+        DECOMPRESS_IMPL_SCALAR_SWITCH(_dtype, DecompressImpl, dst, src,
+                                      compressed.size);
       } else {
         BPS_CHECK(0) << "k exceeds the maximum limit.";
       }
@@ -284,10 +283,9 @@ tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
 }
 
 template <typename index_t, typename scalar_t>
-void DitheringCompressor::FastUpdateErrorImplL2(scalar_t* error,
-                                                scalar_t* corrected,
-                                                const index_t* compressed,
-                                                size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImplL2(
+    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
+    const index_t* __restrict__ compressed, size_t compressed_size) {
   const size_t blocks =
       (compressed_size - sizeof(float) - sizeof(index_t)) / sizeof(index_t);
   auto* p_bits = reinterpret_cast<const index_t*>(compressed + blocks);
@@ -317,10 +315,9 @@ void DitheringCompressor::FastUpdateErrorImplL2(scalar_t* error,
 }
 
 template <typename index_t, typename scalar_t>
-void DitheringCompressor::FastUpdateErrorImplMax(scalar_t* error,
-                                                 scalar_t* corrected,
-                                                 const index_t* compressed,
-                                                 size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImplMax(
+    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
+    const index_t* __restrict__ compressed, size_t compressed_size) {
   size_t len = (compressed_size - sizeof(float)) / sizeof(index_t);
   auto* p_scale = reinterpret_cast<const float*>(compressed + len);
   const float scale = *p_scale;
@@ -332,16 +329,16 @@ void DitheringCompressor::FastUpdateErrorImplMax(scalar_t* error,
     s = 1 << (_s - 1);
   }
 
-  for (int i = len - 1; i >= 0; --i) {
+#pragma omp parallel for simd
+  for (int i = 0; i < len; ++i) {
     error[i] -= compressed[i] * scale / s;
   }
 }
 
 template <typename index_t, typename scalar_t>
-void DitheringCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                              scalar_t* corrected,
-                                              const index_t* compressed,
-                                              size_t compressed_size) {
+void DitheringCompressor::FastUpdateErrorImpl(
+    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
+    const index_t* __restrict__ compressed, size_t compressed_size) {
   if (std::is_same<index_t, int8_t>::value ||
       std::is_same<index_t, int16_t>::value) {
     FastUpdateErrorImplMax<index_t, scalar_t>(error, corrected, compressed,

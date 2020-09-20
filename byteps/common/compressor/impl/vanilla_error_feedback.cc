@@ -13,13 +13,15 @@
 // limitations under the License.
 // =============================================================================
 
-#include <errno.h>
+#include "vanilla_error_feedback.h"
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <cerrno>
+
 #include "../compressor_registry.h"
-#include "vanilla_error_feedback.h"
 
 namespace byteps {
 namespace common {
@@ -43,7 +45,7 @@ VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
     : ErrorFeedback(size, dtype, std::move(cptr)) {
   _fd = open("lr.s", O_RDONLY);
   BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
-  void* ptr = mmap(0, 8, PROT_READ, MAP_SHARED, _fd, 0);
+  void* ptr = mmap(nullptr, 8, PROT_READ, MAP_SHARED, _fd, 0);
   BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed, errno=" << strerror(errno);
   _mm = ptr;
   _pre_lr = _cur_lr = *reinterpret_cast<double*>(_mm);

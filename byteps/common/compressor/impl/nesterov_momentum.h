@@ -37,7 +37,7 @@ class NesterovMomentumCompressor : public Momentum {
   NesterovMomentumCompressor(size_t size, DataType dtype,
                              std::unique_ptr<Compressor> cptr, float mu)
       : Momentum(size, dtype, std::move(cptr), mu){};
-  virtual ~NesterovMomentumCompressor() = default;
+  ~NesterovMomentumCompressor() override;
 
  protected:
   void UpdateMom(tensor_t grad) override;
