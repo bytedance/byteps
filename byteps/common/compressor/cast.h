@@ -53,7 +53,7 @@ class Cast : public Compressor {
    * \param grad input gradient
    * \return tensor_t fp32 gradient
    */
-  virtual tensor_t CastToFP32(tensor_t grad);
+  virtual tensor_t CastToFP32(tensor_t grad) = 0;
 
  protected:
   /*! \brief buffer of Cast */
