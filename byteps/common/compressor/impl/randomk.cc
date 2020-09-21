@@ -115,7 +115,7 @@ tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
 #ifdef BYTEPS_BUILDING_SERVER
   // server
   // do nothing
-  return {compressed.data, compressed.size};
+  return {compressed.data, compressed.size, _dtype};
 #else
   // worker
   DECOMPRESS_IMPL_SWITCH2(_dtype, DecompressImpl, compressed.data, _buf.get(),
@@ -137,8 +137,8 @@ void RandomkCompressor::FastUpdateErrorImpl(
 
 void RandomkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                         tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH2(_dtype, FastUpdateErrorImpl, error.data,
-                                 corrected.data, compressed.data,
+  FAST_UPDATE_ERROR_IMPL_SWITCH2(corrected.dtype, FastUpdateErrorImpl,
+                                 error.data, corrected.data, compressed.data,
                                  compressed.size);
 }
 }  // namespace compressor

@@ -51,7 +51,7 @@ class ErrorFeedback : public Compressor {
   // error buffer should be cleared to zeros at the beginning.
   ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
       : Compressor(size, dtype),
-        _error(new byte_t[size]()),
+        _error(new byte_t[Align(size, dtype, true)]()),
         _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)) {}
   ~ErrorFeedback() override = default;

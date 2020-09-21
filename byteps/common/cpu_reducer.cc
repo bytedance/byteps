@@ -300,5 +300,73 @@ int CpuReducer::_sparse_sum(T* __restrict__ dst, const T* __restrict__ src,
 
   return 0;
 }
+
+int CpuReducer::sum_mixed_precision(void* dst, const void* src, size_t len,
+                                    DataType dtype) {
+  switch (dtype) {
+    case BYTEPS_FLOAT16:
+      return _sum_mixed_precision(reinterpret_cast<float*>(dst),
+                                  reinterpret_cast<const half*>(src), len);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+}
+
+template <typename T>
+int CpuReducer::_sum_mixed_precision(float* __restrict__ dst,
+                                     const T* __restrict__ src, size_t len) {
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
+    dst[i] += src[i];
+  }
+  return 0;
+}
+
+int CpuReducer::copy_mixed_precision(void* dst, const void* src, size_t len,
+                                     DataType dtype, bool up) {
+  if (up) {
+    // cast into higher data type
+    switch (dtype) {
+      case BYTEPS_FLOAT16:
+        return _copy_mixed_precision_up(reinterpret_cast<float*>(dst),
+                                        reinterpret_cast<const half_t*>(src),
+                                        len);
+      default:
+        BPS_CHECK(0) << "Unsupported data type: " << dtype;
+    }
+  } else {
+    // cast into lower data type
+    switch (dtype) {
+      case BYTEPS_FLOAT16:
+        return _copy_mixed_precision_down(reinterpret_cast<half_t*>(dst),
+                                          reinterpret_cast<const float*>(src),
+                                          len);
+      default:
+        BPS_CHECK(0) << "Unsupported data type: " << dtype;
+    }
+  }
+}
+
+template <typename T>
+int CpuReducer::_copy_mixed_precision_up(float* __restrict__ dst,
+                                         const T* __restrict__ src,
+                                         size_t len) {
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / sizeof(T); ++i) {
+    dst[i] = src[i];
+  }
+  return 0;
+}
+
+template <typename T>
+int CpuReducer::_copy_mixed_precision_down(T* __restrict__ dst,
+                                           const float* __restrict__ src,
+                                           size_t len) {
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / sizeof(float); ++i) {
+    dst[i] = src[i];
+  }
+  return 0;
+}
 }  // namespace common
 }  // namespace byteps

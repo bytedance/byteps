@@ -276,10 +276,26 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-inline size_t Align(size_t size, int dtype) {
-  const size_t min_size =
-      (getDataTypeLength(dtype) * getDataTypeLength(dtype)) * 8;
+inline size_t Align(size_t size, int dtype, bool mix = false) {
+  auto ele_size = getDataTypeLength(dtype);
+  size_t len = size / ele_size;
+  // for low-precision data, we use buffer in FP32 to avoid
+  // overflow.
+  if (mix && ele_size < 4) {
+    ele_size = 4;
+    size = len * ele_size;
+  }
+  // alignment
+  const size_t min_size = ele_size * ele_size * 8;
   return size + (min_size - size % min_size) % min_size;
+}
+
+// promote low-precision type into float32
+inline DataType Promotion(int dtype) {
+  if (getDataTypeLength(dtype) < 4) {
+    return BYTEPS_FLOAT32;
+  }
+  return static_cast<DataType>(dtype);
 }
 }  // namespace common
 }  // namespace byteps

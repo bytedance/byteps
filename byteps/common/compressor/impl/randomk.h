@@ -42,11 +42,9 @@ class RandomkCompressor : public Compressor {
   RandomkCompressor(size_t size, DataType dtype, unsigned int k,
                     unsigned int seed = 0, bool is_scale = false)
       : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
-    if (seed != 0) {
+    if (seed) {
       BPS_LOG(INFO) << "SET SEED = " << seed + k;
       _rng.set_seed(seed + k);
-    } else {
-      _rng.set_seed(k);
     }
   };
   ~RandomkCompressor() override = default;

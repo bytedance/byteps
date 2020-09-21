@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "server.h"
+
 #include "../common/compressor/utils.h"
 #include "queue.h"
 
@@ -83,6 +84,7 @@ void BytePSServerEngineThread(int i) {
     // do some check
     CHECK(msg.dst);
     CHECK(msg.src);
+    auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
 
     auto iter = compressor_map_.find(msg.key);
     if (iter != compressor_map_.end()) {
@@ -103,11 +105,22 @@ void BytePSServerEngineThread(int i) {
         auto decompressed = iter->second->Decompress(compressed);
         msg.src = decompressed.data;
         msg.len = decompressed.size;
+        msg.type.dtype = decompressed.dtype;
       }
     } else {
       if (msg.ops == ALL_RECV) {
         // 2. no compress
         auto& updates = update_buf_[msg.key];
+
+        // cast down into low-precision before communication
+        if (common::getDataTypeLength(msg.type.dtype) < 4) {
+          auto dst = updates.merged.tmp_sarray.vals.data();
+          bps_reducer_->copy_mixed_precision(dst, msg.src, msg.len, bps_type,
+                                             false);
+          msg.src = dst;
+          msg.len = updates.merged.tmp_sarray.lens[0];
+        }
+
         updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         updates.merged.len = msg.len;
       }
@@ -126,7 +139,13 @@ void BytePSServerEngineThread(int i) {
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src)
                     << "\t";
         }
-        bps_reducer_->copy(msg.dst, msg.src, msg.len);
+        // mixed precision
+        if (common::getDataTypeLength(msg.type.dtype) < 4) {
+          bps_reducer_->copy_mixed_precision(msg.dst, msg.src, msg.len,
+                                             bps_type, true);
+        } else {
+          bps_reducer_->copy(msg.dst, msg.src, msg.len);
+        }
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_COPY_MERGED_TO_STORE_AFTER \t"
@@ -169,7 +188,6 @@ void BytePSServerEngineThread(int i) {
       } break;
 
       case SUM_RECV: {
-        auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_SUM_RECV_BEFORE \t"
@@ -180,7 +198,14 @@ void BytePSServerEngineThread(int i) {
                     << "src_addr: " << DEBUG_PRINT_TENSOR_ADDRESS(msg.src)
                     << "\t";
         }
-        CHECK_GE(bps_reducer_->sum(msg.dst, msg.src, msg.len, bps_type), 0);
+        // mixed precision
+        if (common::getDataTypeLength(msg.type.dtype) < 4) {
+          bps_reducer_->sum_mixed_precision(msg.dst, msg.src, msg.len,
+                                            bps_type);
+        } else {
+          CHECK_GE(bps_reducer_->sum(msg.dst, msg.src, msg.len, bps_type), 0);
+        }
+
         if (is_debug) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: ENGINE_SUM_RECV_AFTER \t"
@@ -276,14 +301,14 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                   << (size_t)req_data.lens[0];
       }
       // init stored buffer, use page aligned memory
-      size_t aligned_size = common::Align(len, type.dtype);
+      size_t aligned_size = common::Align(len, type.dtype, true);
+      // promote type for low-precision data
+      auto dtype = common::Promotion(type.dtype);
       PageAlignedMalloc((void**)&stored->tensor, aligned_size);
-      stored->len = len;
-      stored->dtype = type.dtype;
+      stored->len = aligned_size;
+      stored->dtype = dtype;  // using promoted type
       CHECK(stored->tensor);
 
-      bps_reducer_->copy(stored->tensor, recved,
-                         len);  // we may not need this copy
       for (const auto& req : updates.request) {
         SendPushResponse(key, req, server);
       }
@@ -305,7 +330,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           updates.merged.tmp_sarray = req_data;
           // copy
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   stored->len,
+                                     stored->tensor, recved,   len,
                                      COPY_FIRST,     req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         } else {  // async mode, directly add to the buffer
@@ -333,7 +358,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                    0);
         } else {  // non-blocking
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   stored->len,
+                                     stored->tensor, recved,   len,
                                      SUM_RECV,       req_data, req_meta};
           engine_queues_[tid]->Push(msg);
         }

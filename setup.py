@@ -171,14 +171,15 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native']
+    default_flags = ['-std=c++11', '-fPIC', '-Ofast',
+                     '-Wall', '-fopenmp', '-march=native']
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
         flags_to_try = [default_flags + ['-stdlib=libc++'],
                         default_flags]
     else:
-        flags_to_try = [default_flags ,
+        flags_to_try = [default_flags,
                         default_flags + ['-stdlib=libc++']]
     for cpp_flags in flags_to_try:
         try:
@@ -225,13 +226,16 @@ def get_link_flags(build_ext):
 
     raise DistutilsPlatformError(last_err)
 
+
 def has_rdma_header():
     ret_code = subprocess.call(
         "echo '#include <rdma/rdma_cma.h>' | cpp -H -o /dev/null 2>/dev/null", shell=True)
     if ret_code != 0:
         import warnings
-        warnings.warn("\n\n No RDMA header file detected. Will disable RDMA for compilation! \n\n")
-    return ret_code==0
+        warnings.warn(
+            "\n\n No RDMA header file detected. Will disable RDMA for compilation! \n\n")
+    return ret_code == 0
+
 
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
@@ -250,16 +254,18 @@ def get_common_options(build_ext):
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
                'byteps/common/cpu_reducer.cc'] + [
-               'byteps/common/compressor/compressor_registry.cc',
-               'byteps/common/compressor/error_feedback.cc',
-               'byteps/common/compressor/momentum.cc',
-               'byteps/common/compressor/impl/dithering.cc',
-               'byteps/common/compressor/impl/onebit.cc',
-               'byteps/common/compressor/impl/randomk.cc',
-               'byteps/common/compressor/impl/topk.cc',
-               'byteps/common/compressor/impl/vanilla_error_feedback.cc',
-               'byteps/common/compressor/impl/sparse_error_feedback.cc',
-               'byteps/common/compressor/impl/nesterov_momentum.cc']
+        'byteps/common/compressor/compressor_registry.cc',
+        'byteps/common/compressor/error_feedback.cc',
+        'byteps/common/compressor/momentum.cc',
+        'byteps/common/compressor/cast.cc',
+        'byteps/common/compressor/impl/dithering.cc',
+        'byteps/common/compressor/impl/onebit.cc',
+        'byteps/common/compressor/impl/randomk.cc',
+        'byteps/common/compressor/impl/topk.cc',
+        'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+        'byteps/common/compressor/impl/sparse_error_feedback.cc',
+        'byteps/common/compressor/impl/fp16_cast.cc',
+        'byteps/common/compressor/impl/nesterov_momentum.cc']
     if "BYTEPS_USE_MPI" in os.environ and os.environ["BYTEPS_USE_MPI"] == "1":
         mpi_flags = get_mpi_flags()
         COMPILE_FLAGS = cpp_flags + \
@@ -268,7 +274,7 @@ def get_common_options(build_ext):
     else:
         COMPILE_FLAGS = cpp_flags
         LINK_FLAGS = link_flags
-    
+
     LIBRARY_DIRS = []
     LIBRARIES = []
 
@@ -305,14 +311,14 @@ def build_server(build_ext, options):
                           'byteps/common/cpu_reducer.cc',
                           'byteps/common/logging.cc',
                           'byteps/common/common.cc'] + [
-                          'byteps/common/compressor/compressor_registry.cc',
-                          'byteps/common/compressor/error_feedback.cc',
-                          'byteps/common/compressor/impl/dithering.cc',
-                          'byteps/common/compressor/impl/onebit.cc',
-                          'byteps/common/compressor/impl/randomk.cc',
-                          'byteps/common/compressor/impl/topk.cc',
-                          'byteps/common/compressor/impl/vanilla_error_feedback.cc',
-                          'byteps/common/compressor/impl/sparse_error_feedback.cc']
+        'byteps/common/compressor/compressor_registry.cc',
+        'byteps/common/compressor/error_feedback.cc',
+        'byteps/common/compressor/impl/dithering.cc',
+        'byteps/common/compressor/impl/onebit.cc',
+        'byteps/common/compressor/impl/randomk.cc',
+        'byteps/common/compressor/impl/topk.cc',
+        'byteps/common/compressor/impl/vanilla_error_feedback.cc',
+        'byteps/common/compressor/impl/sparse_error_feedback.cc']
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']
@@ -641,6 +647,7 @@ def get_nccl_vals():
 
     return nccl_include_dirs, nccl_lib_dirs, nccl_libs
 
+
 def is_mx_mkldnn():
     try:
         from mxnet import runtime
@@ -650,9 +657,9 @@ def is_mx_mkldnn():
         msg = 'INFO: Cannot detect if MKLDNN is enabled in MXNet. Please \
             set MXNET_USE_MKLDNN=1 if MKLDNN is enabled in your MXNet build.'
         if 'linux' not in sys.platform:
-            # MKLDNN is only enabled by default in MXNet Linux build. Return 
-            # False by default for non-linux build but still allow users to 
-            # enable it by using MXNET_USE_MKLDNN env variable. 
+            # MKLDNN is only enabled by default in MXNet Linux build. Return
+            # False by default for non-linux build but still allow users to
+            # enable it by using MXNET_USE_MKLDNN env variable.
             print(msg)
             return os.environ.get('MXNET_USE_MKLDNN', '0') == '1'
         else:
@@ -701,7 +708,7 @@ def build_mx_extension(build_ext, options):
     if is_mx_mkldnn():
         mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '1')]
     else:
-        mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '0')]  
+        mxnet_lib.define_macros += [('MXNET_USE_MKLDNN', '0')]
     mxnet_lib.define_macros += [('MSHADOW_USE_MKL', '0')]
 
     # use MXNet's DMLC headers first instead of ps-lite's
@@ -756,8 +763,8 @@ def check_torch_version():
                 'Your torch version %s is outdated.  '
                 'BytePS requires torch>=1.0.1' % torch.__version__)
     except ImportError:
-            print('import torch failed, is it installed?\n\n%s' %
-                  traceback.format_exc())
+        print('import torch failed, is it installed?\n\n%s' %
+              traceback.format_exc())
 
     # parse version
     version = parse_version(torch.__version__)
@@ -783,7 +790,7 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
 
 
 def build_torch_extension(build_ext, options, torch_version):
-    pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
+    pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11"
                              else flag for flag in options['COMPILE_FLAGS']]
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
                               extra_compile_args=pytorch_compile_flags)
@@ -799,7 +806,7 @@ def build_torch_extension(build_ext, options, torch_version):
     # Export TORCH_VERSION equal to our representation of torch.__version__. Internally it's
     # used for backwards compatibility checks.
     updated_macros = set_macro(
-       updated_macros, 'TORCH_VERSION', str(torch_version))
+        updated_macros, 'TORCH_VERSION', str(torch_version))
 
     # Always set _GLIBCXX_USE_CXX11_ABI, since PyTorch can only detect whether it was set to 1.
     import torch
@@ -852,7 +859,7 @@ class custom_build_ext(build_ext):
                 for flag in tf.sysconfig.get_compile_flags():
                     if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
                         has_cxx_flag = True
-                        glibcxx_flag = False if (flag[-1]=='0') else True
+                        glibcxx_flag = False if (flag[-1] == '0') else True
                         make_option += flag + ' '
                         break
                 make_option += '" '
@@ -873,7 +880,7 @@ class custom_build_ext(build_ext):
                         pass
                 else:
                     make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
-                                    str(int(torch_flag)) + ' '
+                        str(int(torch_flag)) + ' '
                     has_cxx_flag = True
                     glibcxx_flag = torch_flag
             except:
@@ -888,7 +895,6 @@ class custom_build_ext(build_ext):
 
             make_option += pre_setup.extra_make_option()
 
-
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
                                             stdout=sys.stdout,
@@ -902,7 +908,8 @@ class custom_build_ext(build_ext):
 
         options = get_common_options(self)
         if has_cxx_flag:
-            options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
+            options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' +
+                                         str(int(glibcxx_flag))]
 
         built_plugins = []
         try:

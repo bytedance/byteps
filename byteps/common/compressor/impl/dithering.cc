@@ -240,7 +240,7 @@ tensor_t DitheringCompressor::DecompressImplL2(scalar_t* __restrict__ dst,
     dst[i] = (1 - (signbit << 1)) * num;
   }
 
-  return {dst, _size};
+  return {dst, _size, _dtype};
 }
 
 template <typename index_t, typename scalar_t>
@@ -261,7 +261,7 @@ tensor_t DitheringCompressor::DecompressImplMax(scalar_t* __restrict__ dst,
     dst[i] = src[i] * scale / s;
   }
 
-  return {dst, _size};
+  return {dst, _size, _dtype};
 }
 
 tensor_t DitheringCompressor::Decompress(tensor_t compressed) {
@@ -365,21 +365,21 @@ void DitheringCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                           tensor_t compressed) {
   switch (this->_ntype) {
     case NormalizeType::L2: {
-      FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                    corrected.data, compressed.data,
+      FAST_UPDATE_ERROR_IMPL_SWITCH(corrected.dtype, FastUpdateErrorImpl,
+                                    error.data, corrected.data, compressed.data,
                                     compressed.size);
     } break;
     case NormalizeType::MAX: {
       if (this->_s <= (1 << 7)) {
         using index_t = int8_t;
-        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(_dtype, FastUpdateErrorImpl,
-                                             error.data, corrected.data,
-                                             compressed.data, compressed.size);
+        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(
+            corrected.dtype, FastUpdateErrorImpl, error.data, corrected.data,
+            compressed.data, compressed.size);
       } else if (this->_s <= (1 << 15)) {
         using index_t = int16_t;
-        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(_dtype, FastUpdateErrorImpl,
-                                             error.data, corrected.data,
-                                             compressed.data, compressed.size);
+        FAST_UPDATE_ERROR_IMPL_SCALAR_SWITCH(
+            corrected.dtype, FastUpdateErrorImpl, error.data, corrected.data,
+            compressed.data, compressed.size);
       } else {
         BPS_CHECK(0) << "k exceeds the maximum limit.";
       }

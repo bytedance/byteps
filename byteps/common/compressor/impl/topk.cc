@@ -95,7 +95,7 @@ tensor_t TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
     dst[pair.first] = pair.second;
   }
 
-  return {dst, _size};
+  return {dst, _size, _dtype};
 }
 
 tensor_t TopkCompressor::Decompress(tensor_t compressed) {
@@ -128,8 +128,8 @@ void TopkCompressor::FastUpdateErrorImpl(scalar_t* __restrict__ error,
 
 void TopkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                      tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                corrected.data, compressed.data,
+  FAST_UPDATE_ERROR_IMPL_SWITCH(corrected.dtype, FastUpdateErrorImpl,
+                                error.data, corrected.data, compressed.data,
                                 compressed.size);
 }
 }  // namespace compressor

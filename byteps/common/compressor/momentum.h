@@ -46,7 +46,7 @@ class Momentum : public Compressor {
   Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
            float mu)
       : Compressor(size, dtype),
-        _mom(new byte_t[size]()),
+        _mom(new byte_t[Align(size, dtype, true)]()),
         _mu(mu),
         _cpu_reducer(new CpuReducer(nullptr)),
         _cptr(std::move(cptr)){};

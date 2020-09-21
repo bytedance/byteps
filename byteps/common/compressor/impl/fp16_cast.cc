@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "nesterov_momentum.h"
+#include "fp16_cast.h"
 
 #include "../compressor_registry.h"
 
@@ -22,32 +22,35 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
-    "nesterov_momentum",
+    "fp16_cast",
     [](const kwargs_t& kwargs, size_t size, DataType dtype,
        std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
       BPS_CHECK_NE(cptr, nullptr);
-      // find \mu
-      auto mu = HyperParamFinder<float>(kwargs, "momentum_mu");
+      BPS_CHECK_EQ(dtype, BYTEPS_FLOAT16);
 
-      BPS_LOG(INFO) << "nesterov momentum is registered.";
-      return std::unique_ptr<NesterovMomentumCompressor>(
-          new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
+      BPS_LOG(INFO) << "fp16 cast is registered.";
+      return std::unique_ptr<FP16CastCompressor>(
+          new FP16CastCompressor(size, dtype, std::move(cptr)));
     });
 }
+#if __F16C__
+tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) {
+  auto src = reinterpret_cast<half_t*>(grad.data);
+  auto dst = reinterpret_cast<float*>(_fp32_buf.get());
+  size_t len = grad.size / sizeof(half_t);
 
-void NesterovMomentumCompressor::UpdateMom(tensor_t grad) {
-  // m_t = \mu * m_{t-1} + g_t
-  this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len; ++i) {
+    dst[i] = src[i];
+  }
+
+  // use BYTEPS_FLOAT32 as dtype in the following compression
+  return {dst, len * sizeof(float), BYTEPS_FLOAT32};
 }
-
-void NesterovMomentumCompressor::UpdateGradient(tensor_t grad) {
-  // p_t = \mu m_t + g_t
-  this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
-}
-
+#else
+tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) { return grad; }
+#endif
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

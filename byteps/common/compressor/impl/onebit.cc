@@ -95,7 +95,7 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* __restrict__ dst,
     }
   }
 
-  return {dst, _size};
+  return {dst, _size, _dtype};
 }
 
 tensor_t OnebitCompressor::Decompress(tensor_t compressed) {
@@ -134,8 +134,8 @@ void OnebitCompressor::FastUpdateErrorImpl(
 
 void OnebitCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                        tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                corrected.data, compressed.data,
+  FAST_UPDATE_ERROR_IMPL_SWITCH(corrected.dtype, FastUpdateErrorImpl,
+                                error.data, corrected.data, compressed.data,
                                 compressed.size);
 }
 }  // namespace compressor

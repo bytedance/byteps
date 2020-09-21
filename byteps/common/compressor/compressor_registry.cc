@@ -15,7 +15,7 @@
 
 #include "compressor_registry.h"
 
-#include <array>
+#include <vector>
 
 namespace byteps {
 namespace common {
@@ -38,18 +38,27 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
   return it->second;
 }
 
-std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
+std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
                                                        size_t size,
                                                        DataType dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
-  const std::array<std::string, 3> types = {
+  std::vector<std::string> types = {
       "compressor_type",
       "ef_type",
       "momentum_type",
   };
+  // lower data type should be cast into fp32
+  if (getDataTypeLength(dtype) < 4) {
+    types.emplace_back("cast_type");
+    if (dtype == BYTEPS_FLOAT16) {
+      kwargs["cast_type"] = "fp16";
+    } else {
+      BPS_LOG(FATAL) << "The data type is not supported yet.";
+    }
+  }
 #else
-  // server do not need momentum
-  const std::array<std::string, 2> types = {
+  // server do not need momentum and cast
+  std::vector<std::string> types = {
       "compressor_type",
       "ef_type",
   };

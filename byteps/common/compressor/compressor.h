@@ -53,7 +53,9 @@ namespace compressor {
 class Compressor {
  public:
   Compressor(size_t size, DataType dtype)
-      : _size(size), _dtype(dtype), _buf(new byte_t[size]){};
+      : _size(size),
+        _dtype(dtype),
+        _buf(new byte_t[Align(size, dtype, true)]){};
   virtual ~Compressor() = default;
 
   /*!
