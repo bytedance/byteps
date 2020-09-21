@@ -306,7 +306,7 @@ int CpuReducer::sum_mixed_precision(void* dst, const void* src, size_t len,
   switch (dtype) {
     case BYTEPS_FLOAT16:
       return _sum_mixed_precision(reinterpret_cast<float*>(dst),
-                                  reinterpret_cast<const half*>(src), len);
+                                  reinterpret_cast<const half_t*>(src), len);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }
