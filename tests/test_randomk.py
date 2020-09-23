@@ -125,9 +125,9 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
         assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)

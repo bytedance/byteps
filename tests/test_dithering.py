@@ -162,7 +162,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
 
                     np_g = c.flatten()
                     mx_g = param._grad[0].asnumpy().flatten()
-                    if not np.allclose(np_g, mx_g, atol=np.finfo(np.float32).eps):
+                    if not np.allclose(np_g, mx_g, atol=np.finfo(dtype).eps):
                         diff = np.abs(np_g - mx_g)
                         print("np", np_g)
                         print("mx", mx_g)
@@ -178,9 +178,9 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
         assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
