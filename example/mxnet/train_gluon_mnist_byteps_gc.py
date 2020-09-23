@@ -158,6 +158,9 @@ params = model.collect_params()
 optimizer_params = {'momentum': args.momentum, 'wd': args.wd,
                     'learning_rate': args.lr * num_workers}
 
+if args.dtype == "float16":
+    optimizer_params["multi_precision"] = True
+
 compression_params = {
     "compressor": args.compressor,
     "ef": args.ef,
