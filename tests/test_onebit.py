@@ -53,7 +53,8 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
         net = get_model("resnet18_v2")
         net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224).astype(dtype), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
