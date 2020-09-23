@@ -46,12 +46,20 @@ def randomk(x, k, state):
 
 
 class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([1, 3, 5], np.random.randint(0, 2020, size=3).tolist()))
-    def test_randomk(self, k, seed):
+    TEST_BENCH = [
+        [1, 3, 5],
+        ["float32", "float16"],
+        np.random.randint(0, 2020, size=3).tolist()
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_randomk(self, k, dtype, seed):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -61,7 +69,8 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "randomk",
             "k": k,
-            "seed": seed
+            "seed": seed,
+            "fp16": True if dtype == "float16" else False
         }
 
         params = net.collect_params()
@@ -84,7 +93,7 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
                 rngs_s[i] = np.array([s, s], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():

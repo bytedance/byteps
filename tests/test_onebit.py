@@ -64,6 +64,7 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "onebit",
             "scaling": scaling,
+            "fp16": True if dtype == "float16" else False
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -81,7 +82,7 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
 
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
-            label = batch[1].as_in_context(ctx).astype(dtype, copy=False)
+            label = batch[1].as_in_context(ctx)
 
             with autograd.record():
                 output = net(data)

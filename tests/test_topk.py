@@ -41,12 +41,19 @@ def topk(x, k):
 
 
 class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([1, 3, 5]))
-    def test_topk(self, k):
+    TEST_BENCH = [
+        [1, 3, 5],
+        ["float32", "float16"]
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_topk(self, k, dtype):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -56,6 +63,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "topk",
             "k": k,
+            "fp16": True if dtype == "float16" else False
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -72,7 +80,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
                 params[i] = param._data[0].asnumpy()
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():
