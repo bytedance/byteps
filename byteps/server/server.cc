@@ -340,7 +340,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         }
       } else {  // from other workers
         CHECK(sync_mode_);
-        // CHECK(updates.merged.tensor);
+        CHECK(updates.merged.tensor);
         if (debug_mode_ && (debug_key_ == key)) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: OTHER_WORKER_SUM \t"
