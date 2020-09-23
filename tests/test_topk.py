@@ -59,6 +59,8 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
         batch_size = 32
         optimizer_params = {'momentum': 0, 'wd': 0,
                             'learning_rate': 0.01}
+        if dtype == "float16":
+            optimizer_params["multi_precision"] = True
 
         compression_params = {
             "compressor": "topk",
