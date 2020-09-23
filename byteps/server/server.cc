@@ -320,7 +320,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         if (sync_mode_) {
           if (debug_mode_ && (debug_key_ == key)) {
             std::lock_guard<std::mutex> lock(debug_mu_);
-            LOG(INFO) << "stage: FIRST_WORKER_RECV \t"
+            LOG(INFO) << "stage: COPY_FIRST \t"
                       << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
                       << "\t"
                       << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
@@ -371,11 +371,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         auto& update = updates.merged;
         if (debug_mode_ && (debug_key_ == key)) {
           std::lock_guard<std::mutex> lock(debug_mu_);
-          LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t"
+          LOG(INFO) << "stage: ALL_RECV \t"
                     << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
                     << "\t"
-                    << "merged: "
-                    << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                     << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
         }
         if (is_engine_blocking_) {
