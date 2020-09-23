@@ -114,16 +114,12 @@ void BytePSServerEngineThread(int i) {
 
         // cast down into low-precision before communication
         if (common::getDataTypeLength(msg.type.dtype) < 4) {
-          auto dst = updates.merged.tmp_sarray.vals.data();
-          CHECK(dst);
-          bps_reducer_->copy_mixed_precision(dst, msg.src, msg.len, bps_type,
-                                             false);
-          msg.src = dst;
-          msg.len = updates.merged.tmp_sarray.lens[0];
+          bps_reducer_->copy_mixed_precision(updates.merged.tensor, msg.src,
+                                             msg.len, bps_type, false);
+        } else {
+          updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+          updates.merged.len = msg.len;
         }
-
-        updates.merged.tensor = reinterpret_cast<char*>(msg.src);
-        updates.merged.len = msg.len;
       }
     }
 
@@ -328,6 +324,9 @@ void BytePSHandler(const ps::KVMeta& req_meta,
                       << "len: " << len << "\t"
                       << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
           }
+
+          updates.merged.tensor = recved;
+          updates.merged.len = len;
           updates.merged.tmp_sarray = req_data;
           // copy
           BytePSEngineMessage msg = {timestamp_++,   type,     key,
