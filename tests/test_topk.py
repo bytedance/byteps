@@ -109,6 +109,18 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
 
                     params[i] -= optimizer_params["learning_rate"] * c
 
+                    np_g = c.flatten()
+                    mx_g = param._grad[0].asnumpy().flatten()
+                    if not np.allclose(np_g, mx_g, atol=np.finfo(dtype).eps):
+                        diff = np.abs(np_g - mx_g)
+                        print("np", np_g)
+                        print("mx", mx_g)
+                        print("diff", diff)
+                        print("max diff", np.max(diff))
+                        idx = np.nonzero(diff > 1e-5)
+                        print("idx", idx, np_g[idx], mx_g[idx])
+                        input()
+
         cnt = 0
         tot = 0
         for i, param in enumerate(trainer._params):
