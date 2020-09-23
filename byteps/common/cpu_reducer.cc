@@ -363,7 +363,7 @@ int CpuReducer::_copy_mixed_precision_down(T* __restrict__ dst,
                                            const float* __restrict__ src,
                                            size_t len) {
 #pragma omp parallel for simd num_threads(_num_threads)
-  for (size_t i = 0; i < len / sizeof(float); ++i) {
+  for (size_t i = 0; i < len / sizeof(T); ++i) {
     dst[i] = src[i];
   }
   return 0;

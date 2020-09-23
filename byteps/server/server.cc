@@ -114,9 +114,9 @@ void BytePSServerEngineThread(int i) {
 
         // cast down into low-precision before communication
         if (common::getDataTypeLength(msg.type.dtype) < 4) {
-          LOG(INFO) << "debug";
-          // bps_reducer_->copy_mixed_precision(updates.merged.tensor, msg.src,
-          //                                    msg.len, bps_type, false);
+          bps_reducer_->copy_mixed_precision(updates.merged.tensor, msg.src,
+                                             updates.merged.len, bps_type,
+                                             false);
         } else {
           updates.merged.tensor = reinterpret_cast<char*>(msg.src);
         }
