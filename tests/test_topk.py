@@ -59,8 +59,6 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
         batch_size = 32
         optimizer_params = {'momentum': 0, 'wd': 0,
                             'learning_rate': 0.01}
-        if dtype == "float16":
-            optimizer_params["multi_precision"] = True
 
         compression_params = {
             "compressor": "topk",
@@ -125,6 +123,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
 
         cnt = 0
         tot = 0
+        threshold = 0 if dtype == "float32" else 10
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
@@ -134,7 +133,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
                     idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
-        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
+        assert cnt <= threshold, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
 if __name__ == '__main__':
