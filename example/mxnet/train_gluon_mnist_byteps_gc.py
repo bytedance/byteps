@@ -149,7 +149,7 @@ model.cast(args.dtype)
 model.initialize(mx.init.MSRAPrelu(), ctx=context)
 # if bps.rank() == 0:
 model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(
-    bps.local_rank()).astype(args.dtype, copy=False)))
+    bps.local_rank())).astype(args.dtype, copy=False))
 model.hybridize()
 
 params = model.collect_params()
