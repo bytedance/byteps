@@ -115,6 +115,7 @@ void BytePSServerEngineThread(int i) {
         // cast down into low-precision before communication
         if (common::getDataTypeLength(msg.type.dtype) < 4) {
           auto dst = updates.merged.tmp_sarray.vals.data();
+          CHECK(dst);
           bps_reducer_->copy_mixed_precision(dst, msg.src, msg.len, bps_type,
                                              false);
           msg.src = dst;
