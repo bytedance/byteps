@@ -41,13 +41,19 @@ def onebit(x, scaling):
 
 
 class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([True, False]))
-    def test_onebit(self, scaling):
+    TEST_BENCH = [
+        [True, False],
+        ["float32", "float16"]
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_onebit(self, scaling, dtype):
         bps.init()
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224).astype(dtype), ctx=ctx))
 
         # hyper-params
         batch_size = 32
@@ -73,8 +79,8 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
                 params[i] = param._data[0].asnumpy()
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
-            label = batch[1].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
+            label = batch[1].as_in_context(ctx).astype(dtype, copy=False)
 
             with autograd.record():
                 output = net(data)
