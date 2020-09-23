@@ -118,7 +118,6 @@ void BytePSServerEngineThread(int i) {
                                              msg.len, bps_type, false);
         } else {
           updates.merged.tensor = reinterpret_cast<char*>(msg.src);
-          updates.merged.len = msg.len;
         }
       }
     }
