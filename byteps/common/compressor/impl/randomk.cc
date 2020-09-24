@@ -90,21 +90,17 @@ tensor_t RandomkCompressor::Compress(tensor_t grad) {
 #endif
 }
 
+// TODO
 template <typename scalar_t>
 tensor_t RandomkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
-                                           const scalar_t* __restrict__ src,
+                                           const float* __restrict__ src,
                                            size_t compressed_size) {
-  auto buf = reinterpret_cast<scalar_t*>(_buf.get());
-  if ((void*)dst == (void*)src) {
-    std::memcpy(buf, src, compressed_size);
-  }
-
   // reset to zeros
   std::memset(dst, 0, _size);
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < this->_k; ++i) {
-    dst[_selected_idx[i]] = buf[i];
+    dst[_selected_idx[i]] = src[i];
   }
 
   _selected_idx.clear();

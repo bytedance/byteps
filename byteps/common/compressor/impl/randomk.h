@@ -86,7 +86,7 @@ class RandomkCompressor : public Compressor {
 
   template <typename scalar_t>
   tensor_t DecompressImpl(scalar_t* __restrict__ dst,
-                          const scalar_t* __restrict__ src,
+                          const float* __restrict__ src,
                           size_t compressed_size);
 
   template <typename scalar_t>

@@ -110,19 +110,19 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                    \
   }
 
-#define DECOMPRESS_IMPL_SWITCH2(dtype, func, dst, src, compressed_size)   \
-  switch (dtype) {                                                        \
-    case BYTEPS_FLOAT16:                                                  \
-      return func(reinterpret_cast<half_t*>(dst),                         \
-                  reinterpret_cast<const half_t*>(src), compressed_size); \
-    case BYTEPS_FLOAT32:                                                  \
-      return func(reinterpret_cast<float*>(dst),                          \
-                  reinterpret_cast<const float*>(src), compressed_size);  \
-    case BYTEPS_FLOAT64:                                                  \
-      return func(reinterpret_cast<double*>(dst),                         \
-                  reinterpret_cast<const double*>(src), compressed_size); \
-    default:                                                              \
-      BPS_CHECK(0) << "Unsupported data type:" << dtype;                  \
+#define DECOMPRESS_IMPL_SWITCH2(dtype, func, dst, src, compressed_size)  \
+  switch (dtype) {                                                       \
+    case BYTEPS_FLOAT16:                                                 \
+      return func(reinterpret_cast<half_t*>(dst),                        \
+                  reinterpret_cast<const float*>(src), compressed_size); \
+    case BYTEPS_FLOAT32:                                                 \
+      return func(reinterpret_cast<float*>(dst),                         \
+                  reinterpret_cast<const float*>(src), compressed_size); \
+    case BYTEPS_FLOAT64:                                                 \
+      return func(reinterpret_cast<double*>(dst),                        \
+                  reinterpret_cast<const float*>(src), compressed_size); \
+    default:                                                             \
+      BPS_CHECK(0) << "Unsupported data type:" << dtype;                 \
   }
 
 #define DECOMPRESS_IMPL_SCALAR_SWITCH(dtype, func, dst, src, compressed_size) \

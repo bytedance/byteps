@@ -84,7 +84,8 @@ template <typename index_t, typename scalar_t>
 tensor_t TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
                                         const index_t* __restrict__ src,
                                         size_t compressed_size) {
-  using pair_t = std::pair<index_t, scalar_t>;
+  // TODO
+  using pair_t = std::pair<index_t, float>;
 
   auto ptr = reinterpret_cast<const pair_t*>(src);
   // reset to zeros
