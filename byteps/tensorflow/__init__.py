@@ -23,8 +23,6 @@ from __future__ import print_function
 import os
 import warnings
 
-import sys
-
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull, _push_pull_xla, _sync_tensor, _sync_all_tensors, broadcast_xla, _print_tensors
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
@@ -446,6 +444,19 @@ if hasattr(tf, 'GradientTape'):
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
                                  else grad for grad in grads]
+                    return [push_pull(grad, scope,
+                                      device_dense=self._device_dense,
+                                      device_sparse=self._device_sparse,
+                                      compression=self._compression)
+                            if grad is not None else grad
+                            for grad in grads]
+
+            def push_pull_grads_xla(grads):
+                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                    if self._sparse_as_dense:
+                        grads = [tf.convert_to_tensor(grad)
+                                 if grad is not None and isinstance(grad, tf.IndexedSlices)
+                                 else grad for grad in grads]
                     new_grads_names = [push_pull_xla(grad, scope,
                                       device_dense=self._device_dense,
                                       device_sparse=self._device_sparse,
@@ -453,9 +464,20 @@ if hasattr(tf, 'GradientTape'):
                             if grad is not None else grad
                             for grad in grads]
                     grads_and_names = list(zip(*new_grads_names))
-                    return list(grads_and_names[0]), list(grads_and_names[1])
+                    # return list(grads_and_names[0]), list(grads_and_names[1])
+                    avg_grads, grad_names = list(grads_and_names[0]), list(grads_and_names[1])
 
-            self._push_pull_grads = push_pull_grads
+                new_grad_names = ["throwaway_dummy"] * len(grads) + grad_names
+                tmp_avg_grads = self._sync_grads_one_shot(grads + avg_grads, new_grad_names)
+                tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
+                avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
+                return avg_grads
+
+            enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
+            if enable_xla == '1':
+                self._push_pull_grads = push_pull_grads_xla
+            else:
+                self._push_pull_grads = push_pull_grads
 
             def sync_grads(grads, grad_names):
                 with tf.name_scope(self._name + "_Push_Pull") as scope:
@@ -473,16 +495,11 @@ if hasattr(tf, 'GradientTape'):
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
-            if size() <= 1:
+            if size() > 1:
+                avg_grads = self._push_pull_grads(gradients)
+                return avg_grads
+            else:
                 return gradients
-            # gradients = _print_tensors(gradients, [aa.name for aa in gradients])
-            avg_grads, grad_names = self._push_pull_grads(gradients)
-            new_grad_names = ["throwaway_dummy"] * len(gradients) + grad_names
-            tmp_avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
-            tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
-            avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
-
-            return avg_grads
 
 
     def DistributedGradientTape(gradtape, device_dense='', device_sparse='',

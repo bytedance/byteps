@@ -26,7 +26,6 @@ import ctypes
 from enum import Enum
 import random
 import string
-import sys
 
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
