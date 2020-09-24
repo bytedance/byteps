@@ -30,7 +30,6 @@ from meta_test import MetaTest
 from utils import fake_data, randint
 
 
-@jit(nopython=True)
 def randomk(x, k, state):
     y = x.flatten()
     low = np.uint64(0)
