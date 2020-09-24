@@ -88,7 +88,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
         np.random.randint(0, 2020, size=3).tolist()
     ]
 
-    @parameterized.expand(itertools.product([2, 4, 8], ["linear", "natural"], ["max", "l2"], np.random.randint(0, 2020, size=3).tolist()))
+    @parameterized.expand(itertools.product(*TEST_BENCH))
     def test_dithering(self, k, ptype, ntype, dtype, seed):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
