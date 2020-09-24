@@ -122,7 +122,7 @@ def submit(args):
     for i, (node, port) in enumerate(server_hosts):
         name = 'server'
         pass_envs['DMLC_ROLE'] = name
-        server_numa_cpu = int(os.getenv["BYTEPS_SERVER_NUMA"]) + i
+        server_numa_cpu = int(os.getenv("BYTEPS_SERVER_NUMA")) + i
         prog = get_env(pass_envs) + 'numactl --physcpubind ' + \
             str(server_numa_cpu) + (' '.join(args.command))
         threads.append(start_ssh(prog, node, port,
