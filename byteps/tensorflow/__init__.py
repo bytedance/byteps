@@ -123,7 +123,7 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-                # lambda: tf.identity(summed_tensor_compressed))
+        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
             _div = tf.div if hasattr(tf, 'div') else tf.math.divide
@@ -473,17 +473,16 @@ if hasattr(tf, 'GradientTape'):
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
-            if size() > 1:
-                # gradients = _print_tensors(gradients, [aa.name for aa in gradients])
-                avg_grads, grad_names = self._push_pull_grads(gradients)
-                new_grad_names = ["throwaway_dummy"] * len(gradients) + grad_names
-                tmp_avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
-                tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
-                avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
-
-                return avg_grads
-            else:
+            if size() <= 1:
                 return gradients
+            # gradients = _print_tensors(gradients, [aa.name for aa in gradients])
+            avg_grads, grad_names = self._push_pull_grads(gradients)
+            new_grad_names = ["throwaway_dummy"] * len(gradients) + grad_names
+            tmp_avg_grads = self._sync_grads_one_shot(gradients + avg_grads, new_grad_names)
+            tmp_tensor = tf.reshape(tmp_avg_grads[-1], [-1])
+            avg_grads = tf.cond(tmp_tensor[0] > tmp_tensor[1], lambda: [tf.identity(aa) for aa in avg_grads], lambda: [tf.identity(aa) for aa in avg_grads])
+
+            return avg_grads
 
 
     def DistributedGradientTape(gradtape, device_dense='', device_sparse='',

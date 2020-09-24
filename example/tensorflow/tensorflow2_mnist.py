@@ -45,7 +45,6 @@ checkpoint_dir = './checkpoints'
 checkpoint = tf.train.Checkpoint(model=mnist_model, optimizer=opt)
 
 
-# @tf.function()
 @tf.function(experimental_compile=True)
 def training_step(images, labels, first_batch):
     with tf.GradientTape() as tape:
@@ -55,9 +54,6 @@ def training_step(images, labels, first_batch):
     tape = bps.DistributedGradientTape(tape)
 
     grads = tape.gradient(loss_value, mnist_model.trainable_variables)
-    if first_batch:
-        grads = bps._print_tensors(grads, [aa.name for aa in grads])
-    # add another call to sync all tensors.
     opt.apply_gradients(zip(grads, mnist_model.trainable_variables))
 
     # Note: broadcast should be done after the first gradient step to ensure optimizer

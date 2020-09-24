@@ -39,10 +39,6 @@ dataset = tf.data.Dataset.from_tensor_slices(
 )
 dataset = dataset.repeat().shuffle(10000).batch(128)
 
-tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
-tf.keras.backend.clear_session()
-tf.config.optimizer.set_jit(True) # Start with XLA enabled.
-
 mnist_model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(32, [3, 3], activation='relu'),
     tf.keras.layers.Conv2D(64, [3, 3], activation='relu'),
