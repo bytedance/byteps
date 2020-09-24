@@ -123,7 +123,7 @@ def submit(args):
         name = 'server'
         pass_envs['DMLC_ROLE'] = name
         server_numa_cpu = 46 + i
-        prog = get_env(pass_envs) + 'numactl --physcpubind ' + \
+        prog = get_env(pass_envs) + 'numactl --physcpubind=' + \
             str(server_numa_cpu) + (' '.join(args.command))
         threads.append(start_ssh(prog, node, port,
                                  username, name + str(i), pem))
