@@ -283,6 +283,57 @@ def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
         if is_variable:
             if hasattr(tf, 'assign_sub'):
                 with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                    output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, M = 2)
+            else:
+                with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
+                    output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+        else:
+            with tf.device(tensor.device):
+                input_tensor = tf.zeros_like(tensor)
+            output, handle = C_LIB.byteps_push_pull_xla(input_tensor, name=name, input_name = full_name, M = 2)
+    else:
+        return output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+
+    output_name = output.name
+    handle = tf.reshape(handle, [-1])
+    output = tf.cond(handle[0] < handle[1],
+            lambda: tf.identity(output),
+            lambda: tf.identity(output))
+    return output, output_name
+
+# uses blocking push pull
+def broadcast_xla_old(tensor, root_rank, scope='', name=None, is_variable=True):
+    """An op which broadcasts the input tensor on root rank to the same input tensor
+    on all other BytePS processes.
+    The broadcast operation is keyed by the name of the op. The tensor type and
+    shape must be the same on all BytePS processes for a given name. The broadcast
+    will not start until all processes are ready to send and receive the tensor.
+    Returns:
+      A tensor of the same shape and type as `tensor`, with the value broadcasted
+      from root rank.
+    """
+    # Broadcast is implemented as push + pull after zero-ing non-root tensors
+    if name is None and not _executing_eagerly():
+        name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    if root_rank != rank():
+        if is_variable:
+            if hasattr(tf, 'assign_sub'):
+                with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
                     return C_LIB.byteps_push_pull_blocking(tensor, name=name)
             else:
                 with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
