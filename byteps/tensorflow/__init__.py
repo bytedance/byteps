@@ -182,13 +182,15 @@ def broadcast_variables_xla(variables, root_rank, scope=''):
     """
     if size() <= 1:
         return
+    def sync_grads_one_shot(grads, grad_names):
+        return list(_sync_all_tensors(grads, grad_names = grad_names))
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     new_tensors_names = [broadcast_xla(var, root_rank, scope) for var in variables]
     new_tensors_names = list(zip(*new_tensors_names))
     new_tensors, new_tensor_names = \
         list(new_tensors_names[0]), list(new_tensors_names[1])
     new_tensor_names = ["throwaway_dummy"] * len(variables) + new_tensor_names
-    tmp_tensors = self._sync_grads_one_shot(variables + new_tensors, \
+    tmp_tensors = sync_grads_one_shot(variables + new_tensors, \
                                             new_tensor_names)
     tmp_tensors = tf.reshape(tmp_gensors[-1], [-1])
     return tf.group(*[_assign(var, tmp_var)
