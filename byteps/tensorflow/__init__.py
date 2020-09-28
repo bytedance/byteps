@@ -183,7 +183,7 @@ def broadcast_variables_xla(variables, root_rank, scope=''):
     if size() <= 1:
         return
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
-    new_tensors_names = [broadcast_xla(var, root_rank, scope)]
+    new_tensors_names = [broadcast_xla(var, root_rank, scope) for var in variables]
     new_tensors_names = list(zip(*new_tensors_names))
     new_tensors, new_tensor_names = \
         list(new_tensors_names[0]), list(new_tensors_names[1])
