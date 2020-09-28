@@ -205,7 +205,8 @@ def launch_bps():
         for i in range(local_size):
             t[i].join()
 
-    else:
+    elif os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "") == "1" or \
+         int(os.environ.get("DMLC_NUM_WORKER", "1")) > 1:
         import byteps.server
 
 
