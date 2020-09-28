@@ -292,7 +292,7 @@ def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
                 input_tensor = tf.zeros_like(tensor)
             output, handle = C_LIB.byteps_push_pull_xla(input_tensor, name=name, input_name = full_name, M = 2)
     else:
-        return output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
+        output, handle = C_LIB.byteps_push_pull_xla(tensor, name=name, input_name = full_name, M = 2)
 
     output_name = output.name
     handle = tf.reshape(handle, [-1])

@@ -58,10 +58,10 @@ def training_step(images, labels, first_batch):
 
     # Note: broadcast should be done after the first gradient step to ensure optimizer
     # initialization.
-    # if first_batch:
-    #     bps.broadcast_variables(mnist_model.variables, root_rank=0)
+    if first_batch:
+        # bps.broadcast_variables(mnist_model.variables, root_rank=0)
     #     # this is the culprit
-    #     bps.broadcast_variables(opt.variables(), root_rank=0)
+        bps.broadcast_variables(opt.variables(), root_rank=0)
 
     return loss_value
 
@@ -74,7 +74,7 @@ tf.profiler.experimental.start(LOG_DIR)
 for batch, (images, labels) in enumerate(dataset.take(bps.size() * 10 // bps.size())):
     # with tf.profiler.experimental.Trace("Train", step_num=batch):
     loss_value = training_step(images, labels, batch == 0)
-    if batch == 0:
+    if False and batch == 0:
         bps.broadcast_variables(mnist_model.variables, root_rank=0)
         # this is the culprit
         bps.broadcast_variables(opt.variables(), root_rank=0)

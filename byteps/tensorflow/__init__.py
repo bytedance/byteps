@@ -190,11 +190,13 @@ def broadcast_variables_xla(variables, root_rank, scope=''):
     new_tensors, new_tensor_names = \
         list(new_tensors_names[0]), list(new_tensors_names[1])
     new_tensor_names = ["throwaway_dummy"] * len(variables) + new_tensor_names
-    tmp_tensors = sync_grads_one_shot(variables + new_tensors, \
-                                            new_tensor_names)
-    tmp_tensors = tf.reshape(tmp_gensors[-1], [-1])
-    return tf.group(*[_assign(var, tmp_var)
-                      for var, tmp_var in zip(variables, tmp_tensors)])
+    tmp_tensors = sync_grads_one_shot(variables + new_tensors, new_tensor_names)
+    handle = tf.reshape(tmp_tensors[-1], [-1])
+    new_tensors = tf.cond(handle[0] > handle[1], \
+                          lambda: [tf.identity(aa) for aa in new_tensors], \
+                          lambda: [tf.identity(aa) for aa in new_tensors])
+    return tf.group(*[_assign(var, tmp_var) \
+                      for var, tmp_var in zip(variables, new_tensors)])
 
 enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
 if enable_xla == '1':
