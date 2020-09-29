@@ -215,8 +215,8 @@ def broadcast_variables_xla_blocking(variables, root_rank, scope=''):
 
 enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
 if enable_xla == '1':
-    # broadcast_variables = broadcast_variables_xla
-    broadcast_variables = broadcast_variables_xla_blocking
+    broadcast_variables = broadcast_variables_xla
+    # broadcast_variables = broadcast_variables_xla_blocking
 else:
     broadcast_variables = broadcast_variables_regular
 
