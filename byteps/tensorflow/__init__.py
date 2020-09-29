@@ -25,6 +25,7 @@ import warnings
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull, _push_pull_xla, _sync_tensor, _sync_all_tensors, broadcast_xla, _print_tensors
+from byteps.tensorflow.ops import broadcast_xla_blocking
 from byteps.tensorflow.ops import init, shutdown, suspend, resume
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -200,9 +201,24 @@ def broadcast_variables_xla(variables, root_rank, scope=''):
 
 enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
 if enable_xla == '1':
-    broadcast_variables = broadcast_variables_xla
+    # broadcast_variables = broadcast_variables_xla
+    broadcast_variables = broadcast_variables_xla_blocking
 else:
     broadcast_variables = broadcast_variables_regular
+
+def broadcast_variables_xla_blocking(variables, root_rank, scope=''):
+    """Broadcasts variables from root rank to all other processes.
+    Arguments:
+        variables: variables for broadcast
+        root_rank: rank of the process from which global variables will be broadcasted
+                   to all other processes.
+        scope: the graph name scope
+    """
+    # if size() == 1:
+    #     return
+    _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
+    return tf.group(*[_assign(var, broadcast_xla_blocking(var, root_rank, scope))
+                      for var in variables])
 
 def broadcast_variables_v1(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.

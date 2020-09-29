@@ -302,7 +302,7 @@ def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
     return output, output_name
 
 # uses blocking push pull
-def broadcast_xla_old(tensor, root_rank, scope='', name=None, is_variable=True):
+def broadcast_xla_blocking(tensor, root_rank, scope='', name=None, is_variable=True):
     """An op which broadcasts the input tensor on root rank to the same input tensor
     on all other BytePS processes.
     The broadcast operation is keyed by the name of the op. The tensor type and
