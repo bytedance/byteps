@@ -199,13 +199,6 @@ def broadcast_variables_xla(variables, root_rank, scope=''):
     return tf.group(*[_assign(var, tmp_var) \
                       for var, tmp_var in zip(variables, new_tensors)])
 
-enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
-if enable_xla == '1':
-    # broadcast_variables = broadcast_variables_xla
-    broadcast_variables = broadcast_variables_xla_blocking
-else:
-    broadcast_variables = broadcast_variables_regular
-
 def broadcast_variables_xla_blocking(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
     Arguments:
@@ -219,6 +212,13 @@ def broadcast_variables_xla_blocking(variables, root_rank, scope=''):
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     return tf.group(*[_assign(var, broadcast_xla_blocking(var, root_rank, scope))
                       for var in variables])
+
+enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
+if enable_xla == '1':
+    # broadcast_variables = broadcast_variables_xla
+    broadcast_variables = broadcast_variables_xla_blocking
+else:
+    broadcast_variables = broadcast_variables_regular
 
 def broadcast_variables_v1(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.
