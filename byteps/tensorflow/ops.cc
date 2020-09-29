@@ -463,7 +463,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
   _name_to_done_args[name_key] = new_args;
   my_lk.unlock();
 
-  std::cout << "enter queue " << node_name << std::endl;
+  std::cout << "enter queue " << node_name << " rank " << my_rank << std::endl;
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
@@ -490,7 +490,7 @@ void StartTaskBlockingXla(::tensorflow::OpKernelContext* context,
       return args->is_done;});
     lk.unlock();
   }
-  std::cout << "exited queue " << node_name << std::endl;
+  std::cout << "exit queue " << node_name << " rank " << my_rank << std::endl;
 }
 
 void StartTaskBlockingWrapper(CUstream stream, void** buffers,
