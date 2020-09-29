@@ -51,7 +51,7 @@ RUN git clone --recursive --branch v1.5.x https://github.com/apache/incubator-mx
 RUN cd incubator-mxnet && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
 # Install ByteScheduler
-RUN pip install bayesian-optimization six
+RUN pip install bayesian-optimization==1.0.1 six
 RUN cd /usr/local/cuda/lib64 && ln -s stubs/libcuda.so libcuda.so.1
 RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/byteps.git && \
     cd byteps/bytescheduler && python setup.py install

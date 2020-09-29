@@ -1,0 +1,11 @@
+--2020-09-29 10:07:09--  http://www.apache.org/dyn/closer.lua?filename=incubator/mxnet/1.7.0/apache-mxnet-src-1.7.0-incubating.tar.gz
+Resolving www.apache.org (www.apache.org)... 95.216.24.32, 95.216.26.30, 40.79.78.1, ...
+Connecting to www.apache.org (www.apache.org)|95.216.24.32|:80... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘closer.lua?filename=incubator%2Fmxnet%2F1.7.0%2Fapache-mxnet-src-1.7.0-incubating.tar.gz’
+
+                 closer.lua?filen     [<=>                                                        ]       0  --.-KB/s               closer.lua?filename=incubator%2Fm     [ <=>                                                       ]  30.89K   174KB/s    in 0.2s    
+
+2020-09-29 10:07:10 (174 KB/s) - ‘closer.lua?filename=incubator%2Fmxnet%2F1.7.0%2Fapache-mxnet-src-1.7.0-incubating.tar.gz’ saved [31633]
+
