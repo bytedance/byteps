@@ -59,7 +59,7 @@ def training_step(images, labels, first_batch):
     # Note: broadcast should be done after the first gradient step to ensure optimizer
     # initialization.
     if first_batch:
-        # bps.broadcast_variables(mnist_model.variables, root_rank=0)
+        bps.broadcast_variables(mnist_model.variables, root_rank=0)
     #     # this is the culprit
         bps.broadcast_variables(opt.variables(), root_rank=0)
 
