@@ -13,13 +13,14 @@
 // limitations under the License.
 // =============================================================================
 
+#include "global.h"
+
 #include <malloc.h>
 #include <numa.h>
 
 #include <sstream>
 
 #include "compressor/compressor.h"
-#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -40,7 +41,7 @@ bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
-uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
+uint32_t BytePSGlobal::_min_compress_bytes = 0;
 
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;

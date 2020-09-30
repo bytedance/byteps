@@ -305,7 +305,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         # to avoid duplication
         if compression_params.get("momentum"):
             threshold = int(os.environ.get(
-                "BYTEPS_MIN_COMPRESS_BYTES", 65536))
+                "BYTEPS_MIN_COMPRESS_BYTES", 0))
             mu = optimizer_params["momentum"]
 
             # 1bit compressor use an additional momentum for weight decay
