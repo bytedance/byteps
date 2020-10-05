@@ -31,6 +31,7 @@ class MetaTest(type):
                 "BYTEPS_LOG_LEVEL": "INFO",
                 "BYTEPS_MIN_COMPRESS_BYTES": "0",
                 "OMP_NUM_THREADS": "4",
+                "BYTEPS_FORCE_DISTRIBUTED": "1",
                 "BYTEPS_PARTITION_BYTES": "2147483647"}
     for name, value in os.environ.items():
         if name not in BASE_ENV:
@@ -52,7 +53,6 @@ class MetaTest(type):
         os.environ["DMLC_WORKER_ID"] = "0"
         os.environ["DMLC_ROLE"] = "worker"
         os.environ["BYTEPS_THREADPOOL_SIZE"] = "4"
-        os.environ["BYTEPS_FORCE_DISTRIBUTED"] = "1"
         os.environ["BYTEPS_LOCAL_RANK"] = "0"
         os.environ["BYTEPS_LOCAL_SIZE"] = "1"
         return type(name, bases, dict)
