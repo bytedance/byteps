@@ -4,30 +4,9 @@ ENV USE_BYTESCHEDULER=1
 ENV BYTESCHEDULER_WITH_PYTORCH=1
 ENV BYTESCHEDULER_WITHOUT_MXNET=1
 
-# setup cluster user and SSH access to container
-ENV USER cluster
-RUN useradd -ms /bin/bash $USER && usermod -p '*' $USER
-ENV HOME /home/$USER
-ENV SSHDIR $HOME/.ssh
-RUN mkdir -p ${SSHDIR} \
-    && touch ${SSHDIR}/sshd_config \
-    && ssh-keygen -t rsa -f ${SSHDIR}/ssh_host_rsa_key -N '' \
-    && cp ${SSHDIR}/ssh_host_rsa_key.pub ${SSHDIR}/authorized_keys \
-    && cp ${SSHDIR}/ssh_host_rsa_key ${SSHDIR}/id_rsa \
-    && echo "    IdentityFile ${SSHDIR}/id_rsa" >> ${SSHDIR}/config \
-    && echo "    StrictHostKeyChecking no" >> ${SSHDIR}/config \
-    && echo "    UserKnownHostsFile /dev/null" >> ${SSHDIR}/config \
-    && echo "    Port 2022" >> ${SSHDIR}/config \
-    && echo 'Port 2022' >> ${SSHDIR}/sshd_config \
-    && echo "HostKey ${SSHDIR}/ssh_host_rsa_key" >> ${SSHDIR}/sshd_config \
-    && echo "PidFile ${SSHDIR}/sshd.pid" >> ${SSHDIR}/sshd_config \
-    && echo "PasswordAuthentication no" >> ${SSHDIR}/sshd_config \
-    && chmod -R 600 ${SSHDIR}/* \
-    && chown -R ${USER}:${USER} ${SSHDIR}/
-
 ARG HOROVOD_VERSION=b5cbf240909b467c348683c69df4d73f07147860
 
-WORKDIR /home/$USER/
+WORKDIR /root/
 
 # Apply the patch and reinstall Horovod
 RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/byteps.git
@@ -40,6 +19,5 @@ RUN cp byteps/bytescheduler/bytescheduler/pytorch/horovod_pytorch.patch horovod/
 RUN pip install bayesian-optimization==1.0.1 && cd byteps/bytescheduler && python setup.py install
 
 # Examples
-WORKDIR /home/$USER/byteps/bytescheduler/examples/pytorch/
+WORKDIR /root/byteps/bytescheduler/examples/pytorch/
 
-EXPOSE 2022
