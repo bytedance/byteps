@@ -53,6 +53,6 @@ if __name__ == '__main__':
     from importlib import import_module
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
-
+    
     # train
     fit.fit(args, sym, data.get_rec_iter)
