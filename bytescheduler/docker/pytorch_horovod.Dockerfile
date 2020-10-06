@@ -27,7 +27,7 @@ RUN mkdir -p ${SSHDIR} \
 
 ARG HOROVOD_VERSION=b5cbf240909b467c348683c69df4d73f07147860
 
-WORKDIR /root/
+WORKDIR /home/$USER/
 
 # Apply the patch and reinstall Horovod
 RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/byteps.git
@@ -40,6 +40,6 @@ RUN cp byteps/bytescheduler/bytescheduler/pytorch/horovod_pytorch.patch horovod/
 RUN pip install bayesian-optimization==1.0.1 && cd byteps/bytescheduler && python setup.py install
 
 # Examples
-WORKDIR /root/byteps/bytescheduler/examples/pytorch/
+WORKDIR /home/$USER/byteps/bytescheduler/examples/pytorch/
 
 EXPOSE 2022
