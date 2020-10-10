@@ -1,16 +1,13 @@
-FROM nvidia/cuda:10.0-devel-ubuntu18.04
-
-ARG https_proxy
-ARG http_proxy
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
 
 ARG BYTEPS_BASE_PATH=/usr/local
 ARG BYTEPS_PATH=$BYTEPS_BASE_PATH/byteps
 ARG BYTEPS_GIT_LINK=https://github.com/bytedance/byteps
 ARG BYTEPS_BRANCH=master
 
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update
-RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
         build-essential \
         tzdata \
         ca-certificates \
@@ -20,7 +17,6 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         vim \
         cmake \
         lsb-release \
-        libcudnn7=7.6.0.64-1+cuda10.0 \
         libnuma-dev \
         ibverbs-providers \
         librdmacm-dev \
@@ -29,10 +25,11 @@ RUN apt-get install -y --allow-downgrades --allow-change-held-packages --no-inst
         libibverbs-dev \
         python3 \
         python3-dev \
-        python3-pip \
-        python3-setuptools \
-        libnccl2=2.4.7-1+cuda10.0 \
-        libnccl-dev=2.4.7-1+cuda10.0
+        python3-setuptools
+
+RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
+    python3 get-pip.py && \
+    rm get-pip.py
 
 # install framework
 # note: for tf <= 1.14, you need gcc-4.9
@@ -55,3 +52,5 @@ RUN cd $BYTEPS_BASE_PATH &&\
     git clone --recursive -b $BYTEPS_BRANCH $BYTEPS_GIT_LINK &&\
     cd $BYTEPS_PATH &&\
     python3 setup.py install
+
+ENTRYPOINT ["bpslaunch"]
