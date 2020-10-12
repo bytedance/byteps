@@ -39,8 +39,11 @@ RUN cp byteps/bytescheduler/bytescheduler/pytorch/horovod_pytorch.patch horovod/
 # Install ByteScheduler
 RUN pip install bayesian-optimization==1.0.1 && cd byteps/bytescheduler && python setup.py install
 
-# Examples
-WORKDIR /home/$USER/byteps/bytescheduler/examples/pytorch/
+COPY container_entrypoint.sh /etc/
+ENTRYPOINT /etc/container_entrypoint.sh
 
 EXPOSE 2022
+
+# Examples
+WORKDIR /home/$USER/byteps/bytescheduler/examples/pytorch/
 
