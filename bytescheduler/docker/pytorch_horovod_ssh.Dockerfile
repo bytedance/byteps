@@ -39,11 +39,15 @@ RUN cp byteps/bytescheduler/bytescheduler/pytorch/horovod_pytorch.patch horovod/
 # Install ByteScheduler
 RUN pip install bayesian-optimization==1.0.1 && cd byteps/bytescheduler && python setup.py install
 
-COPY container_entrypoint.sh /etc/
-ENTRYPOINT /etc/container_entrypoint.sh
-
-EXPOSE 2022
-
 # Examples
 WORKDIR /home/$USER/byteps/bytescheduler/examples/pytorch/
 
+# Set default shell to /bin/bash
+SHELL ["/bin/bash", "-cu"]
+
+EXPOSE 2022
+
+COPY container_entrypoint.sh /etc/
+
+RUN chmod +x /etc/container_entrypoint.sh
+ENTRYPOINT /etc/container_entrypoint.sh
