@@ -203,6 +203,7 @@ def fit(args, network, data_loader, **kwargs):
             if (i + 1) % args.disp_batches == 0:
                 logging.info('Batch [%d]\tSpeed: %.2f samples/sec', i,
                              args.disp_batches * args.batch_size / (time.time() - tic))
+                print(args.disp_batches * args.batch_size / (time.time() - tic))
                 tic = time.time()
 
         return
