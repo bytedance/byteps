@@ -596,7 +596,7 @@ bool RunPullLoopOnce() {
 
     // use compressed data/len
     if (task->compressed) {
-      BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
+      BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
       data = task->compressed->data;
       task->compressed = nullptr;
     }

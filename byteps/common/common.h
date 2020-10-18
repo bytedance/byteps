@@ -265,7 +265,8 @@ using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 enum class RequestType {
   kDefaultPushPull,
   kRowSparsePushPull,
-  kCompressedPushPull
+  kCompressedPushPull,
+  kConfigPushPull
 };
 
 int GetCommandType(RequestType requestType, int d);
@@ -276,28 +277,19 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-inline size_t Align(size_t size, int dtype, bool mix = false) {
-  auto ele_size = getDataTypeLength(dtype);
-  size_t len = size / ele_size;
-  // for low-precision data, we use buffer in FP32 to avoid
-  // overflow.
-  if (ele_size < 4) {
-    ele_size = 4;
-    if (mix) {
-      size = len * ele_size;
-    }
-  }
-  // alignment
+inline size_t Align(size_t size, int dtype) {
+  size_t ele_size = getDataTypeLength(dtype);
   size_t min_size = ele_size * ele_size * 8;
   return size + (min_size - size % min_size) % min_size;
 }
 
 // promote low-precision type into float32
-inline DataType Promotion(int dtype) {
-  if (getDataTypeLength(dtype) < 4) {
-    return BYTEPS_FLOAT32;
+inline void Promote(size_t& size, int& dtype) {
+  size_t ele_size = getDataTypeLength(dtype);
+  if (ele_size < 4) {
+    size *= (4 / ele_size);
+    dtype = BYTEPS_FLOAT32;
   }
-  return static_cast<DataType>(dtype);
 }
 }  // namespace common
 }  // namespace byteps

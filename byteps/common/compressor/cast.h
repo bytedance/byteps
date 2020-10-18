@@ -38,7 +38,7 @@ class Cast : public Compressor {
  public:
   Cast(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
       : Compressor(size, dtype),
-        _fp32_buf(new byte_t[Align(size, dtype, true)]()),
+        _fp32_buf(new byte_t[size]()),
         _cptr(std::move(cptr)){};
   ~Cast() override = default;
 

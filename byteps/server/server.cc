@@ -91,8 +91,7 @@ void BytePSServerEngineThread(int i) {
       // compress
       if (msg.ops == ALL_RECV) {
         common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
-                                          msg.len,
-                                          common::Promotion(msg.type.dtype));
+                                          msg.len, msg.type.dtype);
         auto compressed = iter->second->Compress(grad);
         // 1. compress
         auto& updates = update_buf_[msg.key];
@@ -107,6 +106,7 @@ void BytePSServerEngineThread(int i) {
         msg.src = decompressed.data;
         msg.len = decompressed.size;
         msg.type.dtype = decompressed.dtype;
+        msg.mixed_precision = false;  // have already been in FP32
       }
     } else {
       if (msg.ops == ALL_RECV) {
@@ -114,12 +114,16 @@ void BytePSServerEngineThread(int i) {
         auto& updates = update_buf_[msg.key];
 
         // cast down into low-precision before communication
-        if (common::getDataTypeLength(msg.type.dtype) < 4) {
-          bps_reducer_->copy_mixed_precision(updates.merged.tensor, msg.src,
-                                             updates.merged.len, bps_type,
-                                             false);
+        if (msg.mixed_precision) {
+          auto& fp16_copy = fp16_copy_[msg.key];
+          bps_reducer_->copy_mixed_precision(
+              fp16_copy.tensor, msg.src, fp16_copy.len,
+              static_cast<common::DataType>(fp16_copy.dtype), false);
+          updates.merged.tensor = fp16_copy.tensor;
+          updates.merged.len = fp16_copy.len;
         } else {
           updates.merged.tensor = reinterpret_cast<char*>(msg.src);
+          updates.merged.len = msg.len;
         }
       }
     }
@@ -138,7 +142,7 @@ void BytePSServerEngineThread(int i) {
                     << "\t";
         }
         // mixed precision
-        if (common::getDataTypeLength(msg.type.dtype) < 4) {
+        if (msg.mixed_precision) {
           bps_reducer_->copy_mixed_precision(msg.dst, msg.src, msg.len,
                                              bps_type, true);
         } else {
@@ -197,7 +201,7 @@ void BytePSServerEngineThread(int i) {
                     << "\t";
         }
         // mixed precision
-        if (common::getDataTypeLength(msg.type.dtype) < 4) {
+        if (msg.mixed_precision) {
           bps_reducer_->sum_mixed_precision(msg.dst, msg.src, msg.len,
                                             bps_type);
         } else {
@@ -221,12 +225,247 @@ void BytePSServerEngineThread(int i) {
   }
 }  // namespace server
 
+void BytePSHandleConfigReq(uint64_t key, DataHandleType type,
+                           const ps::KVMeta& req_meta,
+                           const ps::KVPairs<char>& req_data,
+                           ps::KVServer<char>* server) {
+  if (compressor_map_.find(key) == compressor_map_.end()) {
+    std::string content{reinterpret_cast<char*>(req_data.vals.data()),
+                        static_cast<size_t>(req_data.lens[0])};
+    auto kwargs = byteps::common::compressor::Deserialize(content);
+    auto stored = GetStore(key);
+    size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
+    auto compressor_ptr =
+        byteps::common::compressor::CompressorRegistry::Create(
+            kwargs, aligned_size,
+            static_cast<byteps::common::DataType>(stored->dtype));
+    CHECK_NE(compressor_ptr, nullptr);
+    compressor_map_[key] = std::move(compressor_ptr);
+    if (log_key_info_) {
+      LOG(INFO) << "register compressor for key=" << key;
+    }
+  }
+
+  // buffer the request meta
+  auto& updates = update_buf_[key];
+  updates.request.push_back(req_meta);
+
+  // should send response after collecting all init push
+  if (updates.request.size() < (size_t)ps::NumWorkers()) return;
+
+  for (const auto& req : updates.request) {
+    SendPushResponse(key, req, server);
+  }
+  updates.request.clear();
+  return;
+}
+
+void BytePSHanleInit(uint64_t key, DataHandleType type, size_t len,
+                     BytePSArray* stored, const ps::KVMeta& req_meta,
+                     const ps::KVPairs<char>& req_data,
+                     ps::KVServer<char>* server, bool mixed_precision) {
+  if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
+    update_buf_[key].merged.len = len;
+    update_buf_[key].merged.dtype = type.dtype;
+  }
+  // buffer the request meta
+  auto& updates = update_buf_[key];
+  updates.request.push_back(req_meta);
+  // should send response after collecting all init push
+  if (updates.request.size() < (size_t)ps::NumWorkers()) return;
+  if (log_key_info_) {
+    LOG(INFO) << "Collected all " << updates.request.size()
+              << " requests for key=" << key
+              << ", init the store buffer size=" << (size_t)req_data.lens[0];
+  }
+
+  int dtype = type.dtype;
+  if (mixed_precision) {
+    // allocate fp16 copy memory
+    auto* fp16_copy = &fp16_copy_[key];
+    PageAlignedMalloc((void**)&fp16_copy->tensor, len);
+    fp16_copy->len = len;
+    fp16_copy->dtype = dtype;
+    CHECK(fp16_copy->tensor);
+
+    // promote to float32
+    common::Promote(len, dtype);
+  }
+
+  size_t aligned_size = common::Align(len, dtype);
+  // init stored buffer, use page aligned memory
+  PageAlignedMalloc((void**)&stored->tensor, aligned_size);
+  stored->len = len;
+  stored->dtype = dtype;
+  CHECK(stored->tensor);
+
+  // response
+  for (const auto& req : updates.request) {
+    SendPushResponse(key, req, server);
+  }
+  updates.request.clear();
+}
+
+void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
+                      BytePSArray* stored, char* recved,
+                      const ps::KVMeta& req_meta,
+                      const ps::KVPairs<char>& req_data,
+                      ps::KVServer<char>* server, bool mixed_precision) {
+  auto& updates = update_buf_[key];
+  auto tid = GetThreadID(key, len);
+  if (updates.request.empty()) {  // from the first incoming worker
+    if (sync_mode_) {
+      if (debug_mode_ && (debug_key_ == key)) {
+        std::lock_guard<std::mutex> lock(debug_mu_);
+        LOG(INFO) << "stage: COPY_FIRST \t"
+                  << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
+                  << "\t"
+                  << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
+                  << "len: " << len << "\t"
+                  << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
+      }
+
+      updates.merged.tmp_sarray = req_data;
+      // copy
+      BytePSEngineMessage msg = {
+          timestamp_++, type,       key,      stored->tensor, recved,
+          len,          COPY_FIRST, req_data, req_meta,       mixed_precision};
+      engine_queues_[tid]->Push(msg);
+    } else {  // async mode, directly add to the buffer
+      CHECK_GE(bps_reducer_->sum((void*)stored->tensor, (void*)recved, len,
+                                 bps_reducer_->GetDataType(stored->dtype)),
+               0);
+    }
+  } else {  // from other workers
+    CHECK(sync_mode_);
+    if (debug_mode_ && (debug_key_ == key)) {
+      std::lock_guard<std::mutex> lock(debug_mu_);
+      LOG(INFO) << "stage: OTHER_WORKER_SUM \t"
+                << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
+                << "\t"
+                << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
+                << "len: " << len << "\t"
+                << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
+    }
+    if (is_engine_blocking_) {
+      // TODO: decompress
+      CHECK_GE(
+          bps_reducer_->sum((void*)updates.merged.tensor, (void*)recved, len,
+                            bps_reducer_->GetDataType(updates.merged.dtype)),
+          0);
+    } else {  // non-blocking
+      BytePSEngineMessage msg = {
+          timestamp_++, type,     key,      stored->tensor, recved,
+          len,          SUM_RECV, req_data, req_meta,       mixed_precision};
+      engine_queues_[tid]->Push(msg);
+    }
+  }
+  // add a worker information (request.size() is the # workers received)
+  updates.request.push_back(req_meta);
+  SendPushResponse(key, req_meta, server);
+  if (sync_mode_ && updates.request.size() == (size_t)ps::NumWorkers()) {
+    auto& update = updates.merged;
+    if (debug_mode_ && (debug_key_ == key)) {
+      std::lock_guard<std::mutex> lock(debug_mu_);
+      LOG(INFO) << "stage: ALL_RECV \t"
+                << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
+                << "\t"
+                << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
+    }
+    if (is_engine_blocking_) {
+      // TODO: compress
+      bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
+    } else {
+      BytePSEngineMessage msg = {timestamp_++,
+                                 {type.requestType, stored->dtype},
+                                 key,
+                                 stored->tensor,
+                                 stored->tensor,
+                                 stored->len,
+                                 ALL_RECV,
+                                 req_data,
+                                 req_meta,
+                                 mixed_precision};
+      engine_queues_[tid]->Push(msg);
+      engine_queues_[tid]->ClearCounter(key);
+    }
+    updates.request.clear();
+  } else if (!sync_mode_) {
+    // async: clean the request buffer
+    updates.request.clear();
+  }
+}
+
+void BytePSHandlePull(uint64_t key, DataHandleType type, BytePSArray* stored,
+                      const ps::KVMeta& req_meta,
+                      const ps::KVPairs<char>& req_data,
+                      ps::KVServer<char>* server) {
+  CHECK(stored->tensor) << "Should init the buffer for key=" << key << " first";
+  if (is_engine_blocking_ || !sync_mode_) {
+    SendPullResponse(type, key, req_meta, server);
+  } else {
+    auto tid = GetThreadID(key, 0);
+    std::lock_guard<std::mutex> lock(flag_mu_[tid]);
+    if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
+      is_push_finished_[tid][key] = false;
+      pull_cnt_[tid][key] = 0;
+      seen_sender_[tid][key].clear();
+    }
+
+    auto it = seen_sender_[tid][key].find(req_meta.sender);
+    if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) {
+      // push already finished && not received the associated pull response
+      // yet
+      SendPullResponse(type, key, req_meta, server);
+      pull_cnt_[tid][key] += 1;
+      seen_sender_[tid][key].insert(req_meta.sender);
+
+      if (pull_cnt_[tid][key] == (size_t)ps::NumWorkers()) {
+        is_push_finished_[tid][key] = false;
+        pull_cnt_[tid][key] = 0;
+        seen_sender_[tid][key].clear();
+      }
+    } else {
+      // push not finished, put into the queue, and wait for the engine
+      q_pull_reqmeta_[tid][key].push_back(req_meta);
+    }
+  }
+}
+
+void BytePSHandleDefaultReq(uint64_t key, DataHandleType type,
+                            const ps::KVMeta& req_meta,
+                            const ps::KVPairs<char>& req_data,
+                            ps::KVServer<char>* server) {
+  auto stored = GetStore(key);
+
+  bool mixed_precision = type.dtype == common::BYTEPS_FLOAT16;
+  if (req_meta.push) {
+    // some checks
+    CHECK_EQ(req_data.lens.size(), (size_t)1);
+    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
+
+    auto len = (size_t)req_data.lens[0];
+    if (!stored->tensor) {
+      // initialize buffer
+      BytePSHanleInit(key, type, len, stored, req_meta, req_data, server,
+                      mixed_precision);
+    } else {
+      // handle PUSH request
+      auto recved = reinterpret_cast<char*>(req_data.vals.data());
+      BytePSHandlePush(key, type, len, stored, recved, req_meta, req_data,
+                       server, mixed_precision);
+    }
+  } else {
+    // handle PULL request
+    BytePSHandlePull(key, type, stored, req_meta, req_data, server);
+  }
+}
+
 void BytePSHandler(const ps::KVMeta& req_meta,
                    const ps::KVPairs<char>& req_data,
                    ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(handle_mu_);  // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
-  // CHECK_EQ(type.requestType, RequestType::kDefaultPushPull);
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   if (log_key_info_) {
@@ -243,189 +482,17 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   }
   uint64_t key = DecodeKey(req_data.keys[0]);
 
-  // register compressor
-  if (type.requestType == RequestType::kCompressedPushPull) {
-    if (compressor_map_.find(key) == compressor_map_.end()) {
-      std::string content{reinterpret_cast<char*>(req_data.vals.data()),
-                          static_cast<size_t>(req_data.lens[0])};
-      auto kwargs = byteps::common::compressor::Deserialize(content);
-      auto stored = GetStore(key);
-      size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
-      auto compressor_ptr =
-          byteps::common::compressor::CompressorRegistry::Create(
-              kwargs, aligned_size,
-              static_cast<byteps::common::DataType>(stored->dtype));
-      CHECK_NE(compressor_ptr, nullptr);
-      compressor_map_[key] = std::move(compressor_ptr);
-      if (log_key_info_) {
-        LOG(INFO) << "register compressor for key=" << key;
-      }
-    }
-
-    // buffer the request meta
-    auto& updates = update_buf_[key];
-    updates.request.push_back(req_meta);
-    // should send response after collecting all init push
-    if (updates.request.size() < (size_t)ps::NumWorkers()) return;
-
-    for (const auto& req : updates.request) {
-      SendPushResponse(key, req, server);
-    }
-    updates.request.clear();
-    return;
-  }
-
-  if (req_meta.push) {  // push request
-    CHECK_EQ(req_data.lens.size(), (size_t)1);
-    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
-    auto stored = GetStore(key);
-    auto len = (size_t)req_data.lens[0];
-    auto recved = reinterpret_cast<char*>(req_data.vals.data());
-
-    if (!stored->tensor) {
-      if (sync_mode_ && (update_buf_.find(key) == update_buf_.end())) {
-        update_buf_[key].merged.len = len;
-        update_buf_[key].merged.dtype = type.dtype;
-      }
-      // buffer the request meta
-      auto& updates = update_buf_[key];
-      updates.request.push_back(req_meta);
-      // should send response after collecting all init push
-      if (updates.request.size() < (size_t)ps::NumWorkers()) return;
-      if (log_key_info_) {
-        LOG(INFO) << "Collected all " << updates.request.size()
-                  << " requests for key=" << key
-                  << ", init the store buffer size="
-                  << (size_t)req_data.lens[0];
-      }
-      // init stored buffer, use page aligned memory
-      size_t aligned_size = common::Align(len, type.dtype, true);
-      // promote type for low-precision data
-      auto dtype = common::Promotion(type.dtype);
-      PageAlignedMalloc((void**)&stored->tensor, aligned_size);
-      stored->len = aligned_size;
-      stored->dtype = dtype;  // using promoted type
-      CHECK(stored->tensor);
-
-      for (const auto& req : updates.request) {
-        SendPushResponse(key, req, server);
-      }
-      updates.request.clear();
-    } else {
-      auto& updates = update_buf_[key];
-      auto tid = GetThreadID(key, len);
-      if (updates.request.empty()) {  // from the first incoming worker
-        if (sync_mode_) {
-          if (debug_mode_ && (debug_key_ == key)) {
-            std::lock_guard<std::mutex> lock(debug_mu_);
-            LOG(INFO) << "stage: COPY_FIRST \t"
-                      << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
-                      << "\t"
-                      << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
-                      << "len: " << len << "\t"
-                      << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
-          }
-
-          updates.merged.tensor = recved;
-          updates.merged.len = len;
-          updates.merged.tmp_sarray = req_data;
-          // copy
-          BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   len,
-                                     COPY_FIRST,     req_data, req_meta};
-          engine_queues_[tid]->Push(msg);
-        } else {  // async mode, directly add to the buffer
-          CHECK_GE(bps_reducer_->sum((void*)stored->tensor, (void*)recved, len,
-                                     bps_reducer_->GetDataType(stored->dtype)),
-                   0);
-        }
-      } else {  // from other workers
-        CHECK(sync_mode_);
-        CHECK(updates.merged.tensor);
-        if (debug_mode_ && (debug_key_ == key)) {
-          std::lock_guard<std::mutex> lock(debug_mu_);
-          LOG(INFO) << "stage: OTHER_WORKER_SUM \t"
-                    << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
-                    << "\t"
-                    << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved) << "\t"
-                    << "len: " << len << "\t"
-                    << "addr: " << DEBUG_PRINT_TENSOR_ADDRESS(recved);
-        }
-        if (is_engine_blocking_) {
-          // TODO: decompress
-          CHECK_GE(bps_reducer_->sum(
-                       (void*)updates.merged.tensor, (void*)recved, len,
-                       bps_reducer_->GetDataType(updates.merged.dtype)),
-                   0);
-        } else {  // non-blocking
-          BytePSEngineMessage msg = {timestamp_++,   type,     key,
-                                     stored->tensor, recved,   len,
-                                     SUM_RECV,       req_data, req_meta};
-          engine_queues_[tid]->Push(msg);
-        }
-      }
-      // add a worker information (request.size() is the # workers received)
-      updates.request.push_back(req_meta);
-      SendPushResponse(key, req_meta, server);
-      if (sync_mode_ && updates.request.size() == (size_t)ps::NumWorkers()) {
-        auto stored = GetStore(key);
-        auto& update = updates.merged;
-        if (debug_mode_ && (debug_key_ == key)) {
-          std::lock_guard<std::mutex> lock(debug_mu_);
-          LOG(INFO) << "stage: ALL_RECV \t"
-                    << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
-                    << "\t"
-                    << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
-        }
-        if (is_engine_blocking_) {
-          // TODO: compress
-          bps_reducer_->copy(stored->tensor, updates.merged.tensor, len);
-        } else {
-          BytePSEngineMessage msg = {
-              timestamp_++,   type,        key,     stored->tensor,
-              stored->tensor, stored->len, ALL_RECV};
-          engine_queues_[tid]->Push(msg);
-          engine_queues_[tid]->ClearCounter(key);
-        }
-        updates.request.clear();
-      } else if (!sync_mode_) {
-        // async: clean the request buffer
-        updates.request.clear();
-      }
-    }
-  } else {  // pull request
-    auto stored = GetStore(key);
-    CHECK(stored->tensor) << "Should init the buffer for key=" << key
-                          << " first";
-    if (is_engine_blocking_ || !sync_mode_) {
-      SendPullResponse(type, key, req_meta, server);
-    } else {
-      auto tid = GetThreadID(key, 0);
-      std::lock_guard<std::mutex> lock(flag_mu_[tid]);
-      if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
-        is_push_finished_[tid][key] = false;
-        pull_cnt_[tid][key] = 0;
-        seen_sender_[tid][key].clear();
-      }
-
-      auto it = seen_sender_[tid][key].find(req_meta.sender);
-      if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) {
-        // push already finished && not received the associated pull response
-        // yet
-        SendPullResponse(type, key, req_meta, server);
-        pull_cnt_[tid][key] += 1;
-        seen_sender_[tid][key].insert(req_meta.sender);
-
-        if (pull_cnt_[tid][key] == (size_t)ps::NumWorkers()) {
-          is_push_finished_[tid][key] = false;
-          pull_cnt_[tid][key] = 0;
-          seen_sender_[tid][key].clear();
-        }
-      } else {
-        // push not finished, put into the queue, and wait for the engine
-        q_pull_reqmeta_[tid][key].push_back(req_meta);
-      }
-    }
+  switch (type.requestType) {
+    case RequestType::kConfigPushPull:
+      return BytePSHandleConfigReq(key, type, req_meta, req_data, server);
+    case RequestType::kDefaultPushPull:
+      return BytePSHandleDefaultReq(key, type, req_meta, req_data, server);
+    case RequestType::kCompressedPushPull:
+      return BytePSHandleDefaultReq(key, type, req_meta, req_data, server);
+    case RequestType::kRowSparsePushPull:
+      BPS_CHECK(0) << "Not implemented.";
+    default:
+      BPS_CHECK(0) << "Unrecognized request type.";
   }
 }
 
@@ -529,6 +596,12 @@ extern "C" void byteps_server() {
   for (auto t : engine_threads_) t->join();
 
   for (auto& it : store_) {
+    if (it.second.tensor) {
+      free(it.second.tensor);
+    }
+  }
+
+  for (auto& it : fp16_copy_) {
     if (it.second.tensor) {
       free(it.second.tensor);
     }

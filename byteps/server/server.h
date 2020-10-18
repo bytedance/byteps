@@ -16,33 +16,36 @@
 #ifndef BYTEPS_SERVER_H
 #define BYTEPS_SERVER_H
 
+#include <unistd.h>
+
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <set>
-#include <unistd.h>
-#include "ps/ps.h"
-#include "../common/cpu_reducer.h"
+
 #include "../common/compressor/compressor.h"
 #include "../common/compressor/compressor_registry.h"
+#include "../common/cpu_reducer.h"
+#include "ps/ps.h"
 
 namespace byteps {
 namespace server {
 
 #define SERVER_KEY_TYPE uint64_t
 #define SERVER_DATA_TYPE char
-#define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
+#define DEBUG_PRINT_TENSOR_VALUE(X) (*((float*)(X) + 0))
 #define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
 
 using namespace ps;
 
 enum class RequestType {
-  kDefaultPushPull, kRowSparsePushPull, kCompressedPushPull
+  kDefaultPushPull,
+  kRowSparsePushPull,
+  kCompressedPushPull,
+  kConfigPushPull
 };
 
-enum BytePSEngineOperation {
-  SUM_RECV, COPY_FIRST, ALL_RECV, TERMINATE
-};
+enum BytePSEngineOperation { SUM_RECV, COPY_FIRST, ALL_RECV, TERMINATE };
 
 struct PSKV {
   SArray<Key> keys;  // n keys
@@ -68,18 +71,19 @@ struct UpdateBuf {
 
 struct BytePSEngineMessage {
   uint64_t id;
-  DataHandleType type;
+  DataHandleType type;  // src's type
   uint64_t key;
   void* dst;
   void* src;
-  size_t len;
+  size_t len;  // src's size
   BytePSEngineOperation ops;
-  ps::KVPairs<char> sarray; // to temporarily hold it and auto release
+  ps::KVPairs<char> sarray;  // to temporarily hold it and auto release
   ps::KVMeta req_meta;
+  bool mixed_precision;
 };
 
 static DataHandleType DepairDataHandleType(int cmd) {
-  int w = std::floor((std::sqrt(8 * cmd + 1) - 1)/2);
+  int w = std::floor((std::sqrt(8 * cmd + 1) - 1) / 2);
   int t = ((w * w) + w) / 2;
   int y = cmd - t;
   int x = w - y;
@@ -91,34 +95,37 @@ static DataHandleType DepairDataHandleType(int cmd) {
   return type;
 }
 
-
 KVServer<SERVER_DATA_TYPE>* byteps_server_;
 byteps::common::CpuReducer* bps_reducer_;
 
 std::mutex pullresp_mu_;
-std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
-std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
+std::unordered_map<uint64_t, ps::KVPairs<char>> push_response_map_;
+std::unordered_map<uint64_t, ps::KVPairs<char>> pull_response_map_;
 
 // push & pull flag
 std::vector<std::mutex> flag_mu_;
-std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
-std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
-std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
-std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
+std::vector<std::unordered_map<uint64_t, bool>> is_push_finished_;
+std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta>>>
+    q_pull_reqmeta_;
+std::vector<std::unordered_map<uint64_t, std::set<int>>> seen_sender_;
+std::vector<std::unordered_map<uint64_t, size_t>> pull_cnt_;
 
 // byteps handler
 std::mutex handle_mu_;
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
-std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
+std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>>
+    compressor_map_;
 
 // address map
 std::mutex store_mu_;
-std::unordered_map<uint64_t, BytePSArray> store_;
+std::unordered_map<uint64_t, BytePSArray> store_;      // master copy
+std::unordered_map<uint64_t, BytePSArray> fp16_copy_;  // for mixed precision
 
 // hash function
 std::mutex hash_mu_;
 std::unordered_map<uint64_t, size_t> hash_cache_;
-std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread
+std::vector<uint64_t>
+    acc_load_;  // accumulated tensor size for an engine thread
 
 // global knob
 uint64_t timestamp_ = 0;
@@ -148,7 +155,7 @@ uint64_t EncodeKey(ps::Key key) {
 
 size_t GetThreadID(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(hash_mu_);
-  if (len == 0) { // pull
+  if (len == 0) {  // pull
     CHECK_NE(hash_cache_.find(key), hash_cache_.end());
     return hash_cache_[key];
   }

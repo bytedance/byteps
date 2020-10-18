@@ -55,6 +55,10 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
     } else {
       BPS_LOG(FATAL) << "The data type is not supported yet.";
     }
+    size *= (4 / getDataTypeLength(dtype));
+    size = Align(size, BYTEPS_FLOAT32);
+  } else {
+    size = Align(size, dtype);
   }
 #else
   // server do not need momentum and cast
