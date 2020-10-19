@@ -54,7 +54,5 @@ if __name__ == '__main__':
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
     
-    print(123123123)
-    
     # train
     fit.fit(args, sym, data.get_rec_iter)
