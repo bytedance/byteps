@@ -26,10 +26,13 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start servers
 export DMLC_ROLE='server'
-for ((i=0; i<${DMLC_NUM_SERVER}; ++i)); do
-    export HEAPPROFILE=./S${i}
-    ${bin} ${arg} &
-done
+#for ((i=0; i<${DMLC_NUM_SERVER}; ++i)); do
+#    export HEAPPROFILE=./S${i}
+#    ${bin} ${arg} &
+#done
+
+${bin} ${arg} &
+
 
 
 wait
