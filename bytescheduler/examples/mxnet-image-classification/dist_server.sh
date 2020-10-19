@@ -22,7 +22,7 @@ arg="$@"
 
 # start the scheduler
 export DMLC_PS_ROOT_URI='172.31.86.228'
-export DMLC_PS_ROOT_PORT=8000
+export DMLC_PS_ROOT_PORT=9000
 
 # start servers
 export DMLC_ROLE='server'
