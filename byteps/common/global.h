@@ -136,7 +136,7 @@ class BytePSGlobal {
   static void ReportThreadFinish() { joined_thread_cnt.fetch_add(1); }
   static bool IsAllThreadFinish(int total_thread_num);
   static std::atomic_int joined_thread_cnt;
-  static int RoundUpToPageSize(int x) { return RoundUp(x, _pagesize); }
+  static size_t RoundUpToPageSize(size_t x) { return RoundUp(x, _pagesize); }
 
   static std::shared_ptr<ThreadPool>& GetThreadPool() { return _thread_pool; }
 
@@ -209,8 +209,8 @@ class BytePSGlobal {
   }
 
   static int _pagesize;
-  static int DivUp(int x, int y) { return (x + y - 1) / y; }
-  static int RoundUp(int x, int y) { return DivUp(x, y) * y; }
+  static size_t DivUp(size_t x, size_t y) { return (x + y - 1) / y; }
+  static size_t RoundUp(size_t x, size_t y) { return DivUp(x, y) * y; }
 
   // hash functions
   static std::string _hash_knob;
