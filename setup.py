@@ -35,7 +35,7 @@ URL = 'https://github.com/bytedance/byteps'
 EMAIL = 'lab-hr@bytedance.com'
 AUTHOR = 'Bytedance Inc.'
 REQUIRES_PYTHON = '>=2.7.0'
-VERSION = None
+VERSION = '0.2.5-1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
