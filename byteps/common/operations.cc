@@ -135,9 +135,9 @@ void PartitionTensor(
     std::vector<std::shared_ptr<TensorTableEntry>> &partitions) {
   BPS_CHECK(entry->counter_ptr)
       << entry->tensor_name << " counter pointer is null";
-  auto size = entry->tensor ? entry->tensor->size() : entry->output->size();
-  auto bound = BytePSGlobal::GetPartitionBound();
-  auto accumulated = 0;
+  size_t size = entry->tensor ? entry->tensor->size() : entry->output->size();
+  size_t bound = BytePSGlobal::GetPartitionBound();
+  size_t accumulated = 0;
   int i = 0;
 
   while (accumulated < size) {
