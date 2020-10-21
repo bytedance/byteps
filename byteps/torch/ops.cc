@@ -78,7 +78,7 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
       [handle, average, tensor, output](const Status& status) mutable {
         // Will execute in the `device` context.
         if (average) {
-          output.div_(byteps_size());
+          output.true_divide(byteps_size());
         }
         handle_manager.MarkDone(handle, status);
       },
