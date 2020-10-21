@@ -207,7 +207,13 @@ def launch_bps():
 
     elif os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "") == "1" or \
          int(os.environ.get("DMLC_NUM_WORKER", "1")) > 1:
-        import byteps.server
+        command = "python3 -c 'import byteps.server'"
+        if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
+            command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+        print("Command: %s\n" % command, flush=True)
+        my_env = os.environ.copy()
+        subprocess.check_call(command, env=my_env,
+                              stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 
 if __name__ == "__main__":
