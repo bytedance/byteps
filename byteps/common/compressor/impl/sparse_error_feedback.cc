@@ -60,11 +60,9 @@ SparseErrorFeedbackCompressor::SparseErrorFeedbackCompressor(
     size_t size, DataType dtype, std::unique_ptr<Compressor> cptr, size_t k,
     unsigned int seed)
     : ErrorFeedback(size, dtype, std::move(cptr)), _k(k) {
-  if (seed != 0) {
-    BPS_LOG(INFO) << "SET SEED = " << seed;
-    _rng.set_seed(seed);
-  } else {
-    _rng.set_seed(2020);
+  if (seed) {
+    BPS_LOG(INFO) << "SET SEED = " << seed + k;
+    _rng.set_seed(seed + k);
   }
   _fd = open("lr.s", O_RDONLY);
   BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
@@ -83,9 +81,8 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
   _cur_lr = *reinterpret_cast<double*>(_mm);
 
 #ifndef BYTEPS_BUILDING_SERVER
-  this->_cpu_reducer->sum(grad.data, _error.get(), grad.size,
-                          static_cast<DataType>(grad.dtype),
-                          (_pre_lr / _cur_lr));
+  sum(grad.data, _buf.get(), grad.size, static_cast<DataType>(grad.dtype),
+      (_pre_lr / _cur_lr));
 #else
   size_t len = grad.size / getDataTypeLength(grad.dtype);
 
@@ -93,39 +90,15 @@ void SparseErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
     _selected_idx.push_back(_rng.Randint(0, len));
   }
 
-  this->_cpu_reducer->sparse_sum(grad.data, _error.get(), grad.size,
-                                 static_cast<DataType>(grad.dtype),
-                                 (_pre_lr / _cur_lr), _selected_idx);
+  sparse_sum(grad.data, _buf.get(), grad.size,
+             static_cast<DataType>(grad.dtype), (_pre_lr / _cur_lr),
+             _selected_idx);
+
+  _selected_idx.clear();
 #endif
   _pre_lr = _cur_lr;
 }
 
-template <typename scalar_t>
-void SparseErrorFeedbackCompressor::UpdateErrorImpl(scalar_t* error) {
-#pragma omp parallel for
-  for (size_t i = 0; i < this->_k; ++i) {
-    error[_selected_idx[i]] = 0;
-  }
-  _selected_idx.clear();
-}
-
-void SparseErrorFeedbackCompressor::UpdateError(tensor_t corrected,
-                                                tensor_t compressed) {
-#ifndef BYTEPS_BUILDING_SERVER
-  ErrorFeedback::UpdateError(corrected, compressed);
-#else
-  switch (corrected.dtype) {
-    case BYTEPS_FLOAT16:
-      return UpdateErrorImpl(reinterpret_cast<half_t*>(_error.get()));
-    case BYTEPS_FLOAT32:
-      return UpdateErrorImpl(reinterpret_cast<float*>(_error.get()));
-    case BYTEPS_FLOAT64:
-      return UpdateErrorImpl(reinterpret_cast<double*>(_error.get()));
-    default:
-      BPS_CHECK(0) << "Unsupported data type:" << corrected.dtype;
-  }
-#endif
-}  // namespace compressor
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

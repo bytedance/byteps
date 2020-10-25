@@ -19,27 +19,21 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-tensor_t ErrorFeedback::Compress(tensor_t grad) {
-  // 1. grad <- grad + error
+void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
+  BPS_CHECK(grad.data);
+
+  // 1. p <- g + e
   UpdateGradient(grad);
 
-  // 2. c <- Compress(grad)
-  auto compressed = _cptr->Compress(grad);
+  tensor_t error{_buf.get(), _size, _dtype};
 
-  // 3. e <- grad - Decompress(c)
-  UpdateError(grad, compressed);
-
-  return compressed;
+  // 2. c <- Compress(p) 3. e <- p - c
+  _cptr->FusedCompress(grad, output, error);
 }
 
-tensor_t ErrorFeedback::Decompress(tensor_t compressed) {
+void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& output) {
   // directly forward to internal compressor
-  return _cptr->Decompress(compressed);
-}
-
-void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
-  tensor_t error{_error.get(), _size, corrected.dtype};
-  _cptr->FastUpdateError(error, corrected, compressed);
+  _cptr->Decompress(compressed, output);
 }
 
 }  // namespace compressor

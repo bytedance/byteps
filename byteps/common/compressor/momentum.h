@@ -45,16 +45,12 @@ class Momentum : public Compressor {
   // momentum should be cleared to zeros
   Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
            float mu)
-      : Compressor(size, dtype),
-        _mom(new byte_t[size]()),
-        _mu(mu),
-        _cpu_reducer(new CpuReducer(nullptr)),
-        _cptr(std::move(cptr)){};
+      : Compressor(size, dtype), _mu(mu), _cptr(std::move(cptr)){};
   ~Momentum() override = default;
 
-  tensor_t Compress(tensor_t grad) final;
+  void Compress(tensor_t grad, tensor_t& output) final;
 
-  tensor_t Decompress(tensor_t compressed) final;
+  void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
   /*!
@@ -76,13 +72,7 @@ class Momentum : public Compressor {
   virtual void UpdateGradient(tensor_t grad) = 0;
 
  protected:
-  /*! \brief buffer of momentum */
-  std::unique_ptr<byte_t[]> _mom;
-
-  /*! \brief momentum factor */
   float _mu;
-
-  std::unique_ptr<CpuReducer> _cpu_reducer;
 
  private:
   /*! \brief compressor pointer */

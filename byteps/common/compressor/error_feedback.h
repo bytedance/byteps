@@ -50,15 +50,12 @@ class ErrorFeedback : public Compressor {
  public:
   // error buffer should be cleared to zeros at the beginning.
   ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
-      : Compressor(size, dtype),
-        _error(new byte_t[size]()),
-        _cpu_reducer(new CpuReducer(nullptr)),
-        _cptr(std::move(cptr)) {}
+      : Compressor(size, dtype), _cptr(std::move(cptr)) {}
   ~ErrorFeedback() override = default;
 
-  tensor_t Compress(tensor_t grad) final;
+  void Compress(tensor_t grad, tensor_t& output) final;
 
-  tensor_t Decompress(tensor_t compressed) final;
+  void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
   /*!
@@ -72,22 +69,6 @@ class ErrorFeedback : public Compressor {
    * \param dtype type
    */
   virtual void UpdateGradient(tensor_t grad) = 0;
-
-  /*!
-   * \brief Update error
-   *
-   * error = corrected_grad - decompressed
-   *
-   * \param corrected refers to gradient + error
-   * \param compressed compressed tensor
-   */
-  virtual void UpdateError(tensor_t corrected, tensor_t compressed);
-
- protected:
-  /*! \brief buffer of error */
-  std::unique_ptr<byte_t[]> _error;
-
-  std::unique_ptr<CpuReducer> _cpu_reducer;
 
  private:
   /*! \brief compressor pointer */

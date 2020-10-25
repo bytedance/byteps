@@ -44,12 +44,11 @@ CompressorRegistry::Register reg(
     });
 }
 
-template <typename index_t, typename scalar_t>
-tensor_t TopkCompressor::CompressImpl(index_t* __restrict__ dst,
-                                      const scalar_t* __restrict__ src,
-                                      size_t len) {
+template <typename pair_t, typename scalar_t>
+size_t TopkCompressor::CompressImpl(pair_t* __restrict__ dst,
+                                    const scalar_t* __restrict__ src,
+                                    size_t len) {
   BPS_CHECK_LE(this->_k, len / 2);
-  using pair_t = std::pair<index_t, scalar_t>;
   auto comp = [](const pair_t& lhs, const pair_t& rhs) {
     return std::abs(lhs.second) > std::abs(rhs.second);
   };
@@ -72,67 +71,162 @@ tensor_t TopkCompressor::CompressImpl(index_t* __restrict__ dst,
     }
   }
 
-  return {dst, this->_k * sizeof(pair_t)};
+  return this->_k * sizeof(pair_t);
+}  // namespace compressor
+
+void TopkCompressor::Compress(tensor_t grad, tensor_t& output) {
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+  if (output.data == nullptr) {
+    output.data = _buf.get();
+  }
+
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = CompressImpl(
+          reinterpret_cast<std::pair<uint32_t, float>*>(output.data),
+          reinterpret_cast<const half_t*>(grad.data),
+          grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = CompressImpl(
+          reinterpret_cast<std::pair<uint32_t, float>*>(output.data),
+          reinterpret_cast<const float*>(grad.data), grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = CompressImpl(
+          reinterpret_cast<std::pair<uint64_t, double>*>(output.data),
+          reinterpret_cast<const double*>(grad.data),
+          grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
+  }
+
+  output.size = compressed_size;
 }
 
-tensor_t TopkCompressor::Compress(tensor_t grad) {
-  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
-                       grad.size);
-}
-
-template <typename index_t, typename scalar_t>
-tensor_t TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
-                                        const index_t* __restrict__ src,
-                                        size_t compressed_size) {
-  // TODO
-  using pair_t = std::pair<index_t, float>;
-
+template <typename scalar_t, typename pair_t>
+void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                    const pair_t* __restrict__ src,
+                                    size_t compressed_size, size_t dst_size) {
   auto ptr = reinterpret_cast<const pair_t*>(src);
   // reset to zeros
-  std::memset(dst, 0, _size);
+  std::memset(dst, 0, dst_size);
   size_t len = compressed_size / sizeof(pair_t);
   for (size_t i = 0; i < len; ++i) {
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
   }
-
-  return {dst, _size, _dtype};
 }
 
-tensor_t TopkCompressor::Decompress(tensor_t compressed) {
-#ifdef BYTEPS_BUILDING_SERVER
-  // server
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, _buf.get(), compressed.data,
-                         compressed.size);
-#else
-  // worker
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, compressed.data, _buf.get(),
-                         compressed.size);
-#endif
-}
+void TopkCompressor::Decompress(tensor_t compressed, tensor_t& output) {
+  BPS_CHECK(compressed.data);
+  BPS_CHECK(compressed.data != output.data);
 
-template <typename index_t, typename scalar_t>
-void TopkCompressor::FastUpdateErrorImpl(scalar_t* __restrict__ error,
-                                         scalar_t* __restrict__ corrected,
-                                         const index_t* __restrict__ compressed,
-                                         size_t compressed_size) {
-  using pair_t = std::pair<index_t, scalar_t>;
+  if (output.data == nullptr) {
+    output = {_buf.get(), _size, _dtype};
+  } else {
+    BPS_CHECK(output.size > 0);
+  }
 
-  memcpy_multithread(error, corrected, _size);
-
-  auto ptr = reinterpret_cast<const pair_t*>(compressed);
-  for (size_t i = 0; i < this->_k; ++i) {
-    auto& pair = ptr[i];
-    error[pair.first] = 0;
+  switch (output.dtype) {
+    case BYTEPS_FLOAT16:
+      DecompressImpl(
+          reinterpret_cast<half_t*>(output.data),
+          reinterpret_cast<const std::pair<uint32_t, float>*>(compressed.data),
+          compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT32:
+      DecompressImpl(
+          reinterpret_cast<float*>(output.data),
+          reinterpret_cast<const std::pair<uint32_t, float>*>(compressed.data),
+          compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT64:
+      DecompressImpl(
+          reinterpret_cast<double*>(output.data),
+          reinterpret_cast<const std::pair<uint64_t, double>*>(compressed.data),
+          compressed.size, output.size);
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << output.dtype;
   }
 }
 
-void TopkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
-                                     tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(corrected.dtype, FastUpdateErrorImpl,
-                                error.data, corrected.data, compressed.data,
-                                compressed.size);
+template <typename pair_t, typename scalar_t>
+size_t TopkCompressor::FusedCompressImpl(pair_t* __restrict__ dst,
+                                         const scalar_t* __restrict__ src,
+                                         scalar_t* __restrict__ error,
+                                         size_t len) {
+  BPS_CHECK_LE(this->_k, len / 2);
+  auto comp = [](const pair_t& lhs, const pair_t& rhs) {
+    return std::abs(lhs.second) > std::abs(rhs.second);
+  };
+
+  memcpy_multithread(error, src, len * sizeof(scalar_t));
+
+  auto beg = reinterpret_cast<pair_t*>(dst);
+  size_t size = 0;
+  for (size_t i = 0; i < len; ++i) {
+    if (i < this->_k) {
+      beg[size] = std::make_pair(i, src[i]);
+      size++;
+      std::push_heap(beg, beg + size, comp);
+    } else {
+      auto& top = *beg;
+      // note: compare absolute value
+      if (std::abs(src[i]) > std::abs(top.second)) {
+        std::pop_heap(beg, beg + size, comp);
+        beg[size - 1] = std::make_pair(i, src[i]);
+        std::push_heap(beg, beg + size, comp);
+      }
+    }
+  }
+
+  for (int i = 0; i < this->_k; ++i) {
+    error[beg[i].first] = 0;
+  }
+
+  return this->_k * sizeof(pair_t);
 }
+
+void TopkCompressor::FusedCompress(tensor_t grad, tensor_t& output,
+                                   tensor_t error) {
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+  if (output.data == nullptr) {
+    output.data = _buf.get();
+  }
+
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<std::pair<uint32_t, float>*>(output.data),
+          reinterpret_cast<const half_t*>(grad.data),
+          reinterpret_cast<half_t*>(error.data), grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<std::pair<uint32_t, float>*>(output.data),
+          reinterpret_cast<const float*>(grad.data),
+          reinterpret_cast<float*>(error.data), grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<std::pair<uint64_t, double>*>(output.data),
+          reinterpret_cast<const double*>(grad.data),
+          reinterpret_cast<double*>(error.data), grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
+  }
+
+  output.size = compressed_size;
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

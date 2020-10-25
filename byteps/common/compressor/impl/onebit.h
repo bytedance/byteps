@@ -51,7 +51,7 @@ class OnebitCompressor : public Compressor {
    * \param grad gradient tensor
    * \param compressed compressed tensor
    */
-  tensor_t Compress(tensor_t grad) override;
+  void Compress(tensor_t grad, tensor_t& output) override;
 
   /*!
    * \brief Decompress function
@@ -61,7 +61,7 @@ class OnebitCompressor : public Compressor {
    * \param compressed compressed tensor
    * \param decompressed decompressed tensor
    */
-  tensor_t Decompress(tensor_t compressed) override;
+  void Decompress(tensor_t compressed, tensor_t& output) override;
 
   /*!
    * \brief help function for error feedback `UpdateError`
@@ -70,24 +70,22 @@ class OnebitCompressor : public Compressor {
    * \param error error
    * \param compressed compressed gradient
    */
-  void FastUpdateError(tensor_t error, tensor_t corrected,
-                       tensor_t compressed) override;
+  void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* __restrict__ dst,
-                        const scalar_t* __restrict__ src, size_t len);
+  size_t CompressImpl(index_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t len);
 
   template <typename scalar_t, typename index_t>
-  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
-                          const index_t* __restrict__ src,
-                          size_t compressed_size);
+  void DecompressImpl(scalar_t* __restrict__ dst,
+                      const index_t* __restrict__ src, size_t compressed_size,
+                      size_t dst_size);
 
-  template <typename scalar_t, typename index_t>
-  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
-                           scalar_t* __restrict__ corrected,
-                           const index_t* __restrict__ compressed,
-                           size_t compressed_size);
+  template <typename index_t, typename scalar_t>
+  size_t FusedCompressImpl(index_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src,
+                           scalar_t* __restrict__ error, size_t len);
 
  private:
   bool _use_scale;

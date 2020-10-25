@@ -38,14 +38,13 @@ CompressorRegistry::Register reg(
 
 void NesterovMomentumCompressor::UpdateMom(tensor_t grad) {
   // m_t = \mu * m_{t-1} + g_t
-  this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
+  sum(_buf.get(), grad.data, _buf.get(), grad.size,
+      static_cast<DataType>(grad.dtype), _mu);
 }
 
 void NesterovMomentumCompressor::UpdateGradient(tensor_t grad) {
   // p_t = \mu m_t + g_t
-  this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
+  sum(grad.data, _buf.get(), grad.size, static_cast<DataType>(grad.dtype), _mu);
 }
 
 }  // namespace compressor

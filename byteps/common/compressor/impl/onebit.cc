@@ -36,9 +36,9 @@ CompressorRegistry::Register reg(
 }
 
 template <typename index_t, typename scalar_t>
-tensor_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
-                                        const scalar_t* __restrict__ src,
-                                        size_t len) {
+size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
+                                      const scalar_t* __restrict__ src,
+                                      size_t len) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
   const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
@@ -46,6 +46,7 @@ tensor_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
   float scale = 1.0f;
   if (_use_scale) {
     double sum = 0.0f;
+#pragma omp parallel for simd reduction(+ : sum)
     for (size_t i = 0; i < len; ++i) {
       sum += std::abs(src[i]);
     }
@@ -66,18 +67,44 @@ tensor_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
   auto p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
   *p_scale = scale;
 
-  return {dst, chunk_len * sizeof(index_t) + sizeof(float)};
+  return chunk_len * sizeof(index_t) + sizeof(float);
 }  // namespace compressor
 
-tensor_t OnebitCompressor::Compress(tensor_t grad) {
-  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
-                       grad.size);
+void OnebitCompressor::Compress(tensor_t grad, tensor_t& output) {
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+  if (output.data == nullptr) {
+    output.data = _buf.get();
+  }
+
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = CompressImpl(reinterpret_cast<int64_t*>(output.data),
+                                     reinterpret_cast<const half_t*>(grad.data),
+                                     grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = CompressImpl(reinterpret_cast<int64_t*>(output.data),
+                                     reinterpret_cast<const float*>(grad.data),
+                                     grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = CompressImpl(reinterpret_cast<int64_t*>(output.data),
+                                     reinterpret_cast<const double*>(grad.data),
+                                     grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
+  }
+
+  output.size = compressed_size;
 }
 
 template <typename scalar_t, typename index_t>
-tensor_t OnebitCompressor::DecompressImpl(scalar_t* __restrict__ dst,
-                                          const index_t* __restrict__ src,
-                                          size_t compressed_size) {
+void OnebitCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                      const index_t* __restrict__ src,
+                                      size_t compressed_size, size_t dst_size) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
   const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
 
@@ -85,58 +112,121 @@ tensor_t OnebitCompressor::DecompressImpl(scalar_t* __restrict__ dst,
   float scale = *pf;
 
 #pragma omp parallel for simd
-  for (int i = chunk_len - 1; i >= 0; --i) {
+  for (int i = 0; i < chunk_len; ++i) {
     index_t x = src[i];
     size_t idx = i * PACKING_SIZE;
-    for (int j = PACKING_SIZE - 1; j >= 0; --j) {
-      int sign = 1 - ((x & 0x01) << 1);
+    for (int j = 0; j < PACKING_SIZE; ++j) {
+      int sign = 1 - (x < 0) - (x < 0);
       dst[idx + j] = sign * scale;
-      x >>= 1;
+      x <<= 1;
     }
   }
-
-  return {dst, _size, _dtype};
 }
 
-tensor_t OnebitCompressor::Decompress(tensor_t compressed) {
-#ifdef BYTEPS_BUILDING_SERVER
-  // server
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, _buf.get(), compressed.data,
-                         compressed.size);
-#else
-  // worker
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, compressed.data, _buf.get(),
-                         compressed.size);
-#endif
+void OnebitCompressor::Decompress(tensor_t compressed, tensor_t& output) {
+  BPS_CHECK(compressed.data);
+  BPS_CHECK(compressed.data != output.data);
+
+  if (output.data == nullptr) {
+    output = {_buf.get(), _size, _dtype};
+  } else {
+    BPS_CHECK(output.size > 0);
+  }
+
+  switch (output.dtype) {
+    case BYTEPS_FLOAT16:
+      DecompressImpl(reinterpret_cast<half_t*>(output.data),
+                     reinterpret_cast<const int64_t*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT32:
+      DecompressImpl(reinterpret_cast<float*>(output.data),
+                     reinterpret_cast<const int64_t*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT64:
+      DecompressImpl(reinterpret_cast<double*>(output.data),
+                     reinterpret_cast<const int64_t*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << output.dtype;
+  }
 }
 
-template <typename scalar_t, typename index_t>
-void OnebitCompressor::FastUpdateErrorImpl(
-    scalar_t* __restrict__ error, scalar_t* __restrict__ corrected,
-    const index_t* __restrict__ compressed, size_t compressed_size) {
+template <typename index_t, typename scalar_t>
+size_t OnebitCompressor::FusedCompressImpl(index_t* __restrict__ dst,
+                                           const scalar_t* __restrict__ src,
+                                           scalar_t* __restrict__ error,
+                                           size_t len) {
   constexpr size_t PACKING_SIZE = sizeof(index_t) * 8;
-  const size_t chunk_len = (compressed_size - sizeof(float)) / sizeof(index_t);
+  size_t padding_len = (PACKING_SIZE - (len % PACKING_SIZE)) % PACKING_SIZE;
+  const size_t chunk_len = (len + padding_len) / PACKING_SIZE;
 
-  auto* pf = reinterpret_cast<const float*>(compressed + chunk_len);
-  float scale = *pf;
+  float scale = 1.0f;
+  if (_use_scale) {
+    double sum = 0.0f;
+#pragma omp parallel for simd reduction(+ : sum)
+    for (size_t i = 0; i < len; ++i) {
+      sum += std::abs(src[i]);
+    }
+    scale = sum / len;
+  }
 
 #pragma omp parallel for simd
-  for (int i = chunk_len - 1; i >= 0; --i) {
-    index_t x = compressed[i];
+  for (size_t i = 0; i < chunk_len; ++i) {
     size_t idx = i * PACKING_SIZE;
-    for (int j = PACKING_SIZE - 1; j >= 0; --j) {
-      int sign = ((x & 0x01) << 1) - 1;
-      error[idx + j] = corrected[idx + j] + sign * scale;
-      x >>= 1;
+    index_t x = src[idx] < 0;
+    error[idx] = src[idx] - scale * x;
+    for (size_t j = 1; j < PACKING_SIZE; ++j) {
+      x <<= 1;
+      index_t sign = src[idx + j] < 0;
+      error[idx + j] = src[idx + j] - scale * sign;
+      x |= sign;
     }
+    dst[i] = x;
   }
-}
 
-void OnebitCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
-                                       tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(corrected.dtype, FastUpdateErrorImpl,
-                                error.data, corrected.data, compressed.data,
-                                compressed.size);
+  auto p_scale = reinterpret_cast<float*>(&dst[chunk_len]);
+  *p_scale = scale;
+
+  return chunk_len * sizeof(index_t) + sizeof(float);
+}  // namespace compressor
+
+void OnebitCompressor::FusedCompress(tensor_t grad, tensor_t& output,
+                                     tensor_t error) {
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+
+  if (output.data == nullptr) {
+    output.data = _buf.get();
+  }
+
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<int64_t*>(output.data),
+          reinterpret_cast<const half_t*>(grad.data),
+          reinterpret_cast<half_t*>(error.data), grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<int64_t*>(output.data),
+          reinterpret_cast<const float*>(grad.data),
+          reinterpret_cast<float*>(error.data), grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<int64_t*>(output.data),
+          reinterpret_cast<const double*>(grad.data),
+          reinterpret_cast<double*>(error.data), grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
+  }
+
+  output.size = compressed_size;
 }
 }  // namespace compressor
 }  // namespace common

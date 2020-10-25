@@ -51,15 +51,8 @@ class CpuReducer {
   int sum(void* dst, const void* src1, const void* src2, size_t len,
           DataType dtype);
 
-  int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
-  int sum(void* dst, const void* src1, const void* src2, size_t len,
-          DataType dtype, float alpha);
-
   int sum_mixed_precision(void* dst, const void* src, size_t len,
                           DataType dtype);
-
-  int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
-                 float alpha, const std::vector<uint32_t>& idx_list);
 
   int copy(void* __restrict__ dst, const void* __restrict__ src, size_t len);
 
@@ -80,18 +73,6 @@ class CpuReducer {
   template <typename T>
   int _sum(T* __restrict__ dst, const T* __restrict__ src1,
            const T* __restrict__ src2, size_t len);
-
-  template <typename T>
-  int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
-           float alpha);
-
-  template <typename T>
-  int _sum(T* __restrict__ dst, const T* __restrict__ src1,
-           const T* __restrict__ src2, size_t len, float alpha);
-
-  template <typename T>
-  int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
-                  float alpha, const std::vector<uint32_t>& idx_list);
 
   template <typename T>
   int _sum_mixed_precision(float* __restrict__ dst, const T* __restrict__ src,

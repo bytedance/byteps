@@ -52,8 +52,12 @@ namespace compressor {
  */
 class Compressor {
  public:
-  Compressor(size_t size, DataType dtype)
-      : _size(size), _dtype(dtype), _buf(new byte_t[size]){};
+  Compressor(size_t size, DataType dtype) : _size(size), _dtype(dtype) {
+    // fill zeros
+    auto buf = new byte_t[size]();
+    BPS_CHECK(buf) << "failed to allocate " << size << " bytes memory.";
+    _buf.reset(buf);
+  };
   virtual ~Compressor() = default;
 
   /*!
@@ -71,7 +75,7 @@ class Compressor {
    * which contains the compressed data. the returned size is the size of
    * compressed data.
    */
-  virtual tensor_t Compress(tensor_t grad) = 0;
+  virtual void Compress(tensor_t grad, tensor_t& output) = 0;
 
   /*!
    * \brief Decompress function
@@ -86,7 +90,7 @@ class Compressor {
    * is the same as the input's, while the size is decompressed size, which is
    * also the original size.
    */
-  virtual tensor_t Decompress(tensor_t compressed) = 0;
+  virtual void Decompress(tensor_t compressed, tensor_t& output) = 0;
 
   /*!
    * \brief faster version of `UpdateError` via operation fusion
@@ -111,18 +115,18 @@ class Compressor {
    * \param error error
    * \param compressed compressed gradient
    */
-  virtual void FastUpdateError(tensor_t error, tensor_t corrected,
-                               tensor_t compressed) {
-    BPS_LOG(FATAL) << "FastUpdateError is not implemented";
+  virtual void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) {
+    BPS_CHECK(0) << "not implemented error.";
   };
 
  protected:
-  /*! \brief original size */
+  /*! \brief buffer's size */
   size_t _size;
 
+  /*! \brief buffer's dtype */
   DataType _dtype;
 
-  /*! \brief buffer to store compressed grad */
+  /*! \brief buffer  */
   std::unique_ptr<byte_t[]> _buf;
 };
 
