@@ -85,7 +85,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
         [2, 4, 8],
         ["linear", "natural"],
         ["l2"],
-        ["float32", "float16"],
+        ["float16"],
         np.random.randint(0, 2020, size=3).tolist()
     ]
 
