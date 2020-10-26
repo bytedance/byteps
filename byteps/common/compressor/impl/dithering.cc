@@ -186,19 +186,19 @@ void DitheringCompressor::Compress(tensor_t grad, tensor_t& output) {
     switch (grad.dtype) {
       case BYTEPS_FLOAT16:
         compressed_size =
-            CompressImpl(reinterpret_cast<int64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
                          reinterpret_cast<const half_t*>(grad.data),
                          grad.size / sizeof(half_t));
         break;
       case BYTEPS_FLOAT32:
         compressed_size =
-            CompressImpl(reinterpret_cast<int64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
                          reinterpret_cast<const float*>(grad.data),
                          grad.size / sizeof(float));
         break;
       case BYTEPS_FLOAT64:
         compressed_size =
-            CompressImpl(reinterpret_cast<int64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
                          reinterpret_cast<const double*>(grad.data),
                          grad.size / sizeof(double));
         break;
@@ -344,17 +344,17 @@ void DitheringCompressor::Decompress(tensor_t compressed, tensor_t& output) {
     switch (output.dtype) {
       case BYTEPS_FLOAT16:
         DecompressImpl(reinterpret_cast<half_t*>(output.data),
-                       reinterpret_cast<const int64_t*>(compressed.data),
+                       reinterpret_cast<const uint64_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       case BYTEPS_FLOAT32:
         DecompressImpl(reinterpret_cast<float*>(output.data),
-                       reinterpret_cast<const int64_t*>(compressed.data),
+                       reinterpret_cast<const uint64_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       case BYTEPS_FLOAT64:
         DecompressImpl(reinterpret_cast<double*>(output.data),
-                       reinterpret_cast<const int64_t*>(compressed.data),
+                       reinterpret_cast<const uint64_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       default:
