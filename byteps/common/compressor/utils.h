@@ -410,7 +410,7 @@ int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src,
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < size; ++i) {
-    error[_selected_idx[i]] = 0;
+    error[idx_list[i]] = 0;
   }
 
   return 0;
