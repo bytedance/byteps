@@ -269,8 +269,8 @@ auto sgn(T val) -> int {
 int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
 int sum(void* dst, const void* src1, const void* src2, size_t len,
         DataType dtype, float alpha);
-int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
-               float alpha, const std::vector<uint32_t>& idx_list);
+int sparse_sum(void* dst, void* src, size_t size, DataType dtype, float alpha,
+               const std::vector<uint32_t>& idx_list);
 
 template <typename T>
 int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
@@ -281,7 +281,7 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src1,
          const T* __restrict__ src2, size_t len, float alpha);
 
 template <typename T>
-int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
                 float alpha, const std::vector<uint32_t>& idx_list);
 
 int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha) {
@@ -370,21 +370,21 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src1,
   return 0;
 }
 
-int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
-               float alpha, const std::vector<uint32_t>& idx_list) {
+int sparse_sum(void* dst, void* src, size_t size, DataType dtype, float alpha,
+               const std::vector<uint32_t>& idx_list) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sparse_sum(reinterpret_cast<float*>(dst),
-                         reinterpret_cast<const float*>(src),
-                         size / sizeof(float), alpha, idx_list);
+                         reinterpret_cast<float*>(src), size / sizeof(float),
+                         alpha, idx_list);
     case BYTEPS_FLOAT64:
       return _sparse_sum(reinterpret_cast<double*>(dst),
-                         reinterpret_cast<const double*>(src),
+                         reinterpret_cast<double*>(src),
 
                          size / sizeof(double), alpha, idx_list);
     case BYTEPS_FLOAT16:
       return _sparse_sum(reinterpret_cast<half_t*>(dst),
-                         reinterpret_cast<const half_t*>(src),
+                         reinterpret_cast<half_t*>(src),
 
                          size / sizeof(half_t), alpha, idx_list);
     default:
@@ -394,7 +394,7 @@ int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
 }
 
 template <typename T>
-int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
                 float alpha, const std::vector<uint32_t>& idx_list) {
   size_t size = idx_list.size();
 
