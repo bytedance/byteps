@@ -84,7 +84,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
     TEST_BENCH = [
         [2, 4, 8],
         ["linear", "natural"],
-        ["max", "l2"],
+        ["l2"],
         ["float32", "float16"],
         np.random.randint(0, 2020, size=3).tolist()
     ]
@@ -160,6 +160,18 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
                     c = cs
 
                     params[i] -= optimizer_params["learning_rate"] * c
+
+                    np_g = c.flatten()
+                    mx_g = param._grad[0].asnumpy().flatten()
+                    if not np.allclose(np_g, mx_g, atol=np.finfo(dtype).eps):
+                        diff = np.abs(np_g - mx_g)
+                        print("np", np_g)
+                        print("mx", mx_g)
+                        print("diff", diff)
+                        print("max diff", np.max(diff))
+                        idx = np.nonzero(diff > np.finfo(dtype))
+                        print("idx", idx, np_g[idx], mx_g[idx])
+                        input()
 
         cnt = 0
         tot = 0
