@@ -29,23 +29,6 @@ void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
 
   // 2. c <- Compress(p) 3. e <- p - c
   _cptr->FusedCompress(grad, output, error);
-
-#ifndef BYTEPS_BUILDING_SERVER
-  auto ptr = reinterpret_cast<float*>(error.data);
-  auto g = reinterpret_cast<float*>(grad.data);
-  float scale = 0.0;
-  size_t len = error.size / sizeof(float);
-  size_t idx = 0;
-  for (size_t i = 0; i < len; i++) {
-    if (scale < std::abs(ptr[i])) {
-      scale = std::abs(ptr[i]);
-      idx = i;
-    }
-  }
-
-  BPS_LOG(INFO) << "error's max norm=" << scale << " size=" << error.size
-                << " idx=" << idx << " p=" << g[idx];
-#endif
 }
 
 void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& output) {
