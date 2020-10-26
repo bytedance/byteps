@@ -58,7 +58,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
                                            size_t len) {
   // normalize
   double scale = 0.0;
-#pragma omp parallel for simd reduction(+ : sum)
+#pragma omp parallel for simd reduction(+ : scale)
   for (size_t i = 0; i < len; ++i) {
     scale += src[i] * src[i];
   }
@@ -416,7 +416,7 @@ size_t DitheringCompressor::FusedCompressImplL2(
     scalar_t* __restrict__ error, size_t len) {
   // normalize
   double scale = 0.0;
-#pragma omp parallel for simd reduction(+ : sum)
+#pragma omp parallel for simd reduction(+ : scale)
   for (size_t i = 0; i < len; ++i) {
     scale += src[i] * src[i];
   }
