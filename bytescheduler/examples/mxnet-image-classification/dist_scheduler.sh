@@ -9,7 +9,7 @@ export USE_BYTESCHEDULER=0
 # export BYTESCHEDULER_TUNING=1
 # export BYTESCHEDULER_PARTITION=512000
 # export BYTESCHEDULER_CREDIT=4096000
-#export BYTESCHEDULER_TIMELINE=timeline_scheduler.json
+export BYTESCHEDULER_TIMELINE=timeline_scheduler.json
 # export BYTESCHEDULER_DEBUG=1
 
 export DMLC_NUM_SERVER=$1
@@ -21,7 +21,7 @@ shift
 arg="$@"
 
 # start the scheduler
-export DMLC_PS_ROOT_URI='172.31.88.118'
+export DMLC_PS_ROOT_URI='172.31.10.95'
 export DMLC_PS_ROOT_PORT=8000
 export DMLC_ROLE='scheduler'
 ${bin} ${arg} &
