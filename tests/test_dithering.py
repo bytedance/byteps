@@ -44,8 +44,7 @@ def round_next_pow2(v):
 
 
 def dithering(x, k, state, partition='linear', norm="max"):
-    dtype = x.dtype
-    y = x.flatten().astype(np.float32)
+    y = x.flatten()
     if norm == "max":
         scale = np.max(np.abs(y))
     elif norm == "l2":
@@ -61,7 +60,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         y *= k
         low = np.floor(y)
         p = y - low  # whether to ceil
-        y = low + bernoulli(p, state)
+        y = low + bernoulli(p.astype(np.float32), state)
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -69,15 +68,15 @@ def dithering(x, k, state, partition='linear', norm="max"):
         length = copy.deepcopy(low)
         length[length == 0] = 1
         p = (y - low) / length
-        y = low + length * bernoulli(p, state)
-        y = y.astype(np.float32)
+        y = low + length * bernoulli(p.astype(np.float32), state)
+        y = y.astype(x.dtype)
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
 
     y *= sign
     y *= scale
-    return y.reshape(x.shape).astype(dtype)
+    return y.reshape(x.shape)
 
 
 class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
@@ -164,8 +163,6 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
         cnt = 0
         tot = 0
         threshold = 0 if dtype == "float32" else 10
-        if ntype == "l2":
-            threshold += 20
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
@@ -175,6 +172,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
                     idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
+        print("false/tot=%d/%d=%f" % (cnt, tot, cnt/tot))
         assert cnt <= threshold, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
