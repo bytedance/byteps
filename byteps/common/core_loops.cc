@@ -506,8 +506,9 @@ bool RunCompressLoopOnce() {
                                       task->offset);
       int len = task->len;
       int dtype = task->tensor->dtype();
-      compressor::tensor_t grad(data, len, dtype);
-      auto compressed = task->compressor->Compress(grad);
+      compressor::tensor_t grad(data, len, dtype), compressed;
+      task->compressor->Compress(grad, compressed);
+      BPS_CHECK(compressed.data);
       BPS_CHECK_LE(compressed.size, len)
           << "Compressor Implementation Error "
           << ", key=" << task->key << ", src_len=" << len
@@ -598,7 +599,6 @@ bool RunPullLoopOnce() {
     if (task->compressed) {
       BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
       data = task->compressed->data;
-      task->compressed = nullptr;
     }
 
     // false means not to delete data when SArray is deleted
@@ -634,9 +634,12 @@ bool RunDecompressLoopOnce() {
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
       int dtype = task->tensor->dtype();
-      compressor::tensor_t compressed(data, len, dtype);
-      auto decompressed = task->compressor->Decompress(compressed);
+      compressor::tensor_t compressed{task->compressed->data, len},
+          output(data, task->len, dtype);
 
+      task->compressor->Decompress(compressed, output);
+
+      task->compressed = nullptr;
       FinishOrProceed(task);
     });
 

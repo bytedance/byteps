@@ -19,13 +19,13 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
-tensor_t Cast::Compress(tensor_t grad) {
-  return _cptr->Compress(CastToFP32(grad));
+void Cast::Compress(tensor_t grad, tensor_t& output) {
+  _cptr->Compress(CastToFP32(grad), output);
 }
 
-tensor_t Cast::Decompress(tensor_t compressed) {
+void Cast::Decompress(tensor_t compressed, tensor_t& output) {
   // directly forward to internal compressor
-  return _cptr->Decompress(compressed);
+  _cptr->Decompress(compressed, output);
 }
 }  // namespace compressor
 }  // namespace common

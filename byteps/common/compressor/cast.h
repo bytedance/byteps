@@ -42,9 +42,9 @@ class Cast : public Compressor {
         _cptr(std::move(cptr)){};
   ~Cast() override = default;
 
-  tensor_t Compress(tensor_t grad) final;
+  void Compress(tensor_t grad, tensor_t& output) final;
 
-  tensor_t Decompress(tensor_t compressed) final;
+  void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
   /*!
