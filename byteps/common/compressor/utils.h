@@ -266,6 +266,16 @@ auto sgn(T val) -> int {
   return (T(0) < val) - (val < T(0));
 }
 
+template <typename T>
+int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+         float alpha) {
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
+    dst[i] = dst[i] + alpha * src[i];
+  }
+  return 0;
+}
+
 inline int sum(void* dst, const void* src, size_t len, DataType dtype,
                float alpha) {
   switch (dtype) {
@@ -297,11 +307,11 @@ inline int sum(void* dst, const void* src, size_t len, DataType dtype,
 }
 
 template <typename T>
-int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
-         float alpha) {
+int _sum(T* __restrict__ dst, const T* __restrict__ src1,
+         const T* __restrict__ src2, size_t len, float alpha) {
 #pragma omp parallel for simd
   for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
-    dst[i] = dst[i] + alpha * src[i];
+    dst[i] = src1[i] + alpha * src2[i];
   }
   return 0;
 }
@@ -344,12 +354,16 @@ inline int sum(void* dst, const void* src1, const void* src2, size_t len,
 }
 
 template <typename T>
-int _sum(T* __restrict__ dst, const T* __restrict__ src1,
-         const T* __restrict__ src2, size_t len, float alpha) {
+int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
+                float alpha, const std::vector<uint32_t>& idx_list) {
+  size_t size = idx_list.size();
+
 #pragma omp parallel for simd
-  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
-    dst[i] = src1[i] + alpha * src2[i];
+  for (size_t i = 0; i < size; ++i) {
+    dst[i] += src[idx_list[i]] * alpha;
+    src[idx_list[i]] = 0;
   }
+
   return 0;
 }
 
@@ -376,19 +390,6 @@ inline int sparse_sum(void* dst, void* src, size_t size, DataType dtype,
   return 0;
 }
 
-template <typename T>
-int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
-                float alpha, const std::vector<uint32_t>& idx_list) {
-  size_t size = idx_list.size();
-
-#pragma omp parallel for simd
-  for (size_t i = 0; i < size; ++i) {
-    dst[i] += src[idx_list[i]] * alpha;
-    src[idx_list[i]] = 0;
-  }
-
-  return 0;
-}
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
