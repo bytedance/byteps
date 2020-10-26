@@ -32,14 +32,19 @@ void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
 
 #ifndef BYTEPS_BUILDING_SERVER
   auto ptr = reinterpret_cast<float*>(error.data);
-  double scale = 0.0;
+  auto g = reinterpret_cast<float*>(grad.data);
+  float scale = 0.0;
   size_t len = error.size / sizeof(float);
-#pragma omp parallel for simd reduction(max : scale)
+  size_t idx = 0;
   for (size_t i = 0; i < len; i++) {
-    scale = scale > std::abs(ptr[i]) ? scale : std::abs(ptr[i]);
+    if (scale < std::abs(ptr[i])) {
+      scale = std::abs(ptr[i]);
+      idx = i;
+    }
   }
 
-  BPS_LOG(INFO) << "error's max norm=" << scale << " size=" << error.size;
+  BPS_LOG(INFO) << "error's max norm=" << scale << " size=" << error.size
+                << " idx=" << idx << " p=" << g[idx];
 #endif
 }
 
