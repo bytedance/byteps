@@ -111,7 +111,7 @@ void RandomkCompressor::Compress(tensor_t grad, tensor_t& output) {
 
   output.size = compressed_size;
 #else
-  output = tensor_t{grad, this->_k * getDataTypeLength(grad.dtype)};
+  output = {grad, this->_k * getDataTypeLength(grad.dtype), grad.dtype};
 #endif
 }
 
@@ -229,7 +229,7 @@ void RandomkCompressor::FusedCompress(tensor_t grad, tensor_t& output,
 
   output.size = compressed_size;
 #else
-  output = tensor_t{grad, this->_k * getDataTypeLength(grad.dtype)};
+  output = {grad, this->_k * getDataTypeLength(grad.dtype), grad.dtype};
 #endif
 }
 
