@@ -62,6 +62,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
+  BPS_LOG(INFO) << "compress scale=" << scale;
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   BitWriter<index_t> bit_writer(dst);
@@ -289,6 +290,7 @@ void DitheringCompressor::DecompressImplL2(scalar_t* __restrict__ dst,
 
   auto* p_scale = reinterpret_cast<const float*>(src + blocks + 1);
   const float scale = *p_scale;
+  BPS_LOG(INFO) << "decompress scale=" << scale;
 
   std::memset(dst, 0, dst_size);
 
