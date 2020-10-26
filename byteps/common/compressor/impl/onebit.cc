@@ -260,19 +260,22 @@ void OnebitCompressor::FusedCompress(tensor_t grad, tensor_t& output,
 
   size_t len = grad.size / sizeof(float);
   size_t idx = 0;
-  size_t max = 0;
+  float max = 0, avg = 0;
   for (size_t i = 0; i < len; i++) {
     int sign = 1 - (g[i] < 0) - (g[i] < 0);
     float diff = std::abs(g[i] - sign * scale);
+    avg += diff;
     if (max < diff) {
       max = diff;
       idx = i;
     }
   }
+  avg /= len;
 
   BPS_LOG(INFO) << "diff's max norm=" << max << " size=" << grad.size
                 << " idx=" << idx << " g=" << g[idx]
-                << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale;
+                << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale
+                << " avg(diff)=" << avg;
 #endif
 }
 }  // namespace compressor
