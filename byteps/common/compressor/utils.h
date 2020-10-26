@@ -269,9 +269,8 @@ auto sgn(T val) -> int {
 int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
 int sum(void* dst, const void* src1, const void* src2, size_t len,
         DataType dtype, float alpha);
-int sparse_sum(void* dst, const void* src, void* error, size_t size,
-               DataType dtype, float alpha,
-               const std::vector<uint32_t>& idx_list);
+int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
+               float alpha, const std::vector<uint32_t>& idx_list);
 
 template <typename T>
 int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
@@ -282,9 +281,8 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src1,
          const T* __restrict__ src2, size_t len, float alpha);
 
 template <typename T>
-int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src,
-                T* __restrict__ error, size_t len, float alpha,
-                const std::vector<uint32_t>& idx_list);
+int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+                float alpha, const std::vector<uint32_t>& idx_list);
 
 int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha) {
   switch (dtype) {
@@ -372,24 +370,22 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src1,
   return 0;
 }
 
-int sparse_sum(void* dst, const void* src, void* error, size_t size,
-               DataType dtype, float alpha,
-               const std::vector<uint32_t>& idx_list) {
+int sparse_sum(void* dst, const void* src, size_t size, DataType dtype,
+               float alpha, const std::vector<uint32_t>& idx_list) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sparse_sum(reinterpret_cast<float*>(dst),
                          reinterpret_cast<const float*>(src),
-                         reinterpret_cast<float*>(error), size / sizeof(float),
-                         alpha, idx_list);
+                         size / sizeof(float), alpha, idx_list);
     case BYTEPS_FLOAT64:
       return _sparse_sum(reinterpret_cast<double*>(dst),
                          reinterpret_cast<const double*>(src),
-                         reinterpret_cast<double*>(error),
+
                          size / sizeof(double), alpha, idx_list);
     case BYTEPS_FLOAT16:
       return _sparse_sum(reinterpret_cast<half_t*>(dst),
                          reinterpret_cast<const half_t*>(src),
-                         reinterpret_cast<half_t*>(error),
+
                          size / sizeof(half_t), alpha, idx_list);
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
@@ -398,19 +394,14 @@ int sparse_sum(void* dst, const void* src, void* error, size_t size,
 }
 
 template <typename T>
-int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src,
-                T* __restrict__ error, size_t len, float alpha,
-                const std::vector<uint32_t>& idx_list) {
+int _sparse_sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+                float alpha, const std::vector<uint32_t>& idx_list) {
   size_t size = idx_list.size();
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < size; ++i) {
     dst[i] += src[idx_list[i]] * alpha;
-  }
-
-#pragma omp parallel for simd
-  for (size_t i = 0; i < size; ++i) {
-    error[idx_list[i]] = 0;
+    src[idx_list[i]] = 0;
   }
 
   return 0;
