@@ -110,6 +110,8 @@ void RandomkCompressor::Compress(tensor_t grad, tensor_t& output) {
   }
 
   output.size = compressed_size;
+#else
+  output = grad;
 #endif
 }
 
@@ -154,6 +156,8 @@ void RandomkCompressor::Decompress(tensor_t compressed, tensor_t& output) {
     default:
       BPS_CHECK(0) << "Unsupported data type:" << output.dtype;
   }
+#else
+  output = compressed;
 #endif
 }
 
@@ -186,7 +190,7 @@ size_t RandomkCompressor::FusedCompressImpl(scalar_t* __restrict__ dst,
   for (size_t i = 0; i < this->_k; ++i) {
     error[_selected_idx[i]] = 0;
   }
-  // server does nothing
+
   return this->_k * sizeof(scalar_t);
 }
 
@@ -224,6 +228,8 @@ void RandomkCompressor::FusedCompress(tensor_t grad, tensor_t& output,
   }
 
   output.size = compressed_size;
+#else
+  output = grad;
 #endif
 }
 

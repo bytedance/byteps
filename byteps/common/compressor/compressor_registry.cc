@@ -49,11 +49,11 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
   };
   // lower data type should be cast into fp32
   if (dtype == BYTEPS_FLOAT16) {
-    if (kwargs.find("mixed_precision") != kwargs.end() &&
-        kwargs["mixed_precision"] == "true") {
-      kwargs["cast_type"] = "fp16";
-    }
+    kwargs["cast_type"] = "fp16";
+    size *= 2;
+    dtype = BYTEPS_FLOAT32;
   }
+  size = Align(size);
 #else
   // server do not need momentum and cast
   std::vector<std::string> types = {

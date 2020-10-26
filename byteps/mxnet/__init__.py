@@ -301,10 +301,6 @@ class DistributedTrainer(mx.gluon.Trainer):
                     raise ValueError("Unsupported normalization %s" %
                                      compression_params["normalize"])
 
-            if compression_params.get("mixed_precision"):
-                if compression_params["mixed_precision"]:
-                    setattr(param, "byteps_mixed_precision", "true")
-
         # the following code will delete some items in `optimizer_params`
         # to avoid duplication
         if compression_params.get("momentum"):
