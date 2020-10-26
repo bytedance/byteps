@@ -277,10 +277,9 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-inline size_t Align(size_t size, int dtype) {
-  size_t ele_size = getDataTypeLength(dtype);
-  size_t min_size = ele_size * ele_size * 8;
-  return size + (min_size - size % min_size) % min_size;
+inline size_t Align(size_t size) {
+  constexpr size_t MIN_SIZE = 512;
+  return size + (MIN_SIZE - size % MIN_SIZE) % MIN_SIZE;
 }
 
 // promote low-precision type into float32

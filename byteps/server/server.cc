@@ -236,7 +236,7 @@ void BytePSHandleConfigReq(uint64_t key, DataHandleType type,
                         static_cast<size_t>(req_data.lens[0])};
     auto kwargs = byteps::common::compressor::Deserialize(content);
     auto stored = GetStore(key);
-    size_t aligned_size = byteps::common::Align(stored->len, stored->dtype);
+    size_t aligned_size = byteps::common::Align(stored->len);
     auto compressor_ptr =
         byteps::common::compressor::CompressorRegistry::Create(
             kwargs, aligned_size,
@@ -294,7 +294,7 @@ void BytePSHanleInit(uint64_t key, DataHandleType type, size_t len,
     common::Promote(len, dtype);
   }
 
-  size_t aligned_size = common::Align(len, dtype);
+  size_t aligned_size = common::Align(len);
   // init stored buffer, use page aligned memory
   PageAlignedMalloc((void**)&stored->tensor, aligned_size);
   stored->len = len;

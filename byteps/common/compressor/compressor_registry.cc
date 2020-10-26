@@ -48,17 +48,11 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
       "momentum_type",
   };
   // lower data type should be cast into fp32
-  if (getDataTypeLength(dtype) < 4) {
-    types.emplace_back("cast_type");
-    if (dtype == BYTEPS_FLOAT16) {
+  if (dtype == BYTEPS_FLOAT16) {
+    if (kwargs.find("mixed_precision") != kwargs.end() &&
+        kwargs["mixed_precision"] == "true") {
       kwargs["cast_type"] = "fp16";
-    } else {
-      BPS_LOG(FATAL) << "The data type is not supported yet.";
     }
-    size *= (4 / getDataTypeLength(dtype));
-    size = Align(size, BYTEPS_FLOAT32);
-  } else {
-    size = Align(size, dtype);
   }
 #else
   // server do not need momentum and cast
