@@ -58,58 +58,54 @@ class DitheringCompressor : public Compressor {
   };
   ~DitheringCompressor() override = default;
 
-  tensor_t Compress(tensor_t grad) override;
+  void Compress(tensor_t grad, tensor_t& output) override;
 
-  tensor_t Decompress(tensor_t compressed) override;
+  void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  void FastUpdateError(tensor_t error, tensor_t corrected,
-                       tensor_t compressed) override;
+  void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* __restrict__ dst,
+  size_t CompressImpl(index_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  size_t CompressImplMax(index_t* __restrict__ dst,
+                         const scalar_t* __restrict__ src, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  size_t CompressImplL2(index_t* __restrict__ dst,
                         const scalar_t* __restrict__ src, size_t len);
 
-  template <typename index_t, typename scalar_t>
-  tensor_t CompressImplMax(index_t* __restrict__ dst,
-                           const scalar_t* __restrict__ src, size_t len);
+  template <typename scalar_t, typename index_t>
+  void DecompressImplL2(scalar_t* __restrict__ dst,
+                        const index_t* __restrict__ src, size_t compressed_size,
+                        size_t dst_size);
+
+  template <typename scalar_t, typename index_t>
+  void DecompressImplMax(scalar_t* __restrict__ dst,
+                         const index_t* __restrict__ src,
+                         size_t compressed_size, size_t dst_size);
+
+  template <typename scalar_t, typename index_t>
+  void DecompressImpl(scalar_t* __restrict__ dst,
+                      const index_t* __restrict__ src, size_t compressed_size,
+                      size_t dst_size);
 
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImplL2(index_t* __restrict__ dst,
-                          const scalar_t* __restrict__ src, size_t len);
+  size_t FusedCompressImplL2(index_t* __restrict__ dst,
+                             const scalar_t* __restrict__ src,
+                             scalar_t* __restrict__ error, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImplL2(scalar_t* __restrict__ dst,
-                            const index_t* __restrict__ src,
-                            size_t compressed_size);
+  size_t FusedCompressImplMax(index_t* __restrict__ dst,
+                              const scalar_t* __restrict__ src,
+                              scalar_t* __restrict__ error, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImplMax(scalar_t* __restrict__ dst,
-                             const index_t* __restrict__ src,
-                             size_t compressed_size);
-
-  template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* __restrict__ dst,
-                          const index_t* __restrict__ src,
-                          size_t compressed_size);
-
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImplL2(scalar_t* __restrict__ error,
-                             scalar_t* __restrict__ corrected,
-                             const index_t* __restrict__ compressed,
-                             size_t compressed_size);
-
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImplMax(scalar_t* __restrict__ error,
-                              scalar_t* __restrict__ corrected,
-                              const index_t* __restrict__ compressed,
-                              size_t compressed_size);
-
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* __restrict__ error,
-                           scalar_t* __restrict__ corrected,
-                           const index_t* __restrict__ compressed,
-                           size_t compressed_size);
+  size_t FusedCompressImpl(index_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src,
+                           scalar_t* __restrict__ error, size_t len);
 
   /*! \brief number of levels */
   const unsigned int _s;
