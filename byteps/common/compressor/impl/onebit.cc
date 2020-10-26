@@ -181,7 +181,7 @@ size_t OnebitCompressor::FusedCompressImpl(index_t* __restrict__ dst,
     for (size_t j = 1; j < PACKING_SIZE; ++j) {
       x <<= 1;
       index_t sign = src[idx + j] < 0;
-      error[idx + j] = src[idx + j] - scale * sign;
+      error[idx + j] = src[idx + j] - scale * (1 - sign - sign);
       x |= sign;
     }
     dst[i] = x;
