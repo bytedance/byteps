@@ -32,7 +32,7 @@ export DMLC_ROLE='server'
 #    ${bin} ${arg} &
 #done
 
-${bin} ${arg}
+${bin} ${arg} &
 
 
 

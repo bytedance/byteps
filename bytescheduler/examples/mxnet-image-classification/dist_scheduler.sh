@@ -25,7 +25,7 @@ arg="$@"
 export DMLC_PS_ROOT_URI='172.31.93.100'
 export DMLC_PS_ROOT_PORT=8000
 export DMLC_ROLE='scheduler'
-${bin} ${arg}
+${bin} ${arg} &
 
 
 wait
