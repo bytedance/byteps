@@ -27,7 +27,7 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start workers
 export DMLC_ROLE='worker'
-${bin} ${arg} &
+${bin} ${arg}
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
 #    ${bin} ${arg} &
