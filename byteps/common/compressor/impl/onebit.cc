@@ -52,6 +52,7 @@ size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
     }
     scale = sum / len;
   }
+  BPS_LOG(INFO) << "scale=" << scale << " len=" << len;
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < chunk_len; ++i) {
