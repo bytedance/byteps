@@ -58,6 +58,8 @@ parser.add_argument('--scaling', action='store_true', default=False,
                     help='enable scaling for onebit compressor')
 parser.add_argument('--k', type=int, default=1,
                     help='topk or randomk')
+parser.add_argument('--normalize', default='max', type=str,
+                    help='max or l2')
 parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                     help='use fp16 compression during pushpull')
 parser.add_argument('--logging-file', type=str, default='baseline',
@@ -167,6 +169,7 @@ compression_params = {
     "momentum": args.compress_momentum,
     "scaling": args.scaling,
     "k": args.k,
+    "normalize": args.normalize,
     "fp16": args.fp16_pushpull
 }
 
