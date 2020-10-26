@@ -44,7 +44,8 @@ def round_next_pow2(v):
 
 
 def dithering(x, k, state, partition='linear', norm="max"):
-    y = x.flatten()
+    dtype = x.dtype
+    y = x.flatten().astype(np.float32)
     if norm == "max":
         scale = np.max(np.abs(y))
     elif norm == "l2":
@@ -60,7 +61,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         y *= k
         low = np.floor(y)
         p = y - low  # whether to ceil
-        y = low + bernoulli(p.astype(np.float32), state)
+        y = low + bernoulli(p, state)
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -68,15 +69,15 @@ def dithering(x, k, state, partition='linear', norm="max"):
         length = copy.deepcopy(low)
         length[length == 0] = 1
         p = (y - low) / length
-        y = low + length * bernoulli(p.astype(np.float32), state)
-        y = y.astype(x.dtype)
+        y = low + length * bernoulli(p, state)
+        y = y.astype(np.float32)
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
 
     y *= sign
     y *= scale
-    return y.reshape(x.shape)
+    return y.reshape(x.shape).astype(dtype)
 
 
 class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
