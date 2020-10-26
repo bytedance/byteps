@@ -44,7 +44,8 @@ def round_next_pow2(v):
 
 
 def dithering(x, k, state, partition='linear', norm="max"):
-    y = x.flatten()
+    dtype = x.dtype
+    y = x.flatten().astype(np.float32)
     if norm == "max":
         scale = np.max(np.abs(y))
     elif norm == "l2":
@@ -76,7 +77,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
 
     y *= sign
     y *= scale
-    return y.reshape(x.shape)
+    return y.reshape(x.shape).astype(dtype)
 
 
 class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
