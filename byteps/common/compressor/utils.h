@@ -266,25 +266,8 @@ auto sgn(T val) -> int {
   return (T(0) < val) - (val < T(0));
 }
 
-int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
-int sum(void* dst, const void* src1, const void* src2, size_t len,
-        DataType dtype, float alpha);
-int sparse_sum(void* dst, void* src, size_t size, DataType dtype, float alpha,
-               const std::vector<uint32_t>& idx_list);
-
-template <typename T>
-int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
-         float alpha);
-
-template <typename T>
-int _sum(T* __restrict__ dst, const T* __restrict__ src1,
-         const T* __restrict__ src2, size_t len, float alpha);
-
-template <typename T>
-int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
-                float alpha, const std::vector<uint32_t>& idx_list);
-
-int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha) {
+inline int sum(void* dst, const void* src, size_t len, DataType dtype,
+               float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst),
@@ -323,8 +306,8 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
   return 0;
 }
 
-int sum(void* dst, const void* src1, const void* src2, size_t len,
-        DataType dtype, float alpha) {
+inline int sum(void* dst, const void* src1, const void* src2, size_t len,
+               DataType dtype, float alpha) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sum(reinterpret_cast<float*>(dst),
@@ -370,8 +353,8 @@ int _sum(T* __restrict__ dst, const T* __restrict__ src1,
   return 0;
 }
 
-int sparse_sum(void* dst, void* src, size_t size, DataType dtype, float alpha,
-               const std::vector<uint32_t>& idx_list) {
+inline int sparse_sum(void* dst, void* src, size_t size, DataType dtype,
+                      float alpha, const std::vector<uint32_t>& idx_list) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
       return _sparse_sum(reinterpret_cast<float*>(dst),
