@@ -46,7 +46,7 @@ size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
   float scale = 1.0f;
   if (_use_scale) {
     double sum = 0.0f;
-#pragma omp parallel for simd reduction(+ : sum)
+    // #pragma omp parallel for simd reduction(+ : sum)
     for (size_t i = 0; i < len; ++i) {
       sum += std::abs(src[i]);
     }
