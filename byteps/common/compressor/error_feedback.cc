@@ -39,7 +39,7 @@ void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
     scale = scale > std::abs(ptr[i]) ? scale : std::abs(ptr[i]);
   }
 
-  BPS_LOG(INFO) << "error's max norm=" << scale;
+  BPS_LOG(INFO) << "error's max norm=" << scale << " size=" << error.size;
 #endif
 }
 
