@@ -28,7 +28,6 @@ CompressorRegistry::Register reg(
     "dithering_compressor",
     [](const kwargs_t& kwargs, size_t size, DataType dtype,
        std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
-      std::tuple<> params;
       auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
       auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
@@ -291,7 +290,7 @@ void DitheringCompressor::DecompressImplL2(scalar_t* __restrict__ dst,
   auto* p_scale = reinterpret_cast<const float*>(src + blocks + 1);
   const float scale = *p_scale;
 
-  std::memset(dst, 0, _size);
+  std::memset(dst, 0, dst_size);
 
   unsigned int s = _s;
   if (_ptype == PartitionType::NATURAL) {
