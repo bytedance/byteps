@@ -5,12 +5,12 @@ if [ $# -lt 3 ]; then
     exit -1;
 fi
 
-export USE_BYTESCHEDULER=0
+export USE_BYTESCHEDULER=1
 #export MXNET_CUDNN_AUTOTUNE_DEFAULT=0
 # export BYTESCHEDULER_TUNING=1
 # export BYTESCHEDULER_PARTITION=512000
 # export BYTESCHEDULER_CREDIT=4096000
-export BYTESCHEDULER_TIMELINE=timeline_worker.json
+export BYTESCHEDULER_TIMELINE=timeline_worker_2.json
 # export BYTESCHEDULER_DEBUG=1
 
 export DMLC_NUM_SERVER=$1
