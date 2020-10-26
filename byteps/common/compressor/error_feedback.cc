@@ -29,6 +29,18 @@ void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
 
   // 2. c <- Compress(p) 3. e <- p - c
   _cptr->FusedCompress(grad, output, error);
+
+#ifndef BYTEPS_BUILDING_SERVER
+  auto ptr = reinterpret_cast<float*>(error.data);
+  double scale = 0.0;
+  size_t len = error.size / sizeof(float);
+#pragma omp parallel for simd reduction(max : scale)
+  for (size_t i = 0; i < len; i++) {
+    scale = scale > std::abs(ptr[i]) ? scale : std::abs(ptr[i]);
+  }
+
+  BPS_LOG(INFO) << "error's max norm=" << scale;
+#endif
 }
 
 void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& output) {
