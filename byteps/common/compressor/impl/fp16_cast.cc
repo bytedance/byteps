@@ -44,15 +44,11 @@ tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) {
   for (size_t i = 0; i < len; ++i) {
     dst[i] = src[i];
   }
-  BPS_LOG(INFO) << "f16c";
   // use BYTEPS_FLOAT32 as dtype in the following compression
   return {dst, len * sizeof(float), BYTEPS_FLOAT32};
 }
 #else
-tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) {
-  BPS_LOG(INFO) << "not f16c";
-  return grad;
-}
+tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) { return grad; }
 #endif
 }  // namespace compressor
 }  // namespace common

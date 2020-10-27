@@ -55,6 +55,14 @@ size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
   }
   BPS_LOG(INFO) << "scale=" << scale << " len=" << len;
 
+  if (scale > 1000000) {
+    float max = 1;
+    for (size_t i = 0; i < len; ++i) {
+      max = max > std::abs(src[i]) ? max : std::abs(src[i]);
+    }
+    BPS_LOG(INFO) << "overflow!!! max ele=" << max;
+  }
+
 #pragma omp parallel for simd
   for (size_t i = 0; i < chunk_len; ++i) {
     size_t idx = i * PACKING_SIZE;
@@ -101,32 +109,32 @@ void OnebitCompressor::Compress(tensor_t grad, tensor_t& output) {
   }
   output.size = compressed_size;
 
-#ifndef BYTEPS_BUILDING_SERVER
-  auto g = reinterpret_cast<float*>(grad.data);
-  auto c = reinterpret_cast<int64_t*>(output.data);
-  const size_t chunk_len = (output.size - sizeof(float)) / sizeof(int64_t);
-  auto* pf = reinterpret_cast<const float*>(c + chunk_len);
-  float scale = *pf;
+  // #ifndef BYTEPS_BUILDING_SERVER
+  //   auto g = reinterpret_cast<float*>(grad.data);
+  //   auto c = reinterpret_cast<int64_t*>(output.data);
+  //   const size_t chunk_len = (output.size - sizeof(float)) / sizeof(int64_t);
+  //   auto* pf = reinterpret_cast<const float*>(c + chunk_len);
+  //   float scale = *pf;
 
-  size_t len = grad.size / sizeof(float);
-  size_t idx = 0;
-  float max = 0, avg = 0;
-  for (size_t i = 0; i < len; i++) {
-    int sign = 1 - (g[i] < 0) - (g[i] < 0);
-    float diff = std::fabs(g[i] - sign * scale);
-    avg += diff;
-    if (max < diff) {
-      max = diff;
-      idx = i;
-    }
-  }
-  avg /= len;
+  //   size_t len = grad.size / sizeof(float);
+  //   size_t idx = 0;
+  //   float max = 0, avg = 0;
+  //   for (size_t i = 0; i < len; i++) {
+  //     int sign = 1 - (g[i] < 0) - (g[i] < 0);
+  //     float diff = std::fabs(g[i] - sign * scale);
+  //     avg += diff;
+  //     if (max < diff) {
+  //       max = diff;
+  //       idx = i;
+  //     }
+  //   }
+  //   avg /= len;
 
-  BPS_LOG(INFO) << "diff's max norm=" << max << " size=" << grad.size
-                << " idx=" << idx << " g=" << g[idx]
-                << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale
-                << " avg(diff)=" << avg;
-#endif
+  //   BPS_LOG(INFO) << "diff's max norm=" << max << " size=" << grad.size
+  //                 << " idx=" << idx << " g=" << g[idx]
+  //                 << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale
+  //                 << " avg(diff)=" << avg;
+  // #endif
 }
 
 template <typename scalar_t, typename index_t>
@@ -256,32 +264,32 @@ void OnebitCompressor::FusedCompress(tensor_t grad, tensor_t& output,
 
   output.size = compressed_size;
 
-#ifndef BYTEPS_BUILDING_SERVER
-  auto g = reinterpret_cast<float*>(grad.data);
-  auto c = reinterpret_cast<int64_t*>(output.data);
-  const size_t chunk_len = (output.size - sizeof(float)) / sizeof(int64_t);
-  auto* pf = reinterpret_cast<const float*>(c + chunk_len);
-  float scale = *pf;
+  // #ifndef BYTEPS_BUILDING_SERVER
+  //   auto g = reinterpret_cast<float*>(grad.data);
+  //   auto c = reinterpret_cast<int64_t*>(output.data);
+  //   const size_t chunk_len = (output.size - sizeof(float)) / sizeof(int64_t);
+  //   auto* pf = reinterpret_cast<const float*>(c + chunk_len);
+  //   float scale = *pf;
 
-  size_t len = grad.size / sizeof(float);
-  size_t idx = 0;
-  float max = 0, avg = 0;
-  for (size_t i = 0; i < len; i++) {
-    int sign = 1 - (g[i] < 0) - (g[i] < 0);
-    float diff = std::fabs(g[i] - sign * scale);
-    avg += diff;
-    if (max < diff) {
-      max = diff;
-      idx = i;
-    }
-  }
-  avg /= len;
+  //   size_t len = grad.size / sizeof(float);
+  //   size_t idx = 0;
+  //   float max = 0, avg = 0;
+  //   for (size_t i = 0; i < len; i++) {
+  //     int sign = 1 - (g[i] < 0) - (g[i] < 0);
+  //     float diff = std::fabs(g[i] - sign * scale);
+  //     avg += diff;
+  //     if (max < diff) {
+  //       max = diff;
+  //       idx = i;
+  //     }
+  //   }
+  //   avg /= len;
 
-  BPS_LOG(INFO) << "diff's max norm=" << max << " size=" << grad.size
-                << " idx=" << idx << " g=" << g[idx]
-                << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale
-                << " avg(diff)=" << avg;
-#endif
+  //   BPS_LOG(INFO) << "diff's max norm=" << max << " size=" << grad.size
+  //                 << " idx=" << idx << " g=" << g[idx]
+  //                 << " c=" << (1 - (g[idx] < 0) - (g[idx] < 0)) * scale
+  //                 << " avg(diff)=" << avg;
+  // #endif
 }
 }  // namespace compressor
 }  // namespace common

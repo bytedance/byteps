@@ -20,8 +20,6 @@ namespace common {
 namespace compressor {
 
 void Cast::Compress(tensor_t grad, tensor_t& output) {
-  tensor_t fp32_grad = CastToFP32(grad);
-  BPS_LOG(INFO) << "dtype=" << fp32_grad.dtype;
   _cptr->Compress(CastToFP32(grad), output);
 }
 
