@@ -50,6 +50,7 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
   // lower data type should be cast into fp32
   if (dtype == BYTEPS_FLOAT16) {
     kwargs["cast_type"] = "fp16";
+    types.emplace_back("cast_type");
     size *= 2;
     dtype = BYTEPS_FLOAT32;
   }
