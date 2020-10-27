@@ -15,6 +15,7 @@
 
 #include "onebit.h"
 
+#include <cmath>
 #include <cstring>
 
 #include "../compressor_registry.h"
@@ -46,9 +47,9 @@ size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
   float scale = 1.0f;
   if (_use_scale) {
     double sum = 0.0f;
-    // #pragma omp parallel for simd reduction(+ : sum)
+#pragma omp parallel for simd reduction(+ : sum)
     for (size_t i = 0; i < len; ++i) {
-      sum += std::abs(src[i]);
+      sum += std::fabs(src[i]);
     }
     scale = sum / len;
   }
@@ -112,7 +113,7 @@ void OnebitCompressor::Compress(tensor_t grad, tensor_t& output) {
   float max = 0, avg = 0;
   for (size_t i = 0; i < len; i++) {
     int sign = 1 - (g[i] < 0) - (g[i] < 0);
-    float diff = std::abs(g[i] - sign * scale);
+    float diff = std::fabs(g[i] - sign * scale);
     avg += diff;
     if (max < diff) {
       max = diff;
@@ -195,7 +196,7 @@ size_t OnebitCompressor::FusedCompressImpl(index_t* __restrict__ dst,
     double sum = 0.0f;
 #pragma omp parallel for simd reduction(+ : sum)
     for (size_t i = 0; i < len; ++i) {
-      sum += std::abs(src[i]);
+      sum += std::fabs(src[i]);
     }
     scale = sum / len;
   }
@@ -267,7 +268,7 @@ void OnebitCompressor::FusedCompress(tensor_t grad, tensor_t& output,
   float max = 0, avg = 0;
   for (size_t i = 0; i < len; i++) {
     int sign = 1 - (g[i] < 0) - (g[i] < 0);
-    float diff = std::abs(g[i] - sign * scale);
+    float diff = std::fabs(g[i] - sign * scale);
     avg += diff;
     if (max < diff) {
       max = diff;
