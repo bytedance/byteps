@@ -12,7 +12,6 @@ export USE_BYTESCHEDULER=1
 # export BYTESCHEDULER_CREDIT=4096000
 export BYTESCHEDULER_TIMELINE=timeline_worker_bs.json
 # export BYTESCHEDULER_DEBUG=1
-export MXNET_PROFILER_AUTOSTART=1
 
 export DMLC_NUM_SERVER=$1
 shift
@@ -28,7 +27,7 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start workers
 export DMLC_ROLE='worker'
-${bin} ${arg} &
+MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
 #    ${bin} ${arg} &
