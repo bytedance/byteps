@@ -12,7 +12,6 @@ export USE_BYTESCHEDULER=1
 # export BYTESCHEDULER_CREDIT=4096000
 #export BYTESCHEDULER_TIMELINE=timeline.json
 # export BYTESCHEDULER_DEBUG=1
-export MXNET_PROFILER_AUTOSTART=1
 
 export DMLC_NUM_SERVER=$1
 shift
@@ -33,7 +32,7 @@ export DMLC_ROLE='server'
 #    ${bin} ${arg} &
 #done
 
-${bin} ${arg} &
+MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
 
 
 
