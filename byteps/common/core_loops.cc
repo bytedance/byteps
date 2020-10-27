@@ -125,6 +125,10 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       // *step_cnt* denotes the number this gradient has been synchronized.
       task->context->step_cnt += 1;
       BytePSGlobal::SetProfileFlag(task->context);
+
+      if (PushPullSpeed::ShouldRecord()) {
+        PushPullSpeed::RecordSpeed(task);
+      }
     }
   }
   return;

@@ -128,6 +128,13 @@ int byteps_local_size() { return BytePSGlobal::GetLocalSize(); }
 
 }  // extern "C"
 
+extern "C" PyObject* byteps_get_pushpull_speed() {
+  auto entry = PushPullSpeed::GetSpeed();
+  PyObject* ret = Py_BuildValue("(Kf)", entry->ts, entry->speed);
+
+  return ret;
+}
+
 Status CheckInitialized() { return BytePSGlobal::CheckInit(); }
 
 void PartitionTensor(

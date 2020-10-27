@@ -224,6 +224,27 @@ class BytePSGlobal {
   static uint64_t Hash_Mixed_Mode(uint64_t key);
 };
 
+struct SpeedEntry {
+  std::size_t ts;
+  float speed;
+};
+
+class PushPullSpeed {
+ public:
+  static void RecordSpeed(std::shared_ptr<TensorTableEntry> task);
+  static std::shared_ptr<SpeedEntry> GetSpeed();
+  static bool ShouldRecord();
+
+ private:
+  static std::mutex _mtx;
+  static std::queue<std::shared_ptr<SpeedEntry>> _data_points;
+  static std::size_t _acc_size;
+  static std::size_t _limit;
+  static std::chrono::time_point<std::chrono::system_clock> _last_ts;
+  static bool _initialized;
+  static bool _should_record;
+};
+
 }  // namespace common
 }  // namespace byteps
 
