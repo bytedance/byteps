@@ -10,7 +10,7 @@ export USE_BYTESCHEDULER=0
 # export BYTESCHEDULER_TUNING=1
 # export BYTESCHEDULER_PARTITION=512000
 # export BYTESCHEDULER_CREDIT=4096000
-export BYTESCHEDULER_TIMELINE=timeline_worker_mxnet.json
+export BYTESCHEDULER_TIMELINE=timeline_worker_mxnet_4x4.json
 # export BYTESCHEDULER_DEBUG=1
 
 export DMLC_NUM_SERVER=$1
@@ -22,7 +22,7 @@ shift
 arg="$@"
 
 # start the scheduler
-export DMLC_PS_ROOT_URI='172.31.93.100'
+export DMLC_PS_ROOT_URI='172.31.86.107'
 export DMLC_PS_ROOT_PORT=8000
 
 # start workers
