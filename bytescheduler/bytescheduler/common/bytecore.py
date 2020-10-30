@@ -31,8 +31,11 @@ class ByteCore(object):
             self._logger = logger
 
         # A priority queue of ByteTask, tasks are sorted according to its priority.
-        queue_type = int(os.getenv("BYTESCHEDULER_QUEUE_TYPE", 0))
-        if queue_type==0:
+        # queue_type: 0 priority_queue--last is higher;
+        # 1 priority_queue--first is higher;
+        # 2 FIFO queue
+        self.queue_type = int(os.getenv("BYTESCHEDULER_QUEUE_TYPE", 0))
+        if queue_type<=1:
             self._queue = queue.PriorityQueue()
             self._logger.info("use priority scheduler")
         else:
@@ -203,7 +206,10 @@ class ByteCore(object):
                     self._pending.remove(task)
                 self._profiler.put(task.name, task.op + 'QUEUE', 'B')
                 with self._condition:
-                    self._queue.put((task.priority, self._commands['DATA'], task))
+                    if self.queue_type == 0 :
+                        self._queue.put((task.priority, self._commands['DATA'], task))
+                    else:
+                        self._queue.put((-task.priority, self._commands['DATA'], task))
                     self._condition.notify_all()
                 self._logger.debug(
                     "{} has been posted into Core with priority {}".format(task.desc, task.priority))
@@ -240,7 +246,7 @@ class ByteCore(object):
                         # wait for (potential) new task
                         self._condition.wait()
                         continue
-                    if task and self._credit <= 0:
+                    if self.queue_type<=1 and task and self._credit <= 0:
                         self._queue.put((priority, cmd, task))
                         # wait for (potential) new credit
                         self._condition.wait()
