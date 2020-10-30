@@ -32,12 +32,12 @@ class ByteCore(object):
 
         # A priority queue of ByteTask, tasks are sorted according to its priority.
         queue_type = int(os.getenv("BYTESCHEDULER_QUEUE_TYPE", 0))
-        if queue_type==0
+        if queue_type==0:
             self._queue = queue.PriorityQueue()
-            print("use Priority Queue!!!!")
+            self._logger.info("use priority scheduler")
         else:
             self._queue = queue.Queue() # test without schedule
-            prin("use FIFO Queue!!!")
+            self._logger.info("use FIFO queue")
 
         # Scheduler thread
         self._scheduler = threading.Thread(target=self._loop, args=())

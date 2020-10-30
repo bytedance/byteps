@@ -1,11 +1,13 @@
-s#!/bin/bash
+#!/bin/bash
 
 set -e
 set -x
 
 #docker build -t bsc-mxnet-ps:$(date +%Y%m%d-%H%M%S) --no-cache -f mxnet_ps.Dockerfile .
 
-docker build -t bsc-mxnet-ps-ssh:$(date +%Y%m%d-%H%M%S) --no-cache -f mxnet_ps_ssh.Dockerfile .
+#docker build -t bsc-mxnet-ps-ssh:$(date +%Y%m%d-%H%M%S) --no-cache -f mxnet_ps_ssh.Dockerfile .
+
+docker build -t bsc-mxnet-ps-ssh-t4:$(date +%Y%m%d-%H%M%S) --no-cache -f mxnet_ps_ssh_t4.Dockerfile .
 
 #docker build -t bsc-mxnet-horovod:$(date +%Y%m%d-%H%M%S) --no-cache -f mxnet_horovod.Dockerfile .
 

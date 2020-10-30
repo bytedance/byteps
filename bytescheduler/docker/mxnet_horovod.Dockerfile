@@ -46,7 +46,7 @@ RUN cd incubator-mxnet && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d
 
 # Install ByteScheduler
 RUN pip install bayesian-optimization==1.0.1
-RUN git clone --branch bytescheduler --recursive https://github.com/bytedance/byteps.git && \
+RUN git clone --branch bytescheduler --recursive https://github.com/Rivendile/byteps.git && \
     cd byteps/bytescheduler && python setup.py install
 
 # Examples
