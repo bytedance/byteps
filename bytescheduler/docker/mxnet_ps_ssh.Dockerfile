@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y git python-dev build-essential
 RUN apt-get install -y wget && wget https://bootstrap.pypa.io/get-pip.py && python get-pip.py
 
 # install general dependencies
-RUN apt-get install -y openssh-server openssh-client
+RUN apt-get install -y openssh-server openssh-client vim
 
 # setup cluster user and SSH access to container
 ENV USER cluster
