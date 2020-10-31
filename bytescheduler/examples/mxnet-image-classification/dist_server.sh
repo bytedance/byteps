@@ -34,7 +34,7 @@ export DMLC_ROLE='server'
 #    ${bin} ${arg} &
 #done
 
-MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
+nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
 
 
 

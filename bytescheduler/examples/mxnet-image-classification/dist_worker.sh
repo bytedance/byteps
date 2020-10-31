@@ -29,7 +29,7 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start workers
 export DMLC_ROLE='worker'
-MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
+nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
 #    ${bin} ${arg} &

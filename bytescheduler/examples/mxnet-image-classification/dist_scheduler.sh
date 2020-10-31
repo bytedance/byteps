@@ -27,7 +27,7 @@ arg="$@"
 export DMLC_PS_ROOT_URI='172.31.92.208'
 export DMLC_PS_ROOT_PORT=8000
 export DMLC_ROLE='scheduler'
-MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
+nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
 
 
 wait
