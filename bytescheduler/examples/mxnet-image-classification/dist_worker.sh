@@ -29,7 +29,7 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start workers
 export DMLC_ROLE='worker'
-nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
+nvprof -o worker_profile.nvvp ${bin} ${arg} &
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
 #    ${bin} ${arg} &

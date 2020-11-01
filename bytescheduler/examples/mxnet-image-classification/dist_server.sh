@@ -34,7 +34,7 @@ export DMLC_ROLE='server'
 #    ${bin} ${arg} &
 #done
 
-nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
+nvprof -o server_profile.nvvp ${bin} ${arg} &
 
 
 
