@@ -5,7 +5,7 @@ if [ $# -lt 3 ]; then
     exit -1;
 fi
 
-export USE_BYTESCHEDULER=0
+export USE_BYTESCHEDULER=1
 export BYTESCHEDULER_QUEUE_TYPE=0
 #export MXNET_CUDNN_AUTOTUNE_DEFAULT=0
 # export BYTESCHEDULER_TUNING=1
@@ -29,7 +29,7 @@ export DMLC_PS_ROOT_PORT=8000
 
 # start workers
 export DMLC_ROLE='worker'
-nvprof -o worker_profile.nvvp ${bin} ${arg} &
+nvprof -o bs_worker_profile.nvvp ${bin} ${arg} &
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
 #    ${bin} ${arg} &
