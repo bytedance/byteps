@@ -5,7 +5,7 @@ if [ $# -lt 3 ]; then
     exit -1;
 fi
 
-export USE_BYTESCHEDULER=0
+export USE_BYTESCHEDULER=1
 export BYTESCHEDULER_QUEUE_TYPE=0
 #export MXNET_CUDNN_AUTOTUNE_DEFAULT=0
 # export BYTESCHEDULER_TUNING=1
@@ -27,7 +27,7 @@ arg="$@"
 export DMLC_PS_ROOT_URI='172.31.92.208'
 export DMLC_PS_ROOT_PORT=8000
 export DMLC_ROLE='scheduler'
-nvprof -o scheduler_profile.nvvp ${bin} ${arg} &
+nvprof -o bs_scheduler_profile.nvvp ${bin} ${arg} &
 
 
 wait
