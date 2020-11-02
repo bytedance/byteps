@@ -53,6 +53,12 @@ if __name__ == '__main__':
     from importlib import import_module
     net = import_module('symbols.'+args.network)
     sym = net.get_symbol(**vars(args))
-    
+
+    # mxnet profiler
+    mx.profiler.set_config(profile_all=True, filename='mxnet_worker.json', continuous_dump=True, profile_process='worker')
+    mx.profiler.set_state('run')
+
     # train
     fit.fit(args, sym, data.get_rec_iter)
+
+    mx.profiler.set_state('stop')
