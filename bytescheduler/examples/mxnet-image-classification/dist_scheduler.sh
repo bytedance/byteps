@@ -30,7 +30,7 @@ export DMLC_ROLE='scheduler'
 #nvprof -o bs_scheduler_profile.nvvp ${bin} ${arg} &
 export MXNET_EXEC_BULK_EXEC_INFERENCE=0
 export MXNET_EXEC_BULK_EXEC_TRAIN=0
-export MXNET_PROFILER_AUTOSTART=0
+export MXNET_PROFILER_AUTOSTART=1
 ${bin} ${arg} &
 
 wait

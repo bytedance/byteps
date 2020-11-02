@@ -37,7 +37,7 @@ export DMLC_ROLE='server'
 #nvprof -o bs_server_profile.nvvp ${bin} ${arg} &
 export MXNET_EXEC_BULK_EXEC_INFERENCE=0
 export MXNET_EXEC_BULK_EXEC_TRAIN=0
-export MXNET_PROFILER_AUTOSTART=1
+export MXNET_PROFILER_AUTOSTART=0
 ${bin} ${arg} &
 
 wait
