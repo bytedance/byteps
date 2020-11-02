@@ -30,9 +30,9 @@ export DMLC_PS_ROOT_PORT=8000
 # start workers
 export DMLC_ROLE='worker'
 #nvprof -o bs_worker_profile.nvvp ${bin} ${arg} &
-export MXNET_EXEC_BULK_EXEC_INFERENCE=0
-export MXNET_EXEC_BULK_EXEC_TRAIN=0
-export MXNET_PROFILER_AUTOSTART=1
+#export MXNET_EXEC_BULK_EXEC_INFERENCE=0
+#export MXNET_EXEC_BULK_EXEC_TRAIN=0
+#export MXNET_PROFILER_AUTOSTART=1
 ${bin} ${arg} &
 #for ((i=0; i<${DMLC_NUM_WORKER}; ++i)); do
 #    export HEAPPROFILE=./W${i}
