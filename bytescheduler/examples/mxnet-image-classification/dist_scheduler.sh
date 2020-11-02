@@ -24,10 +24,12 @@ shift
 arg="$@"
 
 # start the scheduler
-export DMLC_PS_ROOT_URI='172.31.92.208'
+export DMLC_PS_ROOT_URI='172.31.82.93'
 export DMLC_PS_ROOT_PORT=8000
 export DMLC_ROLE='scheduler'
-nvprof -o bs_scheduler_profile.nvvp ${bin} ${arg} &
-
+#nvprof -o bs_scheduler_profile.nvvp ${bin} ${arg} &
+export MXNET_EXEC_BULK_EXEC_INFERENCE=0
+export MXNET_EXEC_BULK_EXEC_TRAIN=0
+MXNET_PROFILER_AUTOSTART=1 ${bin} ${arg} &
 
 wait
