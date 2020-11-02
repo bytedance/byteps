@@ -55,7 +55,7 @@ if __name__ == '__main__':
     sym = net.get_symbol(**vars(args))
 
     # mxnet profiler
-    mx.profiler.set_config(profile_all=True, filename='mxnet_worker.json', continuous_dump=True, profile_process='worker')
+    mx.profiler.set_config(profile_all=True, filename='bs_worker.json', continuous_dump=True, profile_process='worker')
     mx.profiler.set_state('run')
 
     # train
