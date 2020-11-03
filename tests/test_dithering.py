@@ -61,7 +61,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         y *= k
         low = np.floor(y)
         p = y - low  # whether to ceil
-        y = low + bernoulli(p, state)
+        y = low  # + bernoulli(p, state)
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -84,7 +84,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
     TEST_BENCH = [
         [2, 4, 8],
         ["linear", "natural"],
-        ["l2"],
+        ["max"],
         ["float16"],
         np.random.randint(0, 2020, size=3).tolist()
     ]
