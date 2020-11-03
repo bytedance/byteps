@@ -52,8 +52,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         scale = np.linalg.norm(y, ord=2)
     else:
         raise ValueError("Unsupported normalization")
-    sign = (0 < y) - (y < 0)
-    sign = sign.astype(np.int32)
+    sign = np.array(0 < y).astype(np.int32) - np.array(y < 0).astype(np.int32)
     y = np.abs(y)
     y /= scale
 
