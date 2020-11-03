@@ -133,8 +133,9 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       float p = normalized - floor;
-      int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
-      index_t quantized = floor + bernoulli;
+      // int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
+      // index_t quantized = floor + bernoulli;
+      index_t quantized = floor;
       dst[i] = sgn(src[i]) * quantized;
     }
   } else if (_ptype == PartitionType::NATURAL) {
