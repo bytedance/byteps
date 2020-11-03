@@ -52,9 +52,9 @@ def dithering(x, k, state, partition='linear', norm="max"):
         scale = np.linalg.norm(y, ord=2)
     else:
         raise ValueError("Unsupported normalization")
-    y /= scale
     sign = np.sign(y)
     y = np.abs(y)
+    y /= scale
 
     # stocastic rounding
     if partition == 'linear':
@@ -62,6 +62,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         low = np.floor(y)
         p = y - low  # whether to ceil
         y = low  # + bernoulli(p, state)
+        y *= scale
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -71,12 +72,12 @@ def dithering(x, k, state, partition='linear', norm="max"):
         p = (y - low) / length
         y = low + length * bernoulli(p, state)
         y = y.astype(np.float32)
+        y *= scale
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
 
     y *= sign
-    y *= scale
     return y.reshape(x.shape).astype(dtype)
 
 
