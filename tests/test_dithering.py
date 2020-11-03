@@ -62,7 +62,6 @@ def dithering(x, k, state, partition='linear', norm="max"):
         low = np.floor(y)
         p = y - low  # whether to ceil
         y = low  # + bernoulli(p, state)
-        y *= scale
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -72,12 +71,12 @@ def dithering(x, k, state, partition='linear', norm="max"):
         p = (y - low) / length
         y = low + length * bernoulli(p, state)
         y = y.astype(np.float32)
-        y *= scale
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
 
     y *= sign
+    y *= scale
     return y.reshape(x.shape).astype(dtype)
 
 
@@ -170,7 +169,7 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
                         print("mx", mx_g)
                         print("diff", diff)
                         print("max diff", np.max(diff))
-                        idx = np.nonzero(diff > np.finfo(dtype))
+                        idx = np.nonzero(diff > np.finfo(dtype).eps)
                         print("idx", idx, np_g[idx], mx_g[idx])
                         input()
 
