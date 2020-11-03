@@ -122,14 +122,14 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   double scale = 0.0;
 #pragma omp parallel for simd reduction(max : scale)
   for (size_t i = 0; i < len; i++) {
-    scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
+    scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       float p = normalized - floor;
@@ -327,7 +327,8 @@ void DitheringCompressor::DecompressImplMax(scalar_t* __restrict__ dst,
 
 #pragma omp parallel for simd
   for (int i = 0; i < len; ++i) {
-    dst[i] = src[i] * scale / s;
+    float num = src[i] * scale / s;
+    dst[i] = num;
   }
 }
 
