@@ -327,7 +327,7 @@ void DitheringCompressor::DecompressImplMax(scalar_t* __restrict__ dst,
 
 #pragma omp parallel for simd
   for (int i = 0; i < len; ++i) {
-    float num = src[i] * scale / s;
+    float num = (src[i] * scale) / s;
     dst[i] = num;
   }
 }
