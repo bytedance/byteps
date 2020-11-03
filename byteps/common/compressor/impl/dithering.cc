@@ -130,7 +130,7 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
       float abs_x = std::fabs(src[i]);
-      float normalized = (abs_x / scale) * _s;
+      float normalized = (abs_x * _s) / scale;
       float floor = std::floor(normalized);
       float p = normalized - floor;
       // int bernoulli = static_cast<float>(_rand_list[i]) < p * MAX;
