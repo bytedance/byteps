@@ -62,6 +62,7 @@ size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
+get_pushpull_speed = _basics.get_pushpull_speed
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())

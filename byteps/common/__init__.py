@@ -126,3 +126,14 @@ class BytePSBasics(object):
             raise ValueError(
                 'BytePS has not been initialized; use bps.init().')
         return local_rank
+
+    def get_pushpull_speed(self):
+        """A function that returns the current push pull speed. Speed is
+        calculated every 10 seconds.
+          Returns:
+            A tuple: (ms since epoch, speed in MegaBytes per second)
+        """
+        pushpull_speed = self.C_LIB_CTYPES.byteps_get_pushpull_speed
+        pushpull_speed.restype = ctypes.py_object
+        entry = pushpull_speed()
+        return entry

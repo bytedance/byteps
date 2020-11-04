@@ -694,5 +694,62 @@ bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
   return (k == total_thread_num);
 };
 
+std::mutex PushPullSpeed::_mtx;
+std::queue<std::shared_ptr<SpeedEntry>> PushPullSpeed::_data_points;
+std::size_t PushPullSpeed::_acc_size = 0;
+std::size_t PushPullSpeed::_limit = 1024;
+std::chrono::time_point<std::chrono::system_clock> PushPullSpeed::_last_ts;
+bool PushPullSpeed::_initialized = false;
+bool PushPullSpeed::_should_record =
+      getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : true;
+
+void PushPullSpeed::RecordSpeed(std::shared_ptr<TensorTableEntry> task) {
+  std::lock_guard<std::mutex> lock(_mtx);
+  if (!_initialized) {
+    _initialized = true;
+    _acc_size = 0;
+    _last_ts = std::chrono::system_clock::now();
+  }
+  _acc_size += task->tensor->size();
+  auto now = std::chrono::system_clock::now();
+  bool should_append = std::chrono::seconds{10} < now - _last_ts;
+
+  if (should_append) {
+    std::shared_ptr<SpeedEntry> entry(new SpeedEntry);
+
+    auto duration = now.time_since_epoch();
+    auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+
+    entry->ts = msec.count();
+    entry->speed = _acc_size * 1.0 / 1.0e6 / 10; // MegaBytes per second
+
+    _data_points.push(entry);
+    _acc_size = 0;
+    _last_ts = std::chrono::system_clock::now();
+    if (_data_points.size() > _limit) {
+      _data_points.pop();
+    }
+  }
+}
+
+std::shared_ptr<SpeedEntry> PushPullSpeed::GetSpeed() {
+  std::shared_ptr<SpeedEntry> entry;
+  std::lock_guard<std::mutex> lock(_mtx);
+  if (_data_points.size() > 0) {
+    entry = _data_points.front();
+    _data_points.pop();
+  } else {
+    entry = std::make_shared<SpeedEntry>();
+    entry->ts = 0;
+    entry->speed =  -5.0;
+  }
+
+  return entry;
+}
+
+bool PushPullSpeed::ShouldRecord() {
+  return _should_record;
+}
+
 }  // namespace common
 }  // namespace byteps
