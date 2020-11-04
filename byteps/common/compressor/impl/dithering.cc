@@ -62,7 +62,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
-  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   BitWriter<index_t> bit_writer(dst);
   size_t last_non_zero_pos = -1;  // it's not a bug here...
@@ -124,7 +124,7 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   for (size_t i = 0; i < len; i++) {
     scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
-  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
@@ -422,7 +422,7 @@ size_t DitheringCompressor::FusedCompressImplL2(
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
-  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   memcpy_multithread(error, src, len * sizeof(scalar_t));
 
@@ -506,7 +506,7 @@ size_t DitheringCompressor::FusedCompressImplMax(
   for (size_t i = 0; i < len; i++) {
     scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
-  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
+  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
