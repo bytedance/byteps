@@ -62,7 +62,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
-  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
+  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
 
   BitWriter<index_t> bit_writer(dst);
   size_t last_non_zero_pos = -1;  // it's not a bug here...
@@ -124,7 +124,7 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
   for (size_t i = 0; i < len; i++) {
     scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
-  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
+  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
@@ -186,19 +186,19 @@ void DitheringCompressor::Compress(tensor_t grad, tensor_t& output) {
     switch (grad.dtype) {
       case BYTEPS_FLOAT16:
         compressed_size =
-            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint32_t*>(output.data),
                          reinterpret_cast<const half_t*>(grad.data),
                          grad.size / sizeof(half_t));
         break;
       case BYTEPS_FLOAT32:
         compressed_size =
-            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint32_t*>(output.data),
                          reinterpret_cast<const float*>(grad.data),
                          grad.size / sizeof(float));
         break;
       case BYTEPS_FLOAT64:
         compressed_size =
-            CompressImpl(reinterpret_cast<uint64_t*>(output.data),
+            CompressImpl(reinterpret_cast<uint32_t*>(output.data),
                          reinterpret_cast<const double*>(grad.data),
                          grad.size / sizeof(double));
         break;
@@ -346,17 +346,17 @@ void DitheringCompressor::Decompress(tensor_t compressed, tensor_t& output) {
     switch (output.dtype) {
       case BYTEPS_FLOAT16:
         DecompressImpl(reinterpret_cast<half_t*>(output.data),
-                       reinterpret_cast<const uint64_t*>(compressed.data),
+                       reinterpret_cast<const uint32_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       case BYTEPS_FLOAT32:
         DecompressImpl(reinterpret_cast<float*>(output.data),
-                       reinterpret_cast<const uint64_t*>(compressed.data),
+                       reinterpret_cast<const uint32_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       case BYTEPS_FLOAT64:
         DecompressImpl(reinterpret_cast<double*>(output.data),
-                       reinterpret_cast<const uint64_t*>(compressed.data),
+                       reinterpret_cast<const uint32_t*>(compressed.data),
                        compressed.size, output.size);
         break;
       default:
@@ -422,7 +422,7 @@ size_t DitheringCompressor::FusedCompressImplL2(
     scale += src[i] * src[i];
   }
   scale = std::sqrt(scale);
-  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
+  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
 
   memcpy_multithread(error, src, len * sizeof(scalar_t));
 
@@ -506,7 +506,7 @@ size_t DitheringCompressor::FusedCompressImplMax(
   for (size_t i = 0; i < len; i++) {
     scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
-  const uint64_t MAX = std::numeric_limits<uint64_t>::max();
+  const uint32_t MAX = std::numeric_limits<uint32_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
