@@ -306,7 +306,8 @@ void DitheringCompressor::DecompressImplL2(scalar_t* __restrict__ dst,
     int signbit = bit_reader.Get();
     unsigned quantized = EliasDeltaDecode(bit_reader);
     float num = quantized * scale / s;
-    dst[i] = (1 - (signbit << 1)) * num;
+    num *= (1 - (signbit << 1));
+    dst[i] = num;
   }
 }
 
