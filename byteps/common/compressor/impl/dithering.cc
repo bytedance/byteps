@@ -68,7 +68,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
   size_t last_non_zero_pos = -1;  // it's not a bug here...
   if (_ptype == PartitionType::LINEAR) {
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       float p = normalized - floor;
@@ -85,7 +85,7 @@ size_t DitheringCompressor::CompressImplL2(index_t* __restrict__ dst,
   } else if (_ptype == PartitionType::NATURAL) {
     const unsigned level = 1 << (_s - 1);
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
@@ -141,7 +141,7 @@ size_t DitheringCompressor::CompressImplMax(index_t* __restrict__ dst,
     const unsigned level = 1 << (_s - 1);
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
@@ -430,7 +430,7 @@ size_t DitheringCompressor::FusedCompressImplL2(
   size_t last_non_zero_pos = -1;  // it's not a bug here...
   if (_ptype == PartitionType::LINEAR) {
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       float p = normalized - floor;
@@ -449,7 +449,7 @@ size_t DitheringCompressor::FusedCompressImplL2(
   } else if (_ptype == PartitionType::NATURAL) {
     const unsigned level = 1 << (_s - 1);
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
@@ -504,14 +504,14 @@ size_t DitheringCompressor::FusedCompressImplMax(
   double scale = 0.0;
 #pragma omp parallel for simd reduction(max : scale)
   for (size_t i = 0; i < len; i++) {
-    scale = scale > std::abs(src[i]) ? scale : std::abs(src[i]);
+    scale = scale > std::fabs(src[i]) ? scale : std::fabs(src[i]);
   }
   const uint64_t MAX = std::numeric_limits<uint64_t>::max();
 
   if (_ptype == PartitionType::LINEAR) {
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * _s;
       float floor = std::floor(normalized);
       float p = normalized - floor;
@@ -524,7 +524,7 @@ size_t DitheringCompressor::FusedCompressImplMax(
     const unsigned level = 1 << (_s - 1);
 #pragma omp parallel for simd
     for (size_t i = 0; i < len; ++i) {
-      float abs_x = std::abs(src[i]);
+      float abs_x = std::fabs(src[i]);
       float normalized = (abs_x / scale) * level;
       unsigned floor = RoundNextPow2(std::ceil(normalized)) >> 1;
       unsigned length = (floor != 0) ? floor : 1;
