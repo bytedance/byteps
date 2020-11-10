@@ -331,6 +331,8 @@ def fit(args, network, data_loader, **kwargs):
             logging_dir=args.output + '/val_' + str(kv.rank))
     else:
         eval_end_callback = None
+        
+    print("start fitting!!!!!!!!!!")
 
     # run
     model.fit(train,
@@ -350,4 +352,8 @@ def fit(args, network, data_loader, **kwargs):
               allow_missing=True,
               monitor=monitor)
 
-
+    print("finish fitting!!!!!!!!!!")
+    
+    if use_bytescheduler>0 :
+        kv.shutdown()
+        print("shutdown kv!!!!!!!!!")

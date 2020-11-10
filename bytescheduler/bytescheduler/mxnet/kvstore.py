@@ -117,3 +117,8 @@ class ScheduledKVStore(mx.kvstore.KVStore):
             )
             del self._push_buffer[key]
             core.post(task)
+
+    def shutdown(self):
+        """ shutdown core, commserver, and commclient """
+        
+        core.shutdown()
