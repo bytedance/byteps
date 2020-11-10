@@ -1,2 +1,2 @@
- ./local.sh 1 1 python -m trace --ignore-dir=/usr/lib/python2.7 --trace train_imagenet.py --network vgg --num-layers 16 --benchmark 1 --kv-store dist_sync --batch-size 2 --disp-batches 10 --num-examples 22 --num-epochs 1 --gpus 0 >trace_bytescheduler_test.txt
-# ./local.sh 1 1  python train_imagenet.py --network vgg --num-layers 16 --benchmark 1 --kv-store dist_sync --batch-size 2 --disp-batches 10 --num-examples 22 --num-epochs 1 --gpus 0
+# ./local.sh 1 1 python -m trace --ignore-dir=/usr/lib/python2.7 --trace train_imagenet.py --network vgg --num-layers 16 --benchmark 1 --kv-store dist_sync --batch-size 2 --disp-batches 10 --num-examples 22 --num-epochs 1 --gpus 0 >trace_bytescheduler_test.txt
+ ./local.sh 1 1  python train_imagenet.py --network vgg --num-layers 16 --benchmark 1 --kv-store dist_sync --batch-size 2 --disp-batches 10 --num-examples 22 --num-epochs 1 --gpus 0
