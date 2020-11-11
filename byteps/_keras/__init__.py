@@ -16,6 +16,12 @@
 
 import byteps.tensorflow as bps
 import tensorflow as tf
+from byteps.tensorflow.ops import _push_pull_xla_v2, _sync_tensors_handle_out_v2
+from byteps.tensorflow.ops import _my_barrier_handle_out
+from byteps.tensorflow import push_pull_xla_handle_out_v2
+import os
+
+enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
 
 def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sparse,
                                  compression, sparse_as_dense):
@@ -28,6 +34,12 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             self._compression = compression
             self._sparse_as_dense = sparse_as_dense
             self._aggregated_gradients = False
+
+            if enable_xla == '1':
+                self._push_pull = self._push_pull_xla
+            else:
+                self._push_pull = self._push_pull_tf
+
             super(self.__class__, self).__init__(**kwargs)
 
         def get_gradients(self, loss, params):
@@ -44,11 +56,7 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             gradients = [grad for grad, var in grads_and_vars]
             return self._push_pull(gradients)
 
-        def sync_grads_one_shot(self, grads, grad_names):
-            with tf.name_scope(self._name + "_Push_Pull") as scope:
-                return list(bps._sync_all_tensors(grads, grad_names = grad_names))
-
-        def _push_pull(self, gradients):
+        def _push_pull_tf(self, gradients):
             self._aggregated_gradients = True
             if bps.size() > 1:
                 averaged_gradients = []
@@ -65,13 +73,38 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
                             averaged_gradients.append(avg_grad)
                         else:
                             averaged_gradients.append(None)
-                    dummy_half = ["dummy_name_throwaway" for i in range(len(averaged_gradients))]
-                    grad_names = dummy_half + [tmp.name for tmp in averaged_gradients]
-                    averaged_gradients = self.sync_grads_one_shot(gradients + averaged_gradients, grad_names)
-                    averaged_gradients = averaged_gradients[:len(gradients)]
                     return averaged_gradients
             else:
                 return gradients
+
+        def _push_pull_xla(self, grads):
+            for item in grads:
+                print("xxxxxxxxxxxxxx x2582", item)
+            self._aggregated_gradients = True
+            if bps.size() <= 1:
+                return grads
+
+            with tf.name_scope(self._name + "_Push_Pull") as scope:
+                if self._sparse_as_dense:
+                    grads = [tf.convert_to_tensor(grad)
+                             if grad is not None and isinstance(grad, tf.IndexedSlices)
+                             else grad for grad in grads]
+                new_grads_names_and_handles = \
+                    [push_pull_xla_handle_out_v2(grad, scope,
+                        device_dense=self._device_dense,
+                        device_sparse=self._device_sparse,
+                        compression=self._compression, idx = idx)
+                     if grad is not None else grad
+                     for idx, grad in enumerate(grads, 1)]
+                grads_and_names_and_handles = list(zip(*new_grads_names_and_handles))
+                avg_grads, grad_names, handles = \
+                  list(grads_and_names_and_handles[0]), \
+                  list(grads_and_names_and_handles[1]), \
+                  list(grads_and_names_and_handles[2])
+
+            barrier_handle = _my_barrier_handle_out(handles)
+            avg_grads = [_sync_tensors_handle_out_v2(tensor, barrier_handle, tensor_name=item, idx = idx) for idx, (tensor, item) in enumerate(zip(avg_grads, grad_names), 1)]
+            return avg_grads
 
         def apply_gradients(self, *args, **kwargs):
             if not self._aggregated_gradients:

@@ -317,6 +317,23 @@ def build_server(build_ext, options):
     build_ext.build_extension(server_lib)
 
 
+def parse_tf_version(version_str):
+    if "dev" in version_str:
+        return 9999999999
+    m = re.match('^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?', version_str)
+    if m is None:
+        return None
+
+    # turn version string to long integer
+    version = int(m.group(1)) * 10 ** 9
+    if m.group(2) is not None:
+        version += int(m.group(2)) * 10 ** 6
+    if m.group(3) is not None:
+        version += int(m.group(3)) * 10 ** 3
+    if m.group(4) is not None:
+        version += int(m.group(4))
+    return version
+
 def check_tf_version():
     try:
         import tensorflow as tf
@@ -331,7 +348,12 @@ def check_tf_version():
         # This means that tf.__version__ was not exposed, which makes it *REALLY* old.
         raise DistutilsPlatformError(
             'Your TensorFlow version is outdated. BytePS requires tensorflow>=1.1.0')
-
+    # parse version
+    version = parse_tf_version(tf.__version__)
+    if version is None:
+        raise DistutilsPlatformError(
+            'Unable to determine PyTorch version from the version string \'%s\'' % torch.__version__)
+    return version
 
 def get_tf_include_dirs():
     import tensorflow as tf
