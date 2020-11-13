@@ -18,7 +18,7 @@ RUN apt-get install -y openssh-server openssh-client vim
 
 # setup cluster user and SSH access to container
 ENV USER cluster
-RUN useradd -ms /bin/bash $USER && usermod -p '*' $USER
+RUN useradd -ms /bin/bash $USER && usermod -p '*' $USER && usermod -g root cluster
 ENV HOME /home/$USER
 ENV SSHDIR $HOME/.ssh
 RUN mkdir -p ${SSHDIR} \

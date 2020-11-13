@@ -35,12 +35,15 @@ class ByteCore(object):
         # 1 priority_queue--first is higher;
         # 2 FIFO queue
         self.queue_type = int(os.getenv("BYTESCHEDULER_QUEUE_TYPE", 0))
-        if self.queue_type<=1:
+        if self.queue_type==0:
             self._queue = queue.PriorityQueue()
-            self._logger.info("use priority scheduler")
-        else:
+            self._logger.info("using priority scheduler with credit")
+        elif self.queue_type==1:
+            self._queue = queue.PriorityQueue() # test without schedule
+            self._logger.info("using FIFO queue with credit")
+        elif self.queue_type==2:
             self._queue = queue.Queue() # test without schedule
-            self._logger.info("use FIFO queue")
+            self._logger.info("using FIFO queue without credit")
 
         # Scheduler thread
         self._scheduler = threading.Thread(target=self._loop, args=())
