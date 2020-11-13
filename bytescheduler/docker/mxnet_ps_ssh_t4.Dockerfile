@@ -73,7 +73,8 @@ RUN pip install mxnet-cu100==1.5.0
 
 # Clone MXNet as ByteScheduler compilation needs header files
 RUN git clone --recursive --branch v1.5.x https://github.com/apache/incubator-mxnet.git
-RUN cd incubator-mxnet && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
+RUN cd incubator-mxnet
+# && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
 # Install ByteScheduler
 RUN pip install bayesian-optimization==1.0.1 six
