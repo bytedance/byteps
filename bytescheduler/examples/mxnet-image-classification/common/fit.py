@@ -155,7 +155,7 @@ def fit(args, network, data_loader, **kwargs):
     data_loader : function that returns the train and val data iterators
     """
     # kvstore
-    kv_ori = mx.kvstore.create(args.kv_store)
+    kv = mx.kvstore.create(args.kv_store)
 
     # kvstore wrapper
     use_bytescheduler = int(os.environ.get('USE_BYTESCHEDULER', '0'))
@@ -165,9 +165,7 @@ def fit(args, network, data_loader, **kwargs):
         if args.credit:
             os.environ["BYTESCHEDULER_CREDIT"] = str(args.credit)
         from bytescheduler.mxnet.kvstore import ScheduledKVStore
-        kv = ScheduledKVStore(kv_ori)
-    else:
-        kv = kv_ori
+        kv = ScheduledKVStore(kv)
 
     if args.gc_type != 'none':
         kv.set_gradient_compression({'type': args.gc_type,
@@ -363,6 +361,6 @@ def fit(args, network, data_loader, **kwargs):
     del kv
     print("delete kv")
     
-    del kv_ori
-    print("delete kv_ori")
+#    del kv_ori
+#    print("delete kv_ori")
     

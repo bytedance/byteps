@@ -43,6 +43,10 @@ class ScheduledKVStore(mx.kvstore.KVStore):
 
         # Start core
         core.start(rank=self._rank, arch="ps")
+        
+    del __del__(self):
+        del self._kvstore
+        self._logger.info("delete self._kvstore")
 
     def __getattr__(self, item):
         return getattr(self._kvstore, item)
