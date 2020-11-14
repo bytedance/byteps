@@ -77,7 +77,8 @@ RUN cd incubator-mxnet
 # && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
 # Install MXNet
-RUN . docs/install/install_mxnet_ubuntu_python.sh
+RUN cd docs/install
+RUN /bin/bash install_mxnet_ubuntu_python.sh
 
 # Install ByteScheduler
 RUN pip install bayesian-optimization==1.0.1 six
