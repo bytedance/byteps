@@ -73,11 +73,15 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
 
 # Clone MXNet as ByteScheduler compilation needs header files
 RUN git clone --recursive --branch v1.5.x https://github.com/Rivendile/incubator-mxnet.git
+RUN ls
 RUN cd incubator-mxnet
 # && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
 # Install MXNet
-RUN cd docs/install
+RUN ls
+RUN cd incubator-mxnet/docs
+RUN ls
+RUN cd install
 RUN /bin/bash install_mxnet_ubuntu_python.sh
 
 # Install ByteScheduler
