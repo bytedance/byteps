@@ -16,7 +16,7 @@ RUN cp byteps/bytescheduler/bytescheduler/pytorch/horovod_pytorch.patch horovod/
     cd horovod && git apply horovod_pytorch.patch && python setup.py install
 
 # Install ByteScheduler
-RUN pip install bayesian-optimization && cd byteps/bytescheduler && python setup.py install
+RUN pip install bayesian-optimization==1.0.1 && cd byteps/bytescheduler && python setup.py install
 
 # Examples
 WORKDIR /root/byteps/bytescheduler/examples/
