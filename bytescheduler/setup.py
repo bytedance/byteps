@@ -451,12 +451,8 @@ class custom_build_ext(build_ext):
                 else:
                     raise
 
-        if not built_plugins:
-            raise DistutilsError(
-                'MXNet, PyTorch plugins were excluded from build. Aborting.')
         if not any(built_plugins):
-            raise DistutilsError(
-                'None of MXNet, PyTorch plugins were built. See errors above.')
+            print('None of MXNet, PyTorch plugins were built.')
 
 
 # Where the magic happens:
