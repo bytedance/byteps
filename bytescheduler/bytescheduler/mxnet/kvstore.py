@@ -47,6 +47,10 @@ class ScheduledKVStore(mx.kvstore.KVStore):
     def __getattr__(self, item):
         return getattr(self._kvstore, item)
 
+    def __del__(self):
+        core.shutdown(True)
+        self._kvstore.__del__()
+
     def init(self, key, value):
         """Override the default one"""
         if not self._first_key:
