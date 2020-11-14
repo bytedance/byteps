@@ -75,6 +75,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
 RUN git clone --recursive --branch v1.5.x https://github.com/Rivendile/incubator-mxnet.git
 #RUN cd incubator-mxnet && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
+RUN git clone --branch bytescheduler --recursive https://github.com/Rivendile/byteps.git
 
 # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
