@@ -53,15 +53,6 @@ size_t OnebitCompressor::CompressImpl(index_t* __restrict__ dst,
     }
     scale = sum / len;
   }
-  BPS_LOG(INFO) << "scale=" << scale << " len=" << len;
-
-  if (scale > 1000000) {
-    float max = 1;
-    for (size_t i = 0; i < len; ++i) {
-      max = max > std::abs(src[i]) ? max : std::abs(src[i]);
-    }
-    BPS_LOG(INFO) << "overflow!!! max ele=" << max;
-  }
 
 #pragma omp parallel for simd
   for (size_t i = 0; i < chunk_len; ++i) {
