@@ -69,13 +69,25 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 200 && \
     update-alternatives --install /usr/bin/x86_64-linux-gnu-g++ x86_64-linux-gnu-g++ /usr/bin/g++-4.9 200
 
-#RUN pip install mxnet-cu100==1.5.0
+RUN pip install mxnet-cu100==1.5.0
 
 # Clone MXNet as ByteScheduler compilation needs header files
 RUN git clone --recursive --branch v1.5.x https://github.com/Rivendile/incubator-mxnet.git
 #RUN cd incubator-mxnet && git reset --hard 75a9e187d00a8b7ebc71412a02ed0e3ae489d91f
 
-RUN git clone --branch bytescheduler --recursive https://github.com/Rivendile/byteps.git
+# Install MXNet
+#RUN cd incubator-mxnet/docs/install && /bin/bash install_mxnet_ubuntu_python.sh
+
+
+# Install ByteScheduler
+RUN pip install bayesian-optimization==1.0.1 six
+RUN cd /usr/local/cuda/lib64 && ln -s stubs/libcuda.so libcuda.so.1
+RUN git clone --branch bytescheduler --recursive https://github.com/Rivendile/byteps.git && \
+    cd byteps/bytescheduler && python setup.py install
+RUN rm -f /usr/local/cuda/lib64/libcuda.so.1
+
+# Examples
+WORKDIR /home/$USER/byteps/bytescheduler/examples/mxnet-image-classification
 
 # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]

@@ -40,6 +40,7 @@ class CommServer():
         self._wsocks = []
 
         self._thread = threading.Thread(target=self._run, args=())
+        
         self._thread.start()
 
     def _run(self):

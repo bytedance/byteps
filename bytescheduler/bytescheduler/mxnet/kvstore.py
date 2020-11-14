@@ -45,8 +45,8 @@ class ScheduledKVStore(mx.kvstore.KVStore):
         core.start(rank=self._rank, arch="ps")
         
     def __del__(self):
-        del self._kvstore
-        self._logger.info("delete self._kvstore")
+        core.shutdown(True)
+        self._kvstore.__del__()
 
     def __getattr__(self, item):
         return getattr(self._kvstore, item)
@@ -121,8 +121,3 @@ class ScheduledKVStore(mx.kvstore.KVStore):
             )
             del self._push_buffer[key]
             core.post(task)
-
-    def shutdown(self):
-        """ shutdown core, commserver, and commclient """
-        
-        core.shutdown()

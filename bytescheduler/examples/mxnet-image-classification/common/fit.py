@@ -354,13 +354,3 @@ def fit(args, network, data_loader, **kwargs):
 
     print("finish fitting!!!!!!!!!!")
     
-    if use_bytescheduler>0 :
-        kv.shutdown()
-        print("shutdown kv!!!!!!!!!")
-        
-    del kv
-    print("delete kv")
-    
-#    del kv_ori
-#    print("delete kv_ori")
-    
