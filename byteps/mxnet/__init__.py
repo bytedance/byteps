@@ -14,24 +14,34 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
+import copy
+import os
+import struct
 import warnings
-import mxnet as mx
 
-from byteps.mxnet.ops import byteps_push_pull, byteps_declare_tensor
-from byteps.mxnet.ops import init, shutdown
-from byteps.mxnet.ops import size, local_size, rank, local_rank
+import mxnet as mx
+import mxnet.ndarray as nd
+
+from byteps.mxnet.compression import Compression
+from byteps.mxnet.ops import (byteps_declare_tensor, byteps_push_pull, init,
+                              local_rank, local_size, rank, resume, shutdown,
+                              size, suspend)
 
 parameter_index = 0
 
 
 class DistributedOptimizer(mx.optimizer.Optimizer):
     """This is where BytePS's DistributedOptimizer wrapper for MXNet goes"""
+
     def __init__(self, optimizer):
         self._optimizer = optimizer
+        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
+        if self._enable_async:
+            assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
+                "Async is only valid for distributed training"
+            print('BytePS: enable asynchronous training')
 
     def __getattr__(self, item):
         return getattr(self._optimizer, item)
@@ -42,21 +52,64 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor(grad[i], "gradient_" + str(index[i]))
+                byteps_declare_tensor("gradient_" + str(index[i]))
                 byteps_push_pull(grad[i], version=0, priority=-index[i],
                                  name="gradient_" + str(index[i]), is_average=True)
         else:
-            byteps_declare_tensor(grad, "gradient_" + str(index))
+            byteps_declare_tensor("gradient_" + str(index))
             byteps_push_pull(grad, version=0, priority=-index,
                              name="gradient_" + str(index), is_average=True)
 
+    def _do_push_pull_param(self, index, delta_weight):
+        if isinstance(index, (tuple, list)):
+            for i in range(len(index)):
+                byteps_declare_tensor("weight_" + str(index[i]))
+                byteps_push_pull(delta_weight[i], version=0, priority=-index[i],
+                                 name="weight_" + str(index[i]), is_average=False)
+        else:
+            byteps_declare_tensor("weight_" + str(index))
+            byteps_push_pull(delta_weight, version=0, priority=-index,
+                             name="weight_" + str(index), is_average=False)
+
     def update(self, index, weight, grad, state):
-        self._do_push_pull(index, grad)
-        self._optimizer.update(index, weight, grad, state)
+        if self._enable_async:
+            # create a tmp list for storing the original weight
+            temp_weight_list = [w.copy() for w in weight]
+            assert len(temp_weight_list) == len(weight)
+
+            # update parameter locally
+            self._optimizer.update(index, weight, grad, state)
+
+            # get delta weight
+            for i, temp_weight in enumerate(temp_weight_list):
+                weight[i].__isub__(temp_weight)
+
+            # push delta weight, and pull weight back to the same tensor
+            self._do_push_pull_param(index, weight)
+
+        else:
+            self._do_push_pull(index, grad)
+            self._optimizer.update(index, weight, grad, state)
 
     def update_multi_precision(self, index, weight, grad, state):
-        self._do_push_pull(index, grad)
-        self._optimizer.update_multi_precision(index, weight, grad, state)
+        if self._enable_async:
+            # create a tmp list for storing the original weight
+            temp_weight_list = [w.copy() for w in weight]
+            assert len(temp_weight_list) == len(weight)
+
+            # update parameter locally
+            self._optimizer.update_multi_precision(index, weight, grad, state)
+
+            # get delta weight
+            for i, temp_weight in enumerate(temp_weight_list):
+                weight[i].__isub__(temp_weight)
+
+            # push delta weight, and pull weight back to the same tensor
+            self._do_push_pull_param(index, weight)
+
+        else:
+            self._do_push_pull(index, grad)
+            self._optimizer.update_multi_precision(index, weight, grad, state)
 
     def set_learning_rate(self, lr):
         self._optimizer.set_learning_rate(lr)
@@ -85,7 +138,7 @@ def broadcast_parameters(params, root_rank=0):
 
         # Run tensor initilization
         for i in range(len(tensors)):
-            byteps_declare_tensor(tensors[i], "parameter_" + str(parameter_index))
+            byteps_declare_tensor("parameter_" + str(parameter_index))
             # Broadcast is implemented as push + pull in BytePS
             # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
             if rank() != root_rank:
@@ -129,30 +182,165 @@ class DistributedTrainer(mx.gluon.Trainer):
         Key-word arguments to be passed to optimizer constructor. For example,
         `{'learning_rate': 0.1}`. All optimizers accept learning_rate, wd (weight decay),
         clip_gradient, and lr_scheduler. See each optimizer's
-        constructor for a list of additional supported arguments.
+        constructor for a list of additional supported arguments
+    root_rank : int
+        rank of root
+    compression_params : dict
+        Key-word arguments to be passed to gradient compression constructor. For example, 
+        `{'compressor': 'onebit', 'ef': 'vanilla', 'momentum': 'nesterov', 'scaling': true}`.
+        All compressor accept 'compressor', 'ef'. See each compressor's constructor for a list 
+        of additional supported arguments
     """
 
-    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0):
+    def __init__(self, params, optimizer, optimizer_params=None, root_rank=0, compression_params=None):
         if isinstance(optimizer, DistributedOptimizer):
             optimizer = optimizer._optimizer
             warnings.warn("DistributedTrainer does not take DistributedOptimizer "
                           "as its optimizer. We have unwrapped it for you.")
 
-        super(DistributedTrainer, self).__init__(
-            params, optimizer, optimizer_params=optimizer_params, kvstore=None)
+        param_list = []
+        if isinstance(params, mx.gluon.ParameterDict):
+            for key in sorted(list(params.keys())):
+                param_list.append(params[key])
 
-        # _scale is used to check and set rescale_grad for optimizer in Trainer.step()
-        # function. Normalizing it by BytePS size, which is equivalent to performing
-        # average in push_pull, has better performance.
-        self._scale /= size()
+        self._intra_compressor = self._register_compressor(
+            params, optimizer_params, compression_params)
+
+        super(DistributedTrainer, self).__init__(
+            param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
+
+        if local_rank() == 0:
+            self._f = open("lr.s", "wb")
+            self._f.truncate(8)
+
+        self._bps_size = size()
         self.root_rank = root_rank
+        self._intra_compressors = {}
+        for i, param in enumerate(self._params):
+            byteps_declare_tensor("parameter_" + str(i))
+            self._intra_compressors[param.name] = copy.deepcopy(
+                self._intra_compressor)
+            if param.grad_req != 'null':
+                byteps_params = dict(
+                    filter(lambda attr: attr[0].startswith(
+                        "byteps_",), param.__dict__.items())
+                )
+                byteps_declare_tensor("gradient_" + str(i), **byteps_params)
+
+    def __del__(self):
+        if local_rank() == 0:
+            self._f.close()
+            if os.path.exists("lr.s"):
+                os.remove("lr.s")
+
+    def _register_compressor(self, params, optimizer_params, compression_params):
+        """Register compressor for BytePS
+
+        params : mx.gluon.ParameterDict 
+        optimizer_params : dict
+        compression_params : dict
+        """
+        intra_compressor = Compression.none
+        if not compression_params:
+            return intra_compressor
+
+        if compression_params.get("fp16"):
+            intra_compressor = Compression.fp16
+
+        if "compressor" not in compression_params:
+            warnings.warn("Compressor is not defined")
+            return intra_compressor
+
+        check_list = ["compressor", "ef", "momentum"]
+
+        for _, param in params.items():
+            # generic
+            for item in check_list:
+                if compression_params.get(item):
+                    if isinstance(compression_params[item], str):
+                        setattr(param, "byteps_%s_type" %
+                                item, compression_params[item])
+                    else:
+                        raise TypeError("%s should be str" % item)
+
+            # need parameter
+            compressor = compression_params["compressor"]
+            if compressor == "onebit":
+                setattr(param, "byteps_compressor_onebit_scaling", str(
+                    compression_params.get("scaling", False)))
+            elif compressor == "topk" or compressor == "randomk" or compressor == "dithering":
+                # raise KeyError if 'k' is not found
+                setattr(param, "byteps_compressor_k",
+                        compression_params["k"])
+
+            if compression_params.get("momentum"):
+                setattr(param, "byteps_momentum_mu",
+                        optimizer_params["momentum"])
+
+            if compression_params.get("seed", None) is not None:
+                setattr(param, "byteps_seed",
+                        compression_params["seed"])
+
+            if compression_params.get("partition"):
+                if compression_params["partition"] == "linear":
+                    setattr(param, "byteps_dithering_partition", "0")
+                elif compression_params["partition"] == "natural":
+                    setattr(param, "byteps_dithering_partition", "1")
+                else:
+                    raise ValueError("Unsupported partition")
+
+            if compression_params.get("normalize"):
+                if compression_params["normalize"] == "max":
+                    setattr(param, "byteps_dithering_normalize", "0")
+                elif compression_params["normalize"] == "l2":
+                    setattr(param, "byteps_dithering_normalize", "1")
+                else:
+                    raise ValueError("Unsupported normalization")
+
+        # the following code will delete some items in `optimizer_params`
+        # to avoid duplication
+        if compression_params.get("momentum"):
+            threshold = int(os.environ.get(
+                "BYTEPS_MIN_COMPRESS_BYTES", 65536))
+            mu = optimizer_params["momentum"]
+
+            # 1bit compressor use an additional momentum for weight decay
+            if compressor == "onebit" and "wd" in optimizer_params:
+                wd = optimizer_params["wd"]
+                intra_compressor = Compression.wdmom(intra_compressor,
+                                                     mu, wd, threshold)
+                del optimizer_params["wd"]
+
+            intra_compressor = Compression.nag(intra_compressor, mu, threshold)
+            del optimizer_params['momentum']
+
+        return intra_compressor
+
+    def step(self, batch_size, ignore_stale_grad=False):
+        # grad is normalized with batch_size. setting _scale to batch_size is
+        # to prevent normalized by batch_size twice.
+        self._scale = batch_size
+        super(DistributedTrainer, self).step(batch_size, ignore_stale_grad)
 
     def _allreduce_grads(self):
+        # update lr
+        if local_rank() == 0:
+            self._f.seek(0)
+            ba = struct.pack("d", self.learning_rate)
+            self._f.write(ba)
+            self._f.flush()
+
         for i, param in enumerate(self._params):
             if param.grad_req != 'null':
-                byteps_declare_tensor(param.list_grad()[0], "gradient_" + str(i))
-                byteps_push_pull(param.list_grad()[0], is_average=False,
+                # normalized with batch_size and num_workers
+                nd._internal._mul_scalar(
+                    param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
+                compressed, ctx = self._intra_compressors[param.name].compress(
+                    param._grad[0])
+                byteps_push_pull(compressed, is_average=False,
                                  name="gradient_" + str(i), priority=-i)
+                param._grad[0][:] = self._intra_compressors[param.name].decompress(
+                    compressed, ctx, x=param._data[0])
 
     def _init_params(self):
         tensors = []
@@ -162,12 +350,11 @@ class DistributedTrainer(mx.gluon.Trainer):
             else:
                 param_arrays = param._check_and_get(param._data, list)
                 idx = self._param2idx[param.name]
-                byteps_declare_tensor(param_arrays[0], "parameter_" + str(idx))
 
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
+
                 byteps_push_pull(param_arrays[0], version=0, priority=0,
                                  name="parameter_" + str(idx), is_average=False)
-                param_arrays[0].wait_to_read()
 
         self._params_to_init = tensors

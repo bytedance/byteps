@@ -157,9 +157,10 @@ void NcclManager::InitGlobalEnv() {  // init all global env/param here
   _nccl_num_rings =
       (getenv("BYTEPS_NCCL_NUM_RINGS") ? atoi(getenv("BYTEPS_NCCL_NUM_RINGS"))
                                        : 1);
-  BPS_LOG(DEBUG) << "nccl_num_rings"
-                 << " set to " << _nccl_num_rings;
-
+  if (_nccl_num_rings != 1) {
+    BPS_LOG(INFO) << "nccl_num_rings is not 1, it can improve NCCL performance, "
+                  << "but may leads to occasional hanging problem";
+  }
   return;
 }
 

@@ -1,0 +1,7 @@
+include */* LICENSE byteps.lds byteps.exp
+exclude .git/*
+recursive-include * *.cc *.h
+graft 3rdparty/ps-lite
+prune 3rdparty/ps-lite/build
+prune 3rdparty/ps-lite/deps
+include ./pre_setup.py

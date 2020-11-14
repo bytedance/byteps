@@ -56,14 +56,29 @@ class BytePSBasics(object):
         full_path = get_extension_full_path(pkg_path, *args)
         self.C_LIB_CTYPES = ctypes.CDLL(full_path, mode=ctypes.RTLD_GLOBAL)
 
-    def init(self):
+    def init(self, lazy=True):
         """A function that inits BytePS."""
         atexit.register(self.shutdown)
-        return self.C_LIB_CTYPES.byteps_init()
+        if lazy:
+            return self.C_LIB_CTYPES.byteps_lazy_init()
+        else:
+            return self.C_LIB_CTYPES.byteps_init()
 
     def shutdown(self):
         """A function that shuts BytePS down."""
         return self.C_LIB_CTYPES.byteps_shutdown()
+
+    def suspend(self):
+        """A function that suspends BytePS for elastic training."""
+        return self.C_LIB_CTYPES.byteps_suspend()
+
+    def resume(self, num_workers, num_servers, global_rank, context=None):
+        """A function that restarts BytePS after being suspended, for elastic training."""
+        # set DMLC environment variables here
+        os.environ['DMLC_NUM_WORKER'] = str(num_workers)
+        os.environ['DMLC_NUM_SERVER'] = str(num_servers)
+        os.environ['BYTEPS_GLOBAL_RANK'] = str(global_rank)
+        return self.C_LIB_CTYPES.byteps_resume(num_workers, num_servers)
 
     def size(self):
         """A function that returns the number of BytePS processes.
@@ -111,3 +126,14 @@ class BytePSBasics(object):
             raise ValueError(
                 'BytePS has not been initialized; use bps.init().')
         return local_rank
+
+    def get_pushpull_speed(self):
+        """A function that returns the current push pull speed. Speed is
+        calculated every 10 seconds.
+          Returns:
+            A tuple: (ms since epoch, speed in MegaBytes per second)
+        """
+        pushpull_speed = self.C_LIB_CTYPES.byteps_get_pushpull_speed
+        pushpull_speed.restype = ctypes.py_object
+        entry = pushpull_speed()
+        return entry

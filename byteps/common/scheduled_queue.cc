@@ -14,7 +14,9 @@
 // =============================================================================
 
 #include "scheduled_queue.h"
+
 #include <algorithm>
+
 #include "global.h"
 #include "logging.h"
 
@@ -29,17 +31,18 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
   }
 
   size_t credit_in_partition = BytePSGlobal::GetNccl()->GetGroupSize() + 1;
-  if (getenv("BYTEPS_SCHEDULING_CREDIT")) {
-    credit_in_partition = atoi(getenv("BYTEPS_SCHEDULING_CREDIT"));
-  }
-  if (!credit_in_partition) {
+
+  auto byteps_scheduling_credit = getenv("BYTEPS_SCHEDULING_CREDIT");
+  credit_in_partition =
+      byteps_scheduling_credit ? atoi(byteps_scheduling_credit) : 0;
+  if (!credit_in_partition) {  // disable scheduling by default
     _is_scheduled = false;
   }
 
   _qt = type;
   _credits = _is_scheduled
-              ? BytePSGlobal::GetPartitionBound() * credit_in_partition
-              : 34359738368;  // 32GB, basically disabling credit control
+                 ? BytePSGlobal::GetPartitionBound() * credit_in_partition
+                 : 34359738368;  // 32GB, basically disabling credit control
   _rt = nullptr;
 
   switch (_qt) {
@@ -55,6 +58,7 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
         }
       }
       break;
+    case COMPRESS:
     case PUSH:
       if (BytePSGlobal::IsRootDevice()) {
         _rt = BytePSGlobal::GetPushTable();
@@ -97,6 +101,27 @@ void BytePSScheduledQueue::addTask(std::shared_ptr<TensorTableEntry> entry) {
   return;
 }
 
+// Record the start time of the sub-tasks for all QueueTypes of each partition.
+void BytePSScheduledQueue::recorderTs(std::shared_ptr<TensorTableEntry> task) {
+  auto context = task->context;
+  // add for profiling
+  if (context->profile_flag) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+
+    auto &queue_list = task->queue_list;
+    BPS_CHECK_GE(queue_list.size(), 1);
+    auto this_op = queue_list[0];
+
+    BPSCommTime *ret = new BPSCommTime;
+    ret->start_t = (long long)(us.count());
+    ret->key = task->key;
+    ret->type = this_op;
+    context->part_comm_time[task->key][this_op].push(ret);
+  }
+}
+
 std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
   std::lock_guard<std::mutex> lock(_mutex);
   std::shared_ptr<TensorTableEntry> task;
@@ -130,6 +155,8 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask() {
                    << " getTask: " << task->tensor_name << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
+    // Add for profiling communication traces
+    recorderTs(task);
     return task;
   }
   return nullptr;
@@ -155,6 +182,8 @@ std::shared_ptr<TensorTableEntry> BytePSScheduledQueue::getTask(uint64_t key) {
                    << " key: " << task->key
                    << " rank: " << BytePSGlobal::GetLocalRank();
     task->ready_event = nullptr;
+    // Add for profiling communication traces
+    recorderTs(task);
     return task;
   }
   return nullptr;
@@ -171,6 +200,13 @@ void BytePSScheduledQueue::reportFinish(int size) {
     _credits += size;
   }
   return;
+}
+
+void BytePSScheduledQueue::reset(uint64_t key, int cnt) {
+  std::lock_guard<std::mutex> lock(_mutex);
+  if(_rt) {
+    _rt->SetReadyCount(key, cnt);
+  }
 }
 
 }  // namespace common

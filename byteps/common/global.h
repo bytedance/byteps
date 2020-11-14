@@ -16,6 +16,8 @@
 #ifndef BYTEPS_GLOBAL_H
 #define BYTEPS_GLOBAL_H
 
+#include <unistd.h>
+
 #include <map>
 #include <memory>
 #include <mutex>
@@ -23,6 +25,8 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
+
 #include "common.h"
 #include "communicator.h"
 #include "cpu_reducer.h"
@@ -32,6 +36,7 @@
 #include "ready_table.h"
 #include "scheduled_queue.h"
 #include "shared_memory.h"
+#include "thread_pool.h"
 
 namespace byteps {
 namespace common {
@@ -77,16 +82,26 @@ class BytePSGlobal {
   static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
   static void CreateScheduledQueue(QueueType queueType);
   static ps::KVWorker<char>* GetPS() { return _ps; }
+  static ps::KVWorker<char>* GetOrInitPS();
 
   static bool IsTensorDeclared(const std::string& name);
+  static void ReDeclareTensor();
+  static bool IsResuming() { return _is_resuming; }
+  static void SetResumingFlag(bool flag) {_is_resuming = flag; }
+
+  static void RegisterCompressor(const std::string& name, 
+                                 std::unordered_map<std::string, std::string>& kwargs);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
 
+  static std::vector<unsigned long> _server_accumulated_len;
+  static unsigned long _total_accumulated_len;
   static std::unordered_map<uint64_t, PSKV> ps_kv_;
   static PSKV& EncodeDefaultKey(uint64_t key, size_t len);
 
   static uint32_t GetPartitionBound() { return _partition_bytes; }
+  static uint32_t GetMinCompressBound() { return _min_compress_bytes; }
 
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
@@ -97,6 +112,12 @@ class BytePSGlobal {
   static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
   static ReadyTable* GetPushTable() { return _push_table; }
 
+  // reduce strategies
+  static bool IsUsingReduce() { return _is_using_reduce; }
+  static int GetReduceRootByKey(ps::Key k) {
+    return _reduce_roots[Hash_DJB2(k) % _reduce_roots.size()];
+  }
+
   // for non-root
   static ReadyTable* GetCopyTable() { return _copy_table; }
 
@@ -104,6 +125,20 @@ class BytePSGlobal {
   static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
+
+  static void SetProfileFlag(BPSContext* ctxt);
+  static void EmitTrace(std::ostream* os, const BPSCommTime* ret,
+                        BPSContext* ctxt);
+  static void OutputTraces();
+  static bool IsAllTensorOutput(const std::string& name);
+  static void Who2beOutput(const std::string& name);
+
+  static void ReportThreadFinish() { joined_thread_cnt.fetch_add(1); }
+  static bool IsAllThreadFinish(int total_thread_num);
+  static std::atomic_int joined_thread_cnt;
+  static size_t RoundUpToPageSize(size_t x) { return RoundUp(x, _pagesize); }
+
+  static std::shared_ptr<ThreadPool>& GetThreadPool() { return _thread_pool; }
 
  private:
   static std::mutex _init_mutex;
@@ -132,11 +167,21 @@ class BytePSGlobal {
   static ps::KVWorker<char>* _ps;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+  static std::vector<std::string> _declared_tensors;
+  static bool _is_resuming;
+
+  static std::unordered_map<std::string, int> _name2end;
+  static int _output_counter;
+  static int _is_trace;
+  static int _start_step;
+  static int _end_step;
+  static std::string _trace_dir;
 
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
 
   static uint32_t _partition_bytes;
+  static uint32_t _min_compress_bytes;
 
   // (key, ready_signal_count) pair, only valid for root device
   static ReadyTable* _reduce_table;
@@ -147,6 +192,12 @@ class BytePSGlobal {
   // (key, ready_signal_count) pair, only valid for non-root device
   static ReadyTable* _copy_table;
 
+  static std::shared_ptr<ThreadPool> _thread_pool;
+
+  // for reduce strategies
+  static bool _is_using_reduce;
+  static std::vector<int> _reduce_roots;
+
   static std::shared_ptr<NcclManager> _nccl_manager;
   static std::shared_ptr<CpuReducer> _cpu_reducer;
 
@@ -156,6 +207,42 @@ class BytePSGlobal {
   static int AlignTo(int input, int alignment) {
     return input / alignment * alignment;
   }
+
+  static int _pagesize;
+  static size_t DivUp(size_t x, size_t y) { return (x + y - 1) / y; }
+  static size_t RoundUp(size_t x, size_t y) { return DivUp(x, y) * y; }
+
+  // hash functions
+  static std::string _hash_knob;
+  static std::hash<std::string> _built_in_hash_fn;
+  static unsigned int _built_in_hash_coefficient;
+  static volatile bool _mixed_mode;
+  static uint64_t Hash_Naive(uint64_t key);
+  static uint64_t Hash_BuiltIn(uint64_t key);
+  static uint64_t Hash_DJB2(uint64_t key);
+  static uint64_t Hash_SDBM(uint64_t key);
+  static uint64_t Hash_Mixed_Mode(uint64_t key);
+};
+
+struct SpeedEntry {
+  std::size_t ts;
+  float speed;
+};
+
+class PushPullSpeed {
+ public:
+  static void RecordSpeed(std::shared_ptr<TensorTableEntry> task);
+  static std::shared_ptr<SpeedEntry> GetSpeed();
+  static bool ShouldRecord();
+
+ private:
+  static std::mutex _mtx;
+  static std::queue<std::shared_ptr<SpeedEntry>> _data_points;
+  static std::size_t _acc_size;
+  static std::size_t _limit;
+  static std::chrono::time_point<std::chrono::system_clock> _last_ts;
+  static bool _initialized;
+  static bool _should_record;
 };
 
 }  // namespace common

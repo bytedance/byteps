@@ -35,9 +35,13 @@ void SyncNcclLoop();
 
 void CopyDevice2HostLoop();
 
+void CompressLoop();
+
 void PushLoop();
 
 void PullLoop();
+
+void DecompressLoop();
 
 void RootCopyHost2DeviceLoop();
 

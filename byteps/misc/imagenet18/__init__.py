@@ -115,7 +115,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         # We use two loops for load-balancing
         for name in self._parameter_names.values():
             declare("Parameter."+name)
-        
+
         self.priorities = {}
         self.gradient_count = 0
 

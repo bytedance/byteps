@@ -1,3 +1,4 @@
+# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2018 Uber Technologies, Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 
-import tensorflow as tf
-import tensorflow.keras.backend as K
+import keras
+import keras.backend as K
 
-from tensorflow import keras
 from byteps._keras import callbacks as _impl
 
 
@@ -34,8 +34,7 @@ class BroadcastGlobalVariablesCallback(_impl.BroadcastGlobalVariablesCallbackImp
         global variables from root rank to all other processes during initialization.
         Args:
             root_rank: Rank that will send data, other ranks will receive data.
-            device: Device to be used for broadcasting. Uses GPU by default
-                    if BytePS was build with BYTEPS_GPU_BROADCAST.
+            device: Device to be used for broadcasting. Uses GPU by default.
         """
         super(BroadcastGlobalVariablesCallback, self).__init__(K, root_rank, device)
 
@@ -54,8 +53,7 @@ class MetricAverageCallback(_impl.MetricAverageCallbackImpl, keras.callbacks.Cal
         Construct a new MetricAverageCallback that will average metrics
         across all processes at the end of the epoch.
         Args:
-            device: Device to be used for allreduce. Uses GPU by default
-                    if BytePS was build with BYTEPS_GPU_ALLREDUCE.
+            device: Device to be used for push_pull. Uses GPU by default.
         """
         super(MetricAverageCallback, self).__init__(K, device)
 
@@ -77,7 +75,7 @@ class LearningRateScheduleCallback(_impl.LearningRateScheduleCallbackImpl, keras
     """
 
     def __init__(self, multiplier, start_epoch=0, end_epoch=None, staircase=True,
-                 momentum_correction=True, steps_per_epoch=None):
+                 momentum_correction=True, steps_per_epoch=None, initial_lr=None):
         """
         Construct a new LearningRateScheduleCallback.
         Args:
@@ -92,9 +90,14 @@ class LearningRateScheduleCallback(_impl.LearningRateScheduleCallbackImpl, keras
             steps_per_epoch: The callback will attempt to autodetect number of batches per
                              epoch with Keras >= 2.0.0. Provide this value if you have an older
                              version of Keras.
+            initial_lr: Initial learning rate at the start of training.
+
+                .. warning:: Will be required in the future.
+
         """
         super(LearningRateScheduleCallback, self).__init__(K, multiplier, start_epoch, end_epoch,
-                                                           staircase, momentum_correction, steps_per_epoch)
+                                                           staircase, momentum_correction, steps_per_epoch,
+                                                           initial_lr)
 
 
 class LearningRateWarmupCallback(_impl.LearningRateWarmupCallbackImpl, keras.callbacks.Callback):
@@ -118,7 +121,7 @@ class LearningRateWarmupCallback(_impl.LearningRateWarmupCallbackImpl, keras.cal
     """
 
     def __init__(self, warmup_epochs=5, momentum_correction=True, steps_per_epoch=None,
-                 verbose=0):
+                 verbose=0, initial_lr=None):
         """
         Construct a new LearningRateWarmupCallback that will gradually warm up the learning rate.
         Args:
@@ -129,6 +132,9 @@ class LearningRateWarmupCallback(_impl.LearningRateWarmupCallbackImpl, keras.cal
                              epoch with Keras >= 2.0.0. Provide this value if you have an older
                              version of Keras.
             verbose: verbosity mode, 0 or 1.
+            initial_lr: Initial learning rate at the start of training.
+
+                .. warning:: Will be required in the future.
         """
         super(LearningRateWarmupCallback, self).__init__(K, warmup_epochs, momentum_correction,
-                                                         steps_per_epoch, verbose)
+                                                         steps_per_epoch, verbose, initial_lr)

@@ -23,6 +23,7 @@ lib64/
 parts/
 sdist/
 var/
+bin/
 wheels/
 *.egg-info/
 .installed.cfg
@@ -115,3 +116,4 @@ venv.bak/
 
 # for development
 scripts/
+exps/

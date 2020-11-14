@@ -1,10 +1,10 @@
-from __future__ import print_function
-from tensorflow import keras
-from tensorflow.keras.datasets import mnist
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Flatten
-from tensorflow.keras.layers import Conv2D, MaxPooling2D
-from tensorflow.keras import backend as K
+from __future__ import absolute_import, division, print_function
+import keras
+from keras.datasets import mnist
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D, MaxPooling2D
+from keras import backend as K
 import math
 import tensorflow as tf
 import byteps.keras as bps
@@ -88,7 +88,7 @@ model.fit(x_train, y_train,
           batch_size=batch_size,
           callbacks=callbacks,
           epochs=epochs,
-          verbose=1,
+          verbose=1 if bps.rank() == 0 else 0,
           validation_data=(x_test, y_test))
 score = model.evaluate(x_test, y_test, verbose=0)
 print('Test loss:', score[0])

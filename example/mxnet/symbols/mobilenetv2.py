@@ -91,7 +91,7 @@ def inverted_residual_unit(data, num_in_filter, num_filter, ifshortcut, stride, 
             data_in=data,
             data_residual=linear_out,
             prefix=prefix,
-        ) 
+        )
         return out
     else:
         return linear_out
@@ -140,7 +140,7 @@ MNETV2_CONFIGS_MAP = {
             (6, 320, 1, 1), # 160x7x7 -> 320x7x7
         ],
         'filter_num_before_gp': 1280, # 320x7x7 -> 1280x7x7
-    } 
+    }
 }
 
 class MobileNetV2(object):
@@ -152,7 +152,7 @@ class MobileNetV2(object):
             self.config_map=MNETV2_CONFIGS_MAP[self.data_wh]
         else:
             self.config_map=MNETV2_CONFIGS_MAP[(224, 224)]
-    
+
     def build_network(self, class_num=1000, **configs):
         data = mx.sym.Variable('data')
         self.config_map.update(configs)
@@ -174,7 +174,7 @@ class MobileNetV2(object):
             t, c, n, s = layer_setting
             last_bottleneck_layer = inverted_residual_blocks(
                 data=last_bottleneck_layer,
-                in_c=in_c, t=t, c=int(round(c*self.multiplier)), n=n, s=s, 
+                in_c=in_c, t=t, c=int(round(c*self.multiplier)), n=n, s=s,
                 prefix='seq-%d'%i
             )
             in_c = int(round(c*self.multiplier))
@@ -190,12 +190,12 @@ class MobileNetV2(object):
         )
         # global average pooling
         pool_size = int(self.data_wh[0] / 32)
-        pool = mx.sym.Pooling(data=last_fm, kernel=(pool_size, pool_size), stride=(1, 1), 
+        pool = mx.sym.Pooling(data=last_fm, kernel=(pool_size, pool_size), stride=(1, 1),
                               pool_type="avg", name="global_pool", global_pool=True)
         flatten = mx.sym.Flatten(data=pool, name="flatten")
         fc = mx.symbol.FullyConnected(data=flatten, num_hidden=class_num, name='fc')
         softmax = mx.symbol.SoftmaxOutput(data=fc, name='softmax')
-        
+
         return softmax
 
     def __call__(self, class_num=1000, layer_out=None, **configs):

@@ -239,7 +239,7 @@ def adjust_learning_rate(epoch, batch_idx):
 def accuracy(output, target):
     # get the index of the max log-probability
     pred = output.max(1, keepdim=True)[1]
-    return pred.eq(target.view_as(pred)).cpu().float().mean()
+    return pred.eq(target.view_as(pred)).float().mean()
 
 
 def save_checkpoint(epoch):

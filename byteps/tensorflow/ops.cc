@@ -165,9 +165,13 @@ void StartTask(::tensorflow::OpKernelContext* context,
 }
 
 class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
+  private:
+     std::string input_tensor_name;
  public:
   explicit BytePSPushPullOp(::tensorflow::OpKernelConstruction* context)
-      : AsyncOpKernel(context) {}
+      : AsyncOpKernel(context) {
+          context->GetAttr("input_name", &input_tensor_name);
+      }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
                     DoneCallback done) override {
@@ -184,11 +188,17 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
     auto bps_input = std::make_shared<TFTensor>(tensor);
     auto bps_output = std::make_shared<TFTensor>(*output);
     auto node_name = name();
-    auto& bps_context = common::GetContextFromName(node_name);
-    if (bps_context.initialized) {
-      StartTask(context, done, node_name, bps_input, bps_output, ready_event);
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+        tmp_name = node_name;
     } else {
-      std::thread t(StartTask, context, done, node_name, bps_input, bps_output,
+        tmp_name = input_tensor_name;
+    }
+    auto& bps_context = common::GetContextFromName(tmp_name);
+    if (bps_context.initialized) {
+      StartTask(context, done, tmp_name, bps_input, bps_output, ready_event);
+    } else {
+      std::thread t(StartTask, context, done, tmp_name, bps_input, bps_output,
                     ready_event);
       t.detach();
     }
@@ -202,6 +212,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
 
 REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("input_name: string = 'default_tensor_name'")
     .Input("tensor: T")
     .Output("sum: T")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {

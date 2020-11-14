@@ -23,8 +23,10 @@ from __future__ import print_function
 import re
 import os
 import ctypes
+from enum import Enum
+import random
+import string
 
-import tensorflow as tf
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -32,6 +34,7 @@ from tensorflow.python.platform import resource_loader
 from byteps.common import get_ext_suffix
 from byteps.common import BytePSBasics as _BytePSBasics
 from byteps.tensorflow.util import _executing_eagerly
+import tensorflow as tf
 
 
 def _load_library(name):
@@ -53,20 +56,55 @@ _basics = _BytePSBasics(__file__, 'c_lib')
 # import basic methods
 init = _basics.init
 shutdown = _basics.shutdown
+suspend = _basics.suspend
+resume = _basics.resume
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
+get_pushpull_speed = _basics.get_pushpull_speed
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
+
+def get_average_backwards_compatibility_fun(reduce_ops):
+    """
+    Handle backwards compatibility between the old average and the new op parameters.
+    Old code using the average parameter (e.g. bps.PushPull(tensor, average=False))
+    gets unchanged behavior, but mixing old and new is disallowed (e.g. no
+    bps.PushPull(tensor, average=False, op=bps.Adasum)).
+    """
+    def impl(op, average):
+        if op != None:
+            if average != None:
+                raise ValueError('The op parameter supersedes average. Please provide only one of them.')
+            return op
+        elif average != None:
+            warnings.warn('Parameter `average` has been replaced with `op` and will be removed',
+                          DeprecationWarning)
+            return reduce_ops.Average if average else reduce_ops.Sum
+        else:
+            return reduce_ops.Average
+    return impl
+
+class ReduceOps(Enum):
+    # This value should never appear past framework code, as
+    # averaging is taken care of there.
+    Average = "Average"
+    Sum = "Sum"
+    Adsum = "Adsum"
+
+handle_average_backwards_compatibility = get_average_backwards_compatibility_fun(ReduceOps)
 
 
 def _normalize_name(name):
     """Normalizes operation name to TensorFlow rules."""
     return re.sub('[^a-zA-Z0-9_]', '_', name)
 
+def randomString(stringLength=16):
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(stringLength))
 
 def _push_pull(tensor, scope='', name=None):
     """An op which sums an input tensor over all the BytePS processes.
@@ -86,10 +124,14 @@ def _push_pull(tensor, scope='', name=None):
             scope = tf.get_default_graph().get_name_scope()
         if scope != '':
             scope += '/'
+    if not name:
+        name = ''
     full_name = scope + name
-    full_name = full_name.encode("ascii")
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
-    return C_LIB.byteps_push_pull(tensor, name=name)
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
 @ops.RegisterGradient('BytePSPushPull')
@@ -124,19 +166,28 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
             scope = tf.get_default_graph().get_name_scope()
         if scope != '':
             scope += '/'
+    if not name:
+        name = ''
     full_name = scope + name
-    full_name = full_name.encode("ascii")
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name))
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name_ascii = full_name.encode("ascii")
+
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     if root_rank != rank():
         if is_variable:
-            with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                return C_LIB.byteps_push_pull(tensor, name=name)
+            if hasattr(tf, 'assign_sub'):
+                with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                    return C_LIB.byteps_push_pull(tensor, name=name)
+            else:
+                with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
+                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
         else:
             with tf.device(tensor.device):
                 input_tensor = tf.zeros_like(tensor)
-            return C_LIB.byteps_push_pull(input_tensor, name=name)
+            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name)
     else:
-        return C_LIB.byteps_push_pull(tensor, name=name)
+        return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
 @ops.RegisterGradient('BytePSBroadcast')

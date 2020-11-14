@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
+
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import push_pull
 from byteps.torch.ops import poll, synchronize, declare
-from byteps.torch.ops import init, shutdown
+from byteps.torch.ops import init, shutdown, suspend, resume
 from byteps.torch.ops import size, local_size, rank, local_rank
 
+import os
 import torch
 import collections
 
@@ -39,6 +42,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             named_parameters = list(named_parameters)
         else:
             named_parameters = []
+
+        self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
+        if self._enable_async:
+            assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
+                "Async is only valid for distributed training"
+            print('BytePS: enable asynchronous training')
 
         # make sure that named_parameters are tuples
         if any([not isinstance(p, tuple) for p in named_parameters]):
@@ -77,14 +86,15 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
+        self._should_sync = True
         if size() > 1:
             self._register_hooks()
 
         # declare tensors
-        for name in self._parameter_names.values():
+        for name in sorted(self._parameter_names.values()):
             declare("Gradient."+name)
         # We use two loops for load-balancing
-        for name in self._parameter_names.values():
+        for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
 
     @staticmethod
@@ -118,9 +128,13 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             name = self._parameter_names.get(p.__hash__())
         else:
             name = self._parameter_names.get(p)
-        tensor = p.grad
-        tensor_compressed, ctx = self._compression.compress(tensor)
-        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+        if self._enable_async:
+            # the real handle will be created in step()
+            handle, ctx = None, None
+        else:
+            tensor = p.grad
+            tensor_compressed, ctx = self._compression.compress(tensor)
+            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p):
@@ -155,12 +169,49 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         for p, (handle, _) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
-            p.grad.set_(self._compression.decompress(output, ctx))
+            if not self._enable_async:
+                p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
 
+    @contextmanager
+    def skip_synchronize(self):
+        if self._enable_async:
+            raise AssertionError("skip_synchronize cannot be used in async training")
+        self._should_sync = False
+        try:
+            yield
+        finally:
+            self._should_sync = True
+
     def step(self, closure=None):
-        self.synchronize()
-        return super(self.__class__, self).step(closure)
+        if self._enable_async:
+            old_weight_map = {}
+            # store the weights before update
+            for p, _ in self._handles.items():
+                old_weight_map[p] = p.data.clone().detach()
+            # update
+            loss = super(self.__class__, self).step(closure)
+
+            for p, (h, _) in self._handles.items():
+                # get the diff for each weight (in-place)
+                p.data.sub_(old_weight_map.get(p))
+                if h is None:
+                    # create the handler now
+                    if self._is_tensor_instance:
+                        name = self._parameter_names.get(p.__hash__())
+                    else:
+                        name = self._parameter_names.get(p)
+                    handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+                    _, ctx = self._compression.compress(p)
+                    self._handles[p] = (handle, ctx)
+
+            self.synchronize()
+            return loss
+        else:
+            # skip sync if calling skip_synchronize
+            if self._should_sync:
+                self.synchronize()
+            return super(self.__class__, self).step(closure)
 
 
 def DistributedOptimizer(optimizer, named_parameters=None,
@@ -232,7 +283,10 @@ def broadcast_parameters(params, root_rank):
         if rank() != root_rank:
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
-        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        if name:
+            handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        else:
+            handle = byteps_push_pull(p, average=False)
         synchronize(handle)
 
 
@@ -302,13 +356,13 @@ def broadcast_optimizer_state(optimizer, root_rank):
     # new unwrapped scalar value via a callback.
     def _create_callback(pid, name, t, p):
         def _from_tensor():
-            state_dict['state'][pid][name] = t(p.numpy()[0])
+            state_dict['state'][pid][name] = t(p.cpu().numpy()[0])
         return _from_tensor
 
     def _create_option_callback(index, option_key, option_tensor, dtypes):
         def _from_tensor():
             optimizer.param_groups[index][option_key] = _recursive_cast(
-                option_tensor.numpy()[0], dtypes)
+                option_tensor.cpu().numpy()[0], dtypes)
         return _from_tensor
 
     # Param groups are an ordered list, normally there is only one per model,
@@ -323,7 +377,7 @@ def broadcast_optimizer_state(optimizer, root_rank):
             # Options like the learning rate are scalar, and need to be wrapped in tensors
             key = '%s.%d' % (option_key, index)
             dtypes = _get_types(option_value)
-            option_tensor = torch.Tensor([option_value])
+            option_tensor = torch.Tensor([option_value]).cuda()
             callbacks[key] = _create_option_callback(index, option_key, option_tensor, dtypes)
             params.append((key, option_tensor))
 
@@ -341,7 +395,7 @@ def broadcast_optimizer_state(optimizer, root_rank):
                     # Wrap the scalar in a FloatTensor, and remember its type
                     # so we can cast it back after unwrapping
                     t = type(p)
-                    p = torch.Tensor([p])
+                    p = torch.Tensor([p]).cuda()
                     callbacks[key] = _create_callback(pid, name, t, p)
 
                 params.append((key, p))

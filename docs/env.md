@@ -1,6 +1,6 @@
 # BytePS Environment Variables
 
-Regardless of your framework, TensorFlow, PyTorch or MXNet, you must set the required envrionment variables below, including DMLC_* variables. This is because we leverage the [DMLC/MXNet bootstrapping process](https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html#manually-launching-jobs). 
+Regardless of your framework, TensorFlow, PyTorch or MXNet, you must set the required envrionment variables below, including DMLC_* variables. This is because we leverage the [DMLC/MXNet bootstrapping process](https://mxnet.apache.org/api/faq/distributed_training#manually-launching-jobs).
 
 To run distributed training, you must start one scheduler, at least one server, and at least two workers. If you only have one worker, you won't need scheduler or server.
 
@@ -18,7 +18,7 @@ export DMLC_NUM_WORKER=y
 
 `DMLC_PS_ROOT_URI` is the IP of your scheduler. `DMLC_PS_ROOT_PORT` is the port that your scheduler binds to.
 
-If you have `NVIDIA_VISIBLE_DEVICES` set, you can run `launcher/launcher.py YOUR_COMMAND` to start your job. 
+If you have `NVIDIA_VISIBLE_DEVICES` set, you can run `launcher/launcher.py YOUR_COMMAND` to start your job.
 
 Alternatively, if you don't use `launcher/launcher.py`, you can start the job on each GPU after specifying:
 
@@ -38,7 +38,7 @@ Otherwise, set it to 0.
 ## Required for servers and scheduler
 
 BytePS uses the same environment variables as MXNet for server and scheduler:
-https://mxnet.incubator.apache.org/versions/master/faq/distributed_training.html#manually-launching-jobs
+https://mxnet.apache.org/api/faq/distributed_training#manually-launching-jobs
 
 In short, you should configure the same DMLC_* variables as the worker, except that DMLC_ROLE should be either server or scheduler.
 
@@ -92,7 +92,7 @@ You can also configure the tensor partition size. A smaller size improves BytePS
 export BYTEPS_PARTITION_BYTES=y
 ```
 
-The rest do not impact the performance much. However, you can still experiment them if you have time. 
+The rest do not impact the performance much. However, you can still experiment them if you have time.
 
 You can increase the number of concurrent NCCL streams used in local merging. However, this may lead to occasional hanging problem due to NCCL implementation.
 
@@ -106,15 +106,24 @@ BytePS uses group NCCL calls to reduce NCCL invoking overhead. You can try to in
 export BYTEPS_NCCL_GROUP_SIZE=w
 ```
 
-Servers can also be the performance bottleneck, e.g., when there are only one server but multiple workers. 
-You can try to increase the number of push threads on the servers (default is 1):
- 
-```
-export SERVER_PUSH_NTHREADS=v
-```
-
-Increasing the number of engine CPU threads may also improves server performance:
+Servers can also be the performance bottleneck, e.g., when there are only one server but multiple workers.
+You can try to increase the number of processing threads on the servers (default is 4):
 
 ```
-export MXNET_CPU_WORKER_NTHREADS=p
+export BYTEPS_SERVER_ENGINE_THREAD=v
 ```
+
+Or enable scheduling at the server side to prioritize tensors with higher priority:
+
+```
+export BYTEPS_SERVER_ENABLE_SCHEDULE=1
+```
+
+## Asynchronous training
+
+Enable asynchronous training with (on all workers and servers)
+
+```
+export BYTEPS_ENABLE_ASYNC=1
+```
+

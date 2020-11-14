@@ -27,6 +27,7 @@ namespace common {
 
 void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
                                            uint64_t key, size_t size) {
+  size = BytePSGlobal::RoundUpToPageSize(size);
   std::string shm_name(prefix);
   shm_name += std::to_string(key);
   int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
@@ -54,22 +55,26 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(uint64_t key,
   for (int i = 0; i < BytePSGlobal::GetPcieSwitchNum(); i++) {
     auto prefix = std::string("BytePS_Pcie") + std::to_string(i) + "_Shm_";
     if (BytePSGlobal::IsDistributed()) {
-      if (i <= numa_max_node()) {
-        numa_set_preferred(i);
+      if (BytePSGlobal::IsCrossPcieSwitch()) {
+        if (i <= numa_max_node()) {
+          numa_set_preferred(i);
+          r.push_back(openSharedMemory(prefix, key, size));
+          numa_set_preferred(-1);
+        } else {
+          numa_set_preferred(numa_max_node());
+          r.push_back(openSharedMemory(prefix, key, size));
+          numa_set_preferred(-1);
+        }
       } else {
-        numa_set_preferred(numa_max_node());
+        r.push_back(openSharedMemory(prefix, key, size));
       }
-      r.push_back(openSharedMemory(prefix, key, size));
-      numa_set_preferred(-1);
     } else {
       if (BytePSGlobal::IsCrossPcieSwitch()) {
         numa_set_interleave_mask(numa_all_nodes_ptr);
         r.push_back(openSharedMemory(prefix, key, size));
         numa_set_interleave_mask(numa_no_nodes_ptr);
       } else {
-        numa_set_preferred(0);
         r.push_back(openSharedMemory(prefix, key, size));
-        numa_set_preferred(-1);
       }
     }
   }

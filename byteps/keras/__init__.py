@@ -1,3 +1,4 @@
+# Copyright 2019 Bytedance Inc. or its affiliates. All Rights Reserved.
 # Copyright 2017 Uber Technologies, Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import tensorflow.keras as keras
-import tensorflow.keras.backend as K
+import keras
+import keras.backend as K
 
 from byteps.tensorflow import init
 from byteps.tensorflow import shutdown
@@ -41,9 +42,7 @@ def DistributedOptimizer(optimizer, name=None,
               gradients. Defaults to "Distributed" followed by the provided
               optimizer type.
         device_dense: Device to be used for dense tensors. Uses GPU by default
-                      if BytePS was build with BYTEPS_GPU_ALLREDUCE.
         device_sparse: Device to be used for sparse tensors. Uses GPU by default
-                       if BytePS was build with BYTEPS_GPU_ALLGATHER.
         compression: Compression algorithm used to reduce the amount of data
                      sent and received by each worker node.  Defaults to not
                      using compression.
@@ -120,4 +119,5 @@ def load_model(filepath, custom_optimizers=None, custom_objects=None, compressio
     """
     def wrap_optimizer(cls):
         return lambda **kwargs: DistributedOptimizer(cls(**kwargs), compression=compression)
-    return _impl.load_model(keras, wrap_optimizer, filepath, custom_optimizers, custom_objects)
+    optimizer_modules = {keras.optimizers.Optimizer.__module__}
+    return _impl.load_model(keras, wrap_optimizer, optimizer_modules, filepath, custom_optimizers, custom_objects)

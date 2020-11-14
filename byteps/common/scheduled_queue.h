@@ -31,10 +31,12 @@ class BytePSScheduledQueue {
   BytePSScheduledQueue(QueueType type);
   QueueType getQueueType() { return _qt; }
   void addTask(std::shared_ptr<TensorTableEntry>);
+  void recorderTs(std::shared_ptr<TensorTableEntry>);
   std::shared_ptr<TensorTableEntry> getTask();
   std::shared_ptr<TensorTableEntry> getTask(uint64_t key);
   uint32_t pendingSize();
   void reportFinish(int size);
+  void reset(uint64_t key, int cnt);
 
  private:
   // TODO: use priority queue or heap

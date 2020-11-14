@@ -20,16 +20,15 @@ import tensorflow as tf
 def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sparse,
                                  compression, sparse_as_dense):
     class _DistributedOptimizer(keras.optimizers.Optimizer):
-        def __init__(self, name, device_dense, device_sparse, compression, sparse_as_dense,
-                     config):
-            if name is None:
-                name = "Distributed%s" % self.__class__.__base__.__name__
-            self._name = name
+        _HAS_AGGREGATE_GRAD = True
+        def __init__(self, **kwargs):
+            self._name = name or "Distributed%s" % self.__class__.__base__.__name__
             self._device_dense = device_dense
             self._device_sparse = device_sparse
             self._compression = compression
             self._sparse_as_dense = sparse_as_dense
-            super(self.__class__, self).__init__(**config)
+            self._aggregated_gradients = False
+            super(self.__class__, self).__init__(**kwargs)
 
         def get_gradients(self, loss, params):
             """
@@ -39,6 +38,14 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             push_pull the gradients before returning them.
             """
             gradients = super(self.__class__, self).get_gradients(loss, params)
+            return self._push_pull(gradients)
+
+        def _aggregate_gradients(self, grads_and_vars):
+            gradients = [grad for grad, var in grads_and_vars]
+            return self._push_pull(gradients)
+
+        def _push_pull(self, gradients):
+            self._aggregated_gradients = True
             if bps.size() > 1:
                 averaged_gradients = []
                 with tf.name_scope(self._name + "_Push_Pull") as scope:
@@ -58,36 +65,48 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
             else:
                 return gradients
 
+        def apply_gradients(self, *args, **kwargs):
+            if not self._aggregated_gradients:
+                raise Exception('`apply_gradients()` was called without a call to '
+                                '`get_gradients()` or `_aggregate_gradients`. If you\'re '
+                                'using TensorFlow 2.0, please specify '
+                                '`experimental_run_tf_function=False` in `compile()`.')
+            return super(self.__class__, self).apply_gradients(*args, **kwargs)
+
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override get_gradients() method with an push_pull implementation.
     # This class will have the same name as the optimizer it's wrapping, so that the saved
     # model could be easily restored without BytePS.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DistributedOptimizer.__dict__))
-    return cls(name, device_dense, device_sparse, compression, sparse_as_dense,
-               optimizer.get_config())
+    return cls.from_config(optimizer.get_config())
 
 
-def broadcast_global_variables(backend, root_rank):
-    bcast_op = bps.broadcast_global_variables(root_rank)
-    return backend.get_session().run(bcast_op)
+def _eval(backend, op_or_result):
+    if bps._executing_eagerly():
+        return op_or_result
+    else:
+        return backend.get_session().run(op_or_result)
+
+
+if hasattr(bps, 'broadcast_global_variables'):
+    def broadcast_global_variables(backend, root_rank):
+        return _eval(backend, bps.broadcast_global_variables(root_rank))
 
 
 def push_pull(backend, value, name, average):
-    push_pull_op = bps.push_pull(tf.constant(value, name=name), average=average)
-    return backend.get_session().run(push_pull_op)
+    return _eval(backend,  bps.push_pull(tf.constant(value, name=name), average=average))
 
 
 def broadcast(backend, value, root_rank, name):
-    bcast_op = bps.broadcast(tf.constant(value, name=name), root_rank, is_variable=False)
-    return backend.get_session().run(bcast_op)
+    return _eval(backend, bps.broadcast(tf.constant(value, name=name), root_rank, is_variable=False))
 
 
-def load_model(keras, wrap_optimizer, filepath, custom_optimizers, custom_objects):
+def load_model(keras, wrap_optimizer, optimizer_modules, filepath, custom_optimizers, custom_objects):
     byteps_objects = {
         subclass.__name__.lower(): wrap_optimizer(subclass)
         for subclass in keras.optimizers.Optimizer.__subclasses__()
-        if subclass.__module__ == keras.optimizers.Optimizer.__module__
+        if subclass.__module__ in optimizer_modules
     }
 
     if custom_optimizers is not None:

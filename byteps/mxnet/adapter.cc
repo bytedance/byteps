@@ -25,6 +25,7 @@
 namespace byteps {
 namespace mxnet {
 
+
 template <class T>
 MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
 

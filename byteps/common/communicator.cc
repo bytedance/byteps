@@ -78,6 +78,8 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
 
   // we assume _local_size (i.e., # GPU) is consistent on all workers
   *rank = (*local_rank) + (*worker_id) * (*local_size);
+  // force setting global rank
+  *rank = getenv("BYTEPS_GLOBAL_RANK") ? atoi(getenv("BYTEPS_GLOBAL_RANK")) : *rank;
   *size = num_worker * (*local_size);
 
   _rank = *rank;
@@ -144,6 +146,12 @@ int BytePSCommSocket::initSocket(int rank, const std::string& path) {
   // before bind, clear the path first
   unlink(fd_path.c_str());
 
+  // set recv timeout value for socket
+  struct timeval tv;
+  tv.tv_sec = 3; // in seconds
+  tv.tv_usec = 0;
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+
   // bind the socket to addr
   int ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
   BPS_CHECK_GE(ret, 0) << fd_path << " bind failed: " << strerror(errno);
@@ -162,9 +170,15 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
     while (true) {
       rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
       if (rc < 0 && errno == EINTR) continue;
+      if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
+        if (BytePSGlobal::ShouldShutdown()) break; // on exit
+        else continue; // normal timeout
+      }
       BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
       break;
     }
+    if (BytePSGlobal::ShouldShutdown()) break;
+
     auto message = *(BytePSCommMsg*)buffer;
 
     switch (message.signal) {
@@ -188,6 +202,8 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
                    << ", signal=" << message.signal << ", key=" << message.key
                    << ", myrank=" << _local_rank;
   }
+  BPS_LOG(DEBUG) << "listen thread joined"
+                 << " (rank=" << _local_rank << ")";
 }
 
 int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
@@ -223,11 +239,16 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   while (true) {
     rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
     if (rc < 0 && errno == EINTR) continue;
+    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
+        if (BytePSGlobal::ShouldShutdown()) break; // on exit
+        else continue; // normal timeout
+    }
     BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
     BPS_CHECK_LE(rc, max_len)
         << "recv_len=" << rc << ", but given max_len=" << max_len;
     break;
   }
+  if (BytePSGlobal::ShouldShutdown()) return rc;
   auto message = *(BytePSCommMsg*)data;
   *source = message.src;
 
@@ -241,6 +262,7 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
 int BytePSCommSocket::recvSignalFromRoot(void* data, int max_len) {
   int src;
   int rc = recvSignal(&src, data, max_len);
+  if (BytePSGlobal::ShouldShutdown()) return rc;
   BPS_CHECK_EQ(src, _root) << "Non-root received signal from another non-root";
   return rc;
 }

@@ -30,8 +30,17 @@ extern "C" {
 // C interface to initialize byteps.
 void byteps_init();
 
+// C interface to initialize byteps (without initializing ps-lite).
+void byteps_lazy_init();
+
 // C interface to shut down byteps.
 void byteps_shutdown();
+
+// C interface to restart byteps.
+void byteps_resume(int num_workers, int num_servers);
+
+// C interface to suspend byteps.
+void byteps_suspend();
 
 // C interface to get index of current byteps process.
 // Returns -1 if byteps is not initialized.
@@ -50,6 +59,8 @@ int byteps_size();
 int byteps_local_size();
 }
 
+extern "C" PyObject* byteps_get_pushpull_speed();
+
 // Below are all for Framework plugins
 Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      std::shared_ptr<Tensor> output,
@@ -62,6 +73,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorDeclared(const std::string &name);
+
+void RegisterCompressor(const std::string &name,
+                        std::unordered_map<std::string, std::string> &kwargs);
 
 BPSContext &GetContextFromName(const std::string &name);
 

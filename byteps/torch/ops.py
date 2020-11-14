@@ -37,6 +37,8 @@ from byteps.torch.compression import Compression
 # import basic methods
 init = _basics.init
 shutdown = _basics.shutdown
+suspend = _basics.suspend
+resume = _basics.resume
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank
@@ -61,6 +63,8 @@ def _check_function(function_factory, tensor):
 def _push_pull_function_factory(tensor):
     return 'byteps_torch_push_pull_async_' + tensor.type().replace('.', '_')
 
+def _push_pull_group_function_factory(tensor):
+    return 'byteps_torch_push_pull_group_sync_' + tensor.type().replace('.', '_')
 
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
@@ -70,6 +74,15 @@ def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
                                       version, priority)
     _handle_map[handle] = (tensor, output)
     return handle
+
+def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0):
+    c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
+    function = _check_function(_push_pull_group_function_factory, tensor)
+    handle, curr_count = getattr(c_lib, function)(tensor, output, average,
+                                      name.encode() if name is not None else _NULL,
+                                      version, priority)
+    _handle_map[handle] = (tensor, output)
+    return handle, curr_count
 
 
 def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
@@ -160,6 +173,8 @@ def push_pull_async_inplace(tensor, average=True, name=None, version=0, priority
     """
     return _do_push_pull_async(tensor, tensor, average, name, version, priority)
 
+def push_pull_group_sync_inplace(tensor, average=True, name=None, version=0, priority=0):
+    return _do_push_pull_group_sync(tensor, tensor, average, name, version, priority)
 
 def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0):
     """
@@ -200,6 +215,9 @@ def declare(name):
     c_lib.byteps_torch_declare_tensor(name.encode())
     return 0
 
+def byteps_torch_set_num_grads(num_grads_):
+    c_lib.byteps_torch_set_num_grads(num_grads_)
+    return 0
 
 def synchronize(handle):
     """
