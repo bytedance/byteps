@@ -37,7 +37,7 @@ if __name__ == '__main__':
         network          = 'resnet',
         num_layers       = 50,
         # data
-        num_classes      = 1000,
+        num_classes      = 10000,
         num_examples     = 1281167,
         image_shape      = '3,224,224',
         min_random_scale = 1, # if input image has min size k, suggest to use

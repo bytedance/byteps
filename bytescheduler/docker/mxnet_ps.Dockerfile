@@ -9,7 +9,7 @@ ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 WORKDIR /root
 
 # Install dev tools
-RUN apt-get update && apt-get install -y git python-dev build-essential
+RUN apt-get update && apt-get install -y vim git python-dev build-essential
 RUN apt-get install -y wget && wget https://bootstrap.pypa.io/get-pip.py && python get-pip.py
 
 # Install gcc 4.9
