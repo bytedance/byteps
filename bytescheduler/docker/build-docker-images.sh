@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# tested on Ubuntu 14.04 LTS
 set -e
 set -x
 

@@ -2,7 +2,7 @@
 
 Bytescheduler is a generic communication scheduler for distributed training framework such as TensorFlow, PyTorch, MXNet. It separates tensor partitioning and 
 communication scheduling from various training frameworks, gradient update architectures and network protocols, without modifying their implementations much. 
-We open source ByteScheduler's source code here and hope it can facilitate further research and development in distributed DNN training acceleration and related directions.
+We open source ByteScheduler's source code here and hope it can facilitate further research and development in distributed DNN training acceleration and related directions. The code is reorganized based on the original paper version for open source purpose, feel free to file an issue if you find a bug.
 
 **Table of Contents**
 

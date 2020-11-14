@@ -20,7 +20,7 @@ index fd62f38..7c5e20a 100644
 +      auto ready = true;
 +      // If bytescheduler is enabled, ready is also true for rank 0.
 +      if (horovod_global.rank != 0 || !horovod_global.use_bytescheduler) {
-+        it->ready_event->Ready();
++        ready = it->ready_event->Ready();
 +      }
 +      if (ready) {
          timeline.ActivityEnd(it->tensor_name);
