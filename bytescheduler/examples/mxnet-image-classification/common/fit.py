@@ -82,6 +82,8 @@ def add_fit_args(parser):
     train = parser.add_argument_group('Training', 'model training')
     train.add_argument('--network', type=str,
                        help='the neural network to use')
+    train.add_argument('--role', type=str,
+                       help='the role of this process')
     train.add_argument('--num-layers', type=int,
                        help='number of layers in the neural network, \
                              required by some networks such as resnet')
