@@ -139,9 +139,9 @@ def main():
     opt = parse_args()
 
     bps.init()
- 
+
     filehandler = logging.FileHandler(opt.logging_file)
-    streamhandler=logging.StreamHandler()
+    streamhandler = logging.StreamHandler()
 
     logger = logging.getLogger('')
     logger.setLevel(logging.INFO)
@@ -328,11 +328,14 @@ def main():
 
         train_data = gluon.data.DataLoader(
             imagenet.classification.ImageNet(
-                data_dir, train=True).transform_first(transform_train),
-            batch_size=batch_size, shuffle=True, last_batch='discard', num_workers=num_workers)
+                data_dir, train=True).transform_first(
+                    transform_train).shard(nworker, rank),
+            batch_size=batch_size, shuffle=True, last_batch='discard',
+            num_workers=num_workers)
         val_data = gluon.data.DataLoader(
             imagenet.classification.ImageNet(
-                data_dir, train=False).transform_first(transform_test),
+                data_dir, train=False).transform_first(
+                    transform_test).shard(nworker, rank),
             batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
         return train_data, val_data, batch_fn
@@ -440,7 +443,8 @@ def main():
         best_val_score = 1
 
         bps.byteps_declare_tensor("acc")
-        bps.byteps_push_pull(nd.array([0, 0, 0], ctx=ctx[0]), name="acc", is_average=False)
+        bps.byteps_push_pull(
+            nd.array([0, 0, 0], ctx=ctx[0]), name="acc", is_average=False)
         for epoch in range(opt.resume_epoch, opt.num_epochs):
             tic = time.time()
             if opt.use_rec:

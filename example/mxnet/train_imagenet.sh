@@ -1,5 +1,5 @@
 #!/bin/bash
-interface=ens3
+interface=lo
 ip=$(ifconfig $interface | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
 port=1234
 NVIDIA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
@@ -22,11 +22,11 @@ server_engine_thread=4
 data_threads=2
 
 # path
-repo_path=/home/ubuntu/repos/byteps
+repo_path=$HOME/repos/byteps
 worker_hosts=worker-hosts
 server_hosts=server-hosts
 script_path=$repo_path/example/mxnet/train_gluon_imagenet_byteps_gc.py
-data_path=/home/ubuntu/data/ILSVRC2012/
+data_path=$HOME/data/ILSVRC2012/
 pem_file=$1
 shift
 
@@ -64,8 +64,14 @@ fi
 log_file=$log_file"$1.log"
 shift
 
+if [[ $BYTEPS_USE_REC -eq 1 ]]; then
+  data_config="--rec-train $data_path"train.rec" --rec-train-idx $data_path"train.idx" --rec-val $data_path"val.rec" --rec-val-idx $data_path"val.idx" --use-rec"
+else
+  data_config="--data-dir $data_path"
+fi
 
-cmd="python $repo_path/launcher/dist_launcher.py -WH $worker_hosts -SH $server_hosts --scheduler-ip $ip --scheduler-port $port --interface $interface -i $pem_file --username ubuntu --env OMP_WAIT_POLICY:PASSIVE --env OMP_NUM_THREADS:$omp_num_threads --env BYTEPS_THREADPOOL_SIZE:$threadpool_size --env BYTEPS_MIN_COMPRESS_BYTES:$min_compress_bytes --env BYTEPS_NUMA_ON:1 --env NVIDIA_VISIBLE_DEVICES:$NVIDIA_VISIBLE_DEVICES --env BYTEPS_SERVER_ENGINE_THREAD:$server_engine_thread --env BYTEPS_PARTITION_BYTES:$partition_bytes --env BYTEPS_LOG_LEVEL:INFO  ~/.profile; bpslaunch python3 $script_path --model $model --mode hybrid --rec-train $data_path"train.rec" --rec-train-idx $data_path"train.idx" --rec-val $data_path"val.rec" --rec-val-idx $data_path"val.idx" --use-rec --batch-size $batch_size --num-gpus 1 --num-epochs $epochs -j $data_threads --warmup-epochs 5 --warmup-lr $lr --lr $lr --lr-mode cosine $compression_args --logging-file $repo_path/example/mxnet/$log_file"
+
+cmd="python $repo_path/launcher/dist_launcher.py -WH $worker_hosts -SH $server_hosts --scheduler-ip $ip --scheduler-port $port --interface $interface -i $pem_file --username ubuntu --env OMP_WAIT_POLICY:PASSIVE --env OMP_NUM_THREADS:$omp_num_threads --env BYTEPS_THREADPOOL_SIZE:$threadpool_size --env BYTEPS_MIN_COMPRESS_BYTES:$min_compress_bytes --env BYTEPS_NUMA_ON:1 --env NVIDIA_VISIBLE_DEVICES:$NVIDIA_VISIBLE_DEVICES --env BYTEPS_SERVER_ENGINE_THREAD:$server_engine_thread --env BYTEPS_PARTITION_BYTES:$partition_bytes --env BYTEPS_LOG_LEVEL:INFO  ~/.profile; bpslaunch python3 $script_path --model $model --mode hybrid $data_config --batch-size $batch_size --num-gpus 1 --num-epochs $epochs -j $data_threads --warmup-epochs 5 --warmup-lr $lr --lr $lr --lr-mode cosine $compression_args --logging-file $repo_path/example/mxnet/$log_file"
 
 echo $cmd
-exec $cmd
+# exec $cmd
