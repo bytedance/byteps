@@ -45,7 +45,8 @@ if __name__ == '__main__':
         # train
         num_epochs       = 80,
         lr_step_epochs   = '30,60',
-        dtype            = 'float32'
+        dtype            = 'float32',
+        role             = 'worker',
     )
     args = parser.parse_args()
 
@@ -55,7 +56,7 @@ if __name__ == '__main__':
     sym = net.get_symbol(**vars(args))
 
     # mxnet profiler
-    mx.profiler.set_config(profile_all=True, filename='bs_worker.json', continuous_dump=True, profile_process='worker')
+    mx.profiler.set_config(profile_all=True, filename='bs_'+args.network+str(args.num_layers)+'_'+args.role+'.json', continuous_dump=True, profile_process=args.role)
     mx.profiler.set_state('run')
 
     # train
