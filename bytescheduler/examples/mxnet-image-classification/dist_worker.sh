@@ -5,7 +5,7 @@ if [ $# -lt 3 ]; then
     exit -1;
 fi
 
-export USE_BYTESCHEDULER=1
+export USE_BYTESCHEDULER=0
 export BYTESCHEDULER_QUEUE_TYPE=0
 #export MXNET_CUDNN_AUTOTUNE_DEFAULT=0
 # export BYTESCHEDULER_TUNING=1
