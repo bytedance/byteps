@@ -74,4 +74,4 @@ fi
 cmd="python $repo_path/launcher/dist_launcher.py -WH $worker_hosts -SH $server_hosts --scheduler-ip $ip --scheduler-port $port --interface $interface -i $pem_file --username ubuntu --env OMP_WAIT_POLICY:PASSIVE --env OMP_NUM_THREADS:$omp_num_threads --env BYTEPS_THREADPOOL_SIZE:$threadpool_size --env BYTEPS_MIN_COMPRESS_BYTES:$min_compress_bytes --env BYTEPS_NUMA_ON:1 --env NVIDIA_VISIBLE_DEVICES:$NVIDIA_VISIBLE_DEVICES --env BYTEPS_SERVER_ENGINE_THREAD:$server_engine_thread --env BYTEPS_PARTITION_BYTES:$partition_bytes --env BYTEPS_LOG_LEVEL:INFO  ~/.profile; bpslaunch python3 $script_path --model $model --mode hybrid $data_config --batch-size $batch_size --num-gpus 1 --num-epochs $epochs -j $data_threads --warmup-epochs 5 --warmup-lr $lr --lr $lr --lr-mode cosine $compression_args --logging-file $repo_path/example/mxnet/$log_file"
 
 echo $cmd
-# exec $cmd
+exec $cmd
