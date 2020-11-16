@@ -56,10 +56,10 @@ if __name__ == '__main__':
     sym = net.get_symbol(**vars(args))
 
     # mxnet profiler
-    mx.profiler.set_config(profile_all=True, filename='bs_'+args.network+str(args.num_layers)+'_'+args.role+'.json', continuous_dump=True, profile_process=args.role)
-    mx.profiler.set_state('run')
+#    mx.profiler.set_config(profile_all=True, filename='bs_'+args.network+str(args.num_layers)+'_'+args.role+'.json', continuous_dump=True, profile_process=args.role)
+#    mx.profiler.set_state('run')
 
     # train
     fit.fit(args, sym, data.get_rec_iter)
 
-    mx.profiler.set_state('stop')
+#    mx.profiler.set_state('stop')
