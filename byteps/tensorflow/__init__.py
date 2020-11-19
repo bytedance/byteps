@@ -86,9 +86,7 @@ def push_pull_xla_handle_out_v2(tensor, scope='', average=None, device_dense='',
                           if op == Average else summed_tensor)
         else: # no need to average for async training
             new_tensor = summed_tensor
-    # return new_tensor, tensor_name, handle
-    tensor_decompressed = compression.decompress(new_tensor, ctx)
-    return tensor_decompressed, tensor_name, handle
+    return new_tensor, tensor_name, handle, ctx
 
 def push_pull_all_grads_handle_xla_v2(grads, device_dense='', device_sparse='',
                             compression=Compression.none, sparse_as_dense=False):
@@ -120,7 +118,7 @@ def push_pull_all_grads_all_tf_ops(grads, device_dense='', device_sparse='',
             grads = [tf.convert_to_tensor(grad)
                      if grad is not None and isinstance(grad, tf.IndexedSlices)
                      else grad for grad in grads]
-        return [hvd.push_pull(grad, scope,
+        return [push_pull(grad, scope,
                           device_dense=device_dense,
                           device_sparse=device_sparse,
                           compression=compression)

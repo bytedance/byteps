@@ -89,21 +89,25 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
                     grads = [tf.convert_to_tensor(grad)
                              if grad is not None and isinstance(grad, tf.IndexedSlices)
                              else grad for grad in grads]
-                new_grads_names_and_handles = \
+                new_grads_names_and_handles_and_ctxes = \
                     [push_pull_xla_handle_out_v2(grad, scope,
                         device_dense=self._device_dense,
                         device_sparse=self._device_sparse,
                         compression=self._compression, idx = idx)
                      if grad is not None else grad
                      for idx, grad in enumerate(grads, 1)]
-                grads_and_names_and_handles = list(zip(*new_grads_names_and_handles))
-                avg_grads, grad_names, handles = \
-                  list(grads_and_names_and_handles[0]), \
-                  list(grads_and_names_and_handles[1]), \
-                  list(grads_and_names_and_handles[2])
 
-            barrier_handle = _my_barrier_handle_out(handles)
-            avg_grads = [_sync_tensors_handle_out_v2(tensor, barrier_handle, tensor_name=item, idx = idx) for idx, (tensor, item) in enumerate(zip(avg_grads, grad_names), 1)]
+                with tf.device(self._device_dense):
+                    grads_and_names_and_handles_and_ctxes = list(zip(*new_grads_names_and_handles_and_ctxes))
+                    avg_grads, grad_names, handles, ctxes = \
+                      list(grads_and_names_and_handles_and_ctxes[0]), \
+                      list(grads_and_names_and_handles_and_ctxes[1]), \
+                      list(grads_and_names_and_handles_and_ctxes[2]), \
+                      list(grads_and_names_and_handles_and_ctxes[3])
+
+                    barrier_handle = _my_barrier_handle_out(handles)
+                    avg_grads = [_sync_tensors_handle_out_v2(tensor, barrier_handle, tensor_name=item, idx = idx) for idx, (tensor, item) in enumerate(zip(avg_grads, grad_names), 1)]
+                    avg_grads = [self._compression.decompress(item, ctx) for item, ctx in zip(avg_grads, ctxes)]
             return avg_grads
 
         def apply_gradients(self, *args, **kwargs):
