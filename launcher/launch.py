@@ -75,11 +75,11 @@ def worker(local_rank, local_size, command):
             "BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
-    f = open("output_" + str(local_rank) + ".log", "w")
-    subprocess.check_call(command, env=my_env,
-                          stdout=f, stderr=f, shell=True)
+    # f = open("output_" + str(local_rank) + ".log", "w")
     # subprocess.check_call(command, env=my_env,
-    #                       stdout=sys.stdout, stderr=sys.stderr, shell=True)
+    #                       stdout=f, stderr=f, shell=True)
+    subprocess.check_call(command, env=my_env,
+                          stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 
 def launch_bps():

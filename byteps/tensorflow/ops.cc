@@ -617,14 +617,10 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
 
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   auto it = _name_to_done_args.find(name_key);
-  // ASSERTF(it == _name_to_done_args.end(), std::string("duplicate tensor_name ") +
-  //   std::string(name_key));
   std::shared_ptr<::tensorflow::Tensor> myTensor;
   void *myTensor_flat = nullptr;
   if (it != _name_to_done_args.end()) {
     // myTensor = it->second->output_tensor;
-    BPS_LOG(DEBUG, my_rank) << " x2682 name_key exists: " << name_key <<
-      " data_ptr: " << it->second->bps_in_buf << std::flush;
   } else {
     // myTensor = std::make_shared<::tensorflow::Tensor>(
     //   gpu_allocator, dt_type, ::tensorflow::TensorShape({num_elem}));
@@ -640,18 +636,14 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
     // new_args->output_tensor = myTensor;
 
     _name_to_done_args[name_key] = new_args;
-    BPS_LOG(DEBUG, my_rank) << " x2682 inserting name_key " << name_key <<
-      " data_ptr: " << new_args->bps_in_buf << std::flush;
   }
   my_lk.unlock();
   BPS_LOG(DEBUG, my_rank) << " x2682 name_key pos 1" << name_key << std::flush;
   _name_to_done_args_cv.notify_all();
   // void *myTensor_flat = const_cast<void *>((const void *)(myTensor.get()->tensor_data().data()));
-  BPS_LOG(DEBUG, my_rank) << " x2682 name_key pos 2" << name_key << std::flush;
   cudaStreamSynchronize(*my_stream);
   cudaMemcpyAsync(myTensor_flat, buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
   cudaStreamSynchronize(*my_stream);
-  BPS_LOG(DEBUG, my_rank) << " x2682 name_key pos 3" << name_key << std::flush;
   auto bps_output = std::make_shared<XlaTensor>(myTensor_flat, num_elem, dt_type, buffer_size);
   ////////
   auto ready_event =
@@ -662,7 +654,6 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
 
   std::thread t(StartTaskXlaV2, context, tmp_name, bps_output, bps_output, ready_event);
   t.detach();
-  BPS_LOG(DEBUG, my_rank) << " x2682 exit " << __func__ << std::flush;
 }
 
 REGISTER_OP("BytepsPushPullXlaV2")
@@ -748,11 +739,10 @@ class BytepsSyncTensorHandleOutXlaOpV2 : public ::tensorflow::XlaOpKernel {
 
 void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
                       const char* opaque, size_t opaque_len) {
-  // return;
   int my_rank = common::byteps_rank();
   std::string tmp_name;
   std::stringstream ss(opaque);
-// return;
+
   ss >> tmp_name;
   int tmp_dt_type;
   ss >> std::dec >> tmp_dt_type;
@@ -780,30 +770,11 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
   auto args = _name_to_done_args[tmp_name];
   my_big_lk.unlock();
 
-    // auto expecting = args->bps_in_buf;
-    // auto got_ptr = buffers[0];
-    // if (got_ptr != expecting) {
-    //   BPS_LOG(DEBUG, my_rank) << " x2682_error expecting ptr: " << expecting
-    //     << " but got ptr: " << got_ptr << " name_key: " << tmp_name
-    //     << std::flush;
-    // } else {
-    //   BPS_LOG(DEBUG, my_rank) << " x2682_correct expecting ptr: " << expecting
-    //     << " got ptr: " << got_ptr << " name_key: " << tmp_name
-    //     << std::flush;
-    // }
-
-  BPS_LOG(DEBUG, my_rank) << " x2682 " << __func__ <<
-      " got name_key: " << tmp_name << std::flush;
-  // return;
   {
     std::unique_lock<std::mutex> lk(args->mtx);
     args->cv.wait(lk, [args]{
       std::this_thread::yield();
       return args->is_done;});
-    // args->num_waiting--;
-    // if (args->num_waiting == 0) {
-    //   args->is_done = false;
-    // }
     lk.unlock();
 
     auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
@@ -815,16 +786,11 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
 
     // cudaMemcpyAsync(buffers[1], outputtensor_flat, buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
     // cudaStreamSynchronize(*my_stream);
+
     cudaMemcpyAsync(buffers[1], outputtensor_flat, buffer_size, cudaMemcpyDeviceToDevice, stream);
-    int myDev = -1;
-    cudaGetDevice(&myDev);
-    BPS_LOG(DEBUG, my_rank) << " x2682 " << __func__ << " myDev: " << myDev <<
-      std::flush;
-    BPS_LOG(DEBUG, my_rank) << " x2682 " << __func__ <<
-      " name_key: " << tmp_name << " data_ptr: " << outputtensor_flat << std::flush;
 
     cudaStreamSynchronize(stream);
-    printMatOnGPU(tmp_name, outputtensor_flat, 1);
+    // printMatOnGPU(tmp_name, outputtensor_flat, 1);
     // args->output_tensor.reset();
     cudaFree(outputtensor_flat);
   }
