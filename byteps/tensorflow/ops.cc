@@ -57,6 +57,8 @@ using namespace byteps;
 namespace byteps {
 namespace tensorflow {
 
+// #define USE_COMPUTE_STREAM
+
 std::unordered_map<std::string, std::shared_ptr<Xla_done_cb_args>> _name_to_done_args;
 std::mutex _name_to_done_args_mtx;
 std::condition_variable _name_to_done_args_cv;
@@ -358,6 +360,8 @@ customBarrierHandleOutXlaOp(CUstream stream, void** buffers,
   int my_rank = common::byteps_rank();
   int* out_buf = reinterpret_cast<int*>(buffers[1]);
   const int* in_buf = reinterpret_cast<const int*>(buffers[0]);
+  BPS_LOG(DEBUG, my_rank) << "xxxxxxxxxxxxxxxxxxx side effect in " << 
+    __PRETTY_FUNCTION__ << std::flush;
 }
 
 REGISTER_OP("MyBarrierHandleOut")
@@ -560,20 +564,14 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
   new_args->bps_out_buf = const_cast<void *>(byteps_output->data());
   new_args->bps_in_buf = const_cast<void *>(byteps_input->data());
   new_args->bps_buf_size = size;
-  new_args->num_waiting = 1;
 
+  BPS_LOG(DEBUG, my_rank) << " x2682 inserting name_key " << name_key <<
+    " data_ptr: " << new_args->bps_in_buf << std::flush;
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   auto it = _name_to_done_args.find(name_key);
   ASSERTF(it == _name_to_done_args.end(), std::string("duplicate tensor_name ") +
     std::string(name_key));
-  if (it != _name_to_done_args.end()) {
-    it->second->num_waiting++;
-    if (it->second->num_waiting > 1) {
-      assert(0);
-      my_lk.unlock();
-      return;
-    }
-  }
+
   _name_to_done_args[name_key] = new_args;
   my_lk.unlock();
   _name_to_done_args_cv.notify_all();
@@ -589,6 +587,7 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
                       {
                         std::lock_guard<std::mutex> lk(args->mtx);
                         args->is_done = true;
+                        BPS_LOG(DEBUG, my_rank) << " x2682 done name_key " << name_key << std::flush;
                       }
 
                       args->cv.notify_one();
@@ -597,6 +596,7 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
   if (ConvertStatus(enqueue_result) != ::tensorflow::Status::OK()) {
     assert(0);
   }
+  BPS_LOG(DEBUG, my_rank) << " x2682 enqueued name_key " << name_key << std::flush;
 }
 
 void StartTaskWrapperV2(CUstream stream, void** buffers,
@@ -627,16 +627,18 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
 
   auto bps_input = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
   auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
+#ifdef USE_COMPUTE_STREAM
+  cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+  cudaStreamSynchronize(stream);
+  auto ready_event =
+    std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
+#else
   auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
   cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
   cudaStreamSynchronize(*my_stream);
   auto ready_event =
     std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(*my_stream));
-
-  // cudaMemcpyAsync(buffers[1], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-  // cudaStreamSynchronize(stream);
-  // auto ready_event =
-  //   std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(stream));
+#endif
   std::thread t(StartTaskXlaV2, context, tmp_name, bps_output, bps_output, ready_event);
   t.detach();
 }
@@ -728,6 +730,9 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
   std::stringstream ss(opaque);
 
   ss >> tmp_name;
+
+  BPS_LOG(DEBUG, my_rank) << " x2682 inside " << __func__ <<
+      " waiting for name_key: " << tmp_name << std::flush;
   int tmp_dt_type;
   ss >> std::dec >> tmp_dt_type;
   size_t elem_size;
@@ -754,27 +759,41 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
   auto args = _name_to_done_args[tmp_name];
   my_big_lk.unlock();
 
+    auto expecting = args->bps_in_buf;
+    auto got_ptr = buffers[0];
+    if (got_ptr != expecting) {
+      BPS_LOG(DEBUG, my_rank) << " x2682_error expecting ptr: " << expecting
+        << " but got ptr: " << got_ptr << " name_key: " << tmp_name
+        << std::flush;
+    } else {
+      BPS_LOG(DEBUG, my_rank) << " x2682_correct expecting ptr: " << expecting
+        << " got ptr: " << got_ptr << " name_key: " << tmp_name
+        << std::flush;
+    }
+
+    BPS_LOG(DEBUG, my_rank) << " x2682 " << __func__ <<
+      " got name_key: " << tmp_name << std::flush;
   {
     std::unique_lock<std::mutex> lk(args->mtx);
     args->cv.wait(lk, [args]{
       std::this_thread::yield();
       return args->is_done;});
-    args->num_waiting--;
-    if (args->num_waiting == 0) {
-      args->is_done = false;
-    }
     lk.unlock();
+  }
 
+#ifdef USE_COMPUTE_STREAM
+    cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
+    cudaStreamSynchronize(stream);
+#else
     auto my_stream = byteps::common::BytePSGlobal::GetCopyDevice2DeviceStream();
     cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, *my_stream);
     cudaStreamSynchronize(*my_stream);
-    // cudaMemcpyAsync(buffers[2], buffers[0], buffer_size, cudaMemcpyDeviceToDevice, stream);
-    // cudaStreamSynchronize(stream);
+#endif
     // printMatOnGPU(tmp_name, got_ptr, buffer_size/4);
-  }
   std::unique_lock<std::mutex> my_lk(_name_to_done_args_mtx);
   _name_to_done_args.erase(tmp_name);
   my_lk.unlock();
+  BPS_LOG(DEBUG, my_rank) << " x2682 sync done name_key " << tmp_name << std::flush;
 }
 
 REGISTER_OP("BytepsSyncTensorHandleOutV2")

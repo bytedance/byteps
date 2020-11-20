@@ -88,7 +88,8 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _BPS_LOG_TRACE LogMessage(__FILE__, __LINE__, LogLevel::TRACE)
-#define _BPS_LOG_DEBUG LogMessage(__FILE__, __LINE__, LogLevel::DEBUG)
+// #define _BPS_LOG_DEBUG LogMessage(__FILE__, __LINE__, LogLevel::DEBUG)
+#define _BPS_LOG_DEBUG ::byteps::common::LogMessage(__FILE__, __LINE__, ::byteps::common::LogLevel::DEBUG)
 #define _BPS_LOG_INFO LogMessage(__FILE__, __LINE__, LogLevel::INFO)
 #define _BPS_LOG_WARNING LogMessage(__FILE__, __LINE__, LogLevel::WARNING)
 #define _BPS_LOG_ERROR LogMessage(__FILE__, __LINE__, LogLevel::ERROR)
