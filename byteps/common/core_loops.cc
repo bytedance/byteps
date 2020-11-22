@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include "core_loops.h"
+
 #include <cuda_runtime.h>
 
 #include <chrono>
@@ -20,7 +22,6 @@
 
 #include "common.h"
 #include "compressor/compressor.h"
-#include "core_loops.h"
 #include "global.h"
 #include "logging.h"
 
@@ -107,6 +108,11 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
+
+      if (PushPullSpeed::ShouldRecord()) {
+        PushPullSpeed::RecordSpeed(task);
+      }
+
       task->callback(Status::OK());
       //* Add for profiling communication events
       if (task->context->profile_flag) {
@@ -125,10 +131,6 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       // *step_cnt* denotes the number this gradient has been synchronized.
       task->context->step_cnt += 1;
       BytePSGlobal::SetProfileFlag(task->context);
-
-      if (PushPullSpeed::ShouldRecord()) {
-        PushPullSpeed::RecordSpeed(task);
-      }
     }
   }
   return;
