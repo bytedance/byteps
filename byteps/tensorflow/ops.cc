@@ -575,6 +575,17 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
   _name_to_done_args[name_key] = new_args;
   my_lk.unlock();
   _name_to_done_args_cv.notify_all();
+
+#if 0
+{
+  auto args = _name_to_done_args[name_key];
+  std::lock_guard<std::mutex> lk(args->mtx);
+  args->is_done = true;
+  BPS_LOG(DEBUG, my_rank) << " x2682 done name_key " << name_key << std::flush;
+}
+return;
+#endif
+
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
@@ -624,6 +635,8 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
   }
 
   buffer_size = elem_size * num_elem;
+  BPS_LOG(DEBUG, my_rank) << " x2682 entering " << __func__ <<
+      " name_key: " << tmp_name << std::flush;
 
   auto bps_input = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
   auto bps_output = std::make_shared<XlaTensor>(buffers[1], num_elem, dt_type, buffer_size);
@@ -641,6 +654,8 @@ void StartTaskWrapperV2(CUstream stream, void** buffers,
 #endif
   std::thread t(StartTaskXlaV2, context, tmp_name, bps_output, bps_output, ready_event);
   t.detach();
+  BPS_LOG(DEBUG, my_rank) << " x2682 exiting " << __func__ <<
+      " name_key: " << tmp_name << std::flush;
 }
 
 REGISTER_OP("BytepsPushPullXlaV2")

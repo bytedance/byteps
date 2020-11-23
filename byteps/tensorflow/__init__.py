@@ -76,7 +76,7 @@ def push_pull_xla_handle_out_v2(tensor, scope='', average=None, device_dense='',
         summed_tensor_compressed, handle = _push_pull_xla_v2(tensor_compressed,
                 scope, idx = idx)
         tensor_name = summed_tensor_compressed.name
-        handle = tf.reshape(handle, [-1])
+        # handle = tf.reshape(handle, [-1])
 
         # summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         summed_tensor = summed_tensor_compressed
@@ -112,7 +112,7 @@ def push_pull_all_grads_handle_xla_v2(grads, device_dense='', device_sparse='',
     with tf.device(device_dense):
         barrier_handle = _my_barrier_handle_out(handles)
         avg_grads = [_sync_tensors_handle_out_v2(tensor, barrier_handle, tensor_name=item, idx = idx) for idx, (tensor, item) in enumerate(zip(avg_grads, grad_names), 1)]
-        avg_grads = [self._compression.decompress(item, ctx) for item, ctx in zip(avg_grads, ctxes)]
+        avg_grads = [compression.decompress(item, ctx) for item, ctx in zip(avg_grads, ctxes)]
     return avg_grads
 
 def push_pull_all_grads_all_tf_ops(grads, device_dense='', device_sparse='',
@@ -129,13 +129,7 @@ def push_pull_all_grads_all_tf_ops(grads, device_dense='', device_sparse='',
                 if grad is not None else grad
                 for grad in grads]
 
-enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
-if enable_xla == '1':
-    push_pull_all_grads = push_pull_all_grads_handle_xla_v2
-else:
-    push_pull_all_grads = push_pull_all_grads_all_tf_ops
-
-def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
+def push_pull_tf(tensor, scope='', average=None, device_dense='', device_sparse='',
               compression=Compression.none, op=None, enable_async=False):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
     Arguments:
@@ -178,6 +172,80 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
             new_tensor = summed_tensor
     return new_tensor
 
+def push_pull_xla(tensor, scope='', average=None, device_dense='', device_sparse='',
+              compression=Compression.none, op=None, enable_async=False):
+    """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
+    Arguments:
+        tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
+                The shape of the input must be identical across all ranks.
+        average:
+            .. warning:: .. deprecated
+
+                Use `op` instead. Will be removed.
+
+        scope: the graph name scope
+        average: If True, computes the average over all ranks.
+                 Otherwise, computes the sum over all ranks.
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
+        compression: Compression algorithm used to reduce the amount of data
+                     sent and received by each worker node.  Defaults to not
+                     using compression.
+        op: The reduction operation to combine tensors across different ranks.
+            Defaults to Average if None is given.
+
+    Returns:
+        A tensor of the same shape and type as `tensor`, summed across all
+        processes.
+    """
+    # handle the average parameter
+    with tf.name_scope("push_pull_xla_single_tensor_") as scope:
+      ret = push_pull_all_grads([tensor], device_dense=device_dense,
+        device_sparse=device_sparse, compression=compression,
+        sparse_as_dense=False)
+    return ret[0]
+
+@tf.function(experimental_compile = True)
+def push_pull_xla_force(tensor, scope='', average=None, device_dense='', device_sparse='',
+              compression=Compression.none, op=None, enable_async=False):
+    """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
+    Arguments:
+        tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
+                The shape of the input must be identical across all ranks.
+        average:
+            .. warning:: .. deprecated
+
+                Use `op` instead. Will be removed.
+
+        scope: the graph name scope
+        average: If True, computes the average over all ranks.
+                 Otherwise, computes the sum over all ranks.
+        device_dense: Device to be used for dense tensors. Uses GPU by default.
+        device_sparse: Device to be used for sparse tensors. Uses GPU by default.
+        compression: Compression algorithm used to reduce the amount of data
+                     sent and received by each worker node.  Defaults to not
+                     using compression.
+        op: The reduction operation to combine tensors across different ranks.
+            Defaults to Average if None is given.
+
+    Returns:
+        A tensor of the same shape and type as `tensor`, summed across all
+        processes.
+    """
+    # handle the average parameter
+    with tf.name_scope("push_pull_xla_single_tensor_") as scope:
+      ret = push_pull_all_grads([tensor], device_dense=device_dense,
+        device_sparse=device_sparse, compression=compression,
+        sparse_as_dense=False)
+    return ret[0]
+
+enable_xla = os.environ.get('BYTEPS_ENABLE_XLA', '0')
+if enable_xla == '1':
+    push_pull_all_grads = push_pull_all_grads_handle_xla_v2
+    push_pull = push_pull_xla_force
+else:
+    push_pull_all_grads = push_pull_all_grads_all_tf_ops
+    push_pull = push_pull_tf
 
 try:
     _global_variables = tf.global_variables

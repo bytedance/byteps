@@ -29,6 +29,10 @@ class BroadcastGlobalVariablesCallbackImpl(object):
         self.broadcast_done = False
 
     def on_batch_end(self, batch, logs=None):
+        # x2682 delete after debugging
+        self.broadcast_done = True
+        return
+        # x2682 end delete
         if self.broadcast_done:
             return
 

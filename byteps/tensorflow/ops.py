@@ -106,6 +106,7 @@ def randomString(stringLength=16):
     return ''.join(random.choice(letters) for i in range(stringLength))
 
 def _push_pull(tensor, scope='', name=None):
+    xxxxxxxxxxxxxxxxxxxxxxxxxxx
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
     shape must be the same on all BytePS processes for a given name. The reduction
@@ -127,7 +128,7 @@ def _push_pull(tensor, scope='', name=None):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = "empty_name_tf_push_pull_" + randomString()
     full_name_ascii = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
@@ -157,7 +158,7 @@ def _push_pull_xla_v2(tensor, scope='', name=None, idx = 1):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = "empty_name_push_pull_xla_v2_" + randomString()
     full_name_ascii = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     dummy_tensor = tf.ones([idx, 1], dtype = tf.int32)
@@ -212,8 +213,12 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = "empty_name_broadcast_" + randomString()
     full_name_ascii = full_name.encode("ascii")
+    # x2682, delete this after debugging
+    xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    return tensor
+    # x2682, end delete
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     if root_rank != rank():
@@ -232,6 +237,7 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
         return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
+    yyyyyyyyyyyyyyyyyyyyyyyyyyyyy
     """An op which broadcasts the input tensor on root rank to the same input tensor
     on all other BytePS processes.
     The broadcast operation is keyed by the name of the op. The tensor type and
@@ -255,7 +261,7 @@ def broadcast_xla(tensor, root_rank, scope='', name=None, is_variable=True):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = "empty_name_broadcast_xla_" + randomString()
     full_name_ascii = full_name.encode("ascii")
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
