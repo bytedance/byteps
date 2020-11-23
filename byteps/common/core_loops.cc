@@ -13,7 +13,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "core_loops.h"
 
 #include <cuda_runtime.h>
 
@@ -22,6 +21,7 @@
 
 #include "common.h"
 #include "compressor/compressor.h"
+#include "core_loops.h"
 #include "global.h"
 #include "logging.h"
 
