@@ -756,7 +756,7 @@ bool RunCpuCopyPushLoopOnce() {
   auto task = q->getTask();
   if (task) {
     auto reducer = BytePSGlobal::GetCpuReducer();
-    auto tensor = task->input;
+    auto tensor = task->tensor;
     auto len = task->len;
     auto offset = task->offset;
     auto cpubuff = (char *)(task->cpubuff) + offset;
