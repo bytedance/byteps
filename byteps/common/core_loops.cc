@@ -762,6 +762,7 @@ bool RunCpuCopyPushLoopOnce() {
     auto cpubuff = (char *)(task->cpubuff) + offset;
     auto src_addr = (char *)(tensor->data()) + offset;
     reducer->copy(cpubuff, src_addr, len);
+    FinishOrProceed(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
@@ -780,6 +781,7 @@ bool RunCpuCopyPullLoopOnce() {
     auto cpubuff = (char *)(task->cpubuff) + offset;
     auto dst_addr = (char *)(tensor->data()) + offset;
     reducer->copy(dst_addr, cpubuff, len);
+    FinishOrProceed(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }

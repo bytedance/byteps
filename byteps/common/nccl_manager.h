@@ -43,7 +43,8 @@ class NcclManager {
  public:
   NcclManager(std::shared_ptr<BytePSComm> comm);
   ~NcclManager() {
-    if (_nccl_stream) {
+    bool cpu_only = getenv("BYTEPS_CPU_ONLY") ? atoi(getenv("BYTEPS_CPU_ONLY")) : false;
+    if (!cpu_only && _nccl_stream) {
       CUDA_CALL(cudaStreamDestroy(*_nccl_stream));
     }
     if (_nccl_id) {

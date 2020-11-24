@@ -206,7 +206,7 @@ void BytePSGlobal::Init() {
   }
 
   // Init CPU Reducer
-  if (_is_cross_pcie_switch) {
+  if (_is_cross_pcie_switch || _is_cpu_only) {
     _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
   }
 
