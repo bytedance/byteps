@@ -73,6 +73,7 @@ class BytePSGlobal {
   static bool IsRootDevice() { return _is_root_device; }
   static bool IsDistributed() { return _is_distributed_job; }
   static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
+  static bool IsCpuOnly() { return _is_cpu_only; }
   static BytePSRole GetMyRole() { return _my_role; }
   static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
   static std::shared_ptr<BytePSSharedMemory> GetSharedMemoryObj() {
@@ -89,7 +90,7 @@ class BytePSGlobal {
   static bool IsResuming() { return _is_resuming; }
   static void SetResumingFlag(bool flag) {_is_resuming = flag; }
 
-  static void RegisterCompressor(const std::string& name, 
+  static void RegisterCompressor(const std::string& name,
                                  std::unordered_map<std::string, std::string>& kwargs);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
@@ -154,6 +155,7 @@ class BytePSGlobal {
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_cross_pcie_switch;
+  static bool _is_cpu_only;
   static BytePSRole _my_role;
   static std::shared_ptr<BytePSComm> _basic_comm;
   static std::shared_ptr<BytePSSharedMemory> _shm_obj;

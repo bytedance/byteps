@@ -39,6 +39,7 @@ BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
+bool BytePSGlobal::_is_cpu_only;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
@@ -128,6 +129,9 @@ void BytePSGlobal::Init() {
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
                     &_my_role);
 
+  _is_cpu_only =
+      getenv("BYTEPS_CPU_ONLY") ? atoi(getenv("BYTEPS_CPU_ONLY")) : false;
+
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
 
   // should round up partition bytes in order to be page aligned
@@ -185,7 +189,9 @@ void BytePSGlobal::Init() {
   _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
 
   // Set to associated GPU
-  CUDA_CALL(cudaSetDevice(_local_rank));
+  if (!_is_cpu_only) {
+    CUDA_CALL(cudaSetDevice(_local_rank));
+  }
 
   // Init NCCL
   _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
@@ -250,15 +256,17 @@ void BytePSGlobal::Init() {
     }
   }
 
-  // Create CUDA streams for GPU-CPU copies
-  _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
-                                      cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
-                                      cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+  if (!_is_cpu_only) {
+    // Create CUDA streams for GPU-CPU copies
+    _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+    _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
+                                        cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
+                                        cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
+    CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+  }
 
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
@@ -349,13 +357,15 @@ void BytePSGlobal::Shutdown() {
     _ps = NULL;
   }
 
-  if (_copy_device2host_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
-    _copy_device2host_stream = NULL;
-  }
-  if (_copy_host2device_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
-    _copy_host2device_stream = NULL;
+  if (!_is_cpu_only) {
+    if (_copy_device2host_stream) {
+      CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
+      _copy_device2host_stream = NULL;
+    }
+    if (_copy_host2device_stream) {
+      CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
+      _copy_host2device_stream = NULL;
+    }
   }
 
   if (_reduce_table) {

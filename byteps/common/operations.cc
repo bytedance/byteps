@@ -44,6 +44,15 @@ void byteps_lazy_init() {
   // The order of func does not matter
   std::vector<LoopFunction> func;
 
+  if (BytePSGlobal::IsCpuOnly()) {
+    func.push_back(CpuCopyPushLoop);
+    func.push_back(CpuCopyPullLoop);
+    func.push_back(PushLoop);
+    func.push_back(PullLoop);
+    BytePSGlobal::Start(func);
+    return;
+  }
+
   // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
     if (BytePSGlobal::IsRootDevice()) {
@@ -214,7 +223,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->version = version;
   e->callback = callback;
 
-  if (device == CPU_DEVICE_ID) {
+  if (!BytePSGlobal::IsCpuOnly() && device == CPU_DEVICE_ID) {
     cudaError_t err = cudaHostRegister(const_cast<void *>(input->data()),
                                        input->size(), cudaHostRegisterMapped);
     if (err == cudaSuccess) {
@@ -285,7 +294,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (context.initialized) {
     return;
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  if (!BytePSGlobal::IsCpuOnly()) {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  }
 
   BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
   // Get metadata
@@ -328,7 +339,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   // If cpubuff is not nullptr, the tensor itself is on CPU
   // We need to register with CUDA so that NCCL can work on it
-  if (cpubuff) {
+  if (!BytePSGlobal::IsCpuOnly() && cpubuff) {
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
     cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
     if (e != cudaSuccess) {
@@ -429,6 +440,12 @@ void RegisterCompressor(const std::string &name,
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 
+  if (BytePSGlobal::IsCpuOnly()) {
+    queue_list->push_back(CPU_COPY_PUSH);
+    queue_list->push_back(PUSH);
+    return queue_list;
+  }
+
   // Per-PCIe-switch NCCL reduce
   if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
     queue_list->push_back(REDUCE);
@@ -461,6 +478,12 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
+
+  if (BytePSGlobal::IsCpuOnly()) {
+    queue_list->push_back(PULL);
+    queue_list->push_back(CPU_COPY_PULL);
+    return queue_list;
+  }
 
   // Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {

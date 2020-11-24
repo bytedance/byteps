@@ -36,7 +36,9 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
   BPS_CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
 
   void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-  CUDA_CALL(cudaHostRegister(ptr, size, cudaHostRegisterDefault));
+  if (!_is_cpu_only) {
+    CUDA_CALL(cudaHostRegister(ptr, size, cudaHostRegisterDefault));
+  }
   // mlock(ptr, size);
 
   BPS_CHECK_NE(ptr, (void*)-1) << strerror(errno);

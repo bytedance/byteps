@@ -750,6 +750,42 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
   return true;
 }
 
+bool RunCpuCopyPushLoopOnce() {
+  QueueType this_op = CPU_COPY_PUSH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    auto reducer = BytePSGlobal::GetCpuReducer();
+    auto tensor = task->input;
+    auto len = task->len;
+    auto offset = task->offset;
+    auto cpubuff = (char *)(task->cpubuff) + offset;
+    auto src_addr = (char *)(tensor->data()) + offset;
+    reducer->copy(cpubuff, src_addr, len);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunCpuCopyPullLoopOnce() {
+  QueueType this_op = CPU_COPY_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    auto reducer = BytePSGlobal::GetCpuReducer();
+    auto tensor = task->output;
+    auto len = task->len;
+    auto offset = task->offset;
+    auto cpubuff = (char *)(task->cpubuff) + offset;
+    auto dst_addr = (char *)(tensor->data()) + offset;
+    reducer->copy(dst_addr, cpubuff, len);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
 void CoordinateReduceLoop() {
   while (RunCoordinateLoopOnce(COORDINATE_REDUCE) &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -851,6 +887,19 @@ void NonRootCopyHost2DeviceLoop() {
   }
   BytePSGlobal::ReportThreadFinish();
 }
+
+void CpuCopyPushLoop() {
+  while (RunCpuCopyPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void CpuCopyPullLoop() {
+  while (RunCpuCopyPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 
 }  // namespace common
 }  // namespace byteps

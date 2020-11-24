@@ -33,11 +33,15 @@ namespace common {
 
 class BytePSSharedMemory {
  public:
-  BytePSSharedMemory() {}
+  BytePSSharedMemory() {
+    _is_cpu_only = getenv("BYTEPS_CPU_ONLY") ? atoi(getenv("BYTEPS_CPU_ONLY")) : false;
+  }
 
   ~BytePSSharedMemory() {
     for (auto &it : _key_shm_addr) {
-      CUDA_CALL(cudaHostUnregister(it.second));
+      if (!_is_cpu_only) {
+        CUDA_CALL(cudaHostUnregister(it.second));
+      }
       munmap(it.second, _key_shm_size[it.first]);
       shm_unlink(it.first.c_str());
     }
@@ -52,7 +56,7 @@ class BytePSSharedMemory {
  private:
   std::unordered_map<std::string, void *> _key_shm_addr;
   std::unordered_map<std::string, size_t> _key_shm_size;
-
+  bool _is_cpu_only;
   std::mutex _shm_mu;
 };
 

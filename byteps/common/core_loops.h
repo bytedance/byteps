@@ -49,6 +49,10 @@ void NonRootCopyListenLoop();
 
 void NonRootCopyHost2DeviceLoop();
 
+void CpuCopyPushLoop();
+
+void CpuCopyPullLoop();
+
 }  // namespace common
 }  // namespace byteps
 

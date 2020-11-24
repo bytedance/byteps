@@ -89,6 +89,7 @@ enum QueueType {
   COORDINATE_REDUCE,
   REDUCE,
   COPYD2H,
+  CPU_COPY_PUSH,
   PCIE_REDUCE,
   COORDINATE_PUSH,
   COMPRESS,
@@ -96,6 +97,7 @@ enum QueueType {
   PULL,
   DECOMPRESS,
   COPYH2D,
+  CPU_COPY_PULL,
   COORDINATE_BROADCAST,
   BROADCAST,
   QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
@@ -107,6 +109,7 @@ const int QueueNum =
 const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "REDUCE",
                                              "COPYD2H",
+                                             "CPU_COPY_PUSH",
                                              "PCIE_REDUCE",
                                              "COORDINATE_PUSH",
                                              "COMPRESS",
@@ -114,6 +117,7 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "PULL",
                                              "DECOMPRESS",
                                              "COPYH2D",
+                                             "CPU_COPY_PULL",
                                              "COORDINATE_BROADCAST",
                                              "BROADCAST"};
 

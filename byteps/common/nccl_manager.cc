@@ -90,7 +90,9 @@ void NcclManager::ConstructRings() {
   _nccl_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * _nccl_num_rings);
   _nccl_size = _nccl_pcie_size;
   int greatest_priority;
-  CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
+  if (!BytePSGlobal::IsCpuOnly()) {
+    CUDA_CALL(cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority));
+  }
 
   for (size_t i = 0; i < _nccl_num_rings; i++) {
     auto nccl_id = _nccl_id + i;
@@ -99,7 +101,9 @@ void NcclManager::ConstructRings() {
 
     // synchronize NCCL IDs
     if (local_rank == _signal_comm->getRoot()) {  // only root create nccl id
-      NCCLCHECK(ncclGetUniqueId(nccl_id));
+      if (!BytePSGlobal::IsCpuOnly()) {
+        NCCLCHECK(ncclGetUniqueId(nccl_id));
+      }
       // the log is just for debug, the actual length of nccl id is 128
       BPS_LOG(DEBUG) << "root nccl_id is " << (*(long long int*)nccl_id);
       // TODO: change to BytePSCommSignal format
@@ -115,14 +119,15 @@ void NcclManager::ConstructRings() {
                      << ", local_rank=" << local_rank;
     }
 
-    // initialize NCCL rank
-    auto rank = local_rank % _nccl_pcie_size;
-    NCCLCHECK(ncclCommInitRank(nccl_comm, _nccl_pcie_size, *nccl_id, rank));
-
-    // initialize CUDA streams for NCCL
-    CUDA_CALL(cudaStreamCreateWithPriority(nccl_stream, cudaStreamNonBlocking,
-                                           greatest_priority));
-    CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
+    if (!BytePSGlobal::IsCpuOnly()) {
+      // initialize NCCL rank
+      auto rank = local_rank % _nccl_pcie_size;
+      NCCLCHECK(ncclCommInitRank(nccl_comm, _nccl_pcie_size, *nccl_id, rank));
+      // initialize CUDA streams for NCCL
+      CUDA_CALL(cudaStreamCreateWithPriority(nccl_stream, cudaStreamNonBlocking,
+                                            greatest_priority));
+      CUDA_CALL(cudaStreamSynchronize(*nccl_stream));
+    }
   }
 }
 
