@@ -57,7 +57,7 @@ using namespace byteps;
 namespace byteps {
 namespace tensorflow {
 
-// #define USE_COMPUTE_STREAM
+#define USE_COMPUTE_STREAM
 
 std::unordered_map<std::string, std::shared_ptr<Xla_done_cb_args>> _name_to_done_args;
 std::mutex _name_to_done_args_mtx;
@@ -543,7 +543,8 @@ void StartTaskXlaV2(::tensorflow::OpKernelContext* context,
 
   auto& byteps_context = common::GetContextFromName(node_name);
   int device;
-  CUDA_CALL(cudaGetDevice(&device));
+  // CUDA_CALL(cudaGetDevice(&device));
+  device = common::BytePSGlobal::GetLocalRank();
   auto size = byteps_input->size();
   auto dtype = byteps_input->dtype();
   void* cpubuff = nullptr;
@@ -774,11 +775,15 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
   auto args = _name_to_done_args[tmp_name];
   my_big_lk.unlock();
 
+    ///////////////////
+    // for debugging, delete later
     auto expecting = args->bps_in_buf;
     auto got_ptr = buffers[0];
-    if (got_ptr != expecting) {
+    if (got_ptr != expecting || buffer_size != args->bps_buf_size) {
       BPS_LOG(DEBUG, my_rank) << " x2682_error expecting ptr: " << expecting
+        << "(size: " << args->bps_buf_size << ") "
         << " but got ptr: " << got_ptr << " name_key: " << tmp_name
+        << "(size: " << buffer_size << ") "
         << std::flush;
     } else {
       BPS_LOG(DEBUG, my_rank) << " x2682_correct expecting ptr: " << expecting
@@ -788,6 +793,9 @@ void SyncTensorHandleOutCustomOpV2(CUstream stream, void** buffers,
 
     BPS_LOG(DEBUG, my_rank) << " x2682 " << __func__ <<
       " got name_key: " << tmp_name << std::flush;
+    ASSERTF(buffer_size == args->bps_buf_size, "wrong buffer size");
+    // end for debugging, delete later
+    ///////////////////
   {
     std::unique_lock<std::mutex> lk(args->mtx);
     args->cv.wait(lk, [args]{

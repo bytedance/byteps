@@ -319,6 +319,8 @@ bool RunNonRootNcclLoopOnce() {
     signal_comm->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
     if (BytePSGlobal::ShouldShutdown()) return true;
     if (msg.signal == DO_GROUP) {
+      BPS_LOG(TRACE) << "received signal DO_GROUP " << "myrank=" << rank
+                     << " pid " << getpid();
       break;
     }
     QueueType this_op = REDUCE;
@@ -339,7 +341,9 @@ bool RunNonRootNcclLoopOnce() {
 
     PostNcclCalls(task, this_op);
   }
+  BPS_LOG(TRACE) << "before commtting nccl group, NCCL Group size=" << tasks.size() << " myrank=" << rank;
   NCCLCHECK(ncclGroupEnd());
+  BPS_LOG(TRACE) << "committed nccl group, NCCL Group size=" << tasks.size() << " myrank=" << rank;
 
   nccl_entry->RecordEvents();
   BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);

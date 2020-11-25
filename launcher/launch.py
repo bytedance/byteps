@@ -60,8 +60,8 @@ def worker(local_rank, local_size, command):
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
-        if command.find("python") != 0:
-            command = "python " + command
+        # if command.find("python") != 0:
+        #     command = "python " + command
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
 
     if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
@@ -75,11 +75,11 @@ def worker(local_rank, local_size, command):
             "BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
-    # f = open("output_" + str(local_rank) + ".log", "w")
-    # subprocess.check_call(command, env=my_env,
-    #                       stdout=f, stderr=f, shell=True)
+    f = open("output_" + str(local_rank) + ".log", "w")
     subprocess.check_call(command, env=my_env,
-                          stdout=sys.stdout, stderr=sys.stderr, shell=True)
+                          stdout=f, stderr=f, shell=True)
+    # subprocess.check_call(command, env=my_env,
+    #                       stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 
 def launch_bps():

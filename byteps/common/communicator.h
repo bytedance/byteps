@@ -41,14 +41,14 @@ namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
 enum BytePSCommSignal {
-  REDUCE_READY,
-  PCIE_REDUCE_READY,
-  BCAST_READY,
-  PUSH_READY,
-  DO_REDUCE,
-  DO_BROADCAST,
-  DO_GROUP,
-  DO_COPYH2D
+  REDUCE_READY,         // 0
+  PCIE_REDUCE_READY,    // 1
+  BCAST_READY,          // 2
+  PUSH_READY,           // 3
+  DO_REDUCE,            // 4
+  DO_BROADCAST,         // 5
+  DO_GROUP,             // 6
+  DO_COPYH2D            // 7
 };
 
 struct BytePSCommMsg {
