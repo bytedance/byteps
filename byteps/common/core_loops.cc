@@ -108,6 +108,11 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
+
+      if (PushPullSpeed::ShouldRecord()) {
+        PushPullSpeed::RecordSpeed(task);
+      }
+
       task->callback(Status::OK());
       //* Add for profiling communication events
       if (task->context->profile_flag) {

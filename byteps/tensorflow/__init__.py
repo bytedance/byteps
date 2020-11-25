@@ -25,7 +25,7 @@ import warnings
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
-from byteps.tensorflow.ops import init, shutdown, suspend, resume
+from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_speed
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.util import _executing_eagerly

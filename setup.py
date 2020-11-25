@@ -35,7 +35,7 @@ URL = 'https://github.com/bytedance/byteps'
 EMAIL = 'lab-hr@bytedance.com'
 AUTHOR = 'Bytedance Inc.'
 REQUIRES_PYTHON = '>=2.7.0'
-VERSION = None
+VERSION = '0.2.5'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -980,6 +980,9 @@ class custom_build_ext(build_ext):
 
 
 # Where the magic happens:
+if not os.path.exists('3rdparty/ps-lite/src'):
+    msg = "Missing ./3rdparty/ps-lite, ps-lite is required to build BytePS."
+    raise ValueError(msg)
 
 if os.path.exists('launcher/launch.py'):
     if not os.path.exists('bin'):

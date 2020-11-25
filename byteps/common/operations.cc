@@ -129,6 +129,13 @@ int byteps_local_size() { return BytePSGlobal::GetLocalSize(); }
 
 }  // extern "C"
 
+extern "C" PyObject* byteps_get_pushpull_speed() {
+  auto entry = PushPullSpeed::GetSpeed();
+  PyObject* ret = Py_BuildValue("(Kf)", entry->ts, entry->speed);
+
+  return ret;
+}
+
 Status CheckInitialized() { return BytePSGlobal::CheckInit(); }
 
 void PartitionTensor(
@@ -136,9 +143,9 @@ void PartitionTensor(
     std::vector<std::shared_ptr<TensorTableEntry>> &partitions) {
   BPS_CHECK(entry->counter_ptr)
       << entry->tensor_name << " counter pointer is null";
-  auto size = entry->tensor ? entry->tensor->size() : entry->output->size();
-  auto bound = BytePSGlobal::GetPartitionBound();
-  auto accumulated = 0;
+  size_t size = entry->tensor ? entry->tensor->size() : entry->output->size();
+  size_t bound = BytePSGlobal::GetPartitionBound();
+  size_t accumulated = 0;
   int i = 0;
 
   while (accumulated < size) {

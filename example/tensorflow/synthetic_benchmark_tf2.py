@@ -50,7 +50,7 @@ model = getattr(applications, args.model)(weights=None)
 opt = tf.optimizers.SGD(0.01)
 
 data = tf.random.uniform([args.batch_size, 224, 224, 3])
-target = tf.random.uniform([args.batch_size, 1], minval=0, maxval=999, dtype=tf.int64)
+target = tf.random.uniform([args.batch_size, 1], minval=0, maxval=999, dtype=tf.float64)
 
 
 @tf.function
@@ -61,7 +61,7 @@ def benchmark_step(first_batch):
     # BytePS: use DistributedGradientTape
     with tf.GradientTape() as tape:
         probs = model(data, training=True)
-        loss = tf.losses.categorical_crossentropy(target, probs)
+        loss = tf.losses.sparse_categorical_crossentropy(target, probs)
 
     # BytePS: add bps Distributed GradientTape.
     tape = bps.DistributedGradientTape(tape, compression=compression)

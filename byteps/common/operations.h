@@ -59,6 +59,8 @@ int byteps_size();
 int byteps_local_size();
 }
 
+extern "C" PyObject* byteps_get_pushpull_speed();
+
 // Below are all for Framework plugins
 Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      std::shared_ptr<Tensor> output,

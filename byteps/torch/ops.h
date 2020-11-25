@@ -41,12 +41,14 @@ size_t grad_count_;
       THTensor* tensor, THTensor* output, int average, char* name, \
       int version, int priority);
 
+PUSHPULL_H(torch_ByteTensor, THByteTensor)
 PUSHPULL_H(torch_IntTensor, THIntTensor)
 PUSHPULL_H(torch_LongTensor, THLongTensor)
 PUSHPULL_H(torch_FloatTensor, THFloatTensor)
 PUSHPULL_H(torch_DoubleTensor, THDoubleTensor)
 
 #if HAVE_CUDA
+PUSHPULL_H(torch_cuda_ByteTensor, THCudaByteTensor)
 PUSHPULL_H(torch_cuda_IntTensor, THCudaIntTensor)
 PUSHPULL_H(torch_cuda_LongTensor, THCudaLongTensor)
 PUSHPULL_H(torch_cuda_FloatTensor, THCudaTensor)

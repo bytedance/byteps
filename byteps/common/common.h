@@ -38,6 +38,7 @@
 #include <iostream>
 #include <queue>
 #include <thread>
+#include <Python.h>
 
 namespace byteps {
 namespace common {
