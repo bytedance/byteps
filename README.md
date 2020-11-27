@@ -9,7 +9,7 @@ BytePS is a high performance and general distributed training framework. It supp
 BytePS outperforms existing open-sourced distributed training frameworks by a large margin. For example, on BERT-large training, BytePS can achieve ~90% scaling efficiency with 256 GPUs (see below), which is much higher than [Horovod](https://github.com/horovod/horovod)+[NCCL](https://github.com/NVIDIA/nccl). In certain scenarios, BytePS can double the training speed compared with Horovod+NCCL.
 
 ## News
-- BytePS paper has been accepted to OSDI'20 (to appear soon). The code to reproduce the end-to-end evaluation is available [here](https://github.com/byteps/examples).
+- [BytePS paper](https://www.usenix.org/conference/osdi20/presentation/jiang) has been accepted to OSDI'20. The code to reproduce the end-to-end evaluation is available [here](https://github.com/byteps/examples).
 - Support [gradient compression](https://github.com/bytedance/byteps/pull/225).
 - [v0.2.4](https://github.com/bytedance/byteps/tree/v0.2.4)
     * Fix compatibility issue with tf2 + standalone keras
@@ -106,6 +106,6 @@ We would like to have below features, and there is no fundamental difficulty to 
 
 ## Publications
 
-1. [OSDI'20] "[A Unified Architecture for Accelerating Distributed DNN Training in Heterogeneous GPU/CPU Clusters](https://www.usenix.org/conference/osdi20/presentation/jiang)". Yimin Jiang, Yibo Zhu, Chang Lan, Bairen Yi, Yong Cui, Chuanxiong Guo. (Paper to appear soon)
+1. [OSDI'20] "[A Unified Architecture for Accelerating Distributed DNN Training in Heterogeneous GPU/CPU Clusters](https://www.usenix.org/conference/osdi20/presentation/jiang)". Yimin Jiang, Yibo Zhu, Chang Lan, Bairen Yi, Yong Cui, Chuanxiong Guo. 
 
 2. [SOSP'19] "[A Generic Communication Scheduler for Distributed DNN Training Acceleration](https://i.cs.hku.hk/~cwu/papers/yhpeng-sosp19.pdf)". Yanghua Peng, Yibo Zhu, Yangrui Chen, Yixin Bao, Bairen Yi, Chang Lan, Chuan Wu, Chuanxiong Guo. (Code is at [bytescheduler branch](https://github.com/bytedance/byteps/tree/bytescheduler/bytescheduler))
