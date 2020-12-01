@@ -277,7 +277,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
-                p.grad.set_(self._intra_compressors[p].decompress(output, ctx))
+                p.grad.set_(self._intra_compressors[p].decompress(
+                    output, ctx, x=p.data))
         self._handles.clear()
 
     @ contextmanager

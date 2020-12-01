@@ -151,7 +151,7 @@ class WeightDecayMomentumAdapter(Compressor):
         if "x" not in kwargs:
             raise ValueError("x is missing")
 
-        x = kwargs["x"].astype(tensor.dtype, copy=False)
+        x = kwargs["x"].type(tensor.dtype)
 
         if not self.inited:
             self.cache = torch.zeros_like(tensor)

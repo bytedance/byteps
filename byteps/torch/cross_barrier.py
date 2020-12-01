@@ -174,7 +174,8 @@ class _CrossBarrier(_DistributedOptimizer):
             # Check whether the push-pull is finished. If so, start updating parameters.
             if handle is not None and poll(handle):
                 output = synchronize(handle)
-                p.grad.set_(self._intra_compressors[p].decompress(output, ctx))
+                p.grad.set_(self._intra_compressors[p].decompress(
+                    output, ctx, x=p.data))
                 self._logger.debug(
                     "{} {} finished push-pull".format(self._desc, self._get_parameter_name(p)))
                 self._push_pull_delay[p] = self.backward_passes_per_step
