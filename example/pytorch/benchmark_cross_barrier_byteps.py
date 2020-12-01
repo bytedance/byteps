@@ -84,17 +84,13 @@ optimizer = optim.SGD(model.parameters(), lr=0.01)
 # optimizer = optim.Adam(model.parameters(), lr=0.01)
 # optimizer = optim.RMSprop(model.parameters(), lr=0.01)
 
-# BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_allreduce else bps.Compression.none
-
 # Wrap Torch optimizer with CrossBarrier.
 # You need to specify two additional args, i.e., model and num_steps.
 # Note that we only support SGD, Adam and RMSProp optimizers so far.
 optimizer = bps.CrossBarrier(model,
-                                     optimizer,
-                                     named_parameters=model.named_parameters(),
-                                     compression=compression,
-                                     num_steps=args.num_warmup_batches + args.num_iters * args.num_batches_per_iter)
+                             optimizer,
+                             named_parameters=model.named_parameters(),
+                             num_steps=args.num_warmup_batches + args.num_iters * args.num_batches_per_iter)
 
 # BytePS: broadcast parameters & optimizer state.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -114,7 +110,7 @@ data_index = 0
 def benchmark_step():
     global data_index
 
-    data = datasets[data_index%len(datasets)]
+    data = datasets[data_index % len(datasets)]
     data_index += 1
     optimizer.zero_grad()
     output = model(data)
@@ -157,4 +153,3 @@ img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
     (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
-

@@ -24,8 +24,6 @@ parser.add_argument('--log-dir', default='./logs',
                     help='tensorboard log directory')
 parser.add_argument('--checkpoint-format', default='./checkpoint-{epoch}.pth.tar',
                     help='checkpoint file format')
-parser.add_argument('--fp16-pushpull', action='store_true', default=False,
-                    help='use fp16 compression during pushpull')
 parser.add_argument('--batches-per-pushpull', type=int, default=1,
                     help='number of batches processed locally before '
                          'executing pushpull across workers; it multiplies '
@@ -52,6 +50,24 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 parser.add_argument('--seed', type=int, default=42,
                     help='random seed')
 
+# additional arguments for gradient compression
+parser.add_argument('--compressor', type=str, default='',
+                    help='which compressor')
+parser.add_argument('--ef', type=str, default='',
+                    help='which error-feedback')
+parser.add_argument('--compress-momentum', type=str, default='',
+                    help='which compress momentum')
+parser.add_argument('--onebit-scaling', action='store_true', default=False,
+                    help='enable scaling for onebit compressor')
+parser.add_argument('--k', default=1, type=float,
+                    help='topk or randomk')
+parser.add_argument('--partition', default='linear', type=str,
+                    help='linear or natural')
+parser.add_argument('--normalize', default='max', type=str,
+                    help='max or l2')
+parser.add_argument('--fp16-pushpull', action='store_true', default=False,
+                    help='use fp16 compression during pushpull')
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -76,17 +92,18 @@ for try_epoch in range(args.epochs, 0, -1):
 
 # BytePS: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
-#resume_from_epoch = bps.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
+# resume_from_epoch = bps.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
 #                                  name='resume_from_epoch').item()
 
 # BytePS: print logs on the first worker.
 verbose = 1 if bps.rank() == 0 else 0
 
 # BytePS: write TensorBoard logs on first worker.
-log_writer = tensorboardX.SummaryWriter(args.log_dir) if bps.rank() == 0 else None
+log_writer = tensorboardX.SummaryWriter(
+    args.log_dir) if bps.rank() == 0 else None
 
 
-kwargs = {'num_workers': 4, 'pin_memory': True} if args.cuda else {}
+kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
 train_dataset = \
     datasets.ImageFolder(args.train_dir,
                          transform=transforms.Compose([
@@ -126,20 +143,34 @@ if args.cuda:
     # Move model to GPU.
     model.cuda()
 
+if args.compressor and args.compressor != "dithering":
+    nesterov = False
+else:
+    nesterov = True
+
 # BytePS: scale learning rate by the number of GPUs.
 # Gradient Accumulation: scale learning rate by batches_per_pushpull
 optimizer = optim.SGD(model.parameters(),
                       lr=(args.base_lr *
                           args.batches_per_pushpull * bps.size()),
-                      momentum=args.momentum, weight_decay=args.wd)
+                      momentum=args.momentum, weight_decay=args.wd,
+                      nesterov=nesterov)
 
-# BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
+compression_params = {
+    "compressor": args.compressor,
+    "ef": args.ef,
+    "momentum": args.compress_momentum,
+    "scaling": args.onebit_scaling,
+    "k": args.k,
+    "partition": args.partition,
+    "normalize": args.normalize,
+    "seed": args.seed
+}
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(
     optimizer, named_parameters=model.named_parameters(),
-    compression=compression,
+    compression_params=compression_params,
     backward_passes_per_step=args.batches_per_pushpull)
 
 # Restore from a previous checkpoint, if initial_epoch is specified.
@@ -153,6 +184,7 @@ if resume_from_epoch > 0 and bps.rank() == 0:
 # BytePS: broadcast parameters & optimizer state.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
+
 
 def train(epoch):
     model.train()
@@ -187,8 +219,11 @@ def train(epoch):
             t.update(1)
 
     if log_writer:
-        log_writer.add_scalar('train/loss', train_loss.avg, epoch)
-        log_writer.add_scalar('train/accuracy', train_accuracy.avg, epoch)
+        handle = bps.byteps_push_pull(torch.FloatTensor(
+            [train_loss.avg, train_accuracy.avg]).cuda(), name="acc")
+        output = bps.synchronize(handle)
+        log_writer.add_scalar('train/loss', output[0].item(), epoch)
+        log_writer.add_scalar('train/accuracy', output[1].item(), epoch)
 
 
 def validate(epoch):
@@ -205,15 +240,18 @@ def validate(epoch):
                     data, target = data.cuda(), target.cuda()
                 output = model(data)
 
-                val_loss.update(F.cross_entropy(output, target))
+                val_loss.update(F.cross_entropy(output, target).item())
                 val_accuracy.update(accuracy(output, target))
                 t.set_postfix({'loss': val_loss.avg.item(),
                                'accuracy': 100. * val_accuracy.avg.item()})
                 t.update(1)
 
     if log_writer:
-        log_writer.add_scalar('val/loss', val_loss.avg, epoch)
-        log_writer.add_scalar('val/accuracy', val_accuracy.avg, epoch)
+        handle = bps.byteps_push_pull(torch.FloatTensor(
+            [val_loss.avg, val_accuracy.avg]).cuda(), name="acc")
+        output = bps.synchronize(handle)
+        log_writer.add_scalar('val/loss', output[0].item(), epoch)
+        log_writer.add_scalar('val/accuracy', output[1].item(), epoch)
 
 
 # BytePS: using `lr = base_lr * bps.size()` from the very beginning leads to worse final
@@ -233,13 +271,14 @@ def adjust_learning_rate(epoch, batch_idx):
     else:
         lr_adj = 1e-3
     for param_group in optimizer.param_groups:
-        param_group['lr'] = args.base_lr * bps.size() * args.batches_per_pushpull * lr_adj
+        param_group['lr'] = args.base_lr * \
+            bps.size() * args.batches_per_pushpull * lr_adj
 
 
 def accuracy(output, target):
     # get the index of the max log-probability
     pred = output.max(1, keepdim=True)[1]
-    return pred.eq(target.view_as(pred)).float().mean()
+    return pred.eq(target.view_as(pred)).float().mean().item()
 
 
 def save_checkpoint(epoch):
@@ -270,6 +309,9 @@ class Metric(object):
         return self.sum / self.n
 
 
+bps.declare("acc")
+handle = bps.byteps_push_pull(torch.empty(2).cuda(), name="acc")
+bps.synchronize(handle)
 for epoch in range(resume_from_epoch, args.epochs):
     train(epoch)
     validate(epoch)

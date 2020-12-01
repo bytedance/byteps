@@ -32,6 +32,7 @@ class _CrossBarrier(_DistributedOptimizer):
     parameters. To understand the principles behind barrier crossing, check the paper
     https://dl.acm.org/citation.cfm?id=3359642
     """
+
     def __init__(self, model, byteps_opt, num_steps=10**6):
         """Construct a new ScheduledOptimizer, which uses byteps optimizer under the hood for averaging gradients
          across all workers.
@@ -80,7 +81,8 @@ class _CrossBarrier(_DistributedOptimizer):
             self._synchronize()
             # if it is the final training step, wait for the completion of all tensors
             if self._step == self._final_step:
-                self._logger.debug("final step {}, waiting for push-pull completion.".format(self._final_step))
+                self._logger.debug(
+                    "final step {}, waiting for push-pull completion.".format(self._final_step))
                 while not self._event_queue.empty():
                     time.sleep(0.001)
                 self._event_queue.put((None, None, None))
@@ -100,7 +102,8 @@ class _CrossBarrier(_DistributedOptimizer):
         """Override the default zero_grad function.
         Clears the gradients of all optimized tensors.
         """
-        self._logger.debug("{} calls zero_grad() of step {}".format(self._desc, self._step))
+        self._logger.debug(
+            "{} calls zero_grad() of step {}".format(self._desc, self._step))
         if size() > 1 and self._step > 0:
             return
         else:
@@ -147,11 +150,16 @@ class _CrossBarrier(_DistributedOptimizer):
         """
         name = self._get_parameter_name(p)
         tensor = p.grad
-        tensor_compressed, ctx = self._compression.compress(tensor)
+        # grad is normalized with bps.size()
+        tensor /= size()
+        tensor_compressed, ctx = self._intra_compressors[p].compress(
+            tensor)
 
         self._locks[p].acquire()
-        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._get_parameter_name(p)))
+        handle = byteps_push_pull(
+            tensor_compressed, average=False, name="Gradient."+name)
+        self._logger.debug("{} calls byteps_push_pull for {}".format(
+            self._desc, self._get_parameter_name(p)))
         # Add to queue to poll completion
         self._event_queue.put((p, handle, ctx))
         return handle, ctx
@@ -166,8 +174,9 @@ class _CrossBarrier(_DistributedOptimizer):
             # Check whether the push-pull is finished. If so, start updating parameters.
             if handle is not None and poll(handle):
                 output = synchronize(handle)
-                p.grad.set_(self._compression.decompress(output, ctx))
-                self._logger.debug("{} {} finished push-pull".format(self._desc, self._get_parameter_name(p)))
+                p.grad.set_(self._intra_compressors[p].decompress(output, ctx))
+                self._logger.debug(
+                    "{} {} finished push-pull".format(self._desc, self._get_parameter_name(p)))
                 self._push_pull_delay[p] = self.backward_passes_per_step
                 # So only support SGD, Adam and RMSprop optimizers in torch
                 if isinstance(self._opt, torch.optim.SGD):
@@ -177,7 +186,8 @@ class _CrossBarrier(_DistributedOptimizer):
                 elif isinstance(self._opt, torch.optim.RMSprop):
                     self._rmsprop(p)
                 else:
-                    raise ValueError("Invalid optimizer! Only support SGD, Adam and RMSprop.")
+                    raise ValueError(
+                        "Invalid optimizer! Only support SGD, Adam and RMSprop.")
                 self._zero_one_grad(p)
                 # notify update completion and parameter is ready for forward propagation
                 if p in self._locks:
@@ -208,16 +218,19 @@ class _CrossBarrier(_DistributedOptimizer):
                 if p not in self._locks:
                     continue
                 with self._locks[p]:
-                    self._logger.debug("{} {} is ready.".format(self._desc, self._get_parameter_name(p)))
+                    self._logger.debug("{} {} is ready.".format(
+                        self._desc, self._get_parameter_name(p)))
 
             self._logger.debug("{} starts forward {}.".format(self._desc, mod))
 
         def after_forward_hook(mod, input, result):
-            self._logger.debug("{} finished forward {}.".format(self._desc, mod))
+            self._logger.debug(
+                "{} finished forward {}.".format(self._desc, mod))
 
         # Register pre-hook and hook for each module
         for mod in reversed(submodules):
-            self._logger.debug("{} registers forward hook on module {}".format(self._desc, mod))
+            self._logger.debug(
+                "{} registers forward hook on module {}".format(self._desc, mod))
             mod.register_forward_pre_hook(pre_forward_hook)
             mod.register_forward_hook(after_forward_hook)
 
@@ -247,7 +260,8 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug("{} is updating {}".format(
+                    self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 d_p = p.grad.data
@@ -256,7 +270,8 @@ class _CrossBarrier(_DistributedOptimizer):
                 if momentum != 0:
                     param_state = self.state[p]
                     if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                        buf = param_state['momentum_buffer'] = torch.zeros_like(
+                            p.data)
                         buf.mul_(momentum).add_(d_p)
                     else:
                         buf = param_state['momentum_buffer']
@@ -277,12 +292,14 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug("{} is updating {}".format(
+                    self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
                 if grad.is_sparse:
-                    raise RuntimeError('Adam does not support sparse gradients, please consider SparseAdam instead')
+                    raise RuntimeError(
+                        'Adam does not support sparse gradients, please consider SparseAdam instead')
                 amsgrad = group['amsgrad']
 
                 state = self.state[p]
@@ -324,7 +341,8 @@ class _CrossBarrier(_DistributedOptimizer):
 
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
-                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+                step_size = group['lr'] * \
+                    math.sqrt(bias_correction2) / bias_correction1
 
                 p.data.addcdiv_(-step_size, exp_avg, denom)
                 break
@@ -338,12 +356,14 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug("{} is updating {}".format(
+                    self._desc, self._get_parameter_name(p)))
                 if p.grad is None:
                     continue
                 grad = p.grad.data
                 if grad.is_sparse:
-                    raise RuntimeError('RMSprop does not support sparse gradients')
+                    raise RuntimeError(
+                        'RMSprop does not support sparse gradients')
                 state = self.state[p]
 
                 # State initialization
@@ -368,7 +388,8 @@ class _CrossBarrier(_DistributedOptimizer):
                 if group['centered']:
                     grad_avg = state['grad_avg']
                     grad_avg.mul_(alpha).add_(1 - alpha, grad)
-                    avg = square_avg.addcmul(-1, grad_avg, grad_avg).sqrt().add_(group['eps'])
+                    avg = square_avg.addcmul(-1, grad_avg,
+                                             grad_avg).sqrt().add_(group['eps'])
                 else:
                     avg = square_avg.sqrt().add_(group['eps'])
 
@@ -413,11 +434,12 @@ def _init_logger():
 def CrossBarrier(model,
                  optimizer,
                  named_parameters=None,
-                 compression=Compression.none,
+                 compression_params=None,
                  backward_passes_per_step=1,
                  num_steps=10**6):
     """Wrap Torch optimizer using BytePS DistributedOptimizer and _CrossBarrier."""
-    bps_opt = _bps_DistributedOptimizer(optimizer, named_parameters, compression, backward_passes_per_step)
+    bps_opt = _bps_DistributedOptimizer(
+        optimizer, named_parameters, compression_params, backward_passes_per_step)
     return _CrossBarrier(model, bps_opt, num_steps)
 
 

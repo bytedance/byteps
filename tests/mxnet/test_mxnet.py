@@ -31,12 +31,13 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
     """
     Tests for ops in byteps.mxnet.
     """
+
     def _current_context(self):
         if has_gpu:
             return mx.gpu(bps.local_rank())
         else:
             return mx.current_context()
-    
+
     def test_byteps_trainer_param_order(self):
         net = mx.gluon.nn.Sequential()
         # layers may be added in a random order for all workers

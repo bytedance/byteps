@@ -14,13 +14,39 @@
 # limitations under the License.
 # ==============================================================================
 """Gradient compression algorithms."""
+import operator
 from functools import reduce
+
+import numpy as np
 
 import mxnet.ndarray as nd
 
 
-def size(shape):
-    return reduce(lambda x, y: x*y, shape) * 4
+def prod(iterable):
+    return reduce(operator.mul, iterable, 1)
+
+
+def get_type_size(dtype):
+    if dtype == np.float32:
+        return 4
+    elif dtype == np.float16 or dtype == np.half:
+        return 2
+    elif dtype == np.float64:
+        return 8
+    elif dtype == np.int or dtype == np.int32:
+        return 4
+    elif dtype == np.int64 or dtype == np.long:
+        return 8
+    elif dtype == np.int16 or dtype == np.short:
+        return 2
+    elif dtype == np.int8:
+        return 1
+    else:
+        raise ValueError("unknown dtype: %s" % dtype)
+
+
+def size(tensor):
+    return prod(tensor.shape) * get_type_size(tensor.dtype)
 
 
 class Compressor(object):
@@ -85,7 +111,7 @@ class NagAdapter(Compressor):
     def decompress(self, tensor, ctx, *args, **kwargs):
         """Add nesterov momentum for uncompressed gradients"""
         tensor = self.compressor.decompress(tensor, ctx, *args, **kwargs)
-        
+
         # uncompressed gradients need to do nag explicitly
         if not self.inited:
             if size(tensor.shape) < self.threshold:
@@ -126,15 +152,15 @@ class WeightDecayMomentumAdapter(Compressor):
         if "x" not in kwargs:
             raise ValueError("x is missing")
 
-        x = kwargs["x"].astype(tensor.dtype, copy=False)   
-        
+        x = kwargs["x"].astype(tensor.dtype, copy=False)
+
         if not self.inited:
             self.cache = nd.zeros_like(tensor)
             if size(tensor.shape) >= self.threshold:
                 self.mom = nd.zeros_like(tensor)
                 self.wdmom = True
             self.inited = True
-        
+
         # weight decay
         nd._internal._mul_scalar(x, self.wd, out=self.cache)
 
