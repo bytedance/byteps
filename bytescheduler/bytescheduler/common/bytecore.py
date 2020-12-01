@@ -141,7 +141,8 @@ class ByteCore(object):
             self._condition.notify_all()
         self._scheduler.join()
         self._is_started = False
-        self._tuner.exit()
+        if self._tuner:
+            self._tuner.exit()
         self._profiler.stop()
         self._logger.info("shutdown Core {}.".format(self._rank))
 
