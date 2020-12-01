@@ -28,7 +28,8 @@ parser.add_argument('--batches-per-pushpull', type=int, default=1,
                     help='number of batches processed locally before '
                          'executing pushpull across workers; it multiplies '
                          'total batch size.')
-
+parser.add_argument('-j', '--num-data-workers', dest='num_workers', default=4, type=int,
+                    help='number of preprocessing workers')
 # Default settings from https://arxiv.org/abs/1706.02677.
 parser.add_argument('--batch-size', type=int, default=32,
                     help='input batch size for training')
@@ -103,7 +104,8 @@ log_writer = tensorboardX.SummaryWriter(
     args.log_dir) if bps.rank() == 0 else None
 
 
-kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
+kwargs = {'num_workers': args.num_workers,
+          'pin_memory': True, 'persistent_workers': True} if args.cuda else {}
 train_dataset = \
     datasets.ImageFolder(args.train_dir,
                          transform=transforms.Compose([

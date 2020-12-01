@@ -67,7 +67,7 @@ shift
 data_config="--train-dir $data_path/train --val-dir $data_path/val"
 
 
-cmd="python $repo_path/launcher/dist_launcher.py -WH $worker_hosts -SH $server_hosts --scheduler-ip $ip --scheduler-port $port --interface $interface -i $pem_file --username yuchen --env OMP_WAIT_POLICY:PASSIVE --env OMP_NUM_THREADS:$omp_num_threads --env BYTEPS_THREADPOOL_SIZE:$threadpool_size --env BYTEPS_MIN_COMPRESS_BYTES:$min_compress_bytes --env BYTEPS_NUMA_ON:1 --env NVIDIA_VISIBLE_DEVICES:$NVIDIA_VISIBLE_DEVICES --env BYTEPS_SERVER_ENGINE_THREAD:$server_engine_thread --env BYTEPS_PARTITION_BYTES:$partition_bytes --env BYTEPS_LOG_LEVEL:INFO  source ~/.zshrc; bpslaunch python3 $script_path  $data_config --batch-size $batch_size  --epochs $epochs --warmup-epochs 5  --base-lr $lr $compression_args"
+cmd="python $repo_path/launcher/dist_launcher.py -WH $worker_hosts -SH $server_hosts --scheduler-ip $ip --scheduler-port $port --interface $interface -i $pem_file --username yuchen --env OMP_WAIT_POLICY:PASSIVE --env OMP_NUM_THREADS:$omp_num_threads --env BYTEPS_THREADPOOL_SIZE:$threadpool_size --env BYTEPS_MIN_COMPRESS_BYTES:$min_compress_bytes --env BYTEPS_NUMA_ON:1 --env NVIDIA_VISIBLE_DEVICES:$NVIDIA_VISIBLE_DEVICES --env BYTEPS_SERVER_ENGINE_THREAD:$server_engine_thread --env BYTEPS_PARTITION_BYTES:$partition_bytes --env BYTEPS_LOG_LEVEL:INFO  source ~/.zshrc; bpslaunch python3 $script_path  $data_config --batch-size $batch_size -j $data_threads  --epochs $epochs --warmup-epochs 5  --base-lr $lr $compression_args"
 
 echo $cmd
 exec $cmd
