@@ -113,7 +113,7 @@ class NagAdapter(Compressor):
 
         # uncompressed gradients need to do nag explicitly
         if not self.inited:
-            if size(tensor.shape) < self.threshold:
+            if size(tensor) < self.threshold:
                 self.mom = torch.zeros_like(tensor)
                 self.nag = True
             self.inited = True
@@ -155,7 +155,7 @@ class WeightDecayMomentumAdapter(Compressor):
 
         if not self.inited:
             self.cache = torch.zeros_like(tensor)
-            if size(tensor.shape) >= self.threshold:
+            if size(tensor) >= self.threshold:
                 self.mom = torch.zeros_like(tensor)
                 self.wdmom = True
             self.inited = True
