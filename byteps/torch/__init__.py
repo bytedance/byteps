@@ -20,6 +20,7 @@ import collections
 import copy
 import os
 from contextlib import contextmanager
+from math import isclose
 
 from torch import is_distributed
 
@@ -34,10 +35,14 @@ import torch
 
 class _DistributedOptimizer(torch.optim.Optimizer):
     def __init__(self, params, named_parameters, compression_params=None,
-                 backward_passes_per_step=1):
+                 backward_passes_per_step=1, pre_scale_factor=1.0/size(),
+                 post_scale_factor=1):
         super(self.__class__, self).__init__(params)
         self._intra_compressor = self._register_compressor(
             self.defaults, compression_params)
+
+        self.pre_scale_factor = pre_scale_factor
+        self.post_scale_factor = post_scale_factor
 
         if named_parameters is not None:
             named_parameters = list(named_parameters)
@@ -236,8 +241,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             handle, ctx = None, None
         else:
             tensor = p.grad
-            # grad is normalized with bps.size()
-            tensor /= size()
+            # grad is scaled with pre_scale_factor
+            tensor *= self.pre_scale_factor
             tensor_compressed, ctx = self._intra_compressors[p].compress(
                 tensor)
             handle = byteps_push_pull(
@@ -277,8 +282,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
-                p.grad.set_(self._intra_compressors[p].decompress(
-                    output, ctx, x=p.data))
+                g = self._intra_compressors[p].decompress(
+                    output, ctx, x=p.data)
+                if not isclose(self.post_scale_factor, 1.0):
+                    g *= self.post_scale_factor
+                p.grad.set_(g)
+
         self._handles.clear()
 
     @ contextmanager
