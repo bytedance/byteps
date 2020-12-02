@@ -105,7 +105,7 @@ log_writer = tensorboardX.SummaryWriter(
 
 
 kwargs = {'num_workers': args.num_workers,
-          'pin_memory': True, 'persistent_workers': True} if args.cuda else {}
+          'pin_memory': True} if args.cuda else {}
 train_dataset = \
     datasets.ImageFolder(args.train_dir,
                          transform=transforms.Compose([
