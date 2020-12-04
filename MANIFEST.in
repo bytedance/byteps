@@ -1,7 +1,15 @@
 include */* LICENSE byteps.lds byteps.exp
-exclude .git/*
+prune .git
+prune dist
 recursive-include * *.cc *.h
+prune __pycache__
+prune 3rdparty
 graft 3rdparty/ps-lite
 prune 3rdparty/ps-lite/build
 prune 3rdparty/ps-lite/deps
-include ./pre_setup.py
+exclude 3rdparty/ps-lite/tests/test_benchmark
+exclude 3rdparty/ps-lite/tests/test_benchmark.d
+exclude 3rdparty/ps-lite/tests/test_ipc_benchmark
+exclude 3rdparty/ps-lite/tests/test_ipc_benchmark.d
+
+include pre_setup.py pre_setup_local.py zeromq-4.1.4.tar.gz ucx.zip
