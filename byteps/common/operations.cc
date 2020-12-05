@@ -54,6 +54,7 @@ void byteps_lazy_init() {
 
   // Cross-PCIe-switch reduce
   if (BytePSGlobal::IsCrossPcieSwitch()) {
+    assert(0);
     func.push_back(PcieReduceLoop);
   }
 
@@ -439,11 +440,12 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 
   // Copy from GPU to CPU
   if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
-    queue_list->push_back(COPYD2H);
+    // queue_list->push_back(COPYD2H);
   }
 
   // Cross-PCIe-switch reduce
   if (BytePSGlobal::IsCrossPcieSwitch()) {
+    assert(0);
     queue_list->push_back(PCIE_REDUCE);
   }
 
@@ -471,6 +473,7 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
 
   // Copy from CPU to GPU
   if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+    assert(0);
     queue_list->push_back(COPYH2D);
   }
 
