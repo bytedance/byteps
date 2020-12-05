@@ -15,6 +15,7 @@
 
 #include "fp16_cast.h"
 
+#include <cmath>
 #include "../compressor_registry.h"
 
 namespace byteps {
@@ -43,6 +44,10 @@ tensor_t FP16CastCompressor::CastToFP32(tensor_t grad) {
 #pragma omp parallel for simd
   for (size_t i = 0; i < len; ++i) {
     dst[i] = src[i];
+    // convert infinity and NaN into 0 
+    if (!std::isfinite(dst[i])) {
+      dst[i] = 0;
+    }
   }
   // use BYTEPS_FLOAT32 as dtype in the following compression
   return {dst, len * sizeof(float), BYTEPS_FLOAT32};
