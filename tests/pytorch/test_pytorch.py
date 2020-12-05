@@ -20,6 +20,7 @@ import unittest
 
 import byteps.torch as bps
 import torch
+import numpy as np
 
 from meta_test import MetaTest
 
@@ -63,6 +64,22 @@ class TorchTest(unittest.TestCase, metaclass=MetaTest):
             handle = bps.byteps_push_pull(x.clone().cuda(), name="tmp")
             output = bps.synchronize(handle)
             assert torch.allclose(output, x.cuda())
+
+    def test_byteps_push_pull_fp16_nan(self):
+        """
+        """
+        ctx = self._current_context()
+        for i in range(10):
+            tensor = torch.random.uniform(-1e5, 1e5, shape=1000).cuda()
+            tensor = tensor.type(torch.float16)
+            input = tensor.cpu().numpy()
+            input = np.nan_to_num(input, nan=0, posinf=0, neginf=0)
+            bps.declare("tensor_" + str(i))
+            handle = bps.byteps_push_pull(tensor, name="tensor_" + str(i))
+            output = bps.synchronize(handle)
+            output = output.cpu().numpy()
+            assert np.allclose(input, output)
+        print('test_byteps_push_pull_fp16_nan passed')
 
 
 if __name__ == '__main__':

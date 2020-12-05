@@ -122,6 +122,23 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
 
         print('test_byteps_push_pull_inplace passed')
 
+    def test_byteps_push_pull_fp16_nan(self):
+        """
+        """
+        ctx = self._current_context()
+        for i in range(10):
+            tensor = mx.nd.random.uniform(-1e5, 1e5, shape=1000,
+                                          ctx=ctx)
+            tensor = tensor.astype('float16')
+            input = tensor.asnumpy()
+            input = np.nan_to_num(input, nan=0, posinf=0, neginf=0)
+            bps.byteps_declare_tensor("tensor_" + str(i))
+            bps.byteps_push_pull(tensor, name="tensor_" + str(i))
+            tensor.wait_to_read()
+            output = tensor.asnumpy()
+            assert np.allclose(input, output)
+        print('test_byteps_push_pull_fp16_nan passed')
+
 
 if __name__ == '__main__':
     unittest.main()
