@@ -237,7 +237,7 @@ def has_rdma_header():
     return ret_code==0
 
 def build_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 1))
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
     return byteps_with_ucx
 
 def get_common_options(build_ext):
@@ -918,7 +918,7 @@ class custom_build_ext(build_ext):
                 make_option += "-j "
             if has_rdma_header():
                 make_option += "USE_RDMA=1 "
-            if build_ucx:
+            if build_ucx():
                 make_option += 'USE_UCX=1 '
 
             make_option += pre_setup.extra_make_option()
