@@ -256,7 +256,7 @@ def DistributedOptimizer(optimizer, named_parameters=None,
                compression, backward_passes_per_step)
 
 
-def broadcast_parameters(params, root_rank):
+def broadcast_parameters(params, root_rank, prefix="Parameter."):
     """
     Broadcasts the parameters from root rank to all other processes.
     Typical usage is to broadcast the `model.state_dict()`,
@@ -284,13 +284,13 @@ def broadcast_parameters(params, root_rank):
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
         if name:
-            handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+            handle = byteps_push_pull(p, average=False, name=prefix+name)
         else:
             handle = byteps_push_pull(p, average=False)
         synchronize(handle)
 
 
-def broadcast_optimizer_state(optimizer, root_rank):
+def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
     """
     Broadcasts an optimizer state from root rank to all other processes.
     Arguments:
@@ -401,7 +401,7 @@ def broadcast_optimizer_state(optimizer, root_rank):
                 params.append((key, p))
 
     # Synchronized broadcast of all parameters
-    broadcast_parameters(params, root_rank)
+    broadcast_parameters(params, root_rank, prefix)
 
     # Post-broadcast clenaup for non-tensor parameters
     for key, p in params:
