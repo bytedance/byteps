@@ -125,6 +125,29 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
         assert cnt <= threshold, "false/tot=%d/%d=%f" % (
             cnt, tot, cnt/tot)
 
+    def test_byteps_push_pull_fp16_nan(self):
+        """
+        """
+        for i in range(10):
+            tensor = mx.nd.random.uniform(-1e5, 1e5, shape=100, ctx=mx.gpu(0))
+            tensor = tensor.astype('float16')
+            input = tensor.asnumpy().astype(np.float32)
+            input = np.nan_to_num(input, nan=0, posinf=0,
+                                  neginf=0)
+            input = onebit(input, True)
+            print(input)
+            bps.byteps_declare_tensor("tensor_" + str(i), **{
+                "byteps_compressor_type": "onebit",
+                "byteps_compressor_onebit_scaling": "true"
+            })
+            bps.byteps_push_pull(tensor, name="tensor_" + str(i))
+            tensor.wait_to_read()
+            output = tensor.asnumpy()
+
+            print(output)
+            assert np.allclose(input, output, np.finfo(np.float16).eps)
+        print('test_byteps_push_pull_fp16_nan passed')
+
 
 if __name__ == '__main__':
     unittest.main()
