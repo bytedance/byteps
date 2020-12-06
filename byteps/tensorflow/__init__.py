@@ -63,7 +63,7 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
         A tensor of the same shape and type as `tensor`, summed across all
         processes.
     """
-    op = handle_average_backwards_compatibility(op, average)
+    op = handle_average_backwards_compatibility(op, average).value
     # Averaging happens in framework code, so translate that to Sum for the actual call
     true_op = Sum if op == Average else op
 
