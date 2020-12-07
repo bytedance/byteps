@@ -7,6 +7,7 @@
 import io
 import os
 import sys
+import copy
 import re
 import shutil
 from shutil import rmtree
@@ -243,6 +244,7 @@ def has_rdma_header():
 def build_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
     return byteps_with_ucx
+
 
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
@@ -906,8 +908,8 @@ class custom_build_ext(build_ext):
                 ucx_path = "https://codeload.github.com/openucx/ucx/zip/9229f54"
             print("ucx_path is", ucx_path)
             cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
-            "rm -rf ucx*;" +\
-            "curl " + ucx_path + " -o ucx.zip; " + \
+                "rm -rf ucx*;" +\
+                "curl " + ucx_path + " -o ucx.zip; " + \
                 "unzip -o ./ucx.zip -d tmp; " + \
                 "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/;" +\
                 "cd ucx-build; pwd; which libtoolize; " + \
@@ -964,7 +966,7 @@ class custom_build_ext(build_ext):
 
         if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
             try:
-                build_tf_extension(self, options)
+                build_tf_extension(self, copy.deepcopy(options))
                 built_plugins.append(True)
                 print('INFO: Tensorflow extension is built successfully.')
             except:
@@ -977,7 +979,8 @@ class custom_build_ext(build_ext):
         if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
             try:
                 torch_version = check_torch_version()
-                build_torch_extension(self, options, torch_version)
+                build_torch_extension(
+                    self, copy.deepcopy(options), torch_version)
                 built_plugins.append(True)
                 print('INFO: PyTorch extension is built successfully.')
             except:
@@ -994,7 +997,7 @@ class custom_build_ext(build_ext):
             ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
             os.system(ln_command)
             try:
-                build_mx_extension(self, options)
+                build_mx_extension(self, copy.deepcopy(options))
                 built_plugins.append(True)
                 print('INFO: MXNet extension is built successfully.')
             except:
