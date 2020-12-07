@@ -551,6 +551,10 @@ bool RunPushLoopOnce() {
       // BPS_CHECK(task->cpubuff);
       // data =
       //     const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
+      auto tensor =
+          (BytePSGlobal::GetNccl()->GetSize() > 1) ? task->output : task->tensor;
+      BPS_CHECK(tensor);
       auto p = (char *)(tensor->data()) + offset;
       if (task->device == CPU_DEVICE_ID) {
         p = (char *)(task->gpu_ptr) + offset;
@@ -602,6 +606,7 @@ bool RunPullLoopOnce() {
     // BPS_CHECK(task->cpubuff);
     // data =
     //     const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
     auto p = (char *)(tensor->data()) + offset;
     if (task->device == CPU_DEVICE_ID) {
       p = (char *)(task->gpu_ptr) + offset;
