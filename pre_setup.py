@@ -5,3 +5,5 @@ def setup():
 
 def extra_make_option():
     return ""
+
+ucx_path = ""

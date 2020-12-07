@@ -21,7 +21,10 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
-import pre_setup
+if os.path.isfile('./pre_setup_local.py'):
+    import pre_setup_local as pre_setup
+else:
+    import pre_setup as pre_setup
 
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
@@ -237,6 +240,10 @@ def has_rdma_header():
     return ret_code == 0
 
 
+def build_ucx():
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
+    return byteps_with_ucx
+
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
     link_flags = get_link_flags(build_ext)
@@ -290,6 +297,8 @@ def get_common_options(build_ext):
     # auto-detect rdma
     if has_rdma_header():
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
+    if build_ucx():
+        LIBRARIES += ['ucp', 'uct', 'ucs', 'ucm']
 
     # ps-lite
     EXTRA_OBJECTS = ['3rdparty/ps-lite/build/libps.a',
@@ -332,6 +341,8 @@ def build_server(build_ext, options):
         server_lib.libraries = ['rdmacm', 'ibverbs', 'rt']
     else:
         server_lib.libraries = []
+    if build_ucx():
+        server_lib.libraries += ['ucp', 'uct', 'ucs', 'ucm']
 
     build_ext.build_extension(server_lib)
 
@@ -888,12 +899,38 @@ class custom_build_ext(build_ext):
             except:
                 pass
 
+        print("build_ucx is", build_ucx())
+        if build_ucx():
+            ucx_path = pre_setup.ucx_path.strip()
+            if not ucx_path:
+                ucx_path = "https://codeload.github.com/openucx/ucx/zip/9229f54"
+            print("ucx_path is", ucx_path)
+            cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
+            "rm -rf ucx*;" +\
+            "curl " + ucx_path + " -o ucx.zip; " + \
+                "unzip -o ./ucx.zip -d tmp; " + \
+                "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/;" +\
+                "cd ucx-build; pwd; which libtoolize; " + \
+                "./autogen.sh; ./autogen.sh && ./contrib/configure-release --enable-mt && make -j && sudo make install -j"
+            make_process = subprocess.Popen(cmd,
+                                            cwd='3rdparty',
+                                            stdout=sys.stdout,
+                                            stderr=sys.stderr,
+                                            shell=True)
+            make_process.communicate()
+            if make_process.returncode:
+                raise DistutilsSetupError('An ERROR occured while running the '
+                                          'Makefile for the ucx library. '
+                                          'Exit code: {0}'.format(make_process.returncode))
+
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
            not os.path.exists("3rdparty/ps-lite/deps/lib"):
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
                 make_option += "USE_RDMA=1 "
+            if build_ucx():
+                make_option += 'USE_UCX=1 '
 
             make_option += pre_setup.extra_make_option()
 
