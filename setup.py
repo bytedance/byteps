@@ -900,7 +900,7 @@ class custom_build_ext(build_ext):
                 "unzip -o ./ucx.zip -d tmp; " + \
                 "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/;" +\
                 "cd ucx-build; pwd; which libtoolize; " + \
-                "./autogen.sh; ./autogen.sh && ./contrib/configure-release --enable-mt && make -j && sudo make install -j"
+                "./autogen.sh; ./autogen.sh && ./contrib/configure-release --enable-mt --with-cuda=/opt/tiger/cuda && make -j && sudo make install -j"
             make_process = subprocess.Popen(cmd,
                                             cwd='3rdparty',
                                             stdout=sys.stdout,
