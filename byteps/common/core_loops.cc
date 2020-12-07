@@ -381,6 +381,7 @@ bool RunCopyDevice2HostLoopOnce() {
   auto task = q->getTask();
 
   if (task) {
+    assert(0);
     auto copy_d2h_Stream = BytePSGlobal::GetCopyDevice2HostStream();
     // If we ran NCCL reduce, we should copy from task->output
     auto tensor =
@@ -607,6 +608,8 @@ bool RunPullLoopOnce() {
     // data =
     //     const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
 
+    auto tensor = task->output;
+    BPS_CHECK(tensor);
     auto p = (char *)(tensor->data()) + offset;
     if (task->device == CPU_DEVICE_ID) {
       p = (char *)(task->gpu_ptr) + offset;
@@ -664,6 +667,7 @@ bool RunDecompressLoopOnce() {
 }
 
 void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
+  assert(0);
   auto copy_h2d_stream = BytePSGlobal::GetCopyHost2DeviceStream();
   auto tensor = task->output;
   BPS_CHECK(tensor);
