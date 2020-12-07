@@ -132,6 +132,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         for p in self._push_pull_delay:
             self._push_pull_delay[p] = self.backward_passes_per_step
 
+    def set_scale_factor(self, pre_scale_factor, post_scale_factor):
+        self.pre_scale_factor = pre_scale_factor
+        self.post_scale_factor = post_scale_factor
+
     def _register_hooks(self):
         for param_group in self.param_groups:
             for p in param_group['params']:
