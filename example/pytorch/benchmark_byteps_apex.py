@@ -63,7 +63,8 @@ bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
 # Apex
-model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+model, optimizer = amp.initialize(
+    model, optimizer, opt_level="O2", cast_model_outputs=torch.float16)
 
 # Set up fixed fake data
 data = torch.randn(args.batch_size, 3, 224, 224)
