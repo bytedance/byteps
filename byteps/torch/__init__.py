@@ -339,7 +339,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression_params=None,
-                         backward_passes_per_step=1):
+                          backward_passes_per_step=1, pre_scale_factor=1, post_scale_factor=1):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
@@ -372,13 +372,15 @@ def DistributedOptimizer(optimizer, named_parameters=None,
                                   allows accumulating gradients over multiple
                                   mini-batches before executing averaging and
                                   applying them.
+        pre_scale_factor: scale the tensor before pushpull 
+        post_scale_factor: scale the tensor after pushpull 
     """
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override the `step()` method with an push_pull implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DistributedOptimizer.__dict__))
     return cls(optimizer.param_groups, named_parameters,
-               compression_params, backward_passes_per_step)
+               compression_params, backward_passes_per_step, pre_scale_factor, post_scale_factor)
 
 
 def broadcast_parameters(params, root_rank, prefix="Parameter."):
