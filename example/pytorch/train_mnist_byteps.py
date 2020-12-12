@@ -152,7 +152,7 @@ def train(epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-        # optimizer.zero_grad()
+        optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
         with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -160,6 +160,8 @@ def train(epoch):
             optimizer.synchronize()
         with optimizer.skip_synchronize():
             optimizer.step()
+        for group in optimizer.param_groups:
+            print("step", group['step'])
         if batch_idx % args.log_interval == 0:
             # BytePS: use train_sampler to determine the number of examples in
             # this worker's partition.
