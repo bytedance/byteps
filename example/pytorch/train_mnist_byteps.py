@@ -1,12 +1,16 @@
 from __future__ import print_function
+
 import argparse
 import os
+
+import byteps.torch as bps
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 import torch.utils.data.distributed
-import byteps.torch as bps
+from apex import amp
+from torchvision import datasets, transforms
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -56,6 +60,7 @@ if args.cuda:
     # BytePS: pin GPU to local rank.
     torch.cuda.set_device(bps.local_rank())
     torch.cuda.manual_seed(args.seed)
+    cudnn.benchmark = True
 
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
@@ -128,6 +133,9 @@ optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
                                      compression_params=compression_params)
 
+model, optimizer = amp.initialize(
+    model, optimizer, opt_level="O2", cast_model_outputs=torch.float16
+)
 
 # BytePS: broadcast parameters.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -144,8 +152,11 @@ def train(epoch):
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
+            optimizer.synchronize()
+        with optimizer.skip_synchronize():
+            optimizer.step()
         if batch_idx % args.log_interval == 0:
             # BytePS: use train_sampler to determine the number of examples in
             # this worker's partition.
