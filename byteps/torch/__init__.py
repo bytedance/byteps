@@ -116,6 +116,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                             "byteps_",), param.__dict__.items())
                     )
                     declare("Gradient."+name, **byteps_params)
+                    print("Graient."+name, param.data.numel())
 
     @ staticmethod
     def find_duplicates(lst):
@@ -339,7 +340,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression_params=None,
-                          backward_passes_per_step=1, pre_scale_factor=1, post_scale_factor=1):
+                         backward_passes_per_step=1, pre_scale_factor=1, post_scale_factor=1):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
