@@ -135,7 +135,7 @@ optimizer = bps.DistributedOptimizer(optimizer,
                                      pre_scale_factor=1. / bps.size(), post_scale_factor=1.)
 
 model, optimizer = amp.initialize(
-    model, optimizer, opt_level="O2", cast_model_outputs=torch.float16
+    model, optimizer, loss_scale='dynamic', opt_level="O2", cast_model_outputs=torch.float16
 )
 
 # BytePS: broadcast parameters.
@@ -152,7 +152,7 @@ def train(epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
         with amp.scale_loss(loss, optimizer) as scaled_loss:
