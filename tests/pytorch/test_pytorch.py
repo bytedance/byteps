@@ -76,7 +76,7 @@ class TorchTest(unittest.TestCase, metaclass=MetaTest):
         bps.synchronize(handle)
 
         good_tensor = torch.rand(100).cuda()
-        good_tensor = nan_tensor.type(torch.float16)
+        good_tensor = good_tensor.type(torch.float16)
         input = good_tensor.cpu().numpy()
         handle = bps.byteps_push_pull(good_tensor, average=False, name="good")
         bps.synchronize(handle)
