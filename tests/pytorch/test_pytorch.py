@@ -68,7 +68,6 @@ class TorchTest(unittest.TestCase, metaclass=MetaTest):
     def test_byteps_push_pull_fp16_nan(self):
         """Test robustness"""
         bps.declare("nan")
-        bps.declare("good")
 
         nan_tensor = torch.rand(100).cuda() * 1e5
         nan_tensor = nan_tensor.type(torch.float16)
@@ -78,7 +77,7 @@ class TorchTest(unittest.TestCase, metaclass=MetaTest):
         good_tensor = torch.rand(100).cuda()
         good_tensor = good_tensor.type(torch.float16)
         input = good_tensor.cpu().numpy()
-        handle = bps.byteps_push_pull(good_tensor, average=False, name="good")
+        handle = bps.byteps_push_pull(good_tensor, average=False, name="nan")
         bps.synchronize(handle)
         output = good_tensor.cpu().numpy()
 
