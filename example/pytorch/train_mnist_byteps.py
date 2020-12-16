@@ -145,9 +145,6 @@ optimizer._amp_stash.lazy_init_called = True
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
-param = list(model.parameters())[0]
-print("param in rank %d" % (bps.rank()))
-print(param.data)
 
 def train(epoch):
     model.train()
@@ -164,8 +161,9 @@ def train(epoch):
             optimizer.synchronize()
         with optimizer.skip_synchronize():
             optimizer.step()
-        for group in optimizer.param_groups:
-            print("step", group['step'])
+        param = list(model.parameters())[0]
+        print("param in rank %d" % (bps.rank()))
+        print(param.data.flatten()[:10])
         if batch_idx % args.log_interval == 0:
             # BytePS: use train_sampler to determine the number of examples in
             # this worker's partition.
