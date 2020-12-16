@@ -145,6 +145,9 @@ optimizer._amp_stash.lazy_init_called = True
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
+param = list(model.parameters())[0]
+print("param in rank %d" % (bps.rank()))
+print(param.data)
 
 def train(epoch):
     model.train()
