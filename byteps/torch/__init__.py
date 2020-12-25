@@ -252,10 +252,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 tensor)
 
             # if name == "cls.seq_relationship.bias":
-            print("before pushpull")
+            # print("before pushpull")
             is_nan = any(torch.isnan(tensor).flatten().cpu().numpy().tolist())
             if is_nan:
-                print("%s overflow after pushpull" % name, flush=True)
+                print("%s overflow before pushpull" % name, flush=True)
             handle = byteps_push_pull(
                 tensor_compressed, average=False, name="Gradient."+name)
         return handle, ctx
