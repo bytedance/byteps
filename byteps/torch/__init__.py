@@ -252,8 +252,9 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 tensor)
 
             if name == "bert.embeddings.token_type_embeddings.weight":
-                print("after pushpull")
+                print("before pushpull")
                 print(tensor)
+                print("max=%.2f" % (tensor.max().item()))
             # isfinite = all(torch.isfinite(
             #     tensor).flatten().cpu().numpy().tolist())
             # if not isfinite:
