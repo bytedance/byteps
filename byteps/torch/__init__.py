@@ -251,12 +251,13 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             tensor_compressed, ctx = self._intra_compressors[p].compress(
                 tensor)
 
-            # if name == "cls.seq_relationship.bias":
-            # print("before pushpull")
-            isfinite = all(torch.isfinite(
-                tensor).flatten().cpu().numpy().tolist())
-            if not isfinite:
-                print("%s overflow before pushpull" % name, flush=True)
+            if name == "bert.embeddings.token_type_embeddings.weight":
+                print("after pushpull")
+                print(tensor)
+            # isfinite = all(torch.isfinite(
+            #     tensor).flatten().cpu().numpy().tolist())
+            # if not isfinite:
+            #     print("%s overflow before pushpull" % name, flush=True)
             handle = byteps_push_pull(
                 tensor_compressed, average=False, name="Gradient."+name)
         return handle, ctx
@@ -296,15 +297,17 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 g = self._intra_compressors[p].decompress(
                     output, ctx, x=p.data)
-                isfinite = all(torch.isfinite(
-                    g).flatten().cpu().numpy().tolist())
-                if not isfinite:
-                    if self._is_tensor_instance:
-                        name = self._parameter_names.get(p.__hash__())
-                    else:
-                        name = self._parameter_names.get(p)
-
-                    print("%s overflow after pushpull" % name, flush=True)
+                # isfinite = all(torch.isfinite(
+                #     g).flatten().cpu().numpy().tolist())
+                # if not isfinite:
+                if self._is_tensor_instance:
+                    name = self._parameter_names.get(p.__hash__())
+                else:
+                    name = self._parameter_names.get(p)
+                if name == "bert.embeddings.token_type_embeddings.weight":
+                    print("after pushpull")
+                    print(g)
+                    # print("%s overflow after pushpull" % name, flush=True)
 
                 if not isclose(self.post_scale_factor, 1.0):
                     g *= self.post_scale_factor
