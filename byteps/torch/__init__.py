@@ -254,7 +254,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if name == "bert.embeddings.token_type_embeddings.weight":
                 print("before pushpull")
                 print(tensor)
-                print("max=%.2f" % (tensor.max().item()))
+                print("max=%.2f" % (tensor.abs().max().item()))
             # isfinite = all(torch.isfinite(
             #     tensor).flatten().cpu().numpy().tolist())
             # if not isfinite:
@@ -308,6 +308,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 if name == "bert.embeddings.token_type_embeddings.weight":
                     print("after pushpull")
                     print(g)
+                    print("scale=%.2f" % (g.abs().max().item()))
                     # print("%s overflow after pushpull" % name, flush=True)
 
                 if not isclose(self.post_scale_factor, 1.0):
