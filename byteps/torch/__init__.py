@@ -111,15 +111,11 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         name = self._parameter_names.get(param.__hash__())
                     else:
                         name = self._parameter_names.get(param)
-                    # TODO
-                    if "embeddings" in name:
-                        declare("Gradient."+name)
-                    else:
-                        byteps_params = dict(
-                            filter(lambda attr: attr[0].startswith(
-                                "byteps_",), param.__dict__.items())
-                        )
-                        declare("Gradient."+name, **byteps_params)
+                    byteps_params = dict(
+                        filter(lambda attr: attr[0].startswith(
+                            "byteps_",), param.__dict__.items())
+                    )
+                    declare("Gradient."+name, **byteps_params)
                     print("Graient."+name, param.data.numel())
 
     @ staticmethod
