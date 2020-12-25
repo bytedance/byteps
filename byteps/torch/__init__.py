@@ -253,7 +253,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
             # if name == "cls.seq_relationship.bias":
             # print("before pushpull")
-            isfinite = any(torch.isfinite(
+            isfinite = all(torch.isfinite(
                 tensor).flatten().cpu().numpy().tolist())
             if not isfinite:
                 print("%s overflow before pushpull" % name, flush=True)
@@ -296,7 +296,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 g = self._intra_compressors[p].decompress(
                     output, ctx, x=p.data)
-                isfinite = any(torch.isfinite(
+                isfinite = all(torch.isfinite(
                     g).flatten().cpu().numpy().tolist())
                 if not isfinite:
                     if self._is_tensor_instance:
