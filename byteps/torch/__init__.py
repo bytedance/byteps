@@ -253,8 +253,9 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
             # if name == "cls.seq_relationship.bias":
             # print("before pushpull")
-            is_nan = any(torch.isnan(tensor).flatten().cpu().numpy().tolist())
-            if is_nan:
+            isfinite = any(torch.isfinite(
+                tensor).flatten().cpu().numpy().tolist())
+            if isfinite:
                 print("%s overflow before pushpull" % name, flush=True)
             handle = byteps_push_pull(
                 tensor_compressed, average=False, name="Gradient."+name)
@@ -295,8 +296,9 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if not self._enable_async:
                 g = self._intra_compressors[p].decompress(
                     output, ctx, x=p.data)
-                is_nan = any(torch.isnan(g).flatten().cpu().numpy().tolist())
-                if is_nan:
+                isfinite = any(torch.isfinite(
+                    g).flatten().cpu().numpy().tolist())
+                if isfinite:
                     if self._is_tensor_instance:
                         name = self._parameter_names.get(p.__hash__())
                     else:
