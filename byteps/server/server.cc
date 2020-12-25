@@ -84,7 +84,6 @@ void BytePSServerEngineThread(int i) {
     // do some check
     CHECK(msg.dst);
     CHECK(msg.src);
-    auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
 
     auto iter = compressor_map_.find(msg.key);
     if (iter != compressor_map_.end()) {
@@ -130,6 +129,7 @@ void BytePSServerEngineThread(int i) {
       }
     }
 
+    auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
     bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
     switch (msg.ops) {
       case COPY_FIRST: {
