@@ -130,6 +130,8 @@ def train(epoch):
 
 def metric_average(val, name):
     tensor = torch.tensor(val)
+    if args.cuda:
+        tensor = tensor.cuda()
     avg_tensor = bps.push_pull(tensor, name=name)
     return avg_tensor.item()
 
