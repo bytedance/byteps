@@ -346,6 +346,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if local_rank() == 0:
                 self._f.seek(0)
                 lr = self.param_groups[0]['lr']
+                print(lr)
                 ba = struct.pack("d", lr)
                 self._f.write(ba)
                 self._f.flush()
