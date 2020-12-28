@@ -45,9 +45,9 @@ def randomk(x, k, state):
 
 class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
     TEST_BENCH = [
-        [1, 3, 5],
+        [3],
         [torch.float32, torch.float16],
-        np.random.randint(0, 2020, size=3).tolist()
+        np.random.randint(0, 2020, size=1).tolist()
     ]
 
     @parameterized.expand(itertools.product(*TEST_BENCH))
@@ -112,12 +112,24 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
                 for param in param_group['params']:
                     if param.requires_grad:
                         g = gs[param] / bps.size()
+                        print("g", g)
                         c = randomk(g, k, rngs[param])
 
-                        cs = randomk(c, k, rngs_s[param])
-                        c = cs
-
                         params[param] -= lr * c
+                        np_g = c.flatten()
+                        th_g = param.grad.cpu().numpy().flatten()
+                        if not np.allclose(np_g, th_g, atol=np.finfo(np_dtype).eps):
+                            diff = np.abs(np_g - th_g)
+                            # print("g", g.flatten())
+                            print("np", np_g)
+                            print("th", th_g)
+                            print("diff", diff)
+                            print("max diff", np.max(diff))
+                            print("len", len(diff))
+                            idx = np.nonzero(diff > np.finfo(np_dtype).eps)
+                            print("idx", idx, np_g[idx],
+                                  th_g[idx], g.flatten()[idx])
+                            input()
 
         cnt = 0
         tot = 0
