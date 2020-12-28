@@ -19,6 +19,7 @@ from __future__ import absolute_import, division, print_function
 import collections
 import copy
 import os
+import struct
 from contextlib import contextmanager
 from math import isclose
 
@@ -99,6 +100,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         force_distributed = int(os.getenv('BYTEPS_FORCE_DISTRIBUTED', 0))
         if size() > 1 or force_distributed:
             self._register_hooks()
+
+        if local_rank() == 0:
+            self._f = open("lr.s", "wb")
+            self._f.truncate(8)
 
         self._intra_compressors = {}
         # declare tensors
@@ -340,6 +345,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # skip sync if calling skip_synchronize
             if self._should_sync:
                 self.synchronize()
+
+            if local_rank() == 0:
+                self._f.seek(0)
+                ba = struct.pack("d", self.defaults['lr'])
+                self._f.write(ba)
+                self._f.flush()
             return super(self.__class__, self).step(closure)
 
 
