@@ -101,10 +101,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         if size() > 1 or force_distributed:
             self._register_hooks()
 
-        if local_rank() == 0:
-            self._f = open("lr.s", "wb")
-            self._f.truncate(8)
-
         self._intra_compressors = {}
         # declare tensors
         for param_group in self.param_groups:
@@ -116,11 +112,15 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         name = self._parameter_names.get(param.__hash__())
                     else:
                         name = self._parameter_names.get(param)
-                    byteps_params = dict(
-                        filter(lambda attr: attr[0].startswith(
-                            "byteps_",), param.__dict__.items())
-                    )
-                    declare("Gradient."+name, **byteps_params)
+                    # do not compress embeddings
+                    if "embeddings" in name:
+                        declare("Gradient."+name)
+                    else:
+                        byteps_params = dict(
+                            filter(lambda attr: attr[0].startswith(
+                                "byteps_",), param.__dict__.items())
+                        )
+                        declare("Gradient."+name, **byteps_params)
                     print("Gradient."+name, param.data.numel())
 
     @ staticmethod
@@ -343,13 +343,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if self._should_sync:
                 self.synchronize()
 
-            if local_rank() == 0:
-                self._f.seek(0)
-                lr = self.param_groups[0]['lr']
-                print("lr=%.2f" % (lr))
-                ba = struct.pack("d", lr)
-                self._f.write(ba)
-                self._f.flush()
             return super(self.__class__, self).step(closure)
 
 
