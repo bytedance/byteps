@@ -17,6 +17,7 @@
 
 #include <cstring>
 #include <queue>
+#include <sstream>
 
 #include "../compressor_registry.h"
 
@@ -115,6 +116,8 @@ void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
   // reset to zeros
   std::memset(dst, 0, dst_size);
   size_t len = compressed_size / sizeof(pair_t);
+  BPS_LOG(INFO) << "max=" << ptr[0].second << " min=" << ptr[len - 1].second
+                << " k=" << len;
   for (size_t i = 0; i < len; ++i) {
     auto& pair = ptr[i];
     dst[pair.first] = pair.second;
