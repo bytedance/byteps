@@ -119,7 +119,7 @@ void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
   BPS_LOG(INFO) << "min:(" << src[0].first << "," << src[0].second << ") "
                 << "mxn:(" << src[len - 1].first << "," << src[len - 1].second
                 << ") "
-                << "k=" << len << " dst == src:" << (dst == src);
+                << "k=" << len;
   for (size_t i = 0; i < len; ++i) {
     auto& pair = src[i];
     dst[pair.first] = pair.second;
