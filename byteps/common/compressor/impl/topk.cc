@@ -165,7 +165,7 @@ size_t TopkCompressor::FusedCompressImpl(pair_t* __restrict__ dst,
     return std::abs(lhs.second) > std::abs(rhs.second);
   };
 
-  memcpy_multithread(error, src, len * sizeof(scalar_t));
+  std::memcpy(error, src, len * sizeof(scalar_t));
 
   auto beg = reinterpret_cast<pair_t*>(dst);
   size_t size = 0;
