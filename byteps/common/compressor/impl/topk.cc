@@ -112,14 +112,16 @@ template <typename scalar_t, typename pair_t>
 void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
                                     const pair_t* __restrict__ src,
                                     size_t compressed_size, size_t dst_size) {
-  auto ptr = reinterpret_cast<const pair_t*>(src);
+  // auto ptr = reinterpret_cast<const pair_t*>(src);
   // reset to zeros
   std::memset(dst, 0, dst_size);
   size_t len = compressed_size / sizeof(pair_t);
-  BPS_LOG(INFO) << "max=" << ptr[0].second << " min=" << ptr[len - 1].second
-                << " k=" << len;
+  BPS_LOG(INFO) << "min:(" << src[0].first << "," << src[0].second << ") "
+                << "mxn:(" << src[len - 1].first << "," << src[len - 1].second
+                << ") "
+                << "k=" << len << " dst == src:" << (dst == src);
   for (size_t i = 0; i < len; ++i) {
-    auto& pair = ptr[i];
+    auto& pair = src[i];
     dst[pair.first] = pair.second;
   }
 }
