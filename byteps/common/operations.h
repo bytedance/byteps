@@ -69,6 +69,13 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      StatusCallback callback,
                      std::shared_ptr<std::vector<QueueType>> queue_list);
 
+Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input,
+                     std::shared_ptr<Tensor> output,
+                     std::shared_ptr<ReadyEvent> ready_event, const int device,
+                     const int priority, const int version,
+                     StatusCallback callback,
+                     std::shared_ptr<std::vector<QueueType>> queue_list);
+
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 // Only call these in Framework plugins for the best performance
@@ -79,9 +86,11 @@ void RegisterCompressor(const std::string &name,
 
 BPSContext &GetContextFromName(const std::string &name);
 
-std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
+std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device, bool node_local = false);
 
-std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
+std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device, bool node_local = false);
+
+std::shared_ptr<std::vector<QueueType>> GetAllgatherQueueList(int device, bool node_local = false);
 
 }  // namespace common
 }  // namespace byteps

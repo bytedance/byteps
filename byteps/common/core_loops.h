@@ -22,6 +22,7 @@ namespace common {
 void CoordinateReduceLoop();
 
 void CoordinateBroadcastLoop();
+void CoordinateAllgatherLoop();
 
 void CoordinatePushLoop();
 

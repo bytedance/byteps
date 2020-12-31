@@ -52,7 +52,8 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 }  // namespace
 
 void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string tensor_name, int version, int priority, int handle) {
+               const std::string tensor_name, int version, int priority, int handle,
+               bool node_local = false) {
 
   auto device = GetDeviceID(tensor);
   auto ready_event = RecordReadyEvent(device);
@@ -67,8 +68,8 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr);
 
-  auto queue_list = common::GetPushQueueList(device);
-  auto queue_list_pull = common::GetPullQueueList(device);
+  auto queue_list = common::GetPushQueueList(device, node_local);
+  auto queue_list_pull = common::GetPullQueueList(device, node_local);
   queue_list->insert(queue_list->end(), queue_list_pull->begin(),
                      queue_list_pull->end());
 
@@ -97,16 +98,79 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 }
 
 int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string& name, int version, int priority) {
+               const std::string& name, int version, int priority,
+               bool node_local) {
   ThrowIfError(common::CheckInitialized());
 
   auto handle = handle_manager.AllocateHandle();
   std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
   auto& context = common::GetContextFromName(tensor_name);
   if (context.initialized) {
-    StartTask(tensor, output, average, tensor_name, version, priority, handle);
+    StartTask(tensor, output, average, tensor_name, version, priority, handle,
+              node_local);
   } else {
-    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
+    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle, node_local);
+    t.detach();
+  }
+  return handle;
+}
+
+void StartAllGatherTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
+               const std::string tensor_name, int version, int priority, int handle,
+               bool node_local = false) {
+
+  auto device = GetDeviceID(tensor);
+  auto ready_event = RecordReadyEvent(device);
+  auto byteps_input = std::make_shared<TorchTensor>(tensor);
+  auto byteps_output = std::make_shared<TorchTensor>(output);
+  size_t size = byteps_input->size();
+  auto dtype = byteps_input->dtype();
+
+  auto& context = common::GetContextFromName(tensor_name);
+  common::InitTensor(context, size, dtype,
+                      (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(byteps_input->data())
+                      : nullptr);
+
+  auto queue_list = common::GetAllgatherQueueList(device, node_local);
+
+  auto enqueue_result = common::EnqueueAllgatherTensor(
+      context, byteps_input, byteps_output, ready_event, device, priority,
+      version,
+      [handle, average, tensor, output](const Status& status) mutable {
+        // Will execute in the `device` context.
+        if (average) {
+#if TORCH_VERSION >= 1005000000
+          if (isIntegralType(output.scalar_type(), false)) {
+            output.floor_divide_(byteps_size());
+            handle_manager.MarkDone(handle, status);
+            return;
+          }
+#endif
+          output.div_(byteps_size());
+        }
+        handle_manager.MarkDone(handle, status);
+      },
+      queue_list);
+
+  ThrowIfError(enqueue_result);
+  return;
+
+}
+
+int DoAllGather(::torch::Tensor tensor, ::torch::Tensor output, int average,
+               const std::string& name, int version, int priority,
+               bool node_local) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto handle = handle_manager.AllocateHandle();
+  std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+  auto& context = common::GetContextFromName(tensor_name);
+  if (context.initialized) {
+    StartAllGatherTask(tensor, output, average, tensor_name, version, priority, handle,
+              node_local);
+  } else {
+    std::thread t(StartAllGatherTask, tensor, output, average, tensor_name, version, priority, handle, node_local);
     t.detach();
   }
   return handle;
@@ -146,10 +210,11 @@ pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor,
   int curr_count;
 
   if (context.initialized) {
-    StartTask(tensor, output, average, tensor_name, version, priority, handle);
+    StartTask(tensor, output, average, tensor_name, version, priority, handle,
+      false);
   } else {
     std::thread t(StartTask, tensor, output, average, tensor_name, version,
-                  priority, handle);
+                  priority, handle, false);
     t.detach();
   }
 
@@ -183,6 +248,14 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_FloatTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor", &DoPushPullGroupSync);
 
+  // allgather
+  m.def("byteps_torch_allgather_async_torch_ByteTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_IntTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_LongTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_HalfTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_FloatTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_DoubleTensor", &DoAllGather);
+
 #if HAVE_CUDA
   m.def("byteps_torch_push_pull_async_torch_cuda_ByteTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_IntTensor", &DoPushPull);
@@ -197,6 +270,14 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_FloatTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_DoubleTensor", &DoPushPullGroupSync);
+
+  // allgather
+  m.def("byteps_torch_allgather_async_torch_cuda_ByteTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_cuda_IntTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_cuda_LongTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_cuda_HalfTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_cuda_FloatTensor", &DoAllGather);
+  m.def("byteps_torch_allgather_async_torch_cuda_DoubleTensor", &DoAllGather);
 #endif
 
   // basics

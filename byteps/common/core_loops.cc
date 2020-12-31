@@ -162,6 +162,11 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
         comm = BytePSGlobal::GetNccl()->GetSignalComm();
         break;
       }
+      case COORDINATE_ALLGATHER: {
+        sig = ALLGATHER_READY;
+        comm = BytePSGlobal::GetNccl()->GetSignalComm();
+        break;
+      }
       case COORDINATE_PUSH: {
         sig = PUSH_READY;
         comm = BytePSGlobal::GetBasicComm();
@@ -189,9 +194,20 @@ bool RunCoordinateLoopOnce(QueueType this_op) {
 
 inline void PostNcclCalls(
     std::shared_ptr<byteps::common::TensorTableEntry> task, QueueType this_op) {
-  BPS_CHECK(this_op == REDUCE || this_op == BROADCAST)
-      << "Only REDUCE and BROADCAST use NCCL.";
-  auto tensor = (this_op == REDUCE) ? task->tensor : task->output;
+  BPS_CHECK(this_op == REDUCE || this_op == BROADCAST || this_op == ALLGATHER)
+      << "Only REDUCE, BROADCAST and ALLGATHER use NCCL.";
+
+  decltype(task->tensor) tensor;
+
+  switch (this_op) {
+    case REDUCE:
+    case ALLGATHER: {
+      tensor = task->tensor;
+      break;
+    }
+    default:
+      tensor = task->output;
+  }
   BPS_CHECK(tensor);
   BPS_CHECK_EQ(0, tensor->size() % tensor->shape().num_elements());
 
@@ -203,6 +219,7 @@ inline void PostNcclCalls(
   if (task->device == CPU_DEVICE_ID) {
     p = (char *)(task->gpu_ptr) + offset;
   }
+  auto out_p = (char *)(task->output->data()) + offset;
 
   auto nccl_dtype = getNcclDataType(tensor->dtype());
 
@@ -213,6 +230,7 @@ inline void PostNcclCalls(
   auto nccl_size = nccl->GetSize();
   auto nccl_rank = nccl->GetRank(key, this_op);
 
+  auto num_elem_all = len / unit_len;
   auto num_elem_per_gpu = len / nccl_size / unit_len;
   auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
   if (BytePSGlobal::IsUsingReduce()) {
@@ -251,6 +269,12 @@ inline void PostNcclCalls(
                            (ncclRedOp_t)ncclSum, (int)nccl_root,
                            (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
     }
+  } else if (this_op == ALLGATHER) {
+    BPS_CHECK(task->device != CPU_DEVICE_ID);
+    NCCLCHECK(ncclAllGather(
+        (const void *)(p),
+        (void *)out_p, (size_t)num_elem_all, (ncclDataType_t)nccl_dtype,
+        (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
   } else {
     if (num_elem_per_gpu) {
       NCCLCHECK(ncclAllGather(
@@ -275,7 +299,7 @@ bool RunRootNcclLoopOnce() {
   BPS_CHECK_EQ(rank, root);
 
   int nccl_size = BytePSGlobal::GetNccl()->GetSize();
-  QueueType nccl_ops[] = {REDUCE, BROADCAST};
+  QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER};
 
   auto nccl_entry = std::make_shared<NcclGroupEntry>();
   auto &tasks = nccl_entry->tasks;
@@ -294,8 +318,22 @@ bool RunRootNcclLoopOnce() {
 
       if (nccl_size > 1) {
         // notify non-root devices
+        BytePSCommSignal sig;
+        switch (this_op) {
+          case REDUCE:
+            sig = DO_REDUCE;
+            break;
+          case BROADCAST:
+            sig = DO_BROADCAST;
+            break;
+          case ALLGATHER:
+            sig = DO_ALLGATHER;
+            break;
+          default:
+            BPS_CHECK(0) << "unsupported operation: " << this_op;
+        }
         struct BytePSCommMsg msg = {
-            rank, (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST, task->key};
+            rank, sig, task->key};
         signal_comm->broadcastSignal(&msg, sizeof(BytePSCommMsg));
         PostNcclCalls(task, this_op);
       }
@@ -337,6 +375,8 @@ bool RunNonRootNcclLoopOnce() {
     QueueType this_op = REDUCE;
     if (msg.signal == DO_BROADCAST) {
       this_op = BROADCAST;
+    } else if (msg.signal == DO_ALLGATHER) {
+      this_op = ALLGATHER;
     } else {
       BPS_CHECK_EQ(msg.signal, DO_REDUCE) << msg.signal << ", " << DO_REDUCE;
     }
@@ -750,6 +790,13 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
   return true;
+}
+
+void CoordinateAllgatherLoop() {
+  while (RunCoordinateLoopOnce(COORDINATE_ALLGATHER) &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
 }
 
 void CoordinateReduceLoop() {

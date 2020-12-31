@@ -60,9 +60,10 @@ class BytePSBasics(object):
         """A function that inits BytePS."""
         atexit.register(self.shutdown)
         if lazy:
-            return self.C_LIB_CTYPES.byteps_lazy_init()
+            ret = self.C_LIB_CTYPES.byteps_lazy_init()
         else:
-            return self.C_LIB_CTYPES.byteps_init()
+            ret = self.C_LIB_CTYPES.byteps_init()
+        return ret
 
     def shutdown(self):
         """A function that shuts BytePS down."""

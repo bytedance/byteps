@@ -74,6 +74,11 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type) {
         _rt = BytePSGlobal::GetBroadcastTable();
       }
       break;
+    case ALLGATHER:
+      if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        _rt = BytePSGlobal::GetAllgatherTable();
+      }
+      break;
     default:
       break;
   }

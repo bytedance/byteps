@@ -80,6 +80,7 @@ void byteps_lazy_init() {
   } else {
     func.push_back(CoordinateReduceLoop);
     func.push_back(CoordinateBroadcastLoop);
+    func.push_back(CoordinateAllgatherLoop);
     func.push_back(NonRootNcclLoop);
   }
 
@@ -280,6 +281,103 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   return Status::OK();
 }
 
+Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input,
+                     std::shared_ptr<Tensor> output,
+                     std::shared_ptr<ReadyEvent> ready_event, const int device,
+                     const int priority, const int version,
+                     StatusCallback callback,
+                     std::shared_ptr<std::vector<QueueType>> queue_list) {
+  if (BytePSGlobal::ShouldShutdown()) {
+    return Status::OK();
+  }
+
+  auto &name = context.tensor_name;
+
+  // add queue
+  if (BytePSGlobal::IsRootDevice() && !context.compressor_list.empty()) {
+    auto it = std::find(queue_list->begin(), queue_list->end(), PUSH);
+    it = queue_list->insert(it, COMPRESS);  // before PUSH
+    it = std::find(queue_list->begin(), queue_list->end(), PULL);
+    queue_list->insert(it + 1, DECOMPRESS);  // after PULL
+  }
+
+  std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
+  e->tensor_name = name;
+  e->context = &context;
+  e->tensor = input;
+  e->output = output;
+  e->ready_event = ready_event;
+  e->device = device;
+  e->priority = priority;
+  e->version = version;
+  e->callback = callback;
+
+  if (device == CPU_DEVICE_ID) {
+    cudaError_t err = cudaHostRegister(const_cast<void *>(input->data()),
+                                       input->size(), cudaHostRegisterMapped);
+    if (err == cudaSuccess) {
+      BPS_LOG(DEBUG) << name
+                     << " cpu address has changed, so it is pinned again.";
+    }
+    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr),
+                                       const_cast<void *>(input->data()), 0));
+  }
+
+  e->cpubuff = context.cpubuff;
+  e->gpu_ptr = context.gpu_ptr;
+  e->pcie_cpubuff = context.pcie_cpubuff;
+  e->queue_list = *queue_list;
+  e->counter_ptr = std::make_shared<std::atomic_int>(0);
+  e->total_partnum = context.key_list.size();
+
+  std::vector<std::shared_ptr<TensorTableEntry>> partitions;
+  PartitionTensor(e, partitions);
+  BPS_CHECK_EQ(context.key_list.size(), partitions.size())
+      << name << ": " << context.key_list.size() << ", " << partitions.size();
+
+  if (e->queue_list.size() == 0) {
+    BPS_CHECK(e->tensor_name != "");
+    BPS_LOG(TRACE) << e->tensor_name << ", device=" << e->device
+                   << " has no queue_list assigned, skipped";
+    e->callback(Status::OK());
+    return Status::OK();
+  }
+
+  // add for profiling
+  if (context.profile_flag) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+
+    BPSCommTime *ret = new BPSCommTime;
+    ret->start_t = (long long)(us.count());
+    context.comm_time.push(ret);
+  }
+
+  unsigned int accumulated = 0;
+  for (size_t i = 0; i < partitions.size(); ++i) {
+    auto task = partitions[i];
+    task->key = context.key_list[i];  // assign the key now
+    BPS_CHECK(task->tensor_name != "");
+    BPS_LOG(TRACE) << "EnqueueTensor: " << (task->tensor_name)
+                   << ", key=" << (task->key) << ", offset=" << (task->offset)
+                   << ", len=" << (task->len) << ", device=" << (task->device)
+                   << " rank=" << BytePSGlobal::GetLocalRank();
+
+    BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
+    accumulated += task->len;
+  }
+
+  auto tensor = (e->tensor ? e->tensor : e->output);
+  BPS_CHECK(tensor);
+  BPS_CHECK_EQ(accumulated, tensor->size())
+      << "accumulated partition size not equal to original tensor size";
+
+  BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
+                 << ", rank=" << BytePSGlobal::GetLocalRank();
+  return Status::OK();
+}
+
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   std::lock_guard<std::mutex> lock(context.init_mutex);
   if (context.initialized) {
@@ -348,8 +446,16 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
-    context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
+    int debug_mode = getenv("BYTEPS_DEBUG_MODE") ?
+                     atoi(getenv("BYTEPS_DEBUG_MODE")) : 0;
+    std::string shm_prefix = std::string("BytePS_ShM_");
+    if (debug_mode) {
+      shm_prefix = shm_prefix + std::to_string(BytePSGlobal::GetWorkerID()) +
+                   std::string("_");
+    }
+    context.cpubuff = shm_obj->openSharedMemory(shm_prefix,
                                                 key_list[0], aligned_size);
+
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
 
@@ -426,7 +532,9 @@ void RegisterCompressor(const std::string &name,
   return BytePSGlobal::RegisterCompressor(name, kwargs);
 }
 
-std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
+std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device,
+    bool node_local) {
+
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 
   // Per-PCIe-switch NCCL reduce
@@ -438,7 +546,7 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
   }
 
   // Copy from GPU to CPU
-  if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+  if ((!node_local && BytePSGlobal::IsDistributed()) || BytePSGlobal::IsCrossPcieSwitch()) {
     queue_list->push_back(COPYD2H);
   }
 
@@ -449,7 +557,7 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
 
   // Push in distributed mode
   // In case IsCrossPcieSwitch(), PUSH runs as a dummy barrier
-  if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+  if ((!node_local && BytePSGlobal::IsDistributed()) || BytePSGlobal::IsCrossPcieSwitch()) {
     if (BytePSGlobal::IsRootDevice()) {
       queue_list->push_back(PUSH);
     } else {
@@ -459,18 +567,20 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
   return queue_list;
 }
 
-std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
+std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device,
+    bool node_local) {
+
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 
   // Pull in distributed mode
-  if (BytePSGlobal::IsDistributed()) {
+  if (!node_local && BytePSGlobal::IsDistributed()) {
     if (BytePSGlobal::IsRootDevice()) {
       queue_list->push_back(PULL);
     }
   }
 
   // Copy from CPU to GPU
-  if (BytePSGlobal::IsDistributed() || BytePSGlobal::IsCrossPcieSwitch()) {
+  if ((!node_local && BytePSGlobal::IsDistributed()) || BytePSGlobal::IsCrossPcieSwitch()) {
     queue_list->push_back(COPYH2D);
   }
 
@@ -480,6 +590,25 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
   } else {
     queue_list->push_back(COORDINATE_BROADCAST);
     queue_list->push_back(BROADCAST);
+  }
+  return queue_list;
+}
+
+std::shared_ptr<std::vector<QueueType>> GetAllgatherQueueList(int device,
+    bool node_local) {
+
+  auto queue_list = std::make_shared<std::vector<QueueType>>();
+
+  assert(node_local);
+
+  // Per-PCIe-switch NCCL reduce
+  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+    queue_list->push_back(ALLGATHER);
+    BPS_LOG(DEBUG) << "added ALLGATHER to queue list";
+  } else {
+    queue_list->push_back(COORDINATE_ALLGATHER);
+    queue_list->push_back(ALLGATHER);
+    BPS_LOG(DEBUG) << "added COORDINATE_ALLGATHER and ALLGATHER to queue list";
   }
   return queue_list;
 }

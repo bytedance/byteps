@@ -1,6 +1,9 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Changelog for BytePS
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+0.2.5.post2 (2020-11)
+* add ability to collect PushPull performance data
+
 0.2.4 (2020-06)
 ------------------
 * Fix compatibility issue with tf2 + standalone keras
