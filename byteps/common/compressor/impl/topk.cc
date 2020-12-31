@@ -54,24 +54,28 @@ size_t TopkCompressor::CompressImpl(pair_t* __restrict__ dst,
     return std::abs(lhs.second) > std::abs(rhs.second);
   };
 
-  auto beg = reinterpret_cast<pair_t*>(dst);
   size_t size = 0;
   for (size_t i = 0; i < len; ++i) {
     if (i < this->_k) {
-      beg[size] = std::make_pair(i, src[i]);
+      dst[size] = std::make_pair(i, src[i]);
       size++;
-      std::push_heap(beg, beg + size, comp);
+      std::push_heap(dst, dst + size, comp);
     } else {
-      auto& top = *beg;
+      auto& top = *dst;
       // note: compare absolute value
       if (std::abs(src[i]) > std::abs(top.second)) {
-        std::pop_heap(beg, beg + size, comp);
-        beg[size - 1] = std::make_pair(i, src[i]);
-        std::push_heap(beg, beg + size, comp);
+        std::pop_heap(dst, dst + size, comp);
+        dst[size - 1] = std::make_pair(i, src[i]);
+        std::push_heap(dst, dst + size, comp);
       }
     }
   }
-
+#ifdef BYTEPS_BUILDING_SERVER
+  BPS_LOG(INFO) << "min:(" << dst[0].first << "," << dst[0].second << ") "
+                << "max:(" << dst[len - 1].first << "," << dst[len - 1].second
+                << ") "
+                << "k=" << this->_k;
+#endif
   return this->_k * sizeof(pair_t);
 }  // namespace compressor
 
@@ -117,7 +121,7 @@ void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
   std::memset(dst, 0, dst_size);
   size_t len = compressed_size / sizeof(pair_t);
   BPS_LOG(INFO) << "min:(" << src[0].first << "," << src[0].second << ") "
-                << "mxn:(" << src[len - 1].first << "," << src[len - 1].second
+                << "max:(" << src[len - 1].first << "," << src[len - 1].second
                 << ") "
                 << "k=" << len;
   for (size_t i = 0; i < len; ++i) {
@@ -172,26 +176,25 @@ size_t TopkCompressor::FusedCompressImpl(pair_t* __restrict__ dst,
 
   std::memcpy(error, src, len * sizeof(scalar_t));
 
-  auto beg = reinterpret_cast<pair_t*>(dst);
   size_t size = 0;
   for (size_t i = 0; i < len; ++i) {
     if (i < this->_k) {
-      beg[size] = std::make_pair(i, src[i]);
+      dst[size] = std::make_pair(i, src[i]);
       size++;
-      std::push_heap(beg, beg + size, comp);
+      std::push_heap(dst, dst + size, comp);
     } else {
-      auto& top = *beg;
+      auto& top = *dst;
       // note: compare absolute value
       if (std::abs(src[i]) > std::abs(top.second)) {
-        std::pop_heap(beg, beg + size, comp);
-        beg[size - 1] = std::make_pair(i, src[i]);
-        std::push_heap(beg, beg + size, comp);
+        std::pop_heap(dst, dst + size, comp);
+        dst[size - 1] = std::make_pair(i, src[i]);
+        std::push_heap(dst, dst + size, comp);
       }
     }
   }
 
   for (int i = 0; i < this->_k; ++i) {
-    error[beg[i].first] = 0;
+    error[dst[i].first] = 0;
   }
 
   return this->_k * sizeof(pair_t);
