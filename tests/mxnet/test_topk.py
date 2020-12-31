@@ -32,7 +32,7 @@ from utils import fake_data
 
 def topk(x, k):
     y = x.flatten()
-    indices = np.argsort(np.abs(y))[-k:][::-1]
+    indices = np.argpartition(np.abs(y), len(y)-k)[-k:]
     vals = y[indices]
     y.fill(0)
     for idx, val in zip(indices, vals):
