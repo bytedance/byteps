@@ -89,9 +89,10 @@ void BytePSServerEngineThread(int i) {
     if (iter != compressor_map_.end()) {
       // compress
       if (msg.ops == ALL_RECV) {
+        auto& fp16_copy = fp16_copy_[msg.key];
         common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
                                           msg.len, msg.type.dtype),
-            compressed;
+            compressed{fp16_copy.tensor};
         iter->second->Compress(grad, compressed);
         // 1. compress
         auto& updates = update_buf_[msg.key];

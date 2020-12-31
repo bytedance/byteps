@@ -70,12 +70,7 @@ size_t TopkCompressor::CompressImpl(pair_t* __restrict__ dst,
       }
     }
   }
-#ifdef BYTEPS_BUILDING_SERVER
-  BPS_LOG(INFO) << "min:(" << dst[0].first << "," << dst[0].second << ") "
-                << "max:(" << dst[len - 1].first << "," << dst[len - 1].second
-                << ") "
-                << "k=" << this->_k;
-#endif
+
   return this->_k * sizeof(pair_t);
 }  // namespace compressor
 
@@ -116,14 +111,10 @@ template <typename scalar_t, typename pair_t>
 void TopkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
                                     const pair_t* __restrict__ src,
                                     size_t compressed_size, size_t dst_size) {
-  // auto ptr = reinterpret_cast<const pair_t*>(src);
   // reset to zeros
   std::memset(dst, 0, dst_size);
   size_t len = compressed_size / sizeof(pair_t);
-  BPS_LOG(INFO) << "min:(" << src[0].first << "," << src[0].second << ") "
-                << "max:(" << src[len - 1].first << "," << src[len - 1].second
-                << ") "
-                << "k=" << len;
+
   for (size_t i = 0; i < len; ++i) {
     auto& pair = src[i];
     dst[pair.first] = pair.second;
