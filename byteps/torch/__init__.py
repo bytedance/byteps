@@ -112,16 +112,17 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         name = self._parameter_names.get(param.__hash__())
                     else:
                         name = self._parameter_names.get(param)
+
+                    byteps_params = dict(
+                        filter(lambda attr: attr[0].startswith(
+                            "byteps_",), param.__dict__.items())
+                    )
                     # do not compress embeddings
-                    if "embeddings" in name:
+                    if "embeddings" in name and byteps_params.get("byteps_compressor_type") == "topk":
                         declare("Gradient."+name)
                     else:
-                        byteps_params = dict(
-                            filter(lambda attr: attr[0].startswith(
-                                "byteps_",), param.__dict__.items())
-                        )
                         declare("Gradient."+name, **byteps_params)
-                    print("Gradient."+name, param.data.numel())
+                        print("Gradient."+name, param.data.numel())
 
     @ staticmethod
     def find_duplicates(lst):
