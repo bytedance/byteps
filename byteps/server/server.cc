@@ -32,6 +32,16 @@ BytePSArray* GetStore(uint64_t key) {
   return &store_[key];
 }
 
+UpdateBuf* GetUpdate(uint64_t key) {
+  std::lock_guard<std::mutex> lock(update_mu_);
+  return &update_buf_[key];
+}
+
+BytePSArray* GetFP16Copy(uint64_t key) {
+  std::lock_guard<std::mutex> lock(fp16_mu_);
+  return &fp16_copy_[key];
+}
+
 void SendPushResponse(uint64_t key, const ps::KVMeta& req,
                       ps::KVServer<char>* server) {
   auto iterator = push_response_map_.find(key);
@@ -89,15 +99,15 @@ void BytePSServerEngineThread(int i) {
     if (iter != compressor_map_.end()) {
       // compress
       if (msg.ops == ALL_RECV) {
-        auto& fp16_copy = fp16_copy_[msg.key];
+        auto fp16_copy = GetFP16Copy(msg.key);
         common::compressor::tensor_t grad(reinterpret_cast<char*>(msg.src),
                                           msg.len, msg.type.dtype),
-            compressed{fp16_copy.tensor};
+            compressed{fp16_copy->tensor};
         iter->second->Compress(grad, compressed);
         // 1. compress
-        auto& updates = update_buf_[msg.key];
-        updates.merged.tensor = compressed.data;
-        updates.merged.len = compressed.size;
+        auto updates = GetUpdate(msg.key);
+        updates->merged.tensor = compressed.data;
+        updates->merged.len = compressed.size;
       } else {  // decompress
         auto compressed_len = msg.sarray.lens[0];
         CHECK_LE(compressed_len, msg.len);
@@ -113,19 +123,19 @@ void BytePSServerEngineThread(int i) {
     } else {
       if (msg.ops == ALL_RECV) {
         // 2. no compress
-        auto& updates = update_buf_[msg.key];
+        auto updates = GetUpdate(msg.key);
 
         // cast down into low-precision before communication
         if (msg.mixed_precision) {
-          auto& fp16_copy = fp16_copy_[msg.key];
+          auto fp16_copy = GetFP16Copy(msg.key);
           bps_reducer_->copy_mixed_precision(
-              fp16_copy.tensor, msg.src, fp16_copy.len,
-              static_cast<common::DataType>(fp16_copy.dtype), false);
-          updates.merged.tensor = fp16_copy.tensor;
-          updates.merged.len = fp16_copy.len;
+              fp16_copy->tensor, msg.src, fp16_copy->len,
+              static_cast<common::DataType>(fp16_copy->dtype), false);
+          updates->merged.tensor = fp16_copy->tensor;
+          updates->merged.len = fp16_copy->len;
         } else {
-          updates.merged.tensor = reinterpret_cast<char*>(msg.src);
-          updates.merged.len = msg.len;
+          updates->merged.tensor = reinterpret_cast<char*>(msg.src);
+          updates->merged.len = msg.len;
         }
       }
     }

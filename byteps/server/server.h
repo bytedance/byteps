@@ -112,12 +112,14 @@ std::vector<std::unordered_map<uint64_t, size_t>> pull_cnt_;
 
 // byteps handler
 std::mutex handle_mu_;
+std::mutex update_mu_;
 std::unordered_map<uint64_t, UpdateBuf> update_buf_;
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>>
     compressor_map_;
 
 // address map
 std::mutex store_mu_;
+std::mutex fp16_mu_;
 std::unordered_map<uint64_t, BytePSArray> store_;      // master copy
 std::unordered_map<uint64_t, BytePSArray> fp16_copy_;  // for mixed precision
 
