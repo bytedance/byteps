@@ -1015,6 +1015,16 @@ if os.path.exists('launcher/launch.py'):
         os.mkdir('bin')
     shutil.copyfile('launcher/launch.py', 'bin/bpslaunch')
 
+extensions_to_build = [server_lib, tensorflow_lib, mxnet_lib, pytorch_lib]
+if int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
+    extensions_to_build.remove(mxnet_lib)
+
+if int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+    extensions_to_build.remove(tensorflow_lib)
+
+if int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+    extensions_to_build.remove(pytorch_lib)
+
 setup(
     name=NAME,
     version=about['__version__'],
@@ -1041,7 +1051,7 @@ setup(
         'Programming Language :: Python :: Implementation :: PyPy',
         'Operating System :: POSIX :: Linux'
     ],
-    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib],
+    ext_modules=extensions_to_build,
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,
