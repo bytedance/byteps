@@ -930,7 +930,7 @@ class custom_build_ext(build_ext):
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
-                make_option += "USE_RDMA=1 "
+                make_option += "USE_RDMA=0 "
             if build_ucx():
                 make_option += 'USE_UCX=1 '
 
