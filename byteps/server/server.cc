@@ -328,11 +328,11 @@ void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
   auto& updates = update_buf_[key];
   float workload = stored->len;
   if (stored->len > len * 100) {
-    workload *= 1.1;
+    workload *= 3.42; // topk
   } else if (stored->len > len * 10) {
-    workload *= 2.5;
+    workload *= 13.77; // onebit
   } else if (stored->len > len * 2) {
-    workload *= 1.9;
+    workload *= 4.41; // dithering
   }
   auto tid = GetThreadID(key, int(workload));
   if (updates.request.empty()) {  // from the first incoming worker
