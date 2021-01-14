@@ -326,15 +326,7 @@ void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
                       const ps::KVPairs<char>& req_data,
                       ps::KVServer<char>* server, bool mixed_precision) {
   auto& updates = update_buf_[key];
-  float workload = stored->len;
-  if (stored->len > len * 100) {
-    workload *= 0.76; // topk
-  } else if (stored->len > len * 10) {
-    workload *= 4.21; // onebit
-  } else if (stored->len > len * 2) {
-    workload *= 1.87; // dithering
-  }
-  auto tid = GetThreadID(key, int(workload));
+  auto tid = GetThreadID(key, stored->len);
   if (updates.request.empty()) {  // from the first incoming worker
     if (sync_mode_) {
       if (debug_mode_ && (debug_key_ == key)) {
