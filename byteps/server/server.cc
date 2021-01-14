@@ -319,13 +319,22 @@ void BytePSHanleInit(uint64_t key, DataHandleType type, size_t len,
   updates.request.clear();
 }
 
+
 void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
                       BytePSArray* stored, char* recved,
                       const ps::KVMeta& req_meta,
                       const ps::KVPairs<char>& req_data,
                       ps::KVServer<char>* server, bool mixed_precision) {
   auto& updates = update_buf_[key];
-  auto tid = GetThreadID(key, stored->len);
+  float workload = stored->len;
+  if (stored->len > len * 100) {
+    workload *= 1.1;
+  } else if (stored->len > len * 10) {
+    workload *= 2.5;
+  } else if (stored->len > len * 2) {
+    workload *= 1.9;
+  }
+  auto tid = GetThreadID(key, int(workload));
   if (updates.request.empty()) {  // from the first incoming worker
     if (sync_mode_) {
       if (debug_mode_ && (debug_key_ == key)) {
