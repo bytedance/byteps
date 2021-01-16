@@ -112,7 +112,7 @@ optimizer = bsc.ScheduledOptimizer(model, optimizer, num_steps)
 
 ByteScheduler requires a TF installation in the build environment. To build [the plugin](bytescheduler/tensorflow/plugin.cc), just run the [Makefile](bytescheduler/tensorflow/Makefile).
 
-ByteScheduler currently requires recompiling TF (tested with r1.13) with [tf.patch](bytescheduler/tensorflow/tf.patch) to limit memory leak.
+ByteScheduler currently requires recompiling TF (tested with r1.13) with [tf.patch](bytescheduler/tensorflow/tf.patch) to limit memory leak. Check [TensorFlow official doc](https://www.tensorflow.org/install/source#gpu) to see how to build from source (Note with GCC 4.8).
 
 Due to ABI compatibility issue, it is recommended to use the same compiler for the plugin and core TF. More details could be found [here](https://github.com/tensorflow/tensorflow/issues/27067).
 
