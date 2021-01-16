@@ -38,7 +38,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 200 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 200 && \
     update-alternatives --install /usr/bin/x86_64-linux-gnu-g++ x86_64-linux-gnu-g++ /usr/bin/g++-4.9 200
 
-# May need to uninstall default MXNet and install mxnet-cu90==1.5.0
+# If segfault, uninstall the default MXNet and build the below MXNet from source code: https://github.com/bytedance/byteps/issues/355
 
 # Clone MXNet as ByteScheduler compilation requires header files
 RUN git clone --recursive --branch v1.5.x https://github.com/apache/incubator-mxnet.git
