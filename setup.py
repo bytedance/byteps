@@ -176,7 +176,7 @@ def get_mpi_flags():
 def get_cpp_flags(build_ext):
     last_err = None
     default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-fno-finite-math-only',
-                     '-Wall', '-fopenmp', '-march=native']
+                     '-Wall', '-fopenmp', '-march=native', '-DMSHADOW_USE_F16C=1']
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
