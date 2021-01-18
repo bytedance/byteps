@@ -26,6 +26,7 @@ using namespace ps;
 // engine related
 std::vector<PriorityQueue*> engine_queues_;
 std::vector<std::thread*> engine_threads_;
+float lb_factor_ = 1;
 
 BytePSArray* GetStore(uint64_t key) {
   std::lock_guard<std::mutex> lock(store_mu_);
@@ -319,7 +320,6 @@ void BytePSHanleInit(uint64_t key, DataHandleType type, size_t len,
   updates.request.clear();
 }
 
-
 void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
                       BytePSArray* stored, char* recved,
                       const ps::KVMeta& req_meta,
@@ -327,13 +327,12 @@ void BytePSHandlePush(uint64_t key, DataHandleType type, size_t len,
                       ps::KVServer<char>* server, bool mixed_precision) {
   auto& updates = update_buf_[key];
   float workload = stored->len;
-  if (stored->len > len * 100) {
-    workload *= 0.606;  // topk
-  } else if (stored->len > len * 10) {
-    workload *= 1.804;  // onebit
-  } else if (stored->len > len * 2) {
-    workload *= 1.497;  // dithering
+
+  auto iter = compressor_map_.find(key);
+  if (iter != compressor_map_.end()) {
+    workload *= lb_factor_;
   }
+
   auto tid = GetThreadID(key, int(workload));
   if (updates.request.empty()) {  // from the first incoming worker
     if (sync_mode_) {
@@ -550,6 +549,13 @@ void init_global_env() {
   enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
   if (enable_schedule_)
     LOG(INFO) << "Enable engine scheduling for BytePS server";
+
+  char* lb_factor_var = getenv("BYTEPS_SERVER_LOAD_BALANCE_FACTOR");
+  if (lb_factor_var) {
+    lb_factor_ = atof(lb_factor_var);
+    LOG(INFO) << "BytePS server engine uses " << lb_factor_
+              << " load balance factor.";
+  }
 }
 
 extern "C" void byteps_server() {
