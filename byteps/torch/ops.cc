@@ -81,6 +81,7 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 #if TORCH_VERSION >= 1005000000
           if (isIntegralType(output.scalar_type())) {
             output.floor_divide_(byteps_size());
+            handle_manager.MarkDone(handle, status);
             return;
           }
 #endif
