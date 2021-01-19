@@ -56,10 +56,10 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
     data = updates.merged.tensor;
     len = updates.merged.len;
   } else {
-    auto stored = GetStore(key);
-    CHECK(stored->tensor) << "init " << key << " first";
-    data = stored->tensor;
-    len = stored->len;
+    auto stored = store_.at(key);
+    CHECK(stored.tensor) << "init " << key << " first";
+    data = stored.tensor;
+    len = stored.len;
   }
 
   // send pull response
