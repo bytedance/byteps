@@ -48,10 +48,19 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req,
 void SendPullResponse(const DataHandleType type, const uint64_t key,
                       const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
-  auto& updates = update_buf_[key];
-  CHECK(updates.merged.tensor) << "init " << key << " first";
-  char* data = updates.merged.tensor;
-  auto len = updates.merged.len;
+  char* data;
+  size_t len;
+  if (sync_mode_) {
+    auto& updates = update_buf_[key];
+    CHECK(updates.merged.tensor) << "init " << key << " first";
+    data = updates.merged.tensor;
+    len = updates.merged.len;
+  } else {
+    auto stored = GetStore(key);
+    CHECK(stored->tensor) << "init " << key << " first";
+    data = stored->tensor;
+    len = stored->len;
+  }
 
   // send pull response
   auto iterator = pull_response_map_.find(key);
@@ -508,7 +517,7 @@ extern "C" void byteps_server() {
       free(it.second.tensor);
     }
   }
-  
+
   LOG(INFO) << "byteps has been shutdown";
   return;
 }
