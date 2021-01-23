@@ -290,8 +290,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       stored->dtype = type.dtype;
       CHECK(stored->tensor);
 
-      bps_reducer_->copy(stored->tensor, recved,
-                         len);  // we may not need this copy
+      memset(stored->tensor, 0, stored->len);
+
       for (const auto& req : updates.request) {
         SendPushResponse(key, req, server);
       }
