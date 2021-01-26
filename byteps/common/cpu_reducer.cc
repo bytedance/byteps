@@ -226,6 +226,9 @@ int CpuReducer::_copy_mixed_precision_down(T* __restrict__ dst,
 #pragma omp parallel for simd num_threads(_num_threads)
   for (size_t i = 0; i < len / sizeof(T); ++i) {
     dst[i] = src[i];
+    if (!std::isfinite(dst[i])) {
+      dst[i] = 0;
+    }
   }
   return 0;
 }
