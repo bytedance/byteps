@@ -229,14 +229,15 @@ class DistributedTrainer(mx.gluon.Trainer):
                 )
 
                 name = param.name
+                print(name, flush=True)
                 # do not compress embeddings
                 if "word_embed" in name and byteps_params.get("byteps_compressor_type") == "topk":
                     byteps_declare_tensor("gradient_" + str(i))
-                    print("Not Compress Gradient." + name)
+                    print("Not Compress Gradient." + name, flush=True)
                 else:
                     byteps_declare_tensor(
                         "gradient_" + str(i), **byteps_params)
-                    print("Gradient."+name)
+                    print("Compress Gradient."+name, flush=True)
 
     def __del__(self):
         if local_rank() == 0:
