@@ -120,6 +120,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     # do not compress embeddings
                     if "embeddings" in name and byteps_params.get("byteps_compressor_type") == "topk":
                         declare("Gradient."+name)
+                        print("Not Compress Gradient." +
+                              name, param.data.numel())
                     else:
                         declare("Gradient."+name, **byteps_params)
                         print("Gradient."+name, param.data.numel())
