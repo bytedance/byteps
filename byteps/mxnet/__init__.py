@@ -232,6 +232,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 # do not compress embeddings
                 if "embeddings" in name and byteps_params.get("byteps_compressor_type") == "topk":
                     byteps_declare_tensor("gradient_" + str(i))
+                    print("Not Compress Gradient." +
+                          name, param.data.numel())
                 else:
                     byteps_declare_tensor(
                         "gradient_" + str(i), **byteps_params)
