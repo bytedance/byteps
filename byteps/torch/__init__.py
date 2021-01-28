@@ -331,6 +331,7 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
         return
 
     params = []
+    scalars = {}
     callbacks = {}
     occurrences = collections.defaultdict(int)
 
@@ -351,19 +352,16 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             return dtype(x)
 
     # Some optimizer parameters may be represented as scalars instead of
-    # tensors.  In such cases, we need to wrap the scalar in a tensor, then
-    # broadcast, then update the appropriate value in the state_dict with the
-    # new unwrapped scalar value via a callback.
+    # tensors.  In such cases, we place the scalars into a single dict.
     def _create_callback(pid, name, t, p):
-        def _from_tensor():
-            state_dict['state'][pid][name] = t(p.cpu().numpy()[0])
-        return _from_tensor
+        def _assign_state(v):
+            state_dict['state'][pid][name] = v
+        return _assign_state
 
     def _create_option_callback(index, option_key, option_tensor, dtypes):
-        def _from_tensor():
-            optimizer.param_groups[index][option_key] = _recursive_cast(
-                option_tensor.cpu().numpy()[0], dtypes)
-        return _from_tensor
+        def _assign_option(v):
+            optimizer.param_groups[index][option_key] = v
+        return _assign_option
 
     # Param groups are an ordered list, normally there is only one per model,
     # but users can add additional param groups for example to train
@@ -374,15 +372,19 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             if option_key == 'params':
                 continue
 
-            # Options like the learning rate are scalar, and need to be wrapped in tensors
+            # Options like the learning rate are scalar, and need to be broadcast separately
             key = '%s.%d' % (option_key, index)
             dtypes = _get_types(option_value)
             option_tensor = torch.Tensor([option_value]).cuda()
+            scalars[key] = option_value
             callbacks[key] = _create_option_callback(index, option_key, option_tensor, dtypes)
-            params.append((key, option_tensor))
 
         # The params list here is ordered by the layers in the model
         for pid in group['params']:
+            if pid not in state_dict['state']:
+                # The param has not set requires_grad, so skip broadcast
+                continue
+
             param_state = state_dict['state'][pid]
             for name, p in param_state.items():
                 # Some parameter names may appear more than once, in which
@@ -391,14 +393,14 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
                 occurrences[name] += 1
                 key = '%s.%d' % (str(name), occurrences[name])
 
-                if not torch.is_tensor(p):
-                    # Wrap the scalar in a FloatTensor, and remember its type
-                    # so we can cast it back after unwrapping
+                if torch.is_tensor(p):
+                    # Tensor -> use broadcast_parameters
+                    params.append((key, p))
+                else:
+                    # Scalar
                     t = type(p)
-                    p = torch.Tensor([p]).cuda()
+                    scalars[key] = p
                     callbacks[key] = _create_callback(pid, name, t, p)
-
-                params.append((key, p))
 
     # Synchronized broadcast of all parameters
     broadcast_parameters(params, root_rank, prefix)
