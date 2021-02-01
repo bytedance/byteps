@@ -114,7 +114,7 @@ log('Running benchmark...')
 img_secs = []
 enable_profiling = args.profiler & (bps.rank() == 0)
 
-with torch.autograd.profiler.profile(enable_profiling, True) as prof:
+with torch.autograd.profiler.profile(enabled=enable_profiling, use_cuda=True) as prof:
     for x in range(args.num_iters):
         time = timeit.timeit(benchmark_step, number=args.num_batches_per_iter)
         img_sec = args.batch_size * args.num_batches_per_iter / time
