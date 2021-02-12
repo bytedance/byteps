@@ -197,6 +197,8 @@ class DistributedDataParallel(Module):
             ...     ddp(input).backward()  # no synchronization, accumulate grads
             ... ddp(another_input).backward()  # synchronize grads
         """
+        if self._enable_async:
+            raise AssertionError("skip_synchronize cannot be used in async training")
         old_require_backward_grad_sync = self._require_backward_grad_sync
         self._require_backward_grad_sync = False
         try:
