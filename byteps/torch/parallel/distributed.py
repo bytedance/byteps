@@ -140,6 +140,7 @@ class DistributedDataParallel(Module):
         self.modules_buffers = [list(self.module.buffers())]
         self._compression = compression
         self._enable_async = False
+        self._require_backward_grad_sync = True
         named_parameters = self.module.named_parameters()
         named_parameters = list(named_parameters)
         if len(named_parameters) > 0:
@@ -179,6 +180,29 @@ class DistributedDataParallel(Module):
         module_states = list(self.module.state_dict().values())
         if len(module_states) > 0:
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
+
+    @contextmanager
+    def no_sync(self):
+        r"""
+        A context manager to disable gradient synchronizations across DDP
+        processes. Within this context, gradients will be accumulated on module
+        variables, which will later be synchronized in the first
+        forward-backward pass exiting the context.
+
+        Example::
+
+            >>> ddp = byteps.torch.parallel.DistributedDataParallel(model, pg)
+            >>> with ddp.no_sync():
+            ...   for input in inputs:
+            ...     ddp(input).backward()  # no synchronization, accumulate grads
+            ... ddp(another_input).backward()  # synchronize grads
+        """
+        old_require_backward_grad_sync = self._require_backward_grad_sync
+        self._require_backward_grad_sync = False
+        try:
+            yield
+        finally:
+            self._require_backward_grad_sync = old_require_backward_grad_sync
 
     def forward(self, *inputs, **kwargs):
         if self.require_forward_param_sync:
@@ -234,12 +258,13 @@ class DistributedDataParallel(Module):
 
     def _make_hook(self, p, num_grads):
         def hook(*ignore):
-            handle, ctx = None, None
-            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
-            self._handles[p] = (handle, ctx)
-            # sync if we have processed all gradients
-            if grad_count == self._num_grads:
-                self.synchronize()
+            if self._require_backward_grad_sync:
+                handle, ctx = None, None
+                handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
+                self._handles[p] = (handle, ctx)
+                # sync if we have processed all gradients
+                if grad_count == self._num_grads:
+                    self.synchronize()
         return hook
 
     def synchronize(self):
