@@ -30,6 +30,8 @@ from byteps.torch.ops import size, local_size, rank, local_rank
 import os
 import torch
 import collections
+import io
+import cloudpickle
 
 
 class _DistributedOptimizer(torch.optim.Optimizer):
@@ -352,13 +354,18 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             return dtype(x)
 
     # Some optimizer parameters may be represented as scalars instead of
-    # tensors.  In such cases, we place the scalars into a single dict.
-    def _create_callback(pid, name, t, p):
+    # tensors.  In such cases, we place the scalars into a single dict,
+    # then pickle and broadcast with broadcast_object (under the assumption
+    # that there are not many scalars, and so the overhead of pickling will
+    # be relatively low). Because broadcast_object is performed out-of-place,
+    # we then use a callback to assign the new value to the correct element
+    # of the optimizer state.
+    def _create_state_callback(pid, name):
         def _assign_state(v):
             state_dict['state'][pid][name] = v
         return _assign_state
 
-    def _create_option_callback(index, option_key, option_tensor, dtypes):
+    def _create_option_callback(index, option_key):
         def _assign_option(v):
             optimizer.param_groups[index][option_key] = v
         return _assign_option
@@ -377,7 +384,7 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             dtypes = _get_types(option_value)
             option_tensor = torch.Tensor([option_value]).cuda()
             scalars[key] = option_value
-            callbacks[key] = _create_option_callback(index, option_key, option_tensor, dtypes)
+            callbacks[key] = _create_option_callback(index, option_key)
 
         # The params list here is ordered by the layers in the model
         for pid in group['params']:
@@ -397,15 +404,56 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
                     # Tensor -> use broadcast_parameters
                     params.append((key, p))
                 else:
-                    # Scalar
-                    t = type(p)
+                    # Scalar -> use broadcast_object
                     scalars[key] = p
-                    callbacks[key] = _create_callback(pid, name, t, p)
+                    callbacks[key] = _create_state_callback(pid, name)
 
     # Synchronized broadcast of all parameters
     broadcast_parameters(params, root_rank, prefix)
 
-    # Post-broadcast clenaup for non-tensor parameters
-    for key, p in params:
-        if key in callbacks:
-            callbacks[key]()
+    # Broadcast and cleanup for non-tensor parameters
+    scalars = broadcast_object(scalars, root_rank)
+    for key, p in scalars.items():
+        callbacks[key](p)
+
+def broadcast_object(obj, root_rank=0, name=None):
+    """
+    Serializes and broadcasts an object from root rank to all other processes.
+    Typical usage is to broadcast the `optimizer.state_dict()`, for example:
+
+    .. code-block:: python
+
+        state_dict = broadcast_object(optimizer.state_dict(), 0)
+        if bps.rank() > 0:
+            optimizer.load_state_dict(state_dict)
+
+    Arguments:
+        obj: An object capable of being serialized without losing any context.
+        root_rank: The rank of the process from which parameters will be
+                   broadcasted to all other processes.
+        name: Optional name to use during broadcast, will default to the class
+              type.
+    Returns:
+        The object that was broadcast from the `root_rank`.
+    """
+    if name is None:
+        name = type(obj).__name__
+
+    if rank() == root_rank:
+        b = io.BytesIO()
+        cloudpickle.dump(obj, b)
+        t = torch.ByteTensor(bytearray(b.getvalue()))
+        sz = torch.IntTensor([t.shape[0]])
+        broadcast_parameters([(name + '.sz', sz)], root_rank, prefix="Size.")
+    else:
+        sz = torch.IntTensor([0])
+        broadcast_parameters([(name + '.sz', sz)], root_rank, prefix="Size.")
+        t = torch.ByteTensor(sz.tolist()[0])
+
+    broadcast_parameters([(name + '.t', t)], root_rank, prefix="Parameter.")
+
+    if rank() != root_rank:
+        buf = io.BytesIO(t.numpy().tobytes())
+        obj = cloudpickle.load(buf)
+
+    return obj
