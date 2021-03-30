@@ -134,7 +134,7 @@ def _push_pull(tensor, scope='', name=None):
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
-@ops.RegisterGradient('BytePSPushPull')
+@ops.RegisterGradient('BytepsPushPull')
 def _push_pull_grad(op, grad):
     """Gradient for push_pull op.
     Args:
@@ -190,7 +190,7 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
         return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
 
 
-@ops.RegisterGradient('BytePSBroadcast')
+@ops.RegisterGradient('BytepsBroadcast')
 def _broadcast_grad(op, grad):
     """Gradient for broadcast op.
     Args:

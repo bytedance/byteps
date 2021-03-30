@@ -30,5 +30,7 @@ script:
   - export DMLC_NODE_HOST=127.0.0.1
   - export PORT=8000
   - 3rdparty/ps-lite/tests/local.sh 1 1 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
+  - export PORT=8001
   - 3rdparty/ps-lite/tests/local.sh 2 2 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
+  - export PORT=8002
   - 3rdparty/ps-lite/tests/local.sh 4 4 3rdparty/ps-lite/tests/test_benchmark 1024000 10 0
