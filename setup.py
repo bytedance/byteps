@@ -892,7 +892,7 @@ class custom_build_ext(build_ext):
         if build_ucx():
             ucx_path = pre_setup.ucx_path.strip()
             if not ucx_path:
-                ucx_path = "https://codeload.github.com/openucx/ucx/zip/9229f54"
+                ucx_path = "https://codeload.github.com/openucx/ucx/zip/824c9f03"
             print("ucx_path is", ucx_path)
             cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
             "rm -rf ucx*;" +\
