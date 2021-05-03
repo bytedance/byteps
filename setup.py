@@ -905,7 +905,7 @@ class custom_build_ext(build_ext):
         if build_ucx():
             ucx_path = pre_setup.ucx_path.strip()
             if not ucx_path:
-                ucx_path = "https://codeload.github.com/openucx/ucx/zip/9229f54"
+                ucx_path = "https://codeload.github.com/openucx/ucx/zip/824c9f03"
             print("ucx_path is", ucx_path)
             cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
                 "rm -rf ucx*;" +\
@@ -1029,6 +1029,16 @@ if os.path.exists('launcher/launch.py'):
         os.mkdir('bin')
     shutil.copyfile('launcher/launch.py', 'bin/bpslaunch')
 
+extensions_to_build = [server_lib, tensorflow_lib, mxnet_lib, pytorch_lib]
+if int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
+    extensions_to_build.remove(mxnet_lib)
+
+if int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+    extensions_to_build.remove(tensorflow_lib)
+
+if int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+    extensions_to_build.remove(pytorch_lib)
+
 setup(
     name=NAME,
     version=about['__version__'],
@@ -1055,7 +1065,7 @@ setup(
         'Programming Language :: Python :: Implementation :: PyPy',
         'Operating System :: POSIX :: Linux'
     ],
-    ext_modules=[server_lib, tensorflow_lib, mxnet_lib, pytorch_lib],
+    ext_modules=extensions_to_build,
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,

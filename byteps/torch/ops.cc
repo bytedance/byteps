@@ -83,10 +83,13 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
         // Will execute in the `device` context.
         if (average) {
 #if TORCH_VERSION >= 1005000000
-          output.true_divide(byteps_size());
-#else
-          output.div_(byteps_size());
+          if (isIntegralType(output.scalar_type())) {
+            output.floor_divide_(byteps_size());
+            handle_manager.MarkDone(handle, status);
+            return;
+          }
 #endif
+          output.div_(byteps_size());
         }
         handle_manager.MarkDone(handle, status);
       },
