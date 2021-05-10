@@ -47,20 +47,12 @@ class Cast : public Compressor {
   void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
-  /*!
-   * \brief Cast low-precision gradients into float32
-   *
-   * \param grad input gradient
-   * \return tensor_t fp32 gradient
-   */
   virtual tensor_t CastToFP32(tensor_t grad) = 0;
 
  protected:
-  /*! \brief buffer of Cast */
   std::unique_ptr<byte_t[]> _fp32_buf;
 
  private:
-  /*! \brief compressor pointer */
   std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor

@@ -48,7 +48,6 @@ namespace compressor {
  */
 class ErrorFeedback : public Compressor {
  public:
-  // error buffer should be cleared to zeros at the beginning.
   ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
       : Compressor(size, dtype), _cptr(std::move(cptr)) {}
   ~ErrorFeedback() override = default;
@@ -58,20 +57,9 @@ class ErrorFeedback : public Compressor {
   void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
-  /*!
-   * \brief Correct gradient with error
-   *
-   * grad += error
-   *
-   * \note it is an inplace operation.
-   *
-   * \param grad input gradient to be updated inplace
-   * \param dtype type
-   */
   virtual void UpdateGradient(tensor_t grad) = 0;
 
  private:
-  /*! \brief compressor pointer */
   std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor

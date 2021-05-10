@@ -9,13 +9,13 @@ In non-distributed mode, BytePS is basically doing NCCL allreduce, so it will no
 The only thing you can tune is `BYTEPS_PCIE_SWITCH_SIZE`. If you know your hardware topology, e.g., say you have 8 GPUs in total, 4 GPUs connect to one PCI-e switch, the other 4 GPUs connect to another PCI-e switch, then you should set `BYTEPS_PCIE_SWITCH_SIZE=4`. In this case, you may see 20%~30% performance improvement compared with Horovod/NCCL.
 
 If you have NVLinks, leave `BYTEPS_PCIE_SWITCH_SIZE` unmodified. If you don't know your hardware topology, leave `BYTEPS_PCIE_SWITCH_SIZE` unmodified.
-
+s CPU servers and do not need GPUs. The scheduler can run on any machine.
 
 ## Multi-machine (distributed mode)
 
 ### With additional CPU servers
 
-This mode requires at least **4** physical machines. Two of the machines should have GPUs and run as workers. The other two run as CPU servers and do not need GPUs. The scheduler can run on any machine.
+This mode requires at least **4** physical machines. Two of the machines should have GPUs and run as workers. The other two run a
 
 The key here is to make sure the following:
 * Servers must be on different physical machines from workers.

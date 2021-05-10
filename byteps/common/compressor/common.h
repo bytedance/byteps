@@ -27,10 +27,8 @@ using half_t = void;
 namespace byteps {
 namespace common {
 namespace compressor {
-typedef char byte_t;
-/*!
- * \brief Tensor type
- */
+using byte_t = char;
+
 struct BPSTensor {
   byte_t* data{nullptr};
   size_t size{0};

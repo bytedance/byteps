@@ -114,10 +114,6 @@ class XorShift128PlusBitShifterRNG {
   static constexpr uint64_t MAX = std::numeric_limits<uint64_t>::max();
 };
 
-/*!
- * \brief Bit Writer
- *
- */
 template <typename T>
 class BitWriter {
  public:
@@ -152,10 +148,6 @@ class BitWriter {
   size_t _blocks;
 };
 
-/*!
- * \brief Bit Reader
- *
- */
 template <typename T>
 class BitReader {
  public:
@@ -217,9 +209,9 @@ auto EliasDeltaDecode(BitReader<T>& bit_reader) -> unsigned long {
 }
 
 template <typename T, class F = std::function<bool(T)>>
-auto HyperParamFinder(
-    const kwargs_t& kwargs, std::string name, bool optional = false,
-    F&& check = [](T) -> bool { return true; }) -> T {
+auto HyperParamFinder(const kwargs_t& kwargs, std::string name,
+                      bool optional = false,
+                      F&& check = [](T) -> bool { return true; }) -> T {
   static_assert(std::is_fundamental<T>::value,
                 "custom type is not allow for HyperParamFinder");
   T value{T()};

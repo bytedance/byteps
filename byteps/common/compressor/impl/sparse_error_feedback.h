@@ -43,11 +43,7 @@ class SparseErrorFeedbackCompressor : public ErrorFeedback {
  private:
   template <typename scalar_t>
   void UpdateErrorImpl(scalar_t* error);
-  /*!
-   * \brief learning rate
-   *
-   * read from file each step
-   */
+
   double _pre_lr, _cur_lr;
 
   int _fd;

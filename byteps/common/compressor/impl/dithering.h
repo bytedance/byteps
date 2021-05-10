@@ -107,7 +107,6 @@ class DitheringCompressor : public Compressor {
                            const scalar_t* __restrict__ src,
                            scalar_t* __restrict__ error, size_t len);
 
-  /*! \brief number of levels */
   const unsigned int _s;
 
   PartitionType _ptype;

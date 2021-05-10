@@ -37,38 +37,10 @@ class TopkCompressor : public Compressor {
       : Compressor(size, dtype), _k(k){};
   ~TopkCompressor() override = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * select topk entries and corresponding indices
-   *
-   * \note compare with absolute values
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
   void Compress(tensor_t grad, tensor_t& output) override;
 
-  /*!
-   * \brief Decompress function
-   *
-   * fill a zero tensor with topk entries and corresponding indices
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
   void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  /*!
-   * \brief faster version of `UpdateError`
-   *
-   * 1. e <- p (e is the error and p is the corrected gradient)
-   * 2. zero-fill e with selected k indices
-   *
-   * \param corrected gradient corrected with error
-   * \param error error
-   * \param compressed compressed gradient
-   */
   void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:

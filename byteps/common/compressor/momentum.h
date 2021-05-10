@@ -42,7 +42,6 @@ namespace compressor {
  */
 class Momentum : public Compressor {
  public:
-  // momentum should be cleared to zeros
   Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
            float mu)
       : Compressor(size, dtype), _mu(mu), _cptr(std::move(cptr)){};
@@ -53,29 +52,14 @@ class Momentum : public Compressor {
   void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
-  /*!
-   * \brief Update momentum
-   *
-   * e.g. m_t = \mu * m_{t-1} + g_t
-   *
-   * \param grad refers to gradient
-   */
   virtual void UpdateMom(tensor_t grad) = 0;
 
-  /*!
-   * \brief Update gradient with momentum
-   *
-   * e.g. g_t = \mu m_t + g_t
-   *
-   * \param grad refers to gradient which adds momentum in place.
-   */
   virtual void UpdateGradient(tensor_t grad) = 0;
 
  protected:
   float _mu;
 
  private:
-  /*! \brief compressor pointer */
   std::unique_ptr<Compressor> _cptr;
 };
 }  // namespace compressor

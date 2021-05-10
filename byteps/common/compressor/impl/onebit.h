@@ -42,34 +42,10 @@ class OnebitCompressor : public Compressor {
       : Compressor(size, dtype), _use_scale(use_scale) {}
   ~OnebitCompressor() override = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * compress and pack into byte array.
-   * each bit represents a sign.
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
   void Compress(tensor_t grad, tensor_t& output) override;
 
-  /*!
-   * \brief Decompress function
-   *
-   * unpack from byte array to FP tensor
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
   void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  /*!
-   * \brief help function for error feedback `UpdateError`
-   *
-   * \param corrected gradient corrected with error
-   * \param error error
-   * \param compressed compressed gradient
-   */
   void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:

@@ -51,11 +51,6 @@ class CorrectedErrorFeedbackCompressor : public ErrorFeedback {
   void UpdateGradient(tensor_t grad) override;
 
  private:
-  /*!
-   * \brief learning rate
-   *
-   * read from file each step
-   */
   double _pre_lr, _cur_lr;
 
   int _fd;
