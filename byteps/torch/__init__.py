@@ -118,7 +118,6 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                             "byteps_",), param.__dict__.items())
                     )
                     declare("Gradient."+name, **byteps_params)
-                    print("Gradient."+name, param.data.numel())
 
     @ staticmethod
     def find_duplicates(lst):

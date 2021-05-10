@@ -213,11 +213,11 @@ void BytePSGlobal::Init() {
   }
 
   if (_is_root_device) {
-    size_t pool_size = 4;
+    size_t pool_size = 0;
     if (getenv("BYTEPS_THREADPOOL_SIZE")) {
       pool_size = atoi(getenv("BYTEPS_THREADPOOL_SIZE"));
-      _thread_pool.reset(new ThreadPool(pool_size));
     }
+    _thread_pool.reset(new ThreadPool(pool_size));
   }
 
   // ReadyTable for cross-PCIe-switch reduce

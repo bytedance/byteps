@@ -9,8 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
-from apex import amp
-from apex.optimizers import FusedLAMB
 
 from torchvision import datasets, transforms
 
@@ -116,7 +114,8 @@ if args.cuda:
     model.cuda()
 
 # BytePS: scale learning rate by the number of GPUs.
-optimizer = FusedLAMB(model.parameters(), lr=args.lr * bps.size())
+optimizer = optim.SGD(model.parameters(), lr=args.lr * bps.size(),
+                      momentum=args.momentum)
 
 compression_params = {
     "compressor": args.compressor,
@@ -132,16 +131,10 @@ compression_params = {
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
-                                     compression_params=compression_params,
-                                     pre_scale_factor=1. / bps.size(), post_scale_factor=1.)
+                                     compression_params=compression_params)
 
-model, optimizer = amp.initialize(
-    model, optimizer, loss_scale='dynamic', opt_level="O2", cast_model_outputs=torch.float16
-)
 
 # BytePS: broadcast parameters.
-optimizer._lazy_init_maybe_master_weights()
-optimizer._amp_stash.lazy_init_called = True
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
 
@@ -156,14 +149,8 @@ def train(epoch):
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
-        with amp.scale_loss(loss, optimizer) as scaled_loss:
-            scaled_loss.backward()
-            optimizer.synchronize()
-        with optimizer.skip_synchronize():
-            optimizer.step()
-        param = list(model.parameters())[0]
-        print("param in rank %d" % (bps.rank()))
-        print(param.data.flatten()[:10])
+        loss.backward()
+        optimizer.step()
         if batch_idx % args.log_interval == 0:
             # BytePS: use train_sampler to determine the number of examples in
             # this worker's partition.

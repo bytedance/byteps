@@ -27,7 +27,7 @@ class MetaTest(type):
     BASE_ENV = {"DMLC_NUM_WORKER": "1",
                 "DMLC_NUM_SERVER": "1",
                 "DMLC_PS_ROOT_URI": "127.0.0.1",
-                "DMLC_PS_ROOT_PORT": "1234",
+                "DMLC_PS_ROOT_PORT": "4321",
                 "BYTEPS_LOG_LEVEL": "INFO",
                 "BYTEPS_MIN_COMPRESS_BYTES": "0",
                 "OMP_NUM_THREADS": "4",

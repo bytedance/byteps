@@ -135,7 +135,6 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
             input = np.nan_to_num(input, nan=0, posinf=0,
                                   neginf=0)
             input = onebit(input, True)
-            print(input)
             bps.byteps_declare_tensor("tensor_" + str(i), **{
                 "byteps_compressor_type": "onebit",
                 "byteps_compressor_onebit_scaling": "true"
@@ -144,7 +143,6 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
             tensor.wait_to_read()
             output = tensor.asnumpy()
 
-            print(output)
             assert np.allclose(input, output, np.finfo(np.float16).eps)
         print('test_byteps_push_pull_fp16_nan passed')
 
