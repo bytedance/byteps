@@ -82,7 +82,7 @@ optimizer = bps.DistributedOptimizer(optimizer,
 |name | valid input| note| 
 |---- | ---- | --- |
 |compressor| "onebit", "topk", "randomk", or "dithering"| algorithm |
-|ef | "vanilla" or "corrected"| error-feedback |
+|ef | "vanilla", "corrected" and "sparse" | error-feedback, "sparse" is only valid for "randomk" |
 |momentum| "nesterov" | added before compression |
 |scaling| True or False| only valid for "onebit" |
 |k| float or integer | only valid for "topk", "randomk", and "dithering"| 
