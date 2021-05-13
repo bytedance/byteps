@@ -13,6 +13,9 @@
 // limitations under the License.
 // =============================================================================
 
+#include <chrono>
+#include <thread>
+
 #include "server.h"
 #include "../common/compressor/utils.h"
 #include "queue.h"
@@ -26,13 +29,147 @@ using namespace ps;
 std::vector<PriorityQueue*> engine_queues_;
 std::vector<std::thread*> engine_threads_;
 
-BytePSArray* GetStore(uint64_t key) {
+// definition
+// knobs
+uint64_t BytePSServer::timestamp_ = 0;
+size_t BytePSServer::engine_thread_num_ = 4;
+volatile bool BytePSServer::is_engine_blocking_ = false;
+volatile bool BytePSServer::log_key_info_ = false;
+volatile bool BytePSServer::sync_mode_ = true;
+volatile bool BytePSServer::debug_mode_ = false;
+volatile bool BytePSServer::enable_schedule_ = false;
+volatile bool BytePSServer::is_server_ = false;
+// p2p knobs
+std::string BytePSServer::p2p_shm_prefix_;
+// received tensors
+std::unordered_map<uint64_t, RecvArray> BytePSServer::recved_partitions_;
+std::mutex BytePSServer::recved_partitions_mu_;
+
+size_t BytePSServer::num_phy_node_;
+size_t BytePSServer::num_expected_workers_;
+
+// debug
+uint64_t BytePSServer::debug_key_;
+std::mutex BytePSServer::debug_mu_;
+// server operations
+byteps::common::CpuReducer* BytePSServer::bps_reducer_ = nullptr;
+
+// ========= for p2p ==========
+volatile bool BytePSServer::should_stop_ = false;
+int BytePSServer::preferred_rank_ = -1;
+bool BytePSServer::enable_preferred_rank_ = false;
+ps::Node::Role BytePSServer::role_;
+int BytePSServer::p2p_direct_response_ = 0;
+// ========= for p2p ==========
+
+std::vector<KVServer<char>*> BytePSServer::byteps_server_;
+
+std::mutex BytePSServer::pullresp_mu_;
+std::unordered_map<uint64_t, ps::KVPairs<char> > BytePSServer::push_response_map_;
+std::unordered_map<uint64_t, ps::KVPairs<char> > BytePSServer::pull_response_map_;
+
+
+// push & pull flag
+std::vector<std::mutex> BytePSServer::flag_mu_;
+std::vector<std::unordered_map<uint64_t, bool> > BytePSServer::is_push_finished_;
+std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > BytePSServer::q_pull_reqmeta_;
+std::vector<std::unordered_map<uint64_t, std::set<int> > > BytePSServer::seen_sender_;
+std::vector<std::unordered_map<uint64_t, size_t> > BytePSServer::pull_cnt_;
+
+// byteps handler
+std::mutex BytePSServer::handle_mu_;
+std::unordered_map<uint64_t, UpdateBuf> BytePSServer::update_buf_;
+
+// address map
+std::mutex BytePSServer::store_mu_;
+std::unordered_map<uint64_t, BytePSArray> BytePSServer::store_;
+
+// req_meta
+std::mutex BytePSServer::req_meta_mu_;
+std::unordered_map<uint64_t, std::pair<ps::KVMeta, ps::KVServer<char>*>> BytePSServer::response_meta_;
+
+// hash function
+std::mutex BytePSServer::hash_mu_;
+std::unordered_map<uint64_t, size_t> BytePSServer::hash_cache_;
+std::vector<uint64_t> BytePSServer::acc_load_;
+
+// ready table
+ReadyTable* BytePSServer::p2p_copy_table_ = nullptr;
+ReadyTable* BytePSServer::p2p_group_copy_table_ = nullptr;
+
+// compression
+std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
+
+int DivUp(int x, int y) { return (x + y - 1) / y; }
+int RoundUp(int x, int y) { return DivUp(x, y) * y; }
+
+// TODO: remove Postoffice API calls
+uint64_t DecodeKey(ps::Key key) {
+  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
+  return key - kr.begin();
+}
+
+uint64_t EncodeKey(ps::Key key) {
+  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
+  return key + kr.begin();
+}
+
+size_t BytePSServer::GetThreadID(uint64_t key, size_t len) {
+  std::lock_guard<std::mutex> lock(hash_mu_);
+  if (len == 0) { // pull
+    CHECK_NE(hash_cache_.find(key), hash_cache_.end());
+    return hash_cache_[key];
+  }
+  if (hash_cache_.find(key) != hash_cache_.end()) {
+    return hash_cache_[key];
+  }
+  CHECK_GT(len, 0);
+  CHECK_EQ(acc_load_.size(), engine_thread_num_);
+  auto min_index = -1;
+  auto min_load = std::numeric_limits<uint64_t>::max();
+  for (size_t i = 0; i < engine_thread_num_; ++i) {
+    if (acc_load_[i] < min_load) {
+      min_load = acc_load_[i];
+      min_index = i;
+    }
+  }
+  CHECK_GE(min_index, 0);
+  CHECK_LT(min_index, engine_thread_num_);
+  acc_load_[min_index] += len;
+  hash_cache_[key] = min_index;
+  return hash_cache_[key];
+}
+
+// Opens a file for shared memory.
+void* PageAlignedSharedMemory(const std::string& shm_name, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  size = RoundUp(size, page_size);
+  int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+  CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name;
+  CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
+  void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+  CHECK_NE(ptr, (void*)-1) << strerror(errno);
+  return ptr;
+}
+
+void PageAlignedMalloc(void** ptr, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p;
+  int size_aligned = RoundUp(size, page_size);
+  int ret = posix_memalign(&p, page_size, size_aligned);
+  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
+  CHECK(p);
+  memset(p, 0, size);
+  *ptr = p;
+}
+
+BytePSArray* BytePSServer::GetStore(uint64_t key) {
   std::lock_guard<std::mutex> lock(store_mu_);
   return &store_[key];
 }
 
-void SendPushResponse(uint64_t key, const ps::KVMeta& req,
-                      ps::KVServer<char>* server) {
+void BytePSServer::SendPushResponse(uint64_t key, const ps::KVMeta& req,
+                                    ps::KVServer<char>* server){
   auto iterator = push_response_map_.find(key);
   if (iterator == push_response_map_.end()) {  // new key
     ps::KVPairs<char> response;
@@ -45,8 +182,10 @@ void SendPushResponse(uint64_t key, const ps::KVMeta& req,
   }
 }
 
-void SendPullResponse(const DataHandleType type, const uint64_t key,
-                      const ps::KVMeta& req_meta, ps::KVServer<char>* server) {
+void BytePSServer::SendPullResponse(const DataHandleType type,
+                                    const uint64_t key,
+                                    const ps::KVMeta& req_meta,
+                                    ps::KVServer<char>* server) {
   std::lock_guard<std::mutex> lock(pullresp_mu_);
   auto& updates = update_buf_[key];
   CHECK(updates.merged.tensor) << "init " << key << " first";
@@ -74,7 +213,7 @@ void SendPullResponse(const DataHandleType type, const uint64_t key,
   }
 }
 
-void BytePSServerEngineThread(int i) {
+void BytePSServer::BytePSServerEngineThread(int i) {
   auto& q = engine_queues_[i];
   while (true) {
     BytePSEngineMessage msg;
@@ -151,14 +290,15 @@ void BytePSServerEngineThread(int i) {
         while (it != q_pull_reqmeta_[i][msg.key].end()) {
           if (seen_sender_[i][msg.key].find(it->sender) ==
               seen_sender_[i][msg.key].end()) {
-            SendPullResponse(msg.type, msg.key, *it, byteps_server_);
+            // TODO: support multi-instance for push-pull
+            SendPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
             pull_cnt_[i][msg.key] += 1;
             seen_sender_[i][msg.key].insert(it->sender);
             it = q_pull_reqmeta_[i][msg.key].erase(it);
           } else {
             ++it;
           }
-          if (pull_cnt_[i][msg.key] == (size_t)ps::NumWorkers()) {
+          if (pull_cnt_[i][msg.key] == num_expected_workers_) {
             is_push_finished_[i][msg.key] = false;
             pull_cnt_[i][msg.key] = 0;
             seen_sender_[i][msg.key].clear();
@@ -195,16 +335,107 @@ void BytePSServerEngineThread(int i) {
         CHECK(0);
     }
   }
-}  // namespace server
+}
 
-void BytePSHandler(const ps::KVMeta& req_meta,
-                   const ps::KVPairs<char>& req_data,
-                   ps::KVServer<char>* server) {
-  std::lock_guard<std::mutex> lock(handle_mu_);  // push & pull may have racing
+void BytePSServer::SendPushResponse(uint64_t key) {
+  std::lock_guard<std::mutex> lk(req_meta_mu_);
+  auto response_meta = response_meta_[key];
+  SendPushResponse(key, response_meta.first, response_meta.second);
+}
+
+void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
+                              const ps::KVPairs<char> &req_data,
+                              ps::KVServer<char>* server) {
+  std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
+  auto req_type = type.requestType;
+  CHECK(req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend || req_type == RequestType::kEmptyGroupSend);
+  // do some check
+  CHECK_EQ(req_data.keys.size(), (size_t)1);
+  CHECK(req_meta.push) << "unexpected pull key="
+                       << (uint64_t) DecodeKey(req_data.keys[0])
+                       << "\t sender=" << req_meta.sender;
+  CHECK_EQ(req_data.lens.size(), (size_t)1);
+  CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0])
+    << req_data.vals.size() << " v.s. " << req_data.lens[0];
+  if (debug_mode_) {
+    LOG(INFO) << "push key=" << DecodeKey(req_data.keys[0])
+              << "\t sender=" << req_meta.sender
+              << "\t size=" << (size_t) req_data.lens[0];
+  }
+  uint64_t key = DecodeKey(req_data.keys[0]);
+  auto stored = GetStore(key);
+  auto len = (size_t) req_data.lens[0];
+  // initialization
+  if (!stored->tensor) {
+    // TODO: actually there's no need to store this tensor
+    // init stored buffer, use page aligned memory
+    std::string prefix = p2p_shm_prefix_ + std::to_string(preferred_rank_);
+    std::string shm_name = prefix + "_" + std::to_string(req_data.keys[0]);
+    PageAlignedMalloc((void**)&stored->tensor, len);
+    if (log_key_info_) {
+      LOG(INFO) << "stored tensor for key=" << key << ", name=" << shm_name << " created"
+                << ", worker_id=" << preferred_rank_ << ", len=" << len;
+    }
+    // the max length
+    stored->len = len;
+    stored->dtype = type.dtype;
+    CHECK(stored->tensor);
+    SendPushResponse(key, req_meta, server);
+    return;
+  }
+  // buffer the request meta
+  {
+    std::lock_guard<std::mutex> lk(req_meta_mu_);
+    response_meta_[key] = std::make_pair(req_meta, server);
+  }
+  RecvArray arr;
+  arr.val = req_data.vals;
+  arr.len = len;
+  // group send request, where the output size is unknown
+  bool is_empty = type.requestType == RequestType::kEmptyGroupSend;
+  if (type.requestType == RequestType::kGroupSend || is_empty) {
+    // Note: the task is created using tensor_id as the key
+    uint64_t tensor_key = (key << 32) >> 48;
+    // set recv len
+    arr.len = is_empty ? 0 : len;
+    if (debug_mode_) {
+      LOG(INFO) << "GROUP SEND: set recv val addr = " << (long long) req_data.vals.data()
+                << ", tensor_id = " << tensor_key << ", key = " << key;
+    }
+    SetRecvPartition(key, arr);
+    GetP2PGroupCopyTable()->AddReadyCount(tensor_key);
+  } else {
+    if (debug_mode_) {
+      LOG(INFO) << "set recv val addr = " << (long long) req_data.vals.data()
+                << " data=" << *((float*)req_data.vals.data()) << " len =  " << len;
+    }
+    SetRecvPartition(key, arr);
+    GetP2PCopyTable()->AddReadyCount(key);
+    if (p2p_direct_response_ == 1) {
+      BytePSServer::SendPushResponse(key);
+    }
+  }
+}
+
+void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
+                                 const ps::KVPairs<char> &req_data,
+                                 ps::KVServer<char>* server) {
+  DataHandleType type = DepairDataHandleType(req_meta.cmd);
+  auto req_type = type.requestType;
+  if (req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend || req_type == RequestType::kEmptyGroupSend) {
+    P2PHandler(req_meta, req_data, server);
+    return;
+  }
+  if (type.requestType == RequestType::kLeaderPushPull) {
+    num_expected_workers_ = num_phy_node_;
+  } else {
+    num_expected_workers_ = (size_t) ps::NumWorkers();
+  }
   // CHECK_EQ(type.requestType, RequestType::kDefaultPushPull);
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
+  std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   if (log_key_info_) {
     if (req_meta.push) {
       CHECK_EQ(req_data.lens.size(), (size_t)1);
@@ -242,7 +473,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
     auto& updates = update_buf_[key];
     updates.request.push_back(req_meta);
     // should send response after collecting all init push
-    if (updates.request.size() < (size_t)ps::NumWorkers()) return;
+    if (updates.request.size() < num_expected_workers_) return;
 
     for (const auto& req : updates.request) {
       SendPushResponse(key, req, server);
@@ -267,7 +498,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       auto& updates = update_buf_[key];
       updates.request.push_back(req_meta);
       // should send response after collecting all init push
-      if (updates.request.size() < (size_t)ps::NumWorkers()) return;
+      if (updates.request.size() < num_expected_workers_) return;
       if (log_key_info_) {
         LOG(INFO) << "Collected all " << updates.request.size()
                   << " requests for key=" << key
@@ -340,7 +571,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
       // add a worker information (request.size() is the # workers received)
       updates.request.push_back(req_meta);
       SendPushResponse(key, req_meta, server);
-      if (sync_mode_ && updates.request.size() == (size_t)ps::NumWorkers()) {
+      if (sync_mode_ && updates.request.size() == num_expected_workers_) {
         auto stored = GetStore(key);
         auto& update = updates.merged;
         if (debug_mode_ && (debug_key_ == key)) {
@@ -348,8 +579,8 @@ void BytePSHandler(const ps::KVMeta& req_meta,
           LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t"
                     << "stored: " << DEBUG_PRINT_TENSOR_VALUE(stored->tensor)
                     << "\t"
-                    << "merged: "
-                    << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
+                    // << "merged: "
+                    // << DEBUG_PRINT_TENSOR_VALUE(updates.merged.tensor) << "\t"
                     << "recved: " << DEBUG_PRINT_TENSOR_VALUE(recved);
         }
         if (is_engine_blocking_) {
@@ -391,7 +622,7 @@ void BytePSHandler(const ps::KVMeta& req_meta,
         pull_cnt_[tid][key] += 1;
         seen_sender_[tid][key].insert(req_meta.sender);
 
-        if (pull_cnt_[tid][key] == (size_t)ps::NumWorkers()) {
+        if (pull_cnt_[tid][key] == num_expected_workers_) {
           is_push_finished_[tid][key] = false;
           pull_cnt_[tid][key] = 0;
           seen_sender_[tid][key].clear();
@@ -404,11 +635,27 @@ void BytePSHandler(const ps::KVMeta& req_meta,
   }
 }
 
-void init_global_env() {
-  // enable to print key profile
-  log_key_info_ = GetEnv("PS_KEY_LOG", false);
+void BytePSServer::InitP2PCopyTable() {
+  p2p_copy_table_ = new ReadyTable(1, "P2P_COPYH2D");
+  auto num_worker_str = getenv("DMLC_NUM_WORKER");
+  CHECK(num_worker_str);
+  int num_workers = atoi(num_worker_str);
+  p2p_group_copy_table_ = new ReadyTable(num_workers - 1, "P2P_GROUP_COPYH2D");
+  LOG(INFO) << "init p2p_group_copy_table_ with count = " << num_workers - 1;
+}
 
-  // enable engine block mode (default disabled)
+void BytePSServer::init_global_env() {
+  // enable to print key profile
+  log_key_info_ = GetEnv("BYTEPS_PS_KEY_LOG", false);
+  std::string role_str = GetEnv("DMLC_ROLE", "unk");
+  // Just compare with "scheduler" here, the env var may be "joint", "server", "scheduler"
+  role_ = ps::GetRole(role_str);
+  if (role_str != std::string("scheduler")) {
+    is_server_ = true;
+  }
+  LOG(INFO) << "This is a " << role_str << " is_server=" << is_server_;
+
+  // enable engine block mode (default enabled)
   is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
   if (is_engine_blocking_)
     LOG(INFO) << "Enable blocking mode of the server engine";
@@ -419,7 +666,8 @@ void init_global_env() {
     LOG(INFO) << "BytePS server is enabled asynchronous training";
 
   // debug mode
-  debug_mode_ = GetEnv("BYTEPS_SERVER_DEBUG", false);
+  auto debug_mode_str = getenv("BYTEPS_SERVER_DEBUG");
+  debug_mode_ = debug_mode_str ? atoi(debug_mode_str) : false;
   debug_key_ = GetEnv("BYTEPS_SERVER_DEBUG_KEY", 0);
   if (debug_mode_)
     LOG(INFO) << "Debug mode enabled! Printing key " << debug_key_;
@@ -434,12 +682,31 @@ void init_global_env() {
 
   // enable scheduling for server engine
   enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
-  if (enable_schedule_)
-    LOG(INFO) << "Enable engine scheduling for BytePS server";
+  if (enable_schedule_) LOG(INFO) << "Enable engine scheduling for BytePS server";
+
+  p2p_shm_prefix_ = GetEnv("BYTEPS_P2P_SHM_PREFIX", "BytePS_P2P_ShM_");
+  LOG(INFO) << "Using p2p shm prefix " << p2p_shm_prefix_;
+
+  auto direct_response_str = getenv("BYTEPS_SERVER_DIRECT_RESPONSE");
+  if (direct_response_str) p2p_direct_response_ = atoi(direct_response_str); 
+  LOG(INFO) << "BytePS server direct response = " << p2p_direct_response_;
+
+  auto num_worker_str = getenv("DMLC_NUM_WORKER");
+  CHECK(num_worker_str);
+  if (role_str == "joint") {
+    auto local_size_str = getenv("BYTEPS_LOCAL_SIZE");
+    CHECK(local_size_str);
+    num_phy_node_ = atoi(num_worker_str) / atoi(local_size_str);
+  } else {
+    num_phy_node_ = atoi(num_worker_str);
+  }
+  LOG(INFO) << "Using num_phy_node " << num_phy_node_;
 }
 
-extern "C" void byteps_server() {
-  init_global_env();
+
+void BytePSServer::Init(int rank) {
+  LOG(INFO) << "byteps server is starting";
+  BytePSServer::init_global_env();
 
   // cpu reducer
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
@@ -469,6 +736,7 @@ extern "C" void byteps_server() {
     acc_load_.push_back(0);
   }
   if (sync_mode_) {
+    // these engine threads are not used by p2p
     for (size_t i = 0; i < engine_thread_num_; ++i) {
       auto q = new PriorityQueue(enable_schedule_);
       engine_queues_.push_back(q);
@@ -478,22 +746,39 @@ extern "C" void byteps_server() {
       engine_threads_.push_back(t);
     }
   }
+  preferred_rank_ = rank;
+  auto role = is_server_ ? ps::Node::SERVER : ps::Node::SCHEDULER;
+  if (!is_server_) {
+    preferred_rank_ = 0;
+  }
+  // When set to joint, the worker has already started the PS
+  if (role_ != ps::Node::JOINT) {
+    ps::StartPS(0, role, preferred_rank_, true, "byteps\0");
+  }
 
   // init server instance
-  byteps_server_ = new KVServer<SERVER_DATA_TYPE>(0);
-  byteps_server_->set_request_handle(BytePSHandler);
-  StartAsync(0, "byteps_server\0");
-  if (!Postoffice::Get()->is_recovery()) {
-    Postoffice::Get()->Barrier(
-        0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+  if (is_server_) {
+    auto val = getenv("DMLC_GROUP_SIZE");
+    int group_size = val ? atoi(val) : 1;
+    for (int instance_idx = 0; instance_idx < group_size; instance_idx++) {
+      auto server = new KVServer<char>(0, false, instance_idx);
+      server->set_request_handle(BytePSHandler);
+      byteps_server_.push_back(server);
+    }
+    LOG(INFO) << "BytePS Server with rank=" << preferred_rank_
+              << ". group_size=" << group_size;
   }
 
   // clean the server resource
-  Finalize(0, true);
-  if (byteps_server_) {
-    delete byteps_server_;
-    byteps_server_ = nullptr;
+  LOG(INFO) << "Waiting for ps-lite to finalize.";
+  Finalize(0, role, true);
+  LOG(INFO) << "ps-lite server has finalized.";
+  LOG(INFO) << "BytePS server is stopping ...";
+  should_stop_ = true;
+  for (auto server : byteps_server_) {
+    delete server;
   }
+  byteps_server_.clear();
   if (bps_reducer_) {
     delete bps_reducer_;
     bps_reducer_ = nullptr;
@@ -508,9 +793,16 @@ extern "C" void byteps_server() {
       free(it.second.tensor);
     }
   }
-  
+
   LOG(INFO) << "byteps has been shutdown";
   return;
+}
+
+extern "C" void byteps_server() {
+  int preferred_rank =
+    getenv("DMLC_RANK") ?  atoi(getenv("DMLC_RANK")) : -1;
+  LOG(INFO) << "BytePS Server with preferred_rank=" << preferred_rank;
+  BytePSServer::Init(preferred_rank);
 }
 
 }  // namespace server

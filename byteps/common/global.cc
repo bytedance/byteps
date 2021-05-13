@@ -13,12 +13,18 @@
 // limitations under the License.
 // =============================================================================
 
+#include <memory>
 #include <malloc.h>
 #include <numa.h>
+#include <unistd.h>
 
 #include <sstream>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "compressor/compressor.h"
+#include "../server/server.h"
 #include "global.h"
 
 namespace byteps {
@@ -29,17 +35,26 @@ std::mutex BytePSGlobal::_init_mutex;
 volatile bool BytePSGlobal::_initialized = false;
 volatile bool BytePSGlobal::_should_shutdown = false;
 
-int BytePSGlobal::_rank = 0;
+int BytePSGlobal::_rank = -1;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
 int BytePSGlobal::_local_size = 1;
 int BytePSGlobal::_worker_id = 0;
+int BytePSGlobal::_phy_node_id = 0;
+int BytePSGlobal::_num_phy_node = 1;
+int BytePSGlobal::_local_root = -1;
+int BytePSGlobal::_server_local_root = -1;
 int BytePSGlobal::_num_worker = 1;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
-bool BytePSGlobal::_is_distributed_job;
-bool BytePSGlobal::_is_cross_pcie_switch;
+bool BytePSGlobal::_is_distributed_job = false;
+bool BytePSGlobal::_is_cross_pcie_switch = false;
+bool BytePSGlobal::_is_joint = false;
+// all-to-all
+bool BytePSGlobal::_skip_h2d = false;
+bool BytePSGlobal::_skip_d2h = false;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
+uint32_t BytePSGlobal::_p2p_partition_bytes = 4096000;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
 int BytePSGlobal::_is_trace = 0;
@@ -54,32 +69,51 @@ int BytePSGlobal::_pagesize = 0;
 std::shared_ptr<BytePSComm> BytePSGlobal::_basic_comm;
 std::shared_ptr<BytePSSharedMemory> BytePSGlobal::_shm_obj;
 std::unordered_map<uint64_t, PSKV> BytePSGlobal::ps_kv_;
+std::unordered_map<uint64_t, int64_t> BytePSGlobal::ps_kv_max_size_;
 std::vector<unsigned long> BytePSGlobal::_server_accumulated_len;
 unsigned long BytePSGlobal::_total_accumulated_len = 0;
 std::string BytePSGlobal::_hash_knob;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
+std::vector<BytePSScheduledQueue*> BytePSGlobal::_send_queues;
+std::vector<BytePSScheduledQueue*> BytePSGlobal::_p2p_d2h_queues;
+int BytePSGlobal::_num_loop_parallel = 1;
+bool BytePSGlobal::_lockless_queue = false;
 std::vector<std::thread*> BytePSGlobal::_threads;
+std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 
 std::mutex BytePSGlobal::_context_mutex;
-ps::KVWorker<char>* BytePSGlobal::_ps = NULL;
+std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
 std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
 ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
+ReadyTable* BytePSGlobal::_cpu_reduce_table;
+ReadyTable* BytePSGlobal::_cpu_reduce_finish_table;
+ReadyTable* BytePSGlobal::_cpu_bcast_table;
+ReadyTable* BytePSGlobal::_cpu_bcast_finish_table;
 ReadyTable* BytePSGlobal::_copy_table;
+ReadyTable* BytePSGlobal::_p2p_copy_table;
 bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
+// for alltoall
+uint32_t BytePSGlobal::_alltoall_session_size = 1;
+std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_session_ids;
+std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_completions;
+std::mutex BytePSGlobal::_alltoall_session_mu;
 
 std::vector<std::string> BytePSGlobal::_declared_tensors;
 bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
+std::unordered_map<int, unsigned int> p2p_next_keys_;
+#if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
+#endif
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
 
@@ -90,13 +124,28 @@ volatile bool BytePSGlobal::_mixed_mode = false;
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 std::atomic_int BytePSGlobal::joined_thread_cnt;
 
-BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
+BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType, int index) {
+  if (queueType == P2P_COPYD2H) {
+    CHECK(index < _p2p_d2h_queues.size()) << index << "," << _p2p_d2h_queues.size();
+    return (BytePSScheduledQueue*)_p2p_d2h_queues.at(index);
+  } else if (queueType == SEND) {
+    CHECK(index < _send_queues.size()) << index << "," << _send_queues.size();
+    return (BytePSScheduledQueue*)_send_queues.at(index);
+  }
   return (BytePSScheduledQueue*)_queues[queueType];
 }
 
 void BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
   std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
-  if (!_queues[queueType]) {
+  if (queueType == P2P_COPYD2H && _p2p_d2h_queues.empty()) {
+    for (int i = 0; i < _num_loop_parallel; ++i) {
+      _p2p_d2h_queues.push_back(new BytePSScheduledQueue(P2P_COPYD2H, _lockless_queue));
+    }
+  } else if (queueType == SEND && _send_queues.empty()) {
+    for (int i = 0; i < _num_loop_parallel; ++i) {
+      _send_queues.push_back(new BytePSScheduledQueue(SEND, _lockless_queue));
+    }
+  } else if (!_queues[queueType]) {
     _queues[queueType] = new BytePSScheduledQueue(queueType);
   }
   return;
@@ -123,16 +172,46 @@ void BytePSGlobal::Init() {
                    ? std::string(getenv("BYTEPS_TRACE_DIR"))
                    : "./trace";
 
-  _basic_comm = std::make_shared<BytePSCommSocket>();
+  // Set p2p related variables
+  _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
+  _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
+  _skip_d2h = getenv("BYTEPS_P2P_SKIP_D2H") ? atoi(getenv("BYTEPS_P2P_SKIP_D2H")) : false;
+  _num_loop_parallel = getenv("BYTEPS_LOOP_PARALLEL") ? atoi(getenv("BYTEPS_LOOP_PARALLEL")) : 1;
+  _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
+  _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 1;
+  BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
+                << ", skip_d2h=" << _skip_d2h
+                << ", loop_parallel=" << _num_loop_parallel
+                << ", lockless=" << _lockless_queue << ", trace=" << _is_trace
+                << ", session_id=" << _alltoall_session_size;
 
+  if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
+    _local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
+  }
+  if (_local_root == -1) {
+    _local_root = _local_size - 1;
+  }
+
+  if (getenv("BYTEPS_SERVER_LOCAL_ROOT")) {
+    _server_local_root = atoi(getenv("BYTEPS_SERVER_LOCAL_ROOT"));
+  }
+  if (_server_local_root == -1) {
+    _server_local_root = _local_size - 1;
+  }
+
+  _basic_comm = std::make_shared<BytePSCommSocket>();
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
-                    &_my_role);
+                    &_my_role, &_num_phy_node, &_phy_node_id);
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
 
   // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
+    _p2p_partition_bytes = _partition_bytes;
+  }
+  if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
+    _p2p_partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
   }
   if (getenv("BYTEPS_MIN_COMPRESS_BYTES")) {
     _min_compress_bytes = atoi(getenv("BYTEPS_MIN_COMPRESS_BYTES"));
@@ -179,7 +258,7 @@ void BytePSGlobal::Init() {
     for (int i = 0; i < num_server; ++i) _server_accumulated_len.push_back(0);
   }
 
-  BPS_LOG(DEBUG) << "Number of worker=" << _num_worker << ", launching "
+  BPS_LOG(DEBUG) << "Number of workers=" << _num_worker << ", launching a "
                  << (IsDistributed() ? "" : "non-") << "distributed job";
 
   _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
@@ -188,9 +267,9 @@ void BytePSGlobal::Init() {
   CUDA_CALL(cudaSetDevice(_local_rank));
 
   // Init NCCL
+#if BYTEPS_BUILDING_CUDA == 1
   _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
   _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
-
   // Bind to NUMA node
   if (_is_cross_pcie_switch) {
     auto numa_index = (GetPcieSwitchIndex() > numa_max_node())
@@ -198,17 +277,30 @@ void BytePSGlobal::Init() {
                           : GetPcieSwitchIndex();
     numa_bind(numa_parse_nodestring(std::to_string(numa_index).c_str()));
   }
+#endif
 
   // Init CPU Reducer
   if (_is_cross_pcie_switch) {
     _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
+  } else if (_is_joint) {
+    // cpu reducer is used for CPU allreduce and alltoall
+    _cpu_reducer = std::make_shared<CpuReducer>(nullptr);
   }
 
+  // ready table for send & recv
+  if (_is_joint) {
+    server::BytePSServer::InitP2PCopyTable();
+  }
   // ReadyTable for Push & Pull
   if (_is_root_device) {
-    _push_table = new ReadyTable(_local_size - 1, "PUSH");
+    _push_table = new ReadyTable(0, "PUSH");
+    _cpu_reduce_table = new ReadyTable(_local_size - 1, "CPU_REDUCE");
+    _cpu_reduce_finish_table = new ReadyTable(_local_size - 1, "CPU_REDUCE_FINISH");
+    _cpu_bcast_finish_table = new ReadyTable(_local_size - 1, "CPU_BCAST_FINISH");
   } else {
     _copy_table = new ReadyTable(1, "COPY");
+    _cpu_reduce_table = new ReadyTable(1, "CPU_REDUCE");
+    _cpu_bcast_table = new ReadyTable(1, "CPU_BCAST");
   }
 
   if (_is_root_device) {
@@ -219,6 +311,7 @@ void BytePSGlobal::Init() {
     }
   }
 
+#if BYTEPS_BUILDING_CUDA == 1
   // ReadyTable for cross-PCIe-switch reduce
   if (_is_cross_pcie_switch) {
     if (_cpu_reducer->isRoot()) {
@@ -259,10 +352,9 @@ void BytePSGlobal::Init() {
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
-
+#endif
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
-    BPS_LOG(DEBUG) << "Create schedule queue " << i;
     auto type = static_cast<QueueType>(i);
     BytePSGlobal::CreateScheduledQueue(type);
   }
@@ -274,26 +366,44 @@ void BytePSGlobal::Init() {
                  << " size=" << _size << " local_size=" << _local_size
                  << " worker_id=" << _worker_id;
 
+  BPS_LOG(DEBUG) << "my_pid " << getpid();
+
   if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
     _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
   }
   return;
 }
 
-ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
+ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
   // we reuse _init_mutex, because BytePS should have been inited
+  bool need_ps = IsDistributed() && (_my_role == BytePSRole::LOCAL_ROOT || _is_joint);
   std::lock_guard<std::mutex> lock(_init_mutex);
-  if (!_ps && IsDistributed() &&
-      _my_role == BytePSRole::LOCAL_ROOT) {  // only the root needs networking
-    // init low-level ps implementation
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
-    if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
-      ps::Postoffice::Get()->Barrier(
-          0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
+  // init low-level ps implementation
+  if (_ps.empty() && need_ps) {
+    const char* role_val = getenv("DMLC_ROLE");
+    CHECK(role_val) << "DMLC_ROLE is not set";
+    ps::Node::Role ps_role = ps::GetRole(std::string(role_val));
+    BPS_CHECK(_worker_id >= 0) << "rank must be larger than 0: " << _worker_id;
+    auto val = getenv("DMLC_GROUP_SIZE");
+    int group_size = val ? atoi(val) : 1;
+    BPS_LOG(DEBUG) << "Initializing PS worker. rank=" << _worker_id
+                    << " role=" << ps_role << " group_size=" << group_size;
+    ps::StartPS(0, ps_role, _worker_id, true, "byteps\0");
+    for (int i = 0; i < group_size; ++i) {
+      _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
+    if (ps_role == ps::Node::JOINT) {
+      _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));
+    }
+    // TODO: support resume
+    BPS_LOG(DEBUG) << "PS rank " << _worker_id << " initialized. num_server="
+                    << ps::NumServers() << ". num_worker=" << ps::NumWorkers()
+                    << ". group_size=" << group_size;
   }
-  return _ps;
+  if (_ps.size() > index) {
+    return _ps.at(index);
+  }
+  return nullptr;
 }
 
 void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
@@ -302,7 +412,18 @@ void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
     _threads.push_back(new std::thread(func[i]));
   }
   BPS_LOG(DEBUG) << "Started " << func.size()
-                 << " background threads. rank=" << _local_rank;
+                 << " background threads. local_rank=" << _local_rank;
+}
+
+void BytePSGlobal::StartMultiple(const std::vector<IndexedLoopFn>& func) {
+  // Start background threads
+  for (size_t i = 0; i < func.size(); i++) {
+    for (int j = 0; j < _num_loop_parallel; ++j) {
+      _threads.push_back(new std::thread(func[i], j));
+    }
+  }
+  BPS_LOG(DEBUG) << "Started " << func.size() << " background functions, "
+                 << _num_loop_parallel << " threads each";
 }
 
 const Status NOT_INITIALIZED_ERROR = Status::PreconditionError(
@@ -322,6 +443,8 @@ void BytePSGlobal::Shutdown() {
   _should_shutdown = true;
   int total_thread_num = _threads.size();
 
+  BPS_LOG(DEBUG) << "Shutdown BytePS: joining " << total_thread_num << " threads"
+                 << " (rank=" << _local_rank << ")";
   for (size_t i = 0; i < _threads.size(); i++) {
     if (_threads[i]->joinable()) {
       _threads[i]->join();
@@ -330,10 +453,14 @@ void BytePSGlobal::Shutdown() {
     }
   }
 
+  BPS_LOG(DEBUG) << "Shutdown BytePS: joined " << BytePSGlobal::joined_thread_cnt.fetch_add(0)
+    << " threads" << " expecting " << total_thread_num << "threads";
   while (!IsAllThreadFinish(total_thread_num)) {
     // wait until all threads joined
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
+  BPS_LOG(DEBUG) << "Shutdown BytePS: joined " << total_thread_num << " threads"
+                 << " (rank=" << _local_rank << ")";
 
   for (size_t i = 0; i < QueueNum; i++) {
     if (_queues[i]) {
@@ -341,14 +468,26 @@ void BytePSGlobal::Shutdown() {
       _queues[i] = NULL;
     }
   }
-
-  if (_ps) {
+  BPS_LOG(DEBUG) << "Shutdown PS ... ";
+  if (!_ps.empty()) {
     // shutdown _ps and wait for the completion acks of other workers/servers
-    ps::Finalize(0, true);
-    delete _ps;
-    _ps = NULL;
+    BPS_LOG(DEBUG) << "Shutdown BytePS: waiting for worker to finalize"
+                   << " (rank=" << _local_rank << ")";
+    ps::Finalize(0, ps::Node::WORKER, true);
+    for (auto worker : _ps) delete worker;
+    _ps.clear();
+  }
+  BPS_LOG(DEBUG) << "Shutdown BytePS: worker finalized"
+                 << " (rank=" << _local_rank << ")";
+  if (_server_thread) {
+    BPS_LOG(DEBUG) << "Shutdown BytePS: waiting for server to finalize"
+                   << " (rank=" << _local_rank << ")";
+    _server_thread->join();
+    BPS_LOG(DEBUG) << "Shutdown BytePS: server finalized"
+                   << " (rank=" << _local_rank << ")";
   }
 
+#if BYTEPS_BUILDING_CUDA == 1
   if (_copy_device2host_stream) {
     CUDA_CALL(cudaStreamDestroy(*_copy_device2host_stream));
     _copy_device2host_stream = NULL;
@@ -357,6 +496,7 @@ void BytePSGlobal::Shutdown() {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
     _copy_host2device_stream = NULL;
   }
+#endif
 
   if (_reduce_table) {
     delete _reduce_table;
@@ -380,10 +520,17 @@ void BytePSGlobal::Shutdown() {
     _copy_table = NULL;
   }
 
+  if (_p2p_copy_table) {
+    delete _p2p_copy_table;
+    _p2p_copy_table = NULL;
+  }
+
   _basic_comm.reset();
   _shm_obj.reset();
   _cpu_reducer.reset();
+#if BYTEPS_BUILDING_CUDA == 1
   _nccl_manager.reset();
+#endif
 
   // reset state, ignore profiling state
   BPS_LOG(DEBUG) << "Clear BytePS state";
@@ -409,6 +556,32 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
   return _name_to_cxt[name];
 }
 
+
+bool BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, int receiver) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+      _declared_tensors.push_back(name);
+    }
+    _name_to_cxt[name].initialized = false;
+    _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
+    _name_to_cxt[name].op_type = P2P_OP;
+    // the next key starts from 0 per send/recv pair
+    int send_recv_pair = (sender << 16) + receiver;
+    _name_to_cxt[name].declared_key = (ps::Key)p2p_next_keys_[send_recv_pair]++;
+    BPS_LOG(DEBUG) << "Declared p2p tensor " << name
+                   << ", declared key (not PS key): "
+                   << _name_to_cxt[name].declared_key
+                   << ", worker_id=" << BytePSGlobal::GetWorkerID()
+                   << ", my_rank=" << BytePSGlobal::GetRank()
+		   << ", sender=" << sender
+		   << ", receiver=" << receiver;
+    return false;
+  }
+  return true;
+}
+
+
 bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
@@ -419,6 +592,7 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
     _name_to_cxt[name].initialized = false;
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
     _name_to_cxt[name].declared_key = (ps::Key)next_key_++;
+    _name_to_cxt[name].op_type = PUSH_PULL_OP;
     BPS_LOG(DEBUG) << "Declared tensor " << name
                    << ", declared key (not PS key): "
                    << _name_to_cxt[name].declared_key
@@ -509,7 +683,7 @@ bool BytePSGlobal::IsAllTensorOutput(const std::string& name) {
 void BytePSGlobal::OutputTraces() {
   // Asynchronously output communication traces
   auto trace_path =
-      _trace_dir + "/" + std::to_string(_local_rank) + "/comm.json";
+      _trace_dir + "/" + std::to_string(_rank) + "/comm.json";
   // Output these traces
   std::ofstream file;
   file.open(trace_path);
@@ -625,6 +799,27 @@ uint64_t BytePSGlobal::Hash_SDBM(uint64_t key) {
   return hash;
 }
 
+PSKV BytePSGlobal::EncodeP2PKey(uint64_t key, size_t len, int receiver) {
+  auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+  const int num_servers = krs.size();
+  BPS_CHECK_GT(num_servers, 0);
+  // send it to the target server
+  int server = receiver;
+  CHECK_LT(server, num_servers)
+    << "server=" << server << ", num_servers=" << num_servers;
+  ps::Key ps_key = krs[server].begin() + key;
+  PSKV pskv;
+  // initialization
+  BPS_CHECK_LT(ps_key, krs[server].end());
+  pskv.keys.push_back(ps_key);
+  pskv.lens.push_back(len);
+  pskv.size = len;
+  // ps_kv_max_size_[ps_key] = len;
+  BPS_LOG(TRACE) << "key " << key << " is encoded to " << pskv.keys[0]
+                 << ", assigned to server " << server;
+  return pskv;
+}
+
 PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(_encode_mutex);
   PSKV& pskv = ps_kv_[key];
@@ -645,6 +840,9 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       server = Hash_BuiltIn(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("djb2"))) {
       server = Hash_DJB2(key) % num_servers;
+    } else if (!_hash_knob.compare(std::string("djb2-colocate"))) {
+      server = Hash_DJB2(key) % _num_phy_node;
+      server = server * _local_size + _server_local_root;
     } else if (!_hash_knob.compare(std::string("sdbm"))) {
       server = Hash_SDBM(key) % num_servers;
     } else if (!_hash_knob.compare(std::string("mixed"))) {
@@ -681,6 +879,7 @@ uint32_t BytePSGlobal::GetTensorCount() {
   return BytePSGlobal::_name_to_cxt.size();
 }
 
+#if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
   return BytePSGlobal::_copy_device2host_stream;
 }
@@ -688,11 +887,29 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
   return BytePSGlobal::_copy_host2device_stream;
 }
+#endif
 
 bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
   int k = BytePSGlobal::joined_thread_cnt.fetch_add(0);
   return (k == total_thread_num);
 };
+
+
+bool PushPullSpeed::ShouldRecord() {
+  return _should_record;
+}
+
+ReadyTable* BytePSGlobal::GetP2PCopyTable() {
+  return server::BytePSServer::GetP2PCopyTable();
+}
+
+ReadyTable* BytePSGlobal::GetP2PGroupCopyTable() {
+  return server::BytePSServer::GetP2PGroupCopyTable();
+}
+
+int BytePSGlobal::IsDirectResponse() {
+  return server::BytePSServer::IsP2PDirectResponse();
+}
 
 std::mutex PushPullSpeed::_mtx;
 std::queue<std::shared_ptr<SpeedEntry>> PushPullSpeed::_data_points;
@@ -745,10 +962,6 @@ std::shared_ptr<SpeedEntry> PushPullSpeed::GetSpeed() {
   }
 
   return entry;
-}
-
-bool PushPullSpeed::ShouldRecord() {
-  return _should_record;
 }
 
 }  // namespace common

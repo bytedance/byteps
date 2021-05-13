@@ -17,7 +17,7 @@
 #ifndef BYTEPS_COMMON_H
 #define BYTEPS_COMMON_H
 
-#ifndef BYTEPS_BUILDING_SERVER
+#if BYTEPS_BUILDING_CUDA == 1
 #include <cuda_runtime.h>
 #include <nccl.h>
 #endif
@@ -40,6 +40,9 @@
 #include <queue>
 #include <thread>
 #include <Python.h>
+#include <malloc.h>
+#include <signal.h>
+#include "../server/common.h"
 
 namespace byteps {
 namespace common {
@@ -67,7 +70,7 @@ enum DataType {
   // below are not in mshadow, should avoid using these
   // BYTEPS_UINT16 = 7,
   // BYTEPS_INT16 = 8,
-  // BYTEPS_BOOL = 9,
+  BYTEPS_BOOL = 9,
   // BYTEPS_BYTE = 10,
 };
 
@@ -98,7 +101,34 @@ enum QueueType {
   COPYH2D,
   COORDINATE_BROADCAST,
   BROADCAST,
+  // for peer-to-peer send
+  SEND,
+  // for host-to-device copy used in peer-to-peer
+  P2P_COPYH2D,
+  // for device-to-host copy used in peer-to-peer
+  P2P_COPYD2H,
+  // for host-to-host/device-to-device copy used in peer-to-peer
+  P2P_COPYD2H_SEND,
+  // for alltoall recv when the recv split is unknown
+  // it waits for the entire group of data before starting to copy
+  P2P_GROUP_COPYH2D,
+  // for pure CPU allreduce
+  CPU_COPY,
+  COORDINATE_CPU_REDUCE,
+  CPU_REDUCE,
+  CPU_REDUCE_FINISH,
+  // for pure CPU allreduce
+  CPU_BCAST,
+  CPU_BCAST_FINISH,
   QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
+};
+
+enum OperationType {
+  UNKNOWN_OP,
+  // push pull (a.k.a all-reduce)
+  PUSH_PULL_OP,
+  // peer-to-peer operations (send/recv, alltoall)
+  P2P_OP,
 };
 
 const int QueueNum =
@@ -115,7 +145,18 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "DECOMPRESS",
                                              "COPYH2D",
                                              "COORDINATE_BROADCAST",
-                                             "BROADCAST"};
+                                             "BROADCAST",
+                                             "SEND",
+                                             "P2P_COPYH2D",
+                                             "P2P_COPYD2H",
+                                             "P2P_COPYD2H_SEND",
+                                             "P2P_GROUP_COPYH2D",
+                                             "CPU_COPY",
+                                             "COORDINATE_CPU_REDUCE",
+                                             "CPU_REDUCE",
+                                             "CPU_REDUCE_FINISH",
+                                             "CPU_BCAST",
+                                             "CPU_BCAST_FINISH"};
 
 class Status {
  public:
@@ -155,7 +196,6 @@ class TensorShape {
     return shape_ != rhs.shape_;
   }
 
- private:
   std::vector<int64_t> shape_;
 };
 
@@ -183,25 +223,34 @@ typedef struct BytePSContext {
   uint64_t declared_key;
   // the actual keys being used
   std::vector<uint64_t> key_list;
-  // a copy on CPU
+  // a copy on CPU, backed by shm
+  // Note that this buff is optional for p2p operations
   void* cpubuff;
   // GPU ptr if the tensor is on CPU
+  // Only used by push_pull operations
   void* gpu_ptr;
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
+  std::vector<void*> numa_cpubuff;
   size_t buff_len;
   // Used for profiling communication events
   std::queue<BPSCommTime*> comm_time;
   bool profile_flag = false;
   int step_cnt = 0;
   int local_rank = 0;
-  std::unordered_map<uint64_t,
-                     std::unordered_map<int, std::queue<BPSCommTime*>>>
-      part_comm_time;
+  std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime*>>> part_comm_time;
   // Compressor list
   std::vector<std::shared_ptr<compressor::Compressor>> compressor_list;
   // kwargs
   std::unordered_map<std::string, std::string> kwargs;
+  // the rank of the sender for p2p operations.
+  int sender = -1;
+  // the rank of the receiver for p2p operations.
+  int receiver = -1;
+  // Used for p2p multiple shm
+  std::vector<void*> cpubuff_list;
+  // The type of the operation. this field is checked during tensor initialization
+  OperationType op_type;
 } BPSContext;
 
 class Tensor {
@@ -210,7 +259,41 @@ class Tensor {
   virtual const TensorShape shape() const = 0;
   virtual const void* data() const = 0;
   virtual int64_t size() const = 0;
+  virtual void resize(const common::TensorShape&) = 0;
   virtual ~Tensor() = default;
+};
+
+class TensorView : public Tensor {
+ public:
+  // A view on [begin, end) on the original tensor.
+  // tensor: the original tensor
+  // begin: index of the starting element of the flatten tensor
+  // end: index of the starting element of the flatten tensor
+  TensorView(std::shared_ptr<Tensor> tensor, int begin, int end);
+
+  // the data type of the view
+  const DataType dtype() const;
+  
+  // the shape of the view
+  const TensorShape shape() const;
+
+  // the pointer to the view data
+  const void* data() const;
+
+  // the size of the view data in bytes
+  int64_t size() const;
+
+  // resize the tensor.
+  void resize(const common::TensorShape&);
+
+  ~TensorView() = default;
+
+  std::shared_ptr<Tensor> tensor_;
+  int begin_;
+  int end_;
+  int size_;
+  void* data_;
+  TensorShape shape_;
 };
 
 // A callback to call after the PS communication completes.
@@ -229,6 +312,8 @@ struct TensorTableEntry {
   std::shared_ptr<Tensor> tensor;
   // Pre-allocated output tensor.
   std::shared_ptr<Tensor> output;
+  // Pre-allocated auxiliary output tensor.
+  std::shared_ptr<Tensor> aux_output;
   // Priroity
   int priority = 0;
   // The version of tensor
@@ -247,6 +332,7 @@ struct TensorTableEntry {
   void* gpu_ptr;
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
+  std::vector<void*> numa_cpubuff;
   // The (deep copy of) queue list of this task
   std::vector<QueueType> queue_list;
   // The offset of this partition
@@ -261,18 +347,16 @@ struct TensorTableEntry {
   std::shared_ptr<compressor::Compressor> compressor;
   // Compressed
   std::shared_ptr<compressor::tensor_t> compressed;
+  // queue index. Used when there are multiple queues for the same task.
+  int queue_idx = 0;
+  // list of offsets, used for alltoall only
+  std::vector<int> offset_list;
+  // list of involved keys, used for alltoall only
+  std::vector<uint64_t> key_list;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 
-enum class RequestType {
-  kDefaultPushPull,
-  kRowSparsePushPull,
-  kCompressedPushPull
-};
-
-int GetCommandType(RequestType requestType, int d);
-
-#ifndef BYTEPS_BUILDING_SERVER
+#if BYTEPS_BUILDING_CUDA == 1
 ncclDataType_t getNcclDataType(DataType dtype);
 #endif
 

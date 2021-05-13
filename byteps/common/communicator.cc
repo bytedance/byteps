@@ -53,13 +53,13 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
   }
 
   BPS_LOG(DEBUG) << "This is " << path_suffix << (is_root ? " ROOT" : " WORKER")
-                 << " device, rank=" << _local_rank
+                 << " device, rank=" << _rank << ", root=" << _root
                  << ", all sockets create successfully";
 }
 
 void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
                             int* local_size, int* worker_id,
-                            BytePSRole* my_role) {
+                            BytePSRole* my_role, int* num_phy_node, int* phy_node_id) {
   BPS_LOG(DEBUG) << "Using Communicator=Socket";
 
   // We should init rank, size, etc. using getenv
@@ -75,13 +75,26 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
   *local_size = atoi(getenv("BYTEPS_LOCAL_SIZE"));
   *worker_id = atoi(getenv("DMLC_WORKER_ID"));
   auto num_worker = atoi(getenv("DMLC_NUM_WORKER"));
-
+  bool is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
+  // num physical node
+  if (is_joint) {
+    _num_phy_node = num_worker / *local_size;
+  } else {
+    _num_phy_node = num_worker;
+  }
+  *num_phy_node = _num_phy_node;
   // we assume _local_size (i.e., # GPU) is consistent on all workers
-  *rank = (*local_rank) + (*worker_id) * (*local_size);
-  // force setting global rank
-  *rank = getenv("BYTEPS_GLOBAL_RANK") ? atoi(getenv("BYTEPS_GLOBAL_RANK")) : *rank;
-  *size = num_worker * (*local_size);
-
+  // TODO: force setting global rank based on BYTEPS_GLOBAL_RANK
+  if (is_joint) {
+    *size = num_worker;
+    *rank = *worker_id;
+    *phy_node_id = *worker_id / (*local_size);
+  } else {
+    *size = num_worker * (*local_size);
+    *rank = *worker_id * (*local_size) + *local_rank;
+    *phy_node_id = *worker_id;
+  }
+  _phy_node_id = *phy_node_id;
   _rank = *rank;
   _size = *size;
   _local_rank = *local_rank;
@@ -91,7 +104,12 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
   for (int i = 0; i < _local_size; i++) {
     _members.push_back(i);
   }
-  _root = _members.back();
+  if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
+    _root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
+  }
+  if (_root == -1) {
+    _root = _members.back();
+  }
 
   *my_role = (_local_rank == _root) ? LOCAL_ROOT : LOCAL_WORKER;
   bool is_root = (*my_role == LOCAL_ROOT) ? true : false;
@@ -110,18 +128,17 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
   _recv_fd = initSocket(_local_rank, _recv_path);
 
   // init socket comm
-  if (is_root) {  // root
-    _listen_thread =
+  _listen_thread =
         new std::thread(&BytePSCommSocket::startListenThread, this);
 
-    // Just in case launching root earlier than non-root
-    // TODO: use retry instead of sleep
-    // if (_local_size > 1)
-    // std::this_thread::sleep_for(std::chrono::microseconds(1000000));
-  }
+  // Just in case launching root earlier than non-root
+  // TODO: use retry instead of sleep
+  // if (_local_size > 1)
+  // std::this_thread::sleep_for(std::chrono::microseconds(1000000));
 
   BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
-                 << " device, rank=" << _local_rank
+                 << " device, local_rank=" << _local_rank
+                 << ", rank=" << _rank
                  << ", all sockets create successfully";
 }
 
@@ -170,7 +187,7 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
     while (true) {
       rc = recv(_recv_fd, buffer, sizeof(buffer), MSG_WAITALL);
       if (rc < 0 && errno == EINTR) continue;
-      if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
+      if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EBADF)) { // timeout or shutdown
         if (BytePSGlobal::ShouldShutdown()) break; // on exit
         else continue; // normal timeout
       }
@@ -194,13 +211,32 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
       case PUSH_READY:
         BytePSGlobal::GetPushTable()->AddReadyCount(message.key);
         break;
+      case CPU_REDUCE_READY:
+        // non-root to root
+      case DO_CPU_REDUCE:
+        // root to non-root
+        BytePSGlobal::GetCpuReduceTable()->AddReadyCount(message.key);
+        break;
+      case CPU_REDUCE_DONE:
+        BytePSGlobal::GetCpuReduceFinishTable()->AddReadyCount(message.key);
+        break;
+      case DO_CPU_BCAST:
+        BytePSGlobal::GetCpuBcastTable()->AddReadyCount(message.key);
+        break;
+      case CPU_BCAST_DONE:
+        BytePSGlobal::GetCpuBcastFinishTable()->AddReadyCount(message.key);
+        break;
+      case DO_COPYH2D:
+        BytePSGlobal::GetCopyTable()->AddReadyCount(message.key);
+        break;
       default:
         BPS_CHECK(0) << "unsupported signal: " << message.signal;
     }
 
     BPS_LOG(TRACE) << "root socket recved: src=" << message.src
-                   << ", signal=" << message.signal << ", key=" << message.key
-                   << ", myrank=" << _local_rank;
+                   << ", signal=" << message.signal
+                   << "(" << SigLogStrings[message.signal] << ")" <<", key="
+                   << message.key << ", myrank=" << _local_rank;
   }
   BPS_LOG(DEBUG) << "listen thread joined"
                  << " (rank=" << _local_rank << ")";
@@ -222,7 +258,8 @@ int BytePSCommSocket::sendSignal(int destination, void* data, int len) {
                  sizeof(struct sockaddr_un));
     if (ret < 0) {
       BPS_LOG(DEBUG) << "Socket send error " << std::strerror(errno)
-                     << ", rank=" << _local_rank;
+                     << ", myrank=" << _local_rank << " socket path: "
+                     << fd_path << ", dst=" << destination;
       std::this_thread::sleep_for(std::chrono::microseconds(1000000));
     }
   }
@@ -239,11 +276,11 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   while (true) {
     rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
     if (rc < 0 && errno == EINTR) continue;
-    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) { // timeout
+    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EBADF)) { // timeout or shutdown
         if (BytePSGlobal::ShouldShutdown()) break; // on exit
         else continue; // normal timeout
     }
-    BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank;
+    BPS_CHECK_GE(rc, 0) << std::strerror(errno) << ", rank=" << _local_rank << ", rc=" << rc;
     BPS_CHECK_LE(rc, max_len)
         << "recv_len=" << rc << ", but given max_len=" << max_len;
     break;

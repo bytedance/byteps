@@ -117,3 +117,9 @@ venv.bak/
 # for development
 scripts/
 exps/
+
+# tmp
+*.swp
+*.swo
+*.swm
+*.swn

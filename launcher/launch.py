@@ -37,7 +37,7 @@ class PropagatingThread(threading.Thread):
 
 COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
                         "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
-WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
+WORKER_REQUIRED_ENVS = ["BYTEPS_PHY_NODE_ID"]
 NUMA_PATH = "/sys/devices/system/node"
 
 
@@ -124,9 +124,9 @@ def allocate_cpu(local_size):
 
 def check_env():
     assert "DMLC_ROLE" in os.environ and \
-           os.environ["DMLC_ROLE"].lower() in ["worker", "server", "scheduler"]
+           os.environ["DMLC_ROLE"].lower() in ["worker", "server", "scheduler", "joint"]
     required_envs = COMMON_REQUIRED_ENVS
-    if os.environ["DMLC_ROLE"] == "worker":
+    if os.environ["DMLC_ROLE"] in ["worker", "joint"]:
         assert "DMLC_NUM_WORKER" in os.environ
         num_worker = int(os.environ["DMLC_NUM_WORKER"])
         assert num_worker >= 1
@@ -139,7 +139,7 @@ def check_env():
             os._exit(0)
 
 
-def worker(local_rank, local_size, command, allocation=None):
+def worker_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
@@ -173,15 +173,31 @@ def worker(local_rank, local_size, command, allocation=None):
             "BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
+    node_id = int(os.environ.get("BYTEPS_PHY_NODE_ID", "0"))
+    global_rank = node_id * local_size + local_rank
+    my_env["DMLC_WORKER_ID"] = str(node_id)
+    my_env["DMLC_RANK"] = str(node_id)
     subprocess.check_call(command, env=my_env,
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
+def server_fn(local_rank, local_size, command, allocation=None):
+    my_env = os.environ.copy()
+    my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
+    my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
+    if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
+        command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+    node_id = int(os.environ.get("BYTEPS_PHY_NODE_ID", "0"))
+    global_rank = node_id * local_size + local_rank
+    my_env["DMLC_RANK"] = str(node_id)
+    subprocess.check_call(command, env=my_env,
+                          stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
     check_env()
-    if os.environ["DMLC_ROLE"] == "worker":
+    if os.environ["DMLC_ROLE"] in ["worker", "joint"]:
+        # launch workers
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
             local_size = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
         else:
@@ -194,10 +210,10 @@ def launch_bps():
         for i in range(local_size):
             command = ' '.join(sys.argv[1:])
             if os.environ.get("BYTEPS_NUMA_ON", "") == "1":
-                t[i] = PropagatingThread(target=worker, args=[
+                t[i] = PropagatingThread(target=worker_fn, args=[
                     i, local_size, command, allocations[i]])
             else:
-                t[i] = PropagatingThread(target=worker, args=[
+                t[i] = PropagatingThread(target=worker_fn, args=[
                     i, local_size, command])
             t[i].daemon = True
             t[i].start()
@@ -205,16 +221,28 @@ def launch_bps():
         for i in range(local_size):
             t[i].join()
 
-    elif os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "") == "1" or \
-         int(os.environ.get("DMLC_NUM_WORKER", "1")) > 1:
-        command = "python3 -c 'import byteps.server'"
-        if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
-            command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
-        print("Command: %s\n" % command, flush=True)
+    if os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "") != "1" or \
+       int(os.environ.get("DMLC_NUM_WORKER", "1")) == 1:
+           # there's only one worker, and not forcing distributed mode
+           return
+
+    command = "python3 -c 'import byteps.server'"
+    if os.environ["DMLC_ROLE"] == "scheduler":
         my_env = os.environ.copy()
         subprocess.check_call(command, env=my_env,
                               stdout=sys.stdout, stderr=sys.stderr, shell=True)
+        return
+    # now it's the servers in non-colocate mode
+    local_size = 1
 
+    t = [None] * local_size
+    for i in range(local_size):
+        t[i] = PropagatingThread(target=server_fn, args=[
+                i, local_size, command])
+        t[i].daemon = True
+        t[i].start()
+    for i in range(local_size):
+        t[i].join()
 
 if __name__ == "__main__":
     launch_bps()

@@ -30,7 +30,7 @@ enum class LogLevel { TRACE, DEBUG, INFO, WARNING, ERROR, FATAL };
 // Always-on checking
 #define BPS_CHECK(x) \
   if (!(x))          \
-  common::LogMessageFatal(__FILE__, __LINE__) << "Check failed: " #x << ' '
+  byteps::common::LogMessageFatal(__FILE__, __LINE__) << "Check failed: " #x << ' '
 
 #define BPS_CHECK_LT(x, y) BPS_CHECK((x) < (y))
 #define BPS_CHECK_GT(x, y) BPS_CHECK((x) > (y))
@@ -49,21 +49,31 @@ enum class LogLevel { TRACE, DEBUG, INFO, WARNING, ERROR, FATAL };
  *
  * It checks for CUDA errors after invocation of the expression.
  */
-#define CUDA_CALL(func)                                          \
-  {                                                              \
-    cudaError_t e = (func);                                      \
-    BPS_CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading) \
-        << "CUDA: " << cudaGetErrorString(e);                    \
-  }
+#if BYTEPS_BUILDING_CUDA == 0
+  #define CUDA_CALL(func) {;}
+#else
+  #define CUDA_CALL(func)                                          \
+    {                                                              \
+      cudaError_t e = (func);                                      \
+      BPS_CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading) \
+          << "CUDA: " << cudaGetErrorString(e);                    \
+    }
+#endif
 
 /*
  * \brief Protected NCCL call.
  */
-#define NCCLCHECK(cmd)                                                      \
-  {                                                                         \
-    ncclResult_t r = (cmd);                                                 \
-    BPS_CHECK(r == ncclSuccess) << "NCCL error: " << ncclGetErrorString(r); \
-  }
+#if BYTEPS_BUILDING_CUDA == 0
+  #define NCCLCHECK(cmd) {}
+#else
+  #define NCCLCHECK(cmd)                                                      \
+    {                                                                         \
+      ncclResult_t r = (cmd);                                                 \
+      BPS_CHECK(r == ncclSuccess) << "NCCL error: " << ncclGetErrorString(r); \
+    }
+#endif
+
+
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:
@@ -87,12 +97,12 @@ class LogMessageFatal : public LogMessage {
   ~LogMessageFatal();
 };
 
-#define _BPS_LOG_TRACE LogMessage(__FILE__, __LINE__, LogLevel::TRACE)
-#define _BPS_LOG_DEBUG LogMessage(__FILE__, __LINE__, LogLevel::DEBUG)
-#define _BPS_LOG_INFO LogMessage(__FILE__, __LINE__, LogLevel::INFO)
-#define _BPS_LOG_WARNING LogMessage(__FILE__, __LINE__, LogLevel::WARNING)
-#define _BPS_LOG_ERROR LogMessage(__FILE__, __LINE__, LogLevel::ERROR)
-#define _BPS_LOG_FATAL LogMessageFatal(__FILE__, __LINE__)
+#define _BPS_LOG_TRACE byteps::common::LogMessage(__FILE__, __LINE__, byteps::common::LogLevel::TRACE)
+#define _BPS_LOG_DEBUG byteps::common::LogMessage(__FILE__, __LINE__, byteps::common::LogLevel::DEBUG)
+#define _BPS_LOG_INFO byteps::common::LogMessage(__FILE__, __LINE__, LogLevel::INFO)
+#define _BPS_LOG_WARNING byteps::common::LogMessage(__FILE__, __LINE__, LogLevel::WARNING)
+#define _BPS_LOG_ERROR byteps::common::LogMessage(__FILE__, __LINE__, LogLevel::ERROR)
+#define _BPS_LOG_FATAL byteps::common::LogMessageFatal(__FILE__, __LINE__)
 
 #define _LOG(severity) _BPS_LOG_##severity
 

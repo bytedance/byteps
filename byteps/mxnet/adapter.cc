@@ -56,6 +56,11 @@ int64_t MXTensor<T>::size() const {
   return TensorUtil::GetSize(tensor_);
 }
 
+template <class T>
+void MXTensor<T>::resize(const common::TensorShape&) {
+  BPS_CHECK(false) << "NOT IMPLEMENTED";
+}
+
 template class MXTensor<NDArray>;
 
 }  // namespace mxnet

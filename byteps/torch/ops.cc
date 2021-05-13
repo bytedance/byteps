@@ -21,6 +21,7 @@
 #include <thread>
 
 #include "../common/operations.h"
+#include "../common/logging.h"
 #include "adapter.h"
 #include "ops.h"
 #include "cuda_util.h"
@@ -51,8 +52,61 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 
 }  // namespace
 
+enum TaskType {
+  kSend,
+  kRecv,
+  kPushPull
+};
+
+// For recv, the tensor is the output
+// For send, the tensor is the input
+void StartP2PTask(::torch::Tensor tensor, int sender, int receiver,
+                  const std::string tensor_name, int version, int priority,
+                  int handle, TaskType task) {
+  auto device = GetDeviceID(tensor);
+  auto ready_event = RecordReadyEvent(device);
+  auto tensor_ptr = std::make_shared<TorchTensor>(tensor);
+  auto byteps_input = task == kSend ? tensor_ptr : nullptr;
+  auto byteps_output = task == kRecv ? tensor_ptr : nullptr;
+  if (task == kSend && receiver == byteps_rank()) {
+    byteps_output = tensor_ptr;
+  }
+  if (task == kRecv && sender == byteps_rank()) {
+    byteps_input = tensor_ptr;
+  }
+  size_t size = tensor_ptr->size();
+  auto dtype = tensor_ptr->dtype();
+
+  auto& context = common::GetContextFromName(tensor_name);
+  common::InitTensorP2P(context, size, dtype,
+                        (device == CPU_DEVICE_ID)
+                        ? const_cast<void*>(tensor_ptr->data())
+                        : nullptr, sender, receiver);
+
+  std::shared_ptr<std::vector<QueueType>> queue_list;
+  if (task == kSend) {
+    queue_list = common::GetSendQueueList();
+  } else if (task == kRecv) {
+    queue_list = common::GetRecvQueueList();
+  } else {
+    BPS_CHECK(false) << "unexpected task=" << task;
+  }
+
+  auto enqueue_result = common::EnqueueTensor(
+      context, byteps_input, byteps_output, ready_event, device, priority,
+      version,
+      [handle, tensor](const Status& status) mutable {
+        handle_manager.MarkDone(handle, status);
+      },
+      queue_list);
+
+  ThrowIfError(enqueue_result);
+  return;
+}
+
 void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string tensor_name, int version, int priority, int handle) {
+               const std::string tensor_name, int version, int priority,
+               int handle) {
 
   auto device = GetDeviceID(tensor);
   auto ready_event = RecordReadyEvent(device);
@@ -67,6 +121,7 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr);
 
+  // kPushPull
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
   queue_list->insert(queue_list->end(), queue_list_pull->begin(),
@@ -94,6 +149,47 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
   ThrowIfError(enqueue_result);
   return;
 
+}
+
+int DoRecv(::torch::Tensor tensor, int sender, int receiver,
+           const std::string& name, int version, int priority) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto handle = handle_manager.AllocateHandle();
+  std::string prefix = "byteps_p2p_send_";
+  if (sender == -1) sender = byteps_rank();
+  if (receiver == -1) receiver = byteps_rank();
+  prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
+  std::string tensor_name = GetOpName(prefix, name.c_str(), 0);
+  auto& context = common::GetContextFromName(tensor_name);
+  if (context.initialized) {
+    StartP2PTask(tensor, sender, receiver, tensor_name, version, priority, handle, kRecv);
+  } else {
+    std::thread t(StartP2PTask, tensor, sender, receiver, tensor_name, version, priority, handle, kRecv);
+    t.detach();
+  }
+  return handle;
+}
+
+
+int DoSend(::torch::Tensor tensor, int sender, int receiver,
+           const std::string& name, int version, int priority) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto handle = handle_manager.AllocateHandle();
+  std::string prefix = "byteps_p2p_send_";
+  if (sender == -1) sender = byteps_rank();
+  if (receiver == -1) receiver = byteps_rank();
+  prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
+  std::string tensor_name = GetOpName(prefix, name.c_str(), 0);
+  auto& context = common::GetContextFromName(tensor_name);
+  if (context.initialized) {
+    StartP2PTask(tensor, sender, receiver, tensor_name, version, priority, handle, kSend);
+  } else {
+    std::thread t(StartP2PTask, tensor, sender, receiver, tensor_name, version, priority, handle, kSend);
+    t.detach();
+  }
+  return handle;
 }
 
 int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
@@ -126,9 +222,20 @@ void DeclareTensor(const std::string& name) {
   common::IsTensorDeclared(tensor_name);
 }
 
-void WaitAndClear(int handle) {
+void DeclareTensorP2P(const std::string& name, int sender, int receiver) {
+  std::string prefix = "byteps_p2p_send_";
+  if (sender == -1) sender = byteps_rank();
+  if (receiver == -1) receiver = byteps_rank();
+  prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
+  std::string tensor_name = GetOpName(prefix, name.c_str(), 0);
+  common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
+}
+
+void WaitAndClear(int handle, bool busy_waiting) {
   while (!handle_manager.PollHandle(handle)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if (!busy_waiting) {
+      std::this_thread::sleep_for(std::chrono::microseconds(1));
+    }
   }
   auto status = handle_manager.ReleaseHandle(handle);
   ThrowIfError(*status);
@@ -174,6 +281,18 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_async_torch_FloatTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_DoubleTensor", &DoPushPull);
 
+  m.def("byteps_torch_send_async_torch_BoolTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_IntTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_LongTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_FloatTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_DoubleTensor", &DoSend);
+
+  m.def("byteps_torch_recv_async_torch_BoolTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_IntTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_LongTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_FloatTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_DoubleTensor", &DoRecv);
+
   m.def("byteps_torch_set_num_grads", &SetNumGrads);
 
   m.def("byteps_torch_push_pull_group_sync_torch_ByteTensor", &DoPushPullGroupSync);
@@ -191,6 +310,20 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_async_torch_cuda_FloatTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_DoubleTensor", &DoPushPull);
 
+  m.def("byteps_torch_send_async_torch_cuda_BoolTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_cuda_IntTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_cuda_LongTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_cuda_HalfTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_cuda_FloatTensor", &DoSend);
+  m.def("byteps_torch_send_async_torch_cuda_DoubleTensor", &DoSend);
+
+  m.def("byteps_torch_recv_async_torch_cuda_BoolTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_cuda_IntTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_cuda_LongTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_cuda_HalfTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_cuda_FloatTensor", &DoRecv);
+  m.def("byteps_torch_recv_async_torch_cuda_DoubleTensor", &DoRecv);
+
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_ByteTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_IntTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_LongTensor", &DoPushPullGroupSync);
@@ -203,6 +336,7 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_poll", &PollHandle);
   m.def("byteps_torch_wait_and_clear", &WaitAndClear);
   m.def("byteps_torch_declare_tensor", &DeclareTensor);
+  m.def("byteps_torch_declare_tensor_p2p", &DeclareTensorP2P);
 }
 
 }  // namespace torch

@@ -26,6 +26,7 @@ from byteps.torch.ops import push_pull
 from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown, suspend, resume
 from byteps.torch.ops import size, local_size, rank, local_rank
+from byteps.torch.ops import send_async, recv_async
 
 import os
 import torch

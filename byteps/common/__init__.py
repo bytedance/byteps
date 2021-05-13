@@ -59,10 +59,15 @@ class BytePSBasics(object):
     def init(self, lazy=True):
         """A function that inits BytePS."""
         atexit.register(self.shutdown)
+        # UCX-van related env vars
+        os.environ['PSLITE_UCX_SOCKADDR_CM_ENABLE'] = os.environ.get('PSLITE_UCX_SOCKADDR_CM_ENABLE', 'y')
+        os.environ['PSLITE_UCX_USE_MT_MUTEX'] = os.environ.get('PSLITE_UCX_USE_MT_MUTEX', 'y')
         if lazy:
-            return self.C_LIB_CTYPES.byteps_lazy_init()
+            ret = self.C_LIB_CTYPES.byteps_lazy_init()
+            return ret
         else:
-            return self.C_LIB_CTYPES.byteps_init()
+            ret = self.C_LIB_CTYPES.byteps_init()
+            return ret
 
     def shutdown(self):
         """A function that shuts BytePS down."""

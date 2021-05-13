@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_NCCL_MANAGER_H
+#if !defined(BYTEPS_NCCL_MANAGER_H) && BYTEPS_BUILDING_CUDA == 1
 #define BYTEPS_NCCL_MANAGER_H
 
 #include <memory>

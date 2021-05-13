@@ -22,11 +22,10 @@ from distutils.version import LooseVersion
 
 # Load all the necessary PyTorch C types.
 import torch
-
+import os
 # PyTorch must be >= 1.0.0 (including nightly builds)
 # This should be guaranteed by setup.py
 # TODO: we may not support older pytorch. Raise exception here
-from byteps.torch import c_lib
 from byteps.common import BytePSBasics as _BytePSBasics
 _basics = _BytePSBasics(__file__, 'c_lib')
 _NULL = ""
@@ -44,6 +43,7 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 
+P2P_VERBOSE = bool(os.environ.get('P2P_VERBOSE', False))
 
 # Schema: handle -> input, output
 # We keep input in order to make sure it does not get garbage collected
@@ -53,6 +53,7 @@ _handle_map = {}
 
 def _check_function(function_factory, tensor):
     function = function_factory(tensor)
+    from byteps.torch import c_lib
     if not hasattr(c_lib, function):
         raise ValueError('Tensor type %s is not supported.' % tensor.type())
     if not tensor.is_contiguous():
@@ -63,10 +64,17 @@ def _check_function(function_factory, tensor):
 def _push_pull_function_factory(tensor):
     return 'byteps_torch_push_pull_async_' + tensor.type().replace('.', '_')
 
+def _send_function_factory(tensor):
+    return 'byteps_torch_send_async_' + tensor.type().replace('.', '_')
+
+def _recv_function_factory(tensor):
+    return 'byteps_torch_recv_async_' + tensor.type().replace('.', '_')
+
 def _push_pull_group_function_factory(tensor):
     return 'byteps_torch_push_pull_group_sync_' + tensor.type().replace('.', '_')
 
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
+    from byteps.torch import c_lib
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_function_factory, tensor)
     handle = getattr(c_lib, function)(tensor, output, average,
@@ -75,7 +83,36 @@ def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     _handle_map[handle] = (tensor, output)
     return handle
 
+def _do_recv_async(tensor, sender, name, version=0, priority=0):
+    from byteps.torch import c_lib
+    receiver = -1
+    c_name = name.encode() if name is not None else _NULL
+    _declare_p2p(name, sender, receiver)
+    
+    function = _check_function(_recv_function_factory, tensor)
+    handle = getattr(c_lib, function)(tensor, sender, receiver,
+                                      c_name, version, priority)
+    if P2P_VERBOSE:
+        print(f'BPS recv {name}. {sender}->{rank()}. {tensor.size()} {tensor.dtype} handle={handle}', flush=True)
+    _handle_map[handle] = (tensor, tensor)
+    return handle
+
+def _do_send_async(tensor, receiver, name, version=0, priority=0):
+    from byteps.torch import c_lib
+    sender = -1
+    c_name = name.encode() if name is not None else _NULL
+    _declare_p2p(name, sender, receiver)
+
+    function = _check_function(_send_function_factory, tensor)
+    handle = getattr(c_lib, function)(tensor, sender, receiver,
+                                      c_name, version, priority)
+    if P2P_VERBOSE:
+        print(f'BPS send {name}. {rank()}->{receiver}. {tensor.size()} {tensor.dtype} handle={handle}', flush=True)
+    _handle_map[handle] = (tensor, tensor)
+    return handle
+
 def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0):
+    from byteps.torch import c_lib
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_group_function_factory, tensor)
     handle, curr_count = getattr(c_lib, function)(tensor, output, average,
@@ -104,6 +141,30 @@ def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
     """
     output = tensor.new(tensor.shape)
     return _do_push_pull_async(tensor, output, average, name, version, priority)
+
+def recv_async(tensor, sender, name=None, version=0, priority=0):
+    """
+    TODO: doc
+    Arguments:
+        tensor: A tensor to average and sum.
+        name: A name of the reduction operation.
+    Returns:
+        A handle to the send operation that can be used with `poll()` or
+        `synchronize()`.
+    """
+    return _do_recv_async(tensor, sender, name, version, priority)
+
+def send_async(tensor, receiver, name=None, version=0, priority=0):
+    """
+    TODO: doc
+    Arguments:
+        tensor: A tensor to average and sum.
+        name: A name of the reduction operation.
+    Returns:
+        A handle to the send operation that can be used with `poll()` or
+        `synchronize()`.
+    """
+    return _do_send_async(tensor, receiver, name, version, priority)
 
 
 class BytePSPushPull(torch.autograd.Function):
@@ -208,18 +269,27 @@ def poll(handle):
     Returns:
         A flag indicating whether the operation has completed.
     """
+    from byteps.torch import c_lib
     return c_lib.byteps_torch_poll(handle) != 0
 
 
 def declare(name):
+    from byteps.torch import c_lib
     c_lib.byteps_torch_declare_tensor(name.encode())
     return 0
 
+def _declare_p2p(name, sender, receiver):
+    from byteps.torch import c_lib
+    c_name = name.encode() if name is not None else _NULL
+    c_lib.byteps_torch_declare_tensor_p2p(c_name, sender, receiver)
+    return 0
+
 def byteps_torch_set_num_grads(num_grads_):
+    from byteps.torch import c_lib
     c_lib.byteps_torch_set_num_grads(num_grads_)
     return 0
 
-def synchronize(handle):
+def synchronize(handle, busy_wait=False):
     """
     Synchronizes an asynchronous push_pull operation until
     it's completed. Returns the result of the operation.
@@ -229,8 +299,15 @@ def synchronize(handle):
     Returns:
         An output tensor of the operation.
     """
+    from byteps.torch import c_lib
+    if P2P_VERBOSE:
+        print(f'synchronize handle={handle}', flush=True)
     if handle not in _handle_map:
+        if P2P_VERBOSE:
+            print(f'DONE synchronize handle={handle}', flush=True)
         return
-    c_lib.byteps_torch_wait_and_clear(handle)
+    c_lib.byteps_torch_wait_and_clear(handle, busy_wait)
     _, output = _handle_map.pop(handle)
+    if P2P_VERBOSE:
+        print(f'DONE synchronize handle={handle}', flush=True)
     return output

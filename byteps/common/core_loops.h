@@ -49,6 +49,24 @@ void NonRootCopyListenLoop();
 
 void NonRootCopyHost2DeviceLoop();
 
+void SendLoop(int index);
+
+void P2PCopyHost2DeviceLoop();
+
+void P2PCopyDevice2HostLoop(int index);
+
+void P2PCopyDevice2HostSendLoop(int index);
+
+void P2PGroupCopyHost2DeviceLoop();
+
+// cpu allreduce
+void CpuCopyLoop();
+void CpuCoordinateLoop();
+void CpuReduceLoop();
+void CpuReduceFinishLoop();
+void CpuBcastLoop();
+void CpuBcastFinishLoop();
+
 }  // namespace common
 }  // namespace byteps
 

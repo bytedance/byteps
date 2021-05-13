@@ -22,30 +22,59 @@
 #include <vector>
 #include "common.h"
 #include "ready_table.h"
+#include "spsc_queue.h"
 
 namespace byteps {
 namespace common {
 
+// T = {std::shared_ptr<TensorTableEntry>, TensorTableEntry*}
+// typically, with a TensorTableEntry*, it is created in operations.cc
+// during `EnqueueTensor` and destroyed in `FinishOrProceed` in core_loops.cc
 class BytePSScheduledQueue {
  public:
-  BytePSScheduledQueue(QueueType type);
+  BytePSScheduledQueue(QueueType type, bool lockless = false);
   QueueType getQueueType() { return _qt; }
+
   void addTask(std::shared_ptr<TensorTableEntry>);
-  void recorderTs(std::shared_ptr<TensorTableEntry>);
+  void addTask(TensorTableEntry*);
   std::shared_ptr<TensorTableEntry> getTask();
+  TensorTableEntry* getTaskLite();
   std::shared_ptr<TensorTableEntry> getTask(uint64_t key);
-  uint32_t pendingSize();
   void reportFinish(int size);
   void reset(uint64_t key, int cnt);
 
  private:
+  template <typename T>
+  void doRecordTs(T&);
+
+  template <typename T>
+  void doAddTask(T&, std::vector<T>&);
+
+  template <typename T>
+  T doGetTask(std::vector<T>&);
+
+  template <typename T>
+  T doGetTask(uint64_t key, std::vector<T>&);
+
   // TODO: use priority queue or heap
-  std::vector<std::shared_ptr<TensorTableEntry>> _sq;
+  std::vector<std::shared_ptr<TensorTableEntry>> _sq_shared;
+  std::vector<TensorTableEntry*> _sq_lite;
+
   std::mutex _mutex;
   uint64_t _credits;
   bool _is_scheduled;
   QueueType _qt;
   ReadyTable *_rt;
+
+  // lockless implementation for TensorTableEntry*
+  bool _lockless;
+  std::mutex _read_mu;
+  std::mutex _write_mu;
+  rigtorp::SPSCQueue<TensorTableEntry*> _spsc;
+  // the lockless implementation only supports TensorTableEntry*
+  void addTaskLiteLockless(TensorTableEntry*);
+  TensorTableEntry* getTaskLiteLockless();
+
 };
 
 }  // namespace common

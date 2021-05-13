@@ -17,7 +17,9 @@
 #define BYTEPS_COMMUNICATOR_H
 
 #include <errno.h>
+#if BYTEPS_BUILDING_CUDA == 1
 #include <nccl.h>
+#endif
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -48,7 +50,29 @@ enum BytePSCommSignal {
   DO_REDUCE,
   DO_BROADCAST,
   DO_GROUP,
-  DO_COPYH2D
+  DO_COPYH2D,
+  CPU_REDUCE_READY,
+  DO_CPU_REDUCE,
+  CPU_REDUCE_DONE,
+  DO_CPU_BCAST,
+  CPU_BCAST_DONE
+};
+
+const std::vector<std::string>
+SigLogStrings = {
+  "REDUCE_READY",
+  "PCIE_REDUCE_READY",
+  "BCAST_READY",
+  "PUSH_READY",
+  "DO_REDUCE",
+  "DO_BROADCAST",
+  "DO_GROUP",
+  "DO_COPYH2D",
+  "CPU_REDUCE_READY",
+  "DO_CPU_REDUCE",
+  "CPU_REDUCE_DONE",
+  "DO_CPU_BCAST",
+  "CPU_BCAST_DONE",
 };
 
 struct BytePSCommMsg {
@@ -62,7 +86,8 @@ class BytePSComm {
   BytePSComm() { _comm = nullptr; }
 
   virtual void init(int* rank, int* size, int* local_rank, int* local_size,
-                    int* worker_id, BytePSRole* my_role) = 0;
+                    int* worker_id, BytePSRole* my_role, int* num_phy_node,
+                    int* phy_node_id) = 0;
   virtual int sendSignal(int destination, void* data, int len) = 0;
   virtual int sendSignalToRoot(void* data, int len) = 0;
   virtual int recvSignal(int* source, void* data, int max_len) = 0;
@@ -84,6 +109,8 @@ class BytePSComm {
   int _local_rank;
   int _local_size;
   int _worker_id;
+  int _phy_node_id;
+  int _num_phy_node;
 
   std::vector<int> _members;
   int _root;
@@ -99,7 +126,7 @@ class BytePSCommSocket : public BytePSComm {
                    const std::vector<int>& members);
 
   ~BytePSCommSocket() {
-    if ((_root == _local_rank) && _listen_thread) {
+    if (_listen_thread) {
       _listen_thread->join();
     }
     close(_send_fd);
@@ -119,7 +146,7 @@ class BytePSCommSocket : public BytePSComm {
   }
 
   void init(int* rank, int* size, int* local_rank, int* local_size,
-            int* worker_id, BytePSRole* my_role);
+            int* worker_id, BytePSRole* my_role, int* num_phy_node, int* phy_node_id);
   int sendSignal(int destination, void* data, int len);
   int sendSignalToRoot(void* data, int len);
   int recvSignal(int* source, void* data, int max_len);

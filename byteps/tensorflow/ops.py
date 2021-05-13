@@ -68,6 +68,7 @@ dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
+
 def get_average_backwards_compatibility_fun(reduce_ops):
     """
     Handle backwards compatibility between the old average and the new op parameters.
@@ -81,6 +82,7 @@ def get_average_backwards_compatibility_fun(reduce_ops):
                 raise ValueError('The op parameter supersedes average. Please provide only one of them.')
             return op
         elif average != None:
+            import warnings
             warnings.warn('Parameter `average` has been replaced with `op` and will be removed',
                           DeprecationWarning)
             return reduce_ops.Average if average else reduce_ops.Sum
@@ -132,6 +134,60 @@ def _push_pull(tensor, scope='', name=None):
     full_name_ascii = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+
+def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_size=False, compression=None):
+    assert splits is not None
+    # For now, `splits` is required.
+    if name is None and not _executing_eagerly():
+        name = 'BytePSAlltoAll_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    full_name = full_name.encode("ascii")
+
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(ctypes.c_char_p(full_name))
+    if recv_splits is None:
+        recv_split_unknown = True
+        recv_splits = splits    
+    else:
+        recv_split_unknown = False
+
+    # compress if needed
+    tensor_compressed, dtype = compression.compress(tensor)
+    recved_data, recved_size = C_LIB.byteps_alltoall(tensor_compressed, splits=splits, recv_splits=recv_splits,
+                                                     name=name, input_name=full_name,
+                                                     recv_split_unknown=recv_split_unknown)
+    tensor_decompressed = compression.decompress(recved_data, dtype)
+    if not with_size:
+        return tensor_decompressed
+    # TODO: recved_size returned from the op might not be set when recv_split is given. Here we directly
+    # return recv_splits back to the user instead
+    if not recv_split_unknown:
+        recved_size = recv_splits
+    return tensor_decompressed, recved_size
+
+@ops.RegisterGradient('BytepsAlltoall')
+def _alltoall_grad(op, grad, recv_bytes):
+    """Gradient for alltoall op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradient with respect to the input of the op.
+    """
+    print('BytepsAlltoall grad invoked')
+    tensor = op.inputs[0]
+    splits = op.inputs[1]
+    recv_splits = op.inputs[2]
+    result = _alltoall(grad, splits=recv_splits, recv_splits=splits)
+    return [result, None, None]
 
 
 @ops.RegisterGradient('BytePSPushPull')
@@ -204,3 +260,70 @@ def _broadcast_grad(op, grad):
     if rank() != root_rank:
         return grad_reduced * 0
     return grad_reduced
+
+
+def _do_recv_async(tensor, sender, name, scope='', version=0, priority=0):
+    receiver = -1
+    if name is None and not _executing_eagerly():
+        name = 'BytePSRecv_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name = full_name.encode()
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_p2p(full_name, sender, receiver)
+    C_LIB.byteps_recv(tensor, sender=sender, receiver=receiver, input_name=full_name,
+                      version=version, priority=priority)
+
+def _do_send_async(tensor, receiver, name, scope='', version=0, priority=0):
+    sender = -1
+    if name is None and not _executing_eagerly():
+        name = 'BytePSSend_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    full_name = full_name.encode()
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_p2p(full_name, sender, receiver)
+    C_LIB.byteps_send(tensor, sender=sender, receiver=receiver, input_name=full_name,
+                      version=version, priority=priority)
+
+def recv_async(tensor, sender, name=None, version=0, priority=0):
+    """An op which receives tensor from sender rank to the input tensor inplace.
+    Arguments:
+        tensor: A tensor to receive tensor.
+        sender: A number to indicate which process is the sender.
+        name: A name bound to input tensor.
+        version: normally not used.
+        prority: normally not used.
+    """
+    return _do_recv_async(tensor, sender, name,
+                          version=version, priority=priority)
+
+def send_async(tensor, receiver, name=None, version=0, priority=0):
+    """An op which sends input tensor to receiver process.
+    Arguments:
+        tensor: A tensor to be sent.
+        receiver: A number to indicate which process is the receiver.
+        name: A name bound to input tensor.
+        version: normally not used.
+        prority: normally not used.
+    """
+    return _do_send_async(tensor, receiver, name,
+                          version=version, priority=priority)

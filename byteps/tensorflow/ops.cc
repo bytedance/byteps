@@ -18,15 +18,49 @@
 #include <queue>
 #include <thread>
 #include <unordered_map>
+#include <atomic>
 
 #include "ops.h"
+#include "../common/logging.h"
 
 using namespace byteps;
 
 namespace byteps {
+namespace common {
+class TensorTableEntry;
+}
 namespace tensorflow {
 
 namespace {
+
+template <typename T>
+std::vector<int32_t> AsInt32(const ::tensorflow::Tensor* tensor, int64_t num_elements) {
+  std::vector<int32_t> ret(num_elements);
+  auto data = tensor->vec<T>();
+  for (int32_t i = 0; i < num_elements; ++i) {
+    ret[i] = data(i);
+  }
+  return ret;
+}
+
+void GetIntList(const ::tensorflow::Tensor& tensor, std::vector<int32_t>* results) {
+  if (tensor.dtype() == ::tensorflow::DT_INT32) {
+    *results = AsInt32<int32_t>(&tensor, tensor.shape().num_elements());
+  } else if (tensor.dtype() == ::tensorflow::DT_INT64) {
+    *results = AsInt32<int64_t>(&tensor, tensor.shape().num_elements());
+  } else {
+    CHECK(false) << "unexpected dtype";
+  }
+}
+
+std::string GetOpName(const std::string& prefix, const std::string& name,
+                      int handle) {
+  if (!name.empty()) {
+    return prefix + "." + std::string(name);
+  }
+  return prefix + ".noname." + std::to_string(handle);
+}
+
 
 ::tensorflow::Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
@@ -47,10 +81,12 @@ namespace {
 
 int GetDeviceID(::tensorflow::OpKernelContext* context) {
   int device = CPU_DEVICE_ID;
+#if BYTEPS_BUILDING_CUDA == 1
   if (context->device() != nullptr &&
       context->device()->tensorflow_gpu_device_info() != nullptr) {
     device = context->device()->tensorflow_gpu_device_info()->gpu_id;
   }
+#endif
   return device;
 }
 
@@ -99,11 +135,30 @@ bool TFReadyEvent::Ready() const {
 
 TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
 
+TFTensor::TFTensor(::tensorflow::OpKernelContext* context,
+                   ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx) :
+                   context_(context), done_(done), idx_(output_idx), allocated_(false) {}
+
+void TFTensor::resize(const common::TensorShape& shape) {
+  CHECK(!allocated_);
+  CHECK(context_ != nullptr);
+  ::tensorflow::TensorShape tf_shape;
+  for (auto dim : shape.shape_) {
+    tf_shape.AddDim(dim);
+  }
+  ::tensorflow::Tensor* tf_tensor;
+  OP_REQUIRES_OK_ASYNC(context_, context_->allocate_output(idx_, tf_shape, &tf_tensor), done_);
+  allocated_ = true;
+  tensor_ = *tf_tensor;
+}
+
 const common::DataType TFTensor::dtype() const {
+  CHECK(allocated_);
   return ConvertDType(tensor_.dtype());
 }
 
 const common::TensorShape TFTensor::shape() const {
+  CHECK(allocated_);
   common::TensorShape shape;
   for (auto dim : tensor_.shape()) {
     shape.AddDim(dim.size);
@@ -112,10 +167,14 @@ const common::TensorShape TFTensor::shape() const {
 }
 
 const void* TFTensor::data() const {
+  if (!allocated_) return nullptr;
   return (const void*)tensor_.tensor_data().data();
 }
 
-int64_t TFTensor::size() const { return (int64_t)tensor_.tensor_data().size(); }
+int64_t TFTensor::size() const {
+  CHECK(allocated_);
+  return (int64_t)tensor_.tensor_data().size();
+}
 
 // On GPU this event will signal that data is ready, and tensors are
 // allocated.
@@ -132,6 +191,41 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name) {
   common::IsTensorDeclared(tensor_name);
   return;
 }
+
+extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int receiver) {
+  std::string prefix = "byteps_p2p_send_";
+  if (sender == -1) sender = common::byteps_rank();
+  if (receiver == -1) receiver = common::byteps_rank();
+  prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
+  std::string tensor_name = GetOpName(prefix, name, 0);
+  common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
+}
+
+extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name) {
+  const int my_rank = common::byteps_rank();
+  const int size = common::byteps_size();
+  // Declare tensors for alltoall
+  std::string name_prefix = std::string(name);
+  std::string my_rank_str = std::to_string(my_rank);
+  uint32_t session_size = common::byteps_session_size();
+  for (uint32_t session_id = 0; session_id < session_size; session_id++) {
+    std::string session_prefix = "session_" + std::to_string(session_id) + "_" + name_prefix;
+    for (size_t i = 0; i < size; ++i) {
+      std::string target_rank = std::to_string(i);
+      std::string name_send = session_prefix + "_alltoall_send_" + my_rank_str + "_recv_" + target_rank;
+      std::string name_recv = session_prefix + "_alltoall_send_" + target_rank + "_recv_" + my_rank_str;
+      common::IsTensorDeclaredP2P(name_send, my_rank, i);
+      common::IsTensorDeclaredP2P(name_recv, i, my_rank);
+    }
+  }
+}
+
+enum TaskType {
+  kSend,
+  kRecv,
+  kPushPull,
+  kAlltoAll,
+};
 
 void StartTask(::tensorflow::OpKernelContext* context,
                ::tensorflow::AsyncOpKernel::DoneCallback done,
@@ -153,6 +247,7 @@ void StartTask(::tensorflow::OpKernelContext* context,
                      queue_list_pull->end());
 
   // TODO: assign priority based on topological sort
+  // TODO: why -byteps_context.declared_key 
   auto enqueue_result =
       EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
                     device, -byteps_context.declared_key, 0,
@@ -182,6 +277,7 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
     ::tensorflow::Tensor* output;
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, tensor.shape(), &output), done);
+
     // ReadyEvent makes sure input tensor is ready, and output is allocated.
     auto ready_event =
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
@@ -194,6 +290,7 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
     } else {
         tmp_name = input_tensor_name;
     }
+
     auto& bps_context = common::GetContextFromName(tmp_name);
     if (bps_context.initialized) {
       StartTask(context, done, tmp_name, bps_input, bps_output, ready_event);
@@ -210,6 +307,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
                         BytePSPushPullOp);
 
+
 REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Attr("input_name: string = 'default_tensor_name'")
@@ -224,6 +322,424 @@ Perform an PushPull on a tensor. All other processes that do a reduction
 on a tensor with the same name must have the same dimension for that tensor.
 Tensors are reduced with other tensors that have the same node name for the
 push_pull.
+Arguments
+    tensor:     A tensor to reduce.
+Output
+    sum:    A tensor with the same shape as `tensor`, summed across all processes.
+)doc");
+
+// ================== SEND / RECV ======================== // 
+
+void StartP2PTask(::tensorflow::OpKernelContext* context,
+                  ::tensorflow::AsyncOpKernel::DoneCallback done,
+                  int sender, int receiver,
+                  std::string node_name, std::shared_ptr<TFTensor> tensor,
+                  std::shared_ptr<common::ReadyEvent> ready_event, int version,
+                  int priority, TaskType task) {
+  auto& byteps_context = common::GetContextFromName(node_name);
+  auto device = GetDeviceID(context);
+  auto size = tensor->size();
+  auto dtype = tensor->dtype();
+  auto byteps_input = task == kSend ? tensor : nullptr;
+  auto byteps_output = task == kRecv ? tensor : nullptr;
+  if (task == kSend && receiver == common::byteps_rank()) {
+    byteps_output = tensor;
+  }
+  if (task == kRecv && sender == common::byteps_rank()) {
+    byteps_input = tensor;
+  }
+
+  void* cpubuff = (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(tensor->data())
+                      : nullptr;
+  common::InitTensorP2P(byteps_context, size, dtype, cpubuff,
+                        sender, receiver);
+
+  std::shared_ptr<std::vector<common::QueueType>> queue_list; 
+
+  if (task == kSend) {
+    queue_list = common::GetSendQueueList();
+  } else if (task == kRecv) {
+    queue_list = common::GetRecvQueueList();
+  } else {
+    throw std::logic_error("Invalid task type");
+  }
+
+  auto enqueue_result =
+      EnqueueTensor(byteps_context, byteps_input, byteps_output, ready_event,
+                    device, priority, version,
+                    [context, done](const common::Status& status) {
+                      context->SetStatus(ConvertStatus(status));
+                      done();
+                    },
+                    queue_list);
+  OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
+}
+
+
+class BytePSSendOp : public ::tensorflow::AsyncOpKernel {
+  private:
+     std::string input_tensor_name;
+     int sender;
+     int receiver;
+     int version;
+     int priority;
+ public:
+  explicit BytePSSendOp(::tensorflow::OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+          context->GetAttr("input_name", &input_tensor_name);
+          context->GetAttr("sender", &sender);
+          context->GetAttr("receiver", &receiver);
+          context->GetAttr("version", &version);
+          context->GetAttr("priority", &priority);
+      }
+
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
+                         done); 
+    auto tensor = context->input(0);
+    auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto node_name = name();
+    if (sender == -1) sender = common::byteps_rank();
+    if (receiver == -1) receiver = common::byteps_rank();
+    std::string prefix = "byteps_p2p_send_" + std::to_string(sender) + "_recv_" + std::to_string(receiver);
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+      tmp_name = GetOpName(prefix, node_name.c_str(), 0);
+    } else {
+      tmp_name = GetOpName(prefix, input_tensor_name.c_str(), 0);
+    }
+    auto& bps_context = common::GetContextFromName(tmp_name);
+    if (bps_context.initialized) {
+      StartP2PTask(context, done, sender, receiver, tmp_name, bps_input, ready_event,
+                    version, priority, kSend);
+    } else {
+      std::thread t(StartP2PTask, context, done, sender, receiver, tmp_name, bps_input,
+                    ready_event, version, priority, kSend);
+      t.detach();
+    }
+  }
+};
+
+class BytePSRecvOp : public ::tensorflow::AsyncOpKernel {
+  private:
+     std::string input_tensor_name;
+     int sender;
+     int receiver;
+     int version;
+     int priority;
+ public:
+  explicit BytePSRecvOp(::tensorflow::OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+          context->GetAttr("input_name", &input_tensor_name);
+          context->GetAttr("sender", &sender);
+          context->GetAttr("receiver", &receiver);
+          context->GetAttr("version", &version);
+          context->GetAttr("priority", &priority);
+      }
+
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
+                         done);
+
+    auto tensor = context->input(0);
+    auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto node_name = name();
+    if (sender == -1) sender = common::byteps_rank();
+    if (receiver == -1) receiver = common::byteps_rank();
+
+    std::string prefix = "byteps_p2p_send_" + std::to_string(sender) + "_recv_" + std::to_string(receiver);
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+      tmp_name = GetOpName(prefix, node_name.c_str(), 0);
+    } else {
+      tmp_name = GetOpName(prefix, input_tensor_name.c_str(), 0);
+    }
+    auto& bps_context = common::GetContextFromName(tmp_name);
+    if (bps_context.initialized) {
+      StartP2PTask(context, done, sender, receiver, tmp_name, bps_input, ready_event,
+                    version, priority, kRecv);
+    } else {
+      std::thread t(StartP2PTask, context, done, sender, receiver, tmp_name, bps_input,
+                    ready_event, version, priority, kRecv);
+      t.detach();
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("BytepsSend").Device(::tensorflow::DEVICE_CPU),
+                        BytePSSendOp);
+REGISTER_KERNEL_BUILDER(Name("BytepsSend").Device(::tensorflow::DEVICE_GPU),
+                        BytePSSendOp);
+
+REGISTER_KERNEL_BUILDER(Name("BytepsRecv").Device(::tensorflow::DEVICE_CPU),
+                        BytePSRecvOp);
+REGISTER_KERNEL_BUILDER(Name("BytepsRecv").Device(::tensorflow::DEVICE_GPU),
+                        BytePSRecvOp);
+
+
+
+// ======================= ALL_TO_ALL OPERATIONS =====================
+void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
+                        ::tensorflow::AsyncOpKernel::DoneCallback done,
+                        std::string node_name,
+                        std::shared_ptr<TFTensor> byteps_input,
+                        std::vector<int32_t> split_count,
+                        std::vector<int32_t> recv_split_count,
+                        std::shared_ptr<TFTensor> byteps_output,
+                        std::shared_ptr<TFTensor> byteps_aux_output,
+                        std::shared_ptr<common::ReadyEvent> ready_event,
+                        TaskType task, bool recv_split_unknown,
+                        std::string name_wo_session) {
+  // the counter for all send/recv tasks generated for alltoall
+  const int my_rank = common::byteps_rank();
+  int num_ranks = split_count.size();
+  // one recv per rank (including memcpy). one d2h_send
+  int num_tasks = recv_split_unknown ? 2 : num_ranks + 1;
+  std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(num_tasks));
+
+  // common fields
+  auto device = GetDeviceID(context);
+  auto dtype = byteps_input->dtype();
+  int priority = 0;
+  auto callback = [context, done, counter_ptr, name_wo_session](const common::Status& status) {
+    // we use a counter to track each subtask
+    // the alltoall operator is completed after all subtasks are done
+    if (--(*counter_ptr) <= 0) {
+      common::byteps_mark_done(name_wo_session.c_str());
+      context->SetStatus(ConvertStatus(status));
+      done();
+    }
+  };
+
+  common::Status enqueue_result;
+  // the begin index of tensor views for send/recv
+  std::vector<int> send_begin;
+  std::vector<int> recv_begin;
+  send_begin.push_back(0);
+  recv_begin.push_back(0);
+  for (size_t i = 0; i < num_ranks; ++i) {
+    send_begin.push_back(send_begin.back() + split_count.at(i));
+    recv_begin.push_back(recv_begin.back() + recv_split_count.at(i));
+  }
+  enqueue_result = common::EnqueueAlltoAllTensor(node_name, byteps_input,
+                                                 byteps_output, byteps_aux_output,
+                                                 ready_event, device,
+                                                 priority, 0, callback,
+                                                 send_begin, recv_begin,
+                                                 counter_ptr.get(), recv_split_unknown);
+  OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
+}
+
+class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
+ private:
+     std::string input_tensor_name;
+     bool recv_split_unknown;
+     int partition_bytes;
+     int no_op;
+
+ public:
+  explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+          context->GetAttr("input_name", &input_tensor_name);
+          context->GetAttr("recv_split_unknown", &recv_split_unknown);
+          if (recv_split_unknown) {
+            CHECK(getenv("BYTEPS_PARTITION_BYTES"))
+              << "BYTEPS_PARTITION_BYTES is required if recv_split_unknown=True";
+            partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
+            if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
+              partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
+            }
+          }
+          no_op = 0;
+          if (getenv("BYTEPS_ALLTOALL_NO_OP")) {
+            no_op = atoi(getenv("BYTEPS_ALLTOALL_NO_OP"));
+          }
+    }
+
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
+                         done);
+    const int num_outputs = context->num_outputs();
+    CHECK(num_outputs == 2) << num_outputs;
+    const int num_inputs = context->num_inputs();
+    CHECK(num_inputs == 3) << num_inputs;
+
+    // naming
+    auto node_name = name();
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+      tmp_name = node_name;
+    } else {
+      tmp_name = input_tensor_name;
+    }
+
+    auto tensor = context->input(0);
+    ::tensorflow::Tensor* output_data;
+    ::tensorflow::Tensor* output_sizes;
+    // TODO: move some of these logics to BytePS core
+    // calculate the stride based on axis[1:]
+    int64_t stride = 1;
+    for (int i = 1; i < tensor.shape().dims(); ++i) {
+      stride *= tensor.shape().dim_size(i);
+    }
+    // calculate counts based on the stride
+    const auto split_tensor = context->input(1);
+    // Note: if recv_is_approximate=True, recv_split_tensor reuses split_tensor
+    const auto recv_split_tensor = context->input(2);
+    std::vector<int32_t> dim0_split_count;
+    std::vector<int32_t> split_count;
+    std::vector<int32_t> recv_split_count;
+    ::tensorflow::TensorShape result_shape;
+    GetIntList(split_tensor, &dim0_split_count);
+    int dim0 = 0;
+    int num_ranks = split_tensor.shape().dim_size(0);
+    int dim0_aggregate = 0;
+    // the split tensor is based on axis 0, hence scale it by stride
+    for (int i = 0; i < dim0_split_count.size(); ++i) {
+      dim0_aggregate += dim0_split_count[i];
+      split_count.push_back(dim0_split_count[i] * stride);
+      if (dim0_split_count[i] < 0) {
+        std::string err_msg = "invalid split for " + tmp_name + " at idx " + std::to_string(i) + ": " + std::to_string(dim0_split_count[i]);
+        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
+        OP_REQUIRES_OK_ASYNC(context, status, done);
+      }
+    }
+    // sanity checks
+    if (dim0_aggregate != tensor.shape().dim_size(0)) {
+      std::string count_str;
+      for (int i = 0; i < dim0_split_count.size(); ++i) {
+        count_str += std::to_string(dim0_split_count[i]) + ",";
+      }
+      count_str = "invalid split for " + tmp_name + ". dim0 = " + std::to_string(tensor.shape().dim_size(0)) + ". split = " + count_str;
+      auto status = ::tensorflow::errors::InvalidArgument(count_str);
+      OP_REQUIRES_OK_ASYNC(context, status, done);
+    }
+    CHECK(split_tensor.shape().dim_size(0) == recv_split_tensor.shape().dim_size(0));
+    GetIntList(recv_split_tensor, &recv_split_count);
+    // translate the split value (for dim0) with stride (considering all dimensions)
+    for (int i = 0; i < recv_split_count.size(); ++i) {
+      if (recv_split_count[i] < 0) {
+        std::string err_msg = "invalid recv_split for " + tmp_name + " at index " + std::to_string(i) + ": " + std::to_string(recv_split_count[i]);
+        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
+        OP_REQUIRES_OK_ASYNC(context, status, done);
+      }
+      dim0 += recv_split_count[i];
+      recv_split_count[i] *= stride;
+    }
+    // Allocate output
+    result_shape.AddDim(dim0);
+    for (int i = 1; i < tensor.shape().dims(); ++i) {
+      result_shape.AddDim(tensor.shape().dim_size(i));
+    }
+    std::shared_ptr<TFTensor> bps_output;
+    if (recv_split_unknown) {
+      bps_output = std::make_shared<TFTensor>(context, done, 0);
+    } else {
+      OP_REQUIRES_OK_ASYNC(
+        context, context->allocate_output(0, result_shape, &output_data), done);
+      bps_output = std::make_shared<TFTensor>(*output_data);
+    }
+    OP_REQUIRES_OK_ASYNC(
+        context, context->allocate_output(1, split_tensor.shape(), &output_sizes), done);
+
+    // naming and declarations
+    auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes);
+    const int my_rank = common::byteps_rank();
+    // Add session_id prefix to node_name
+    std::string name_send = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
+    int session_id = common::byteps_session_id(name_send.c_str());
+    int session_size = common::byteps_session_size();
+    std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
+    std::string session_name_send = session_prefix + name_send;
+    std::string session_tmp_name = session_prefix + tmp_name;
+    if (no_op || (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0)) {
+      // TODO: fill in size tensor
+      done();
+      return;
+    }
+    auto& bps_context = common::GetContextFromName(session_name_send);
+    if (bps_context.initialized) {
+      StartAlltoAllTask(context, done, session_tmp_name, bps_input, split_count,
+                        recv_split_count, bps_output, bps_aux_output, ready_event,
+                        kAlltoAll, recv_split_unknown, name_send);
+    } else {
+      std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, split_count,
+                    recv_split_count, bps_output, bps_aux_output, ready_event,
+                    kAlltoAll, recv_split_unknown, name_send);
+      t.detach();
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoall").Device(::tensorflow::DEVICE_CPU),
+                        BytepsAllToAllOp);
+
+REGISTER_OP("BytepsAlltoall")
+    .Attr(
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+    .Attr("input_name: string = 'default_tensor_name'") 
+    .Input("tensor: T")
+    .Input("splits: int32")
+    .Input("recv_splits: int32")
+    .Attr("recv_split_unknown: bool = False")
+    .Output("output: T")
+    .Output("recv_bytes: int32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &output));
+      c->set_output(0, output);
+      c->set_output(1, c->input(1));
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+
+Perform an MPI Alltoall on a tensor.
+Arguments
+    tensor:     A tensor to be distributed with all to all  // for send counts (dim0)
+    splits:     A list of integers in rank order describing how many elements
+                in `tensor` to send to each worker.  // for recv counts (dim0)
+    recv_split_unknown: A bool to indicate whether recv splits is unknown  
+Output
+    output:    The collected tensor data from all workers.
+)doc");
+
+
+REGISTER_OP("BytepsSend")
+    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Input("tensor: T")
+    .Attr("sender: int")
+    .Attr("receiver: int")
+    .Attr("input_name: string = 'default_tensor_name'")
+    .Attr("version: int")
+    .Attr("priority: int")
+    .Doc(R"doc(
+Perform an send on a tensor. 
+Arguments
+    tensor:     A tensor to reduce.
+Output
+    sum:    A tensor with the same shape as `tensor`, summed across all processes.
+)doc");
+
+REGISTER_OP("BytepsRecv")
+    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Input("tensor: T")
+    .Attr("sender: int")
+    .Attr("receiver: int")
+    .Attr("input_name: string = 'default_tensor_name'")
+    .Attr("version: int")
+    .Attr("priority: int")
+    .Doc(R"doc(
+Perform an recv on a tensor. 
 Arguments
     tensor:     A tensor to reduce.
 Output

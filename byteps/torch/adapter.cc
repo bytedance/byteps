@@ -40,6 +40,8 @@ const DataType TorchTensor::dtype() const {
       return DataType::BYTEPS_FLOAT32;
     case ::torch::kDouble:
       return DataType::BYTEPS_FLOAT64;
+    case ::torch::kBool:
+      return DataType::BYTEPS_BOOL;
     default:
       throw std::logic_error("Invalid or unsupported tensor type.");
   }
@@ -61,6 +63,10 @@ int64_t TorchTensor::size() const {
 #else
   return tensor_.type().elementSizeInBytes() * tensor_.numel();
 #endif
+}
+
+void TorchTensor::resize(const common::TensorShape&) {
+  CHECK(false) << "NOT IMPLEMENTED";
 }
 
 void ThrowIfError(Status status) {

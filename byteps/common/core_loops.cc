@@ -13,9 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-
+#include "core_loops.h"
+#if BYTEPS_BUILDING_CUDA == 1
 #include <cuda_runtime.h>
-
+#endif
 #include <chrono>
 #include <memory>
 
@@ -24,16 +25,21 @@
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
+#include "../server/server.h"
 
 namespace byteps {
 namespace common {
 
-void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
+
+// returns true if the last partition is done
+template <typename T>
+bool DoFinishOrProceed(T& task) {
   auto &queue_list = task->queue_list;
   BPS_CHECK_GE(queue_list.size(), 1);
   auto this_op = queue_list[0];
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto q = BytePSGlobal::GetScheduledQueue(this_op, task->queue_idx);
   q->reportFinish(task->len);
+
   if (BytePSGlobal::IsTensorSampled(task->key)) {
     // We only support sampling
     BPS_CHECK(task->tensor->dtype() == common::BYTEPS_FLOAT32);
@@ -50,6 +56,7 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                      << "\t after stage: " << LogStrings[this_op];
     } else {
       float i0, i1, o0, o1;
+#if BYTEPS_BUILDING_CUDA == 1
       cudaMemcpy(&i0, (float *)(task->tensor->data()) + i, 4,
                  cudaMemcpyDeviceToHost);
       cudaMemcpy(&i1, (float *)(task->tensor->data()) + j, 4,
@@ -63,10 +70,12 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                      << " input[0]=" << i0 << "\tinput[-1]=" << i1
                      << "\toutput[0]=" << o0 << "\toutput[-1]=" << o1
                      << "\t after stage: " << LogStrings[this_op];
+#endif
     }
   }
-
-  if (task->context->profile_flag) {
+  auto ctx = task->context;
+  BPS_CHECK(ctx != nullptr);
+  if (ctx->profile_flag) {
     BPS_CHECK(task->context->part_comm_time[task->key][this_op].back()->dur ==
               0)
         << " tensor: " << task->tensor_name << " task->key:" << task->key
@@ -97,7 +106,7 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
     BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank() << " finishes "
                    << LogStrings[this_op] << ", tensor: " << task->tensor_name
                    << ", key=" << task->key << "; Passing to the next queue.";
-    BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
+    BytePSGlobal::GetScheduledQueue(queue_list[0], task->queue_idx)->addTask(task);
   } else {
     // this is the last QueueType of this current sub-task.
     BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
@@ -110,12 +119,12 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
                      << " finish processing tensor: " << task->tensor_name;
 
       if (PushPullSpeed::ShouldRecord()) {
-        PushPullSpeed::RecordSpeed(task);
+        // PushPullSpeed::RecordSpeed(task);
       }
 
       task->callback(Status::OK());
       //* Add for profiling communication events
-      if (task->context->profile_flag) {
+      if (ctx->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)
             << " tensor: " << task->tensor_name
             << " 'dur' has already been assigned:"
@@ -129,13 +138,25 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
       }
       // Set the profile_flag first
       // *step_cnt* denotes the number this gradient has been synchronized.
-      task->context->step_cnt += 1;
+      ctx->step_cnt += 1;
       BytePSGlobal::SetProfileFlag(task->context);
+      return true;
     }
   }
-  return;
+  return false;
 }
 
+// the lite version which does not rely on shared_ptr for memory management
+void FinishOrProceedLite(TensorTableEntry* task) {
+  bool done = DoFinishOrProceed(task);
+  if (done) delete task;
+}
+
+void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
+  DoFinishOrProceed(task);
+}
+
+#if BYTEPS_BUILDING_CUDA == 1
 bool RunCoordinateLoopOnce(QueueType this_op) {
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   auto task = q->getTask();
@@ -413,15 +434,16 @@ bool RunCopyDevice2HostLoopOnce() {
     BPS_CHECK(cpubuff) << task->tensor_name
                        << ": CPU buffer not initialized, size=" << len;
 
+    int copy_offset = 0;
+    int copy_len = len;
     auto num_elem_per_gpu = len / nccl_size / unit_len;
     auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
 
-    auto copy_offset = nccl_rank * num_elem_per_gpu * unit_len;
-    auto copy_len = num_elem_per_gpu * unit_len;
+    copy_offset = nccl_rank * num_elem_per_gpu * unit_len;
+    copy_len = num_elem_per_gpu * unit_len;
     if (left_elem && (nccl_root == nccl_rank)) {
       copy_len += left_elem * unit_len;
     }
-
     if (BytePSGlobal::IsUsingReduce()) {
       copy_offset = 0;
       copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ? len : 0;
@@ -535,88 +557,6 @@ bool RunCompressLoopOnce() {
   return true;
 }
 
-bool RunPushLoopOnce() {
-  QueueType this_op = PUSH;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (task) {
-    BPS_CHECK(BytePSGlobal::IsRootDevice())
-        << "only root device should enter PUSH loop";
-
-    if (BytePSGlobal::IsDistributed()) {
-      auto offset = task->offset;
-      auto len = task->len;
-
-      char *data;
-      BPS_CHECK(task->cpubuff);
-      data =
-          const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
-
-      // get metadata
-      const int dtype = task->tensor->dtype();
-
-      // use compressed data/len
-      if (task->compressed) {
-        BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
-        data = task->compressed->data;
-        len = task->compressed->size;
-        task->compressed = nullptr;
-      }
-
-      // false means not to delete data when SArray is deleted
-      ps::SArray<char> vals(data, len, false);
-
-      int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-      auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
-      BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
-                                   [task, q]() { FinishOrProceed(task); });
-    } else {
-      // This is a dummy barrier for IsCrossPcieSwitch()
-      BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
-      FinishOrProceed(task);
-    }
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-  }
-  return true;
-}
-
-bool RunPullLoopOnce() {
-  QueueType this_op = PULL;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (task) {
-    BPS_CHECK(BytePSGlobal::IsRootDevice())
-        << "only root device should enter PULL loop";
-    // TODO: allow merging
-    auto offset = task->offset;
-    auto len = task->len;
-
-    char *data;
-    BPS_CHECK(task->cpubuff);
-    data =
-        const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
-
-    // get metadata
-    const int dtype = task->output->dtype();
-
-    // false means not to delete data when SArray is deleted
-    auto vals = new ps::SArray<char>(data, len, false);
-
-    int cmd = GetCommandType(RequestType::kDefaultPushPull, dtype);
-    auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
-    // issue pull
-    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals, &pskv.lens, cmd,
-                                 [vals, task, q]() {
-                                   delete vals;
-                                   FinishOrProceed(task);
-                                 });
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-  }
-  return true;
-}
-
 bool RunDecompressLoopOnce() {
   QueueType this_op = DECOMPRESS;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -710,7 +650,6 @@ bool RunRootCopyHost2DeviceLoopOnce() {
                                                     sizeof(BytePSCommMsg));
     }
     CopyHost2Device(task);
-
     FinishOrProceed(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -814,18 +753,6 @@ void CompressLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
-void PushLoop() {
-  while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
-}
-
-void PullLoop() {
-  while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
-}
-
 void DecompressLoop() {
   while (RunDecompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -853,6 +780,771 @@ void NonRootCopyHost2DeviceLoop() {
   }
   BytePSGlobal::ReportThreadFinish();
 }
+#endif
+
+bool RunPushLoopOnce() {
+  QueueType this_op = PUSH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    BPS_CHECK(BytePSGlobal::IsRootDevice())
+        << "only root device should enter PUSH loop";
+
+    if (BytePSGlobal::IsDistributed()) {
+      auto offset = task->offset;
+      auto len = task->len;
+
+      char *data;
+      BPS_CHECK(task->cpubuff);
+      data =
+          const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
+      // get metadata
+      const int dtype = task->tensor->dtype();
+
+      // use compressed data/len
+      if (task->compressed) {
+        BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
+        data = task->compressed->data;
+        len = task->compressed->size;
+        task->compressed = nullptr;
+      }
+
+      // false means not to delete data when SArray is deleted
+      ps::SArray<char> vals(data, len, false);
+
+
+      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype);
+      auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
+      BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
+                                   [task, q]() { FinishOrProceed(task); });
+    BPS_LOG(TRACE) << " push finished for key=" << task->key;
+    } else {
+      // This is a dummy barrier for IsCrossPcieSwitch()
+      BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
+      FinishOrProceed(task);
+    }
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunPullLoopOnce() {
+  QueueType this_op = PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    BPS_CHECK(BytePSGlobal::IsRootDevice())
+        << "only root device should enter PULL loop";
+    // TODO: allow merging
+    auto offset = task->offset;
+    auto len = task->len;
+
+    char *data;
+    BPS_CHECK(task->cpubuff);
+    data =
+        const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset);
+
+    // get metadata
+    const int dtype = task->output->dtype();
+
+    // false means not to delete data when SArray is deleted
+    auto vals = new ps::SArray<char>(data, len, false);
+
+    int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype);
+    auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
+    // issue pull
+    BytePSGlobal::GetPS()->ZPull(pskv.keys, vals, &pskv.lens, cmd,
+                                 [vals, task, q]() {
+                                   delete vals;
+                                   FinishOrProceed(task);
+                                 });
+    BPS_LOG(TRACE) << " pull finished for key=" << task->key;
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void PushLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+void PullLoop() {
+  while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
+  auto tensor = task->output;
+  BPS_CHECK(tensor);
+  auto key = task->key;
+  auto len = task->len;
+  auto offset = task->offset;
+  int sender = task->context->sender;
+  int my_rank =  BytePSGlobal::GetRank();
+  if (sender == my_rank) {
+    // copy to myself
+    BPS_LOG(TRACE) << "self H2D key=" << key << ", offset=" << offset << " len = " << len;
+    auto src_addr = ((char *)(task->tensor->data())) + offset;
+    auto dst_addr = ((char *)(tensor->data())) + task->offset_list[sender];
+    BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+    return;
+  }
+  auto gpu_addr = (char *)(tensor->data()) + task->offset_list[sender];
+  bool is_cpu = task->device == CPU_DEVICE_ID;
+  // update the output (aux)
+  auto recv_arr = server::BytePSServer::GetRecvPartition(key);
+  int recv_len = recv_arr.len;
+  void* recv_addr = recv_arr.val.data();
+  BPS_CHECK(recv_len == len) << recv_len << ", " << len;
+  // update the output (data)
+  BPS_LOG(TRACE) << "H2D key=" << key << (long long) recv_addr << " len = " << len;
+  CHECK(is_cpu) << key;
+  CHECK(recv_addr != nullptr) << key;
+  BytePSGlobal::GetCpuReducer()->copy(gpu_addr, recv_addr, recv_len);
+  return;
+}
+
+bool RunP2PCopyHost2DeviceLoopOnce() {
+  QueueType this_op = P2P_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTaskLite();
+  if (task) {
+    if (!BytePSGlobal::IsSkipH2D()) {
+      P2PCopyHost2Device(task);
+    }
+    if (BytePSGlobal::IsDirectResponse() == 0) {
+      server::BytePSServer::SendPushResponse(task->key);
+    }
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunP2PGroupCopyHost2DeviceLoopOnce() {
+  QueueType this_op = P2P_GROUP_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTaskLite();
+  if (task) {
+    if (!BytePSGlobal::IsSkipH2D()) {
+      int my_rank =  BytePSGlobal::GetRank();
+      int num_ranks = BytePSGlobal::GetSize();
+      const int dtype = task->tensor->dtype();
+      bool is_cpu = task->device == CPU_DEVICE_ID;
+      BPS_CHECK(task->output->data() == nullptr);
+      BPS_CHECK(is_cpu);
+      int total_recv_len = 0;
+      std::vector<int> offsets;
+      offsets.push_back(0);
+      // now we allocate the output tensor based on the aggregated received size
+      auto in_shape = task->tensor->shape();
+      auto ndims = in_shape.dims();
+      // handle the case with [0] input
+      int dim0 = in_shape.dim_size(0);
+      int remaining_dims = 1;
+      for (int i = 1; i < ndims; ++i) {
+        BPS_CHECK(in_shape.dim_size(i)) << in_shape.dim_size(i);
+        remaining_dims *= in_shape.dim_size(i);
+      }
+      int unit_size = common::getDataTypeLength(dtype);
+      BPS_CHECK(task->aux_output != nullptr);
+      BPS_CHECK(unit_size) << unit_size;
+      BPS_CHECK(remaining_dims) << remaining_dims;
+      void* aux_data = const_cast<void*>(task->aux_output->data());
+      int32_t* aux_data_int = (int32_t*) aux_data;
+
+      std::vector<uint64_t> keys;
+      // prepare all keys
+      uint32_t req_key = (uint32_t) P2P_OP << 10;
+      for (uint64_t i = 0; i < num_ranks; ++i) {
+        uint64_t key = (i << 32) + (task->key << 16) + req_key;
+        if (i != my_rank) {
+          keys.push_back(key);
+        }
+      }
+      // recv_arrs does not include the one for self send-recv
+      std::vector<server::RecvArray> recv_arrs = server::BytePSServer::GetRecvPartitions(keys);
+      // get the length of all ranks
+      for (uint64_t i = 0; i < num_ranks; ++i) {
+        uint64_t key = (i << 32) + (task->key << 16) + req_key;
+        int64_t recv_len;
+        if (i == my_rank) {
+          // self send-recv does not go through ps-lite
+          recv_len = task->offset_list[my_rank + 1] - task->offset_list[my_rank];
+          total_recv_len += recv_len;
+        } else {
+          int idx = i < my_rank ? i : i - 1;
+          recv_len = recv_arrs[idx].len;
+          total_recv_len += recv_len;
+        }
+        offsets.push_back(total_recv_len);
+        BPS_LOG(TRACE) << "offsets[" << i+1 << "] = " << total_recv_len;
+        // fill in aux_output with recv_split at dim0
+        *aux_data_int = recv_len / unit_size / remaining_dims;
+        aux_data_int += 1;
+      }
+      int recv_num_elements = total_recv_len / unit_size;
+      int recv_dim0 = recv_num_elements / remaining_dims;
+      CHECK(recv_num_elements % remaining_dims == 0)
+        << recv_num_elements << "," << remaining_dims;
+      common::TensorShape output_shape;
+      output_shape.AddDim(recv_dim0);
+      for (int i = 1; i < in_shape.shape_.size(); ++i) {
+        output_shape.AddDim(in_shape.shape_[i]);
+      }
+      task->output->resize(output_shape);
+      // finally, perform copy.
+      char* dst = (char*)(const_cast<void*>(task->output->data()));
+      for (uint64_t i = 0; i < num_ranks; ++i) {
+        // calculate output offset
+        if (i == my_rank) {
+          // copy to myself
+          int recv_len = offsets[i + 1] - offsets[i];
+          const char* src = ((const char*) task->tensor->data()) + task->offset_list[i];
+          BytePSGlobal::GetCpuReducer()->copy(dst + offsets[i], src, recv_len);
+        } else {
+          int idx = i < my_rank ? i : i - 1;
+          int recv_len = recv_arrs[idx].len;
+          void* recv_addr = recv_arrs[idx].val.data();
+          BytePSGlobal::GetCpuReducer()->copy(dst + offsets[i], recv_addr, recv_len);
+        }
+      }
+    }
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunSendLoopOnce(int index) {
+  QueueType this_op = SEND;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
+  auto task = q->getTask();
+  if (task) {
+    if (BytePSGlobal::IsDistributed()) {
+      auto len = task->len;
+
+      char *data;
+      BPS_CHECK(task->cpubuff);
+      data = const_cast<char *>(static_cast<const char *>(task->cpubuff));
+
+      // get metadata
+      const int dtype = task->tensor->dtype();
+      int receiver = task->context->receiver;
+      CHECK_GE(receiver, 0);
+
+      // false means not to delete data when SArray is deleted
+      ps::SArray<char> vals(data, len, false);
+      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype);
+      auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
+      if (BytePSGlobal::IsDirectResponse() == 2) {
+        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd);
+        FinishOrProceed(task);
+      } else {
+        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd,
+                                    [task]() {
+          FinishOrProceed(task);
+        });
+      }
+    } else {
+      BPS_CHECK(false) << "NOT REACHED";
+      FinishOrProceed(task);
+    }
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+// TODO: remove sync?
+void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
+  if (!len) {
+    return;
+  }
+  CHECK(len > 0) << len;
+  if (from_cpu) {
+    BytePSGlobal::GetCpuReducer()->copy(dst, src, len);
+  } else {
+#ifdef BYTEPS_BUILDING_CUDA == 1
+    auto copy_d2h_Stream = BytePSGlobal::GetCopyDevice2HostStream();
+    CUDA_CALL(cudaMemcpyAsync(
+      (void *)(dst),
+      (const void *)(src),
+      (size_t)len, (cudaMemcpyKind)cudaMemcpyDeviceToHost,
+      (cudaStream_t)*copy_d2h_Stream));
+    CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
+#else
+    BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+#endif
+  }
+}
+
+bool RunP2PCopyDevice2HostLoopOnce(int index) {
+  QueueType this_op = P2P_COPYD2H;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
+  auto task = q->getTask();
+
+  if (task) {
+    if (BytePSGlobal::IsSkipD2H()) {
+      FinishOrProceed(task);
+      return true;
+    }
+    // note: task does not have `input` field.
+    auto tensor = task->tensor;
+    BPS_CHECK(tensor);
+    auto key = task->key;
+    auto len = task->len;
+    auto offset = task->offset;
+    auto p = (char *)(tensor->data()) + offset;
+    bool is_cpu = task->device == CPU_DEVICE_ID;
+    char *cpubuff = (char *)(task->cpubuff);
+    BPS_CHECK(cpubuff) << task->tensor_name << ": CPU buffer not initialized, size=" << len << ", key=" << key;
+    CopyD2H(cpubuff, p, len, is_cpu);
+    FinishOrProceed(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
+  QueueType this_op = P2P_COPYD2H_SEND;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
+  auto task = q->getTaskLite();
+  if (task) {
+    // shuffle the receiver rank
+    int my_rank =  BytePSGlobal::GetRank();
+    int num_ranks = task->pcie_cpubuff.size();
+    const int dtype = task->tensor->dtype();
+    bool output_size_unknown = task->output == nullptr;
+    BPS_LOG(TRACE) << "output_size_unknown = " << output_size_unknown;
+    auto req_type = server::RequestType::kDefaultSend;
+    // the output tensor is not yet allocated. the receiver
+    // must receive the entire group of tensors before copying
+    // them to the output
+    if (output_size_unknown) {  
+      req_type = server::RequestType::kGroupSend;
+    }
+    int cmd = server::GetCommandType(req_type, dtype);
+    // used for group send with split=0
+    int empty_cmd = server::GetCommandType(server::RequestType::kEmptyGroupSend, dtype);
+    for (int rank_offset = 0; rank_offset < num_ranks; ++rank_offset) {
+      int i = (my_rank + rank_offset + 1) % num_ranks;
+      auto len = task->offset_list[i + 1] - task->offset_list[i];
+      if (i == BytePSGlobal::GetRank()) continue;
+      int receiver = i;
+      if (len == 0) {
+        // split = 0, nothing to copy
+        if (output_size_unknown) {
+          // when output size is unknown and split=0
+          // we still perform send with 1 byte data
+          char* cpubuff = (char*) task->pcie_cpubuff[i];
+          ps::SArray<char> vals(cpubuff, 1, false);
+          auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
+          BPS_CHECK(BytePSGlobal::IsDirectResponse() == 2);
+          BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
+        }
+        continue;
+      } else {
+        // split != 0. Do a copy followed by send
+        const char* data = (const char*) task->tensor->data();
+        auto offset = task->offset_list[i];
+        char* cpubuff = (char*) task->pcie_cpubuff[i];
+        CHECK(cpubuff != nullptr);
+        CopyD2H(cpubuff, data + offset, len, true);
+        // perform send. false means not to delete data when SArray is deleted
+        ps::SArray<char> vals(cpubuff, len, false);
+        auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
+        BPS_CHECK(BytePSGlobal::IsDirectResponse() == 2);
+        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd);
+      }
+    }
+    FinishOrProceedLite(task);
+    return true;
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void P2PCopyHost2DeviceLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunP2PCopyHost2DeviceLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void P2PGroupCopyHost2DeviceLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunP2PGroupCopyHost2DeviceLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void P2PCopyDevice2HostLoop(int index) {
+  CHECK(index >= 0);
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunP2PCopyDevice2HostLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void SendLoop(int index) {
+  while (RunSendLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void P2PCopyDevice2HostSendLoop(int index) {
+  CHECK(index >= 0);
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  while (RunP2PCopyDevice2HostSendLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+bool RunCpuCopyLoopOnce() {
+  QueueType this_op = CPU_COPY;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+
+  auto reducer = BytePSGlobal::GetCpuReducer();
+
+  // task->tensor->data() is the ptr given to us by the DL framework, which is a
+  // cpu pointer in this case
+  auto len = task->len;
+  auto offset = task->offset;
+  reducer->copy((void *)((char *)(task->cpubuff) + offset),
+                  (char *)((task->tensor->data()) + offset), len);
+
+  FinishOrProceed(task);
+  return true;
+}
+
+void CpuCopyLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunCpuCopyLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+bool RunCpuCoordinateLoopOnce(QueueType this_op) {
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (task) {
+    int rank = BytePSGlobal::GetLocalRank();
+    auto key = task->key;
+
+    // first send to next queue and then broadcast signal
+    // to guarantee the entry is available when getTask(key) at Reduce/Broadcast
+    // thread
+    FinishOrProceed(task);
+
+    BytePSCommSignal sig = CPU_REDUCE_READY;
+    std::shared_ptr<BytePSComm> comm;
+
+    switch (this_op) {
+      case COORDINATE_CPU_REDUCE: {
+        sig = CPU_REDUCE_READY;
+        comm = BytePSGlobal::GetBasicComm();
+        break;
+      }
+      default:
+        BPS_CHECK(0) << "unsupported op: " << this_op;
+    }
+
+    BPS_CHECK_NE(rank, comm->getRoot())
+        << "only non-root device should enter COORDINATE loop";
+
+    struct BytePSCommMsg msg = {rank, sig, key};
+    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+
+    BPS_CHECK(task->tensor_name != "");
+    BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "
+                   << "Signal=" << sig << "(" << SigLogStrings[sig] << ")"
+                   << ", myrank=" << rank << ", key=" << key;
+
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void CpuCoordinateLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunCpuCoordinateLoopOnce(COORDINATE_CPU_REDUCE) &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+bool RunCpuReduceLoopOnce() {
+  QueueType this_op = CPU_REDUCE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+
+  auto reducer = BytePSGlobal::GetCpuReducer();
+
+  // task->gpu_ptr is the ptr given to us by the DL framework, which is a cpu
+  // pointer in this case
+  auto tensor = task->tensor;
+  auto key = task->key;
+  auto len = task->len;
+  auto offset = task->offset;
+  auto unit_len = tensor->size() / tensor->shape().num_elements();
+  int my_lrank = BytePSGlobal::GetLocalRank();
+  int local_size = BytePSGlobal::GetLocalSize();
+  auto comm = BytePSGlobal::GetBasicComm();
+  int local_root = comm->getRoot();
+
+  auto num_elem_per_lrank = len / local_size / unit_len;
+  auto left_elem = (len / unit_len) - (num_elem_per_lrank * local_size);
+
+  auto copy_len = num_elem_per_lrank * unit_len;
+  if (left_elem && (local_root == my_lrank)) {
+    copy_len += left_elem * unit_len;
+  }
+
+  if (!BytePSGlobal::IsRootDevice()) {
+    if (copy_len) {
+      auto total_offset = offset + my_lrank * num_elem_per_lrank * unit_len;
+      for (int i = 0; i < local_size; ++i) {
+        if (i == local_root) {
+          continue;
+        }
+        BPS_LOG(TRACE) << "dst " << (void *)((char *)(task->numa_cpubuff[local_root]) + total_offset)
+          << " src " << (void *)((char *)(task->numa_cpubuff[i]) + total_offset);
+        reducer->sum((void *)((char *)(task->numa_cpubuff[local_root]) + total_offset),
+          (void *)((char *)(task->numa_cpubuff[i]) + total_offset),
+          copy_len, tensor->dtype());
+      }
+    }
+
+    // send signal to root
+    BytePSCommSignal sig = CPU_REDUCE_DONE;
+    struct BytePSCommMsg msg = {my_lrank, sig, key};
+    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+    BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "
+                   << "Signal=" << sig << "(" << SigLogStrings[sig] << ")"
+                   << ", myrank=" << my_lrank << ", key=" << key;
+  } else {
+    BytePSCommSignal sig = DO_CPU_REDUCE;
+    struct BytePSCommMsg msg = {my_lrank, sig, key};
+    comm->broadcastSignal(&msg, sizeof(BytePSCommMsg));
+
+    if (copy_len) {
+      auto total_offset = offset + my_lrank * num_elem_per_lrank * unit_len;
+      for (int i = 0; i < local_size; ++i) {
+        if (i == local_root) {
+          continue;
+        }
+        BPS_LOG(TRACE) << "dst " << (void *)((char *)(task->cpubuff) + offset)
+          << " src " << (void *)((char *)(task->numa_cpubuff[i]) + total_offset);
+        reducer->sum((void *)((char *)(task->cpubuff) + total_offset),
+          (void *)((char *)(task->numa_cpubuff[i]) + total_offset),
+          copy_len, tensor->dtype());
+
+      }
+    }
+  }
+
+  FinishOrProceed(task);
+  return true;
+}
+
+void CpuReduceLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunCpuReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+bool RunCpuReduceFinishLoopOnce() {
+  // BPS_LOG(TRACE) << "running once: " << __PRETTY_FUNCTION__;
+  QueueType this_op = CPU_REDUCE_FINISH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+
+  FinishOrProceed(task);
+  return true;
+}
+
+void CpuReduceFinishLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunCpuReduceFinishLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+bool RunCpuBcastLoopOnce() {
+  QueueType this_op = CPU_BCAST;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+
+  auto reducer = BytePSGlobal::GetCpuReducer();
+  auto len = task->len;
+  auto offset = task->offset;
+  if (BytePSGlobal::IsRootDevice()) {
+    // send signal to non root workers
+    int rank = BytePSGlobal::GetLocalRank();
+    auto key = task->key;
+    BytePSCommSignal sig = DO_CPU_BCAST;
+    struct BytePSCommMsg msg = {rank, sig, key};
+    auto comm = BytePSGlobal::GetBasicComm();
+    comm->broadcastSignal(&msg, sizeof(BytePSCommMsg));
+    reducer->copy((void *)((char *)(task->output->data()) + offset),
+                  (char *)((task->cpubuff) + offset), len);
+  } else {
+    auto tensor = task->tensor;
+
+    auto key = task->key;
+    auto unit_len = tensor->size() / tensor->shape().num_elements();
+
+    int my_lrank = BytePSGlobal::GetLocalRank();
+    int local_size = BytePSGlobal::GetLocalSize();
+    auto basic_comm = BytePSGlobal::GetBasicComm();
+    int local_root = basic_comm->getRoot();
+
+    BPS_LOG(DEBUG) << "Sampled key=" << task->key << "local_root " << local_root;
+    BPS_LOG(TRACE) << "dst " << (void *) ((char *)(task->cpubuff) + offset)
+      << " src " << (void *) ((task->numa_cpubuff[local_root]) + offset) ;
+    reducer->copy((void *)((char *)(task->output->data()) + offset),
+                  (char *)((task->numa_cpubuff[local_root]) + offset), len);
+
+    BytePSCommSignal sig = CPU_BCAST_DONE;
+    struct BytePSCommMsg msg = {my_lrank, sig, key};
+    auto comm = BytePSGlobal::GetBasicComm();
+    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+  }
+
+  FinishOrProceed(task);
+  return true;
+}
+
+void CpuBcastLoop() {
+  while (RunCpuBcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+bool RunCpuBcastFinishLoopOnce() {
+  QueueType this_op = CPU_BCAST_FINISH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+
+  FinishOrProceed(task);
+  return true;
+}
+
+void CpuBcastFinishLoop() {
+  while (RunCpuBcastFinishLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+#if BYTEPS_BUILDING_CUDA == 0
+void CoordinateReduceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void CoordinateBroadcastLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void CoordinatePushLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void PcieReduceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void RootNcclLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void NonRootNcclLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void SyncNcclLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void CopyDevice2HostLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void CompressLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void DecompressLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void RootCopyHost2DeviceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void NonRootCopyListenLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void NonRootCopyHost2DeviceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+#endif
 
 }  // namespace common
 }  // namespace byteps

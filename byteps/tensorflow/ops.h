@@ -26,6 +26,7 @@
 #include "tensorflow/stream_executor/stream.h"
 
 #include "../common/operations.h"
+#include "../common/common.h"
 
 namespace byteps {
 namespace tensorflow {
@@ -42,16 +43,26 @@ class TFReadyEvent : public common::ReadyEvent {
 class TFTensor : public common::Tensor {
  public:
   TFTensor(::tensorflow::Tensor& tensor);
+  TFTensor(::tensorflow::OpKernelContext* context,
+           ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx);
   virtual const common::DataType dtype() const override;
   virtual const common::TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;
+  virtual void resize(const common::TensorShape&) override;
 
  protected:
   ::tensorflow::Tensor tensor_;
+  ::tensorflow::OpKernelContext* context_;
+  ::tensorflow::AsyncOpKernel::DoneCallback done_;
+  // the output index
+  int idx_;
+  // allocated
+  bool allocated_ = true;
 };
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name);
+extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int receiver);
 
 }  // namespace tensorflow
 }  // namespace byteps

@@ -1,3 +1,5 @@
+from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError, DistutilsSetupError
+
 # For internal use. Please do not modify this file.
 
 def setup():

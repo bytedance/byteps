@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
+#if BYTEPS_BUILDING_CUDA == 1
 #include "nccl_manager.h"
 #include "global.h"
 #include "logging.h"
@@ -319,3 +320,4 @@ int NcclManagerExpr::GetRank(uint64_t key, QueueType op) {
 
 }  // namespace common
 }  // namespace byteps
+#endif

@@ -16,7 +16,9 @@
 #ifndef BYTEPS_SHARED_MEMORY_H
 #define BYTEPS_SHARED_MEMORY_H
 
+#if BYTEPS_BUILDING_CUDA == 1
 #include <cuda_runtime.h>
+#endif
 #include <sys/mman.h>
 #include <cerrno>
 #include <cstdio>
@@ -48,6 +50,7 @@ class BytePSSharedMemory {
 
   void *openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
   std::vector<void *> openPcieSharedMemory(uint64_t key, size_t size);
+  std::vector<void *> openNumaSharedMemory(uint64_t key, size_t size);
 
  private:
   std::unordered_map<std::string, void *> _key_shm_addr;

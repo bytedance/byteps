@@ -21,10 +21,7 @@ from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
 
-if os.path.isfile('./pre_setup_local.py'):
-    import pre_setup_local as pre_setup
-else:
-    import pre_setup as pre_setup
+import pre_setup as pre_setup
 
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
@@ -38,7 +35,7 @@ URL = 'https://github.com/bytedance/byteps'
 EMAIL = 'lab-hr@bytedance.com'
 AUTHOR = 'Bytedance Inc.'
 REQUIRES_PYTHON = '>=2.7.0'
-VERSION = '0.2.5'
+VERSION = '0.7.1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -174,7 +171,9 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-fopenmp', '-march=native']
+    default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-march=native']
+    if use_openmp():
+        default_flags.append('-fopenmp')
     flags_to_try = []
     if sys.platform == 'darwin':
         # Darwin most likely will have Clang, which has libc++.
@@ -205,7 +204,9 @@ def get_cpp_flags(build_ext):
 def get_link_flags(build_ext):
     last_err = None
     libtool_flags = ['-Wl,-exported_symbols_list,byteps.exp']
-    ld_flags = ['-Wl,--version-script=byteps.lds', '-fopenmp']
+    ld_flags = ['-Wl,--version-script=byteps.lds']
+    if use_openmp():
+        ld_flags.append('-fopenmp')
     flags_to_try = []
     if sys.platform == 'darwin':
         flags_to_try = [libtool_flags, ld_flags]
@@ -236,9 +237,33 @@ def has_rdma_header():
         warnings.warn("\n\n No RDMA header file detected. Will disable RDMA for compilation! \n\n")
     return ret_code==0
 
-def build_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
+def use_openmp():
+    byteps_with_omp = int(os.environ.get('BYTEPS_WITH_OPENMP', 1))
+    return byteps_with_omp
+
+def use_cuda():
+    byteps_with_gpu = int(os.environ.get('BYTEPS_WITH_GPU', 1))
+    return byteps_with_gpu
+
+def use_ucx():
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '0'))
     return byteps_with_ucx
+
+def build_ucx():
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '0'))
+    has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME')
+    return byteps_with_ucx and not has_prebuilt_ucx
+
+def get_ucx_prefix():
+    """ specify where to install ucx """
+    ucx_prefix = os.getenv('BYTEPS_UCX_PREFIX', '/usr/local/ucx')
+    return ucx_prefix
+
+def get_ucx_home():
+    """ pre-installed ucx path """
+    if build_ucx():
+        return get_ucx_prefix()
+    return os.environ.get('BYTEPS_UCX_HOME', '/usr/local/ucx')
 
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
@@ -256,7 +281,9 @@ def get_common_options(build_ext):
                'byteps/common/ready_table.cc',
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
-               'byteps/common/cpu_reducer.cc'] + [
+               'byteps/common/cpu_reducer.cc',
+               'byteps/server/server.cc',
+               'byteps/server/common.cc'] + [
                'byteps/common/compressor/compressor_registry.cc',
                'byteps/common/compressor/error_feedback.cc',
                'byteps/common/compressor/momentum.cc',
@@ -278,10 +305,14 @@ def get_common_options(build_ext):
     LIBRARY_DIRS = []
     LIBRARIES = []
 
-    nccl_include_dirs, nccl_lib_dirs, nccl_libs = get_nccl_vals()
-    INCLUDES += nccl_include_dirs
-    LIBRARY_DIRS += nccl_lib_dirs
-    LIBRARIES += nccl_libs
+    # worker server colocate
+    COMPILE_FLAGS += ['-DBYTEPS_BUILDING_SERVER']
+
+    if use_cuda():
+        nccl_include_dirs, nccl_lib_dirs, nccl_libs = get_nccl_vals()
+        INCLUDES += nccl_include_dirs
+        LIBRARY_DIRS += nccl_lib_dirs
+        LIBRARIES += nccl_libs
 
     # RDMA and NUMA libs
     LIBRARIES += ['numa']
@@ -289,8 +320,12 @@ def get_common_options(build_ext):
     # auto-detect rdma
     if has_rdma_header():
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
-    if build_ucx():
+    if use_ucx():
         LIBRARIES += ['ucp', 'uct', 'ucs', 'ucm']
+        ucx_home = get_ucx_home()
+        if ucx_home:
+            INCLUDES += [f'{ucx_home}/include']
+            LIBRARY_DIRS += [f'{ucx_home}/lib']
 
     # ps-lite
     EXTRA_OBJECTS = ['3rdparty/ps-lite/build/libps.a',
@@ -309,10 +344,19 @@ def get_common_options(build_ext):
 def build_server(build_ext, options):
     server_lib.define_macros = options['MACROS']
     server_lib.include_dirs = options['INCLUDES']
-    server_lib.sources = ['byteps/server/server.cc',
-                          'byteps/common/cpu_reducer.cc',
-                          'byteps/common/logging.cc',
-                          'byteps/common/common.cc'] + [
+    server_lib.sources = ['byteps/common/common.cc',
+                        'byteps/common/operations.cc',
+                        'byteps/common/core_loops.cc',
+                        'byteps/common/global.cc',
+                        'byteps/common/logging.cc',
+                        'byteps/common/communicator.cc',
+                        'byteps/common/scheduled_queue.cc',
+                        'byteps/common/ready_table.cc',
+                        'byteps/common/shared_memory.cc',
+                        'byteps/common/nccl_manager.cc',
+                        'byteps/common/cpu_reducer.cc',
+                        'byteps/server/server.cc',
+                        'byteps/server/common.cc'] + [
                           'byteps/common/compressor/compressor_registry.cc',
                           'byteps/common/compressor/error_feedback.cc',
                           'byteps/common/compressor/impl/dithering.cc',
@@ -320,6 +364,7 @@ def build_server(build_ext, options):
                           'byteps/common/compressor/impl/randomk.cc',
                           'byteps/common/compressor/impl/topk.cc',
                           'byteps/common/compressor/impl/vanilla_error_feedback.cc']
+    # TODO: auto-detect CUDA for server
     server_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         ['-DBYTEPS_BUILDING_SERVER']
     server_lib.extra_link_args = options['LINK_FLAGS']
@@ -330,10 +375,22 @@ def build_server(build_ext, options):
     if has_rdma_header():
         server_lib.libraries = ['rdmacm', 'ibverbs', 'rt']
     else:
-        server_lib.libraries = []
-    if build_ucx():
+        server_lib.libraries = ['rt']
+    if use_ucx():
         server_lib.libraries += ['ucp', 'uct', 'ucs', 'ucm']
+        ucx_home = get_ucx_home()
+        if ucx_home:
+            server_lib.include_dirs += [f'{ucx_home}/include']
+            server_lib.library_dirs += [f'{ucx_home}/lib']
+            if use_cuda():
+                cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+                    build_ext, options['COMPILE_FLAGS'])
+                server_lib.define_macros += [('HAVE_CUDA', '1')]
+                server_lib.include_dirs += cuda_include_dirs
+                server_lib.library_dirs += cuda_lib_dirs
+                server_lib.libraries += ['cudart']
 
+    server_lib.libraries += ['numa']
     build_ext.build_extension(server_lib)
 
 
@@ -455,12 +512,13 @@ def build_tf_extension(build_ext, options):
         build_ext, options['COMPILE_FLAGS'])
 
     # We assume we have CUDA
-    cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
-        build_ext, options['COMPILE_FLAGS'])
-    options['MACROS'] += [('HAVE_CUDA', '1')]
-    options['INCLUDES'] += cuda_include_dirs
-    options['LIBRARY_DIRS'] += cuda_lib_dirs
-    options['LIBRARIES'] += ['cudart']
+    if use_cuda():
+        cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+            build_ext, options['COMPILE_FLAGS'])
+        options['MACROS'] += [('HAVE_CUDA', '1')]
+        options['INCLUDES'] += cuda_include_dirs
+        options['LIBRARY_DIRS'] += cuda_lib_dirs
+        options['LIBRARIES'] += ['cudart']
 
     tensorflow_lib.define_macros = options['MACROS']
     tensorflow_lib.include_dirs = options['INCLUDES']
@@ -596,7 +654,7 @@ def get_cuda_dirs(build_ext, cpp_flags):
     if cuda_home:
         cuda_include_dirs += ['%s/include' % cuda_home]
         cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
-
+    # /opt/tiger/cuda/lib64
     cuda_include = os.environ.get('BYTEPS_CUDA_INCLUDE')
     if cuda_include:
         cuda_include_dirs += [cuda_include]
@@ -642,7 +700,7 @@ def get_nccl_vals():
         nccl_include_dirs += ['%s/include' % nccl_home]
         nccl_lib_dirs += ['%s/lib' % nccl_home, '%s/lib64' % nccl_home]
 
-    nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'STATIC')
+    nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'SHARED')
     if nccl_link_mode.upper() == 'SHARED':
         nccl_libs += ['nccl']
     else:
@@ -850,6 +908,8 @@ class custom_build_ext(build_ext):
     def build_extensions(self):
         pre_setup.setup()
 
+        ucx_home = get_ucx_home()
+        ucx_prefix = get_ucx_prefix()
         make_option = ""
         # To resolve tf-gcc incompatibility
         has_cxx_flag = False
@@ -889,10 +949,11 @@ class custom_build_ext(build_ext):
                 pass
 
         print("build_ucx is", build_ucx())
+        # Build official UCX only if BYTEPS_UCX_HOME is not provided
         if build_ucx():
             ucx_path = pre_setup.ucx_path.strip()
             if not ucx_path:
-                ucx_path = "https://codeload.github.com/openucx/ucx/zip/9229f54"
+                ucx_path = "https://codeload.github.com/openucx/ucx/zip/6d3fcfc"
             print("ucx_path is", ucx_path)
             cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
             "rm -rf ucx*;" +\
@@ -900,7 +961,7 @@ class custom_build_ext(build_ext):
                 "unzip -o ./ucx.zip -d tmp; " + \
                 "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/;" +\
                 "cd ucx-build; pwd; which libtoolize; " + \
-                "./autogen.sh; ./autogen.sh && ./contrib/configure-release --enable-mt && make -j && sudo make install -j"
+                "./autogen.sh || ./autogen.sh && ./contrib/configure-release --enable-mt --prefix=" + ucx_home + " && make -j && sudo make install -j"
             make_process = subprocess.Popen(cmd,
                                             cwd='3rdparty',
                                             stdout=sys.stdout,
@@ -918,11 +979,16 @@ class custom_build_ext(build_ext):
                 make_option += "-j "
             if has_rdma_header():
                 make_option += "USE_RDMA=1 "
-            if build_ucx():
+            if use_ucx():
                 make_option += 'USE_UCX=1 '
+                if ucx_home:
+                    make_option += f'UCX_PATH={ucx_home} '
+
+                if use_cuda():
+                    cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
+                    make_option += f'USE_CUDA=1 CUDA_HOME={cuda_home}'
 
             make_option += pre_setup.extra_make_option()
-
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
@@ -938,13 +1004,16 @@ class custom_build_ext(build_ext):
         options = get_common_options(self)
         if has_cxx_flag:
             options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
-
         built_plugins = []
         try:
             build_server(self, options)
         except:
             raise DistutilsSetupError('An ERROR occured while building the server module.\n\n'
                                       '%s' % traceback.format_exc())
+
+        # servers are always built without GPU
+        if use_cuda():
+            options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_CUDA=1']
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS

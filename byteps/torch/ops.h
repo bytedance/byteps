@@ -41,11 +41,28 @@ size_t grad_count_;
       THTensor* tensor, THTensor* output, int average, char* name, \
       int version, int priority);
 
+#define SEND_H(torch_Tensor, THTensor)                         \
+  extern "C" int byteps_torch_send_async_##torch_Tensor(      \
+      THTensor* tensor, int sender, int receiver, char* name, \
+      int version, int priority);
+
+#define RECV_H(torch_Tensor, THTensor)                         \
+  extern "C" int byteps_torch_recv_async_##torch_Tensor(      \
+      THTensor* tensor, int sender, int receiver, char* name, \
+      int version, int priority);
+
 PUSHPULL_H(torch_ByteTensor, THByteTensor)
 PUSHPULL_H(torch_IntTensor, THIntTensor)
 PUSHPULL_H(torch_LongTensor, THLongTensor)
 PUSHPULL_H(torch_FloatTensor, THFloatTensor)
 PUSHPULL_H(torch_DoubleTensor, THDoubleTensor)
+
+SEND_H(torch_FloatTensor, THFloatTensor)
+SEND_H(torch_LongTensor, THLongTensor)
+SEND_H(torch_BoolTensor, THBoolTensor)
+RECV_H(torch_FloatTensor, THFloatTensor)
+RECV_H(torch_LongTensor, THLongTensor)
+RECV_H(torch_BoolTensor, THBoolTensor)
 
 #if HAVE_CUDA
 PUSHPULL_H(torch_cuda_ByteTensor, THCudaByteTensor)
@@ -53,11 +70,16 @@ PUSHPULL_H(torch_cuda_IntTensor, THCudaIntTensor)
 PUSHPULL_H(torch_cuda_LongTensor, THCudaLongTensor)
 PUSHPULL_H(torch_cuda_FloatTensor, THCudaTensor)
 PUSHPULL_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
+
+SEND_H(torch_cuda_FloatTensor, THCudaTensor)
+RECV_H(torch_cuda_FloatTensor, THCudaTensor)
 #endif
 
 extern "C" int byteps_torch_poll(int handle);
-extern "C" void byteps_torch_wait_and_clear(int handle);
+extern "C" void byteps_torch_wait_and_clear(int handle, bool busy_wait);
 extern "C" void byteps_torch_declare_tensor(char* name);
+extern "C" void byteps_torch_declare_tensor_send(char* name, int sender, int receiver);
+extern "C" void byteps_torch_declare_tensor_recv(char* name, int sender, int receiver);
 
 }  // namespace torch
 }  // namespace byteps

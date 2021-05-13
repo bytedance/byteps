@@ -22,7 +22,13 @@
 #include <set>
 #include <unistd.h>
 #include "ps/ps.h"
+#include "common.h"
+#include "../common/ready_table.h"
 #include "../common/cpu_reducer.h"
+#include "../common/scheduled_queue.h"
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "../common/compressor/compressor.h"
 #include "../common/compressor/compressor_registry.h"
 
@@ -35,10 +41,7 @@ namespace server {
 #define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
 
 using namespace ps;
-
-enum class RequestType {
-  kDefaultPushPull, kRowSparsePushPull, kCompressedPushPull
-};
+using common::ReadyTable;
 
 enum BytePSEngineOperation {
   SUM_RECV, COPY_FIRST, ALL_RECV, TERMINATE
@@ -49,16 +52,16 @@ struct PSKV {
   SArray<int> lens;  // the length of the i-th value
 };
 
-struct DataHandleType {
-  RequestType requestType;
-  int dtype;
-};
-
 struct BytePSArray {
   char* tensor;
   size_t len;
   int dtype;
   ps::KVPairs<char> tmp_sarray;
+};
+
+struct RecvArray {
+  int len = -1;
+  SArray<char> val;
 };
 
 struct UpdateBuf {
@@ -78,110 +81,136 @@ struct BytePSEngineMessage {
   ps::KVMeta req_meta;
 };
 
-static DataHandleType DepairDataHandleType(int cmd) {
-  int w = std::floor((std::sqrt(8 * cmd + 1) - 1)/2);
-  int t = ((w * w) + w) / 2;
-  int y = cmd - t;
-  int x = w - y;
-  CHECK_GE(x, 0);
-  CHECK_GE(y, 0);
-  DataHandleType type;
-  type.requestType = static_cast<RequestType>(x);
-  type.dtype = y;
-  return type;
-}
+class BytePSServer {
+  public: 
+    // functions
+    static void Init(int rank);
+    static void SendPushResponse(uint64_t key);
+    static void init_global_env();
 
+    static void BytePSHandler(const ps::KVMeta& req_meta,
+                              const ps::KVPairs<char> &req_data,
+                              ps::KVServer<char>* server);
 
-KVServer<SERVER_DATA_TYPE>* byteps_server_;
-byteps::common::CpuReducer* bps_reducer_;
-
-std::mutex pullresp_mu_;
-std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
-std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
-
-// push & pull flag
-std::vector<std::mutex> flag_mu_;
-std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
-std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
-std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
-std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
-
-// byteps handler
-std::mutex handle_mu_;
-std::unordered_map<uint64_t, UpdateBuf> update_buf_;
-std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
-
-// address map
-std::mutex store_mu_;
-std::unordered_map<uint64_t, BytePSArray> store_;
-
-// hash function
-std::mutex hash_mu_;
-std::unordered_map<uint64_t, size_t> hash_cache_;
-std::vector<uint64_t> acc_load_; // accumulated tensor size for an engine thread
-
-// global knob
-uint64_t timestamp_ = 0;
-size_t engine_thread_num_ = 4;
-volatile bool is_engine_blocking_ = false;
-volatile bool log_key_info_ = false;
-volatile bool sync_mode_ = true;
-volatile bool debug_mode_ = false;
-volatile bool enable_schedule_ = false;
-
-// debug
-uint64_t debug_key_;
-std::mutex debug_mu_;
-
-int DivUp(int x, int y) { return (x + y - 1) / y; }
-int RoundUp(int x, int y) { return DivUp(x, y) * y; }
-
-uint64_t DecodeKey(ps::Key key) {
-  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
-  return key - kr.begin();
-}
-
-uint64_t EncodeKey(ps::Key key) {
-  auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
-  return key + kr.begin();
-}
-
-size_t GetThreadID(uint64_t key, size_t len) {
-  std::lock_guard<std::mutex> lock(hash_mu_);
-  if (len == 0) { // pull
-    CHECK_NE(hash_cache_.find(key), hash_cache_.end());
-    return hash_cache_[key];
-  }
-  if (hash_cache_.find(key) != hash_cache_.end()) {
-    return hash_cache_[key];
-  }
-  CHECK_GT(len, 0);
-  CHECK_EQ(acc_load_.size(), engine_thread_num_);
-  auto min_index = -1;
-  auto min_load = std::numeric_limits<uint64_t>::max();
-  for (size_t i = 0; i < engine_thread_num_; ++i) {
-    if (acc_load_[i] < min_load) {
-      min_load = acc_load_[i];
-      min_index = i;
+    static std::vector<RecvArray> GetRecvPartitions(std::vector<uint64_t> keys) {
+      std::vector<RecvArray> arrs;
+      std::lock_guard<std::mutex> lk(recved_partitions_mu_);
+      for (auto key : keys) {
+        auto iter = recved_partitions_.find(key);
+        CHECK(iter != recved_partitions_.end()) << key;
+        arrs.emplace_back(iter->second);
+      }
+      return arrs;
     }
-  }
-  CHECK_GE(min_index, 0);
-  CHECK_LT(min_index, engine_thread_num_);
-  acc_load_[min_index] += len;
-  hash_cache_[key] = min_index;
-  return hash_cache_[key];
-}
 
-void PageAlignedMalloc(void** ptr, size_t size) {
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  void* p;
-  int size_aligned = RoundUp(size, page_size);
-  int ret = posix_memalign(&p, page_size, size_aligned);
-  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
-  CHECK(p);
-  memset(p, 0, size);
-  *ptr = p;
-}
+    // received tensor info
+    static RecvArray GetRecvPartition(uint64_t key) {
+      std::lock_guard<std::mutex> lk(recved_partitions_mu_);
+      auto iter = recved_partitions_.find(key);
+      CHECK(iter != recved_partitions_.end()) << key;
+      return iter->second;
+    }
+
+    static void SetRecvPartition(uint64_t key, const RecvArray& arr) {
+      std::lock_guard<std::mutex> lk(recved_partitions_mu_);
+      recved_partitions_[key] = arr;
+    }
+
+    // TODO: move to private?
+    // knobs
+    static uint64_t timestamp_;
+    static size_t engine_thread_num_;
+    static volatile bool is_engine_blocking_;
+    static volatile bool log_key_info_;
+    static volatile bool sync_mode_;
+    static volatile bool debug_mode_;
+    static volatile bool enable_schedule_;
+    static volatile bool is_server_;
+    // p2p knobs
+    static std::string p2p_shm_prefix_;
+    static ps::Node::Role role_;
+
+    static size_t num_phy_node_;
+    static size_t num_expected_workers_;
+
+    // received tensor info
+    static std::unordered_map<uint64_t, RecvArray> recved_partitions_;
+    static std::mutex recved_partitions_mu_;
+
+    // debug
+    static uint64_t debug_key_;
+    static std::mutex debug_mu_;
+
+    // server operations
+    static byteps::common::CpuReducer* bps_reducer_;
+
+    // ==== p2p related ====
+    static volatile bool should_stop_;
+    static int preferred_rank_;
+    static bool enable_preferred_rank_;
+    static int p2p_direct_response_;
+    static bool alltoall_batch_recv_;
+    // ==== p2p related ====
+
+    static std::vector<KVServer<char>*> byteps_server_;
+
+    static std::mutex pullresp_mu_;
+    static std::unordered_map<uint64_t, ps::KVPairs<char> > push_response_map_;
+    static std::unordered_map<uint64_t, ps::KVPairs<char> > pull_response_map_;
+
+    // push & pull flag
+    static std::vector<std::mutex> flag_mu_;
+    static std::vector<std::unordered_map<uint64_t, bool> > is_push_finished_;
+    static std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > q_pull_reqmeta_;
+    static std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
+    static std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
+
+    // byteps handler
+    static std::mutex handle_mu_;
+    static std::unordered_map<uint64_t, UpdateBuf> update_buf_;
+
+    // address map
+    static std::mutex store_mu_;
+    static std::unordered_map<uint64_t, BytePSArray> store_;
+
+    // req_meta
+    static std::mutex req_meta_mu_;
+    static std::unordered_map<uint64_t, std::pair<ps::KVMeta, ps::KVServer<char>*>> response_meta_;
+
+    // hash function
+    static std::mutex hash_mu_;
+    static std::unordered_map<uint64_t, size_t> hash_cache_;
+    // accumulated tensor size for an engine thread
+    static std::vector<uint64_t> acc_load_;
+
+    static ReadyTable* GetP2PCopyTable() { return p2p_copy_table_; }
+    static ReadyTable* GetP2PGroupCopyTable() { return p2p_group_copy_table_; }
+    static void InitP2PCopyTable();
+    static int IsP2PDirectResponse() { return p2p_direct_response_; }
+
+  private:
+    // functions
+    static void P2PHandler(const ps::KVMeta& req_meta,
+                           const ps::KVPairs<char> &req_data, 
+                           ps::KVServer<char>* server);
+    static size_t GetThreadID(uint64_t key, size_t len);
+    static BytePSArray* GetStore(uint64_t key);
+
+    // routines
+    static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
+                                 ps::KVServer<char>* server);
+    static void SendPullResponse(const DataHandleType type,
+                                const uint64_t key,
+                                const ps::KVMeta& req_meta,
+                                ps::KVServer<char>* server);
+    static void BytePSServerEngineThread(int i);
+
+
+    static ReadyTable* p2p_copy_table_;
+    static ReadyTable* p2p_group_copy_table_;
+    static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
+
+};
 
 extern "C" void byteps_server();
 

@@ -26,6 +26,7 @@ import warnings
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
 from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_speed
+from byteps.tensorflow.ops import _alltoall, send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.util import _executing_eagerly
@@ -38,7 +39,8 @@ Sum = "Sum"
 Adasum = "Adasum"
 
 def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
-              compression=Compression.none, op=None, enable_async=False):
+              compression=Compression.none, op=None, enable_async=False,
+              name=None):
     """Perform an push_pull on a tf.Tensor or tf.IndexedSlices.
     Arguments:
         tensor: tf.Tensor, tf.Variable, or tf.IndexedSlices to reduce.
@@ -70,7 +72,7 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull(tensor_compressed, scope)
+        summed_tensor_compressed = _push_pull(tensor_compressed, scope, name)
         summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
         if not enable_async:
             _div = tf.div if hasattr(tf, 'div') else tf.math.divide
@@ -80,6 +82,34 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
             new_tensor = summed_tensor
     return new_tensor
 
+
+def alltoall(tensor, splits, recv_splits=None, scope='', name=None,
+             with_size=False, compression=Compression.none):
+    """An op that scatters slices of the input tensor to all other BytePS processes
+    and returns a tensor of gathered slices from all other BytePS processes.
+    The slicing is done on the first dimension, so the input tensors on the
+    different processes must have the same rank and shape, except for the first
+    dimension, which is allowed to be different.
+    Arguments:
+        tensor: A tensor to distribute with alltoall.
+        splits: A tensor of integers in rank order describing how many
+                elements in `tensor` to send to each worker.  Splitting is
+                applied along the first dimension of `tensor`.
+        recv_splits: A tensor of integers in rank order describing how many
+                elements in `tensor` to receive from each worker.  Splitting is
+                applied along the first dimension of other ranks' `tensor`.
+        name: A name of the alltoall operation.
+        with_size: return the `recv_splits`
+
+    Returns:
+      A tensor of the same type as `tensor`, concatenated on dimension zero
+      across all processes. The shape is identical to the input shape, except for
+      the first dimension, which may be greater and is the sum of all first
+      dimensions of the gathered tensor slices from different BytePS processes.
+    """
+    results = _alltoall(tensor, scope, splits=splits, recv_splits=recv_splits,
+                        name=name, with_size=with_size, compression=compression)
+    return results
 
 try:
     _global_variables = tf.global_variables

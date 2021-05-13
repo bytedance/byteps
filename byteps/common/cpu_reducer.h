@@ -25,12 +25,7 @@
 #include <memory>
 #include "common.h"
 #include "logging.h"
-
-#ifndef BYTEPS_BUILDING_SERVER
 #include "communicator.h"
-#else
-typedef void BytePSComm;
-#endif
 
 #include <stdint.h>
 
@@ -55,7 +50,7 @@ class CpuReducer {
 
   int copy(void* dst, const void* src, size_t len);
 
-#ifndef BYTEPS_BUILDING_SERVER
+#if BYTEPS_BUILDING_CUDA == 1
   bool isRoot();
   std::shared_ptr<BytePSComm> getComm() { return _comm; }
 #endif

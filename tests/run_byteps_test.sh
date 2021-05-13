@@ -6,7 +6,7 @@ export PATH=~/anaconda3/envs/mxnet_p36/bin:$PATH
 export DMLC_NUM_WORKER=1
 export DMLC_NUM_SERVER=1
 export DMLC_PS_ROOT_URI=127.0.0.1
-export DMLC_PS_ROOT_PORT=1234
+export DMLC_PS_ROOT_PORT=12315
 
 function cleanup() {
   rm -rf lr.s
@@ -35,6 +35,9 @@ export BYTEPS_LOG_LEVEL=WARNING
 if [ "$TEST_TYPE" == "keras" ]; then
   echo "TEST KERAS ..."
   python $path/test_tensorflow_keras.py $@
+elif [ "$TEST_TYPE" == "torch" ]; then
+  echo "TEST TORCH ..."
+  bpslaunch python3 $path/test_torch.py $@
 else
   echo "Error: unsupported $TEST_TYPE"
   exit 1
