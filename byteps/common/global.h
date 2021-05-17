@@ -185,7 +185,7 @@ class BytePSGlobal {
 
   // used to track how many alltoall operations are done. Useful for
   // debugging hanging issues
-  static uint64_t MarkDone(std::string name) {
+  static void MarkDone(std::string name) {
     _alltoall_session_mu.lock();
     _alltoall_completions[name]++;
     _alltoall_session_mu.unlock();

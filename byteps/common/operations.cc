@@ -154,9 +154,9 @@ int byteps_size() { return BytePSGlobal::GetSize(); }
 
 int byteps_local_size() { return BytePSGlobal::GetLocalSize(); }
 
-uint64_t byteps_session_id(const char* name) { return BytePSGlobal::GetSessionId(name); }
+uint64_t byteps_session_id(const char* name) { return BytePSGlobal::GetSessionId(std::string(name)); }
 
-void byteps_mark_done(const char* name) { BytePSGlobal::MarkDone(name); return; }
+void byteps_mark_done(const char* name) { BytePSGlobal::MarkDone(std::string(name)); return; }
 
 uint32_t byteps_session_size() { return BytePSGlobal::GetSessionSize(); }
 

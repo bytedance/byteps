@@ -320,6 +320,8 @@ def get_common_options(build_ext):
     # auto-detect rdma
     if has_rdma_header():
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
+    else:
+        LIBRARIES += ['rt']
     if use_ucx():
         LIBRARIES += ['ucp', 'uct', 'ucs', 'ucm']
         ucx_home = get_ucx_home()
