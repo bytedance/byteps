@@ -82,14 +82,12 @@ class TorchTests(unittest.TestCase):
             skip_or_fail_gpu_test(self, "No GPUs available")
 
     def test_horovod_sync_batch_norm(self):
-        print("xxx starting the test")
         """Tests Horovod version of SyncBatchNorm."""
         if not torch.cuda.is_available():
             self.skipTest("No GPUs available")
 
         bps.init()
         torch.cuda.set_device(bps.local_rank())
-        print("xxx my local rank is ", bps.rank())
 
         ts_list = [
             torch.stack([

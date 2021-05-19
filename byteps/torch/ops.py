@@ -226,6 +226,10 @@ def allgather_async(tensor, name=None, version=0, priority=0, node_local=True):
     Arguments:
         tensor: A tensor to allgather.
         name: A name of the allgather operation.
+        node_local: if True, the allgather is performed among ranks on the same
+                    node. If False, the allgather is performed globally among
+                    all ranks. Only node_local = True is implemented for the
+                    moment.
 
     Returns:
         A handle to the allgather operation that can be used with `poll()` or
