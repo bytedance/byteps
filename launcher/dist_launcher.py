@@ -3,12 +3,14 @@
 Launch a distributed job for BytePS
 """
 import argparse
-import os, sys
+import os
+import sys
 import signal
 import logging
 import subprocess
 from multiprocessing import Pool, Process
 from threading import Thread
+
 
 def preprocess_envs(args_envs):
     envs_map = {}
@@ -19,6 +21,7 @@ def preprocess_envs(args_envs):
             val = item[i+1:]
         envs_map[key] = val
     return envs_map
+
 
 def get_env(envs_map):
     envs = []
@@ -32,6 +35,7 @@ def get_env(envs_map):
     for k, v in envs_map.items():
         envs.append('export ' + str(k) + '=' + str(v) + ';')
     return (' '.join(envs))
+
 
 def get_hosts_from_file(filename):
     with open(filename) as f:
@@ -52,7 +56,7 @@ def get_hosts_from_file(filename):
     return hosts
 
 
-def start_ssh(prog, node, port, username, fname):
+def start_ssh(prog, node, port, username, fname, pem):
     def run(prog):
         subprocess.check_call(prog, shell=True)
 
@@ -61,15 +65,17 @@ def start_ssh(prog, node, port, username, fname):
         os.mkdir(dirname)
 
     pname = dirname + '/' + fname
+    cmd = 'ssh -o StrictHostKeyChecking=no '
     if username is not None:
-        prog = 'ssh -o StrictHostKeyChecking=no ' + ' -l ' + username \
-               + ' ' + node + ' -p ' + port + ' \'' + prog + '\'' \
-               + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
-    else:
-        prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' -p ' + port + ' \'' + prog + '\'' \
-               + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
+        cmd += ' -l ' + username
 
-    thread = Thread(target=run, args=(prog,))
+    if pem is not None:
+        cmd += ' -i ' + pem
+
+    cmd += ' ' + node + ' -p ' + port + ' \'' + prog + '\'' \
+        + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
+
+    thread = Thread(target=run, args=(cmd,))
     thread.setDaemon(True)
     thread.start()
     return thread
@@ -96,49 +102,58 @@ def submit(args):
     if args.username is not None:
         username = args.username
 
+    pem = None
+    if args.identity_file is not None:
+        pem = args.identity_file
+
     threads = []
     for (node, port) in [(args.scheduler_ip, args.scheduler_ssh_port)]:
         name = 'scheduler'
         pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username, name))
+        threads.append(start_ssh(prog, node, port, username, name, pem))
     for i, (node, port) in enumerate(worker_hosts):
         name = 'worker'
         pass_envs['DMLC_ROLE'] = name
         pass_envs['DMLC_WORKER_ID'] = str(i)
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username, name + str(i)))
+        threads.append(start_ssh(prog, node, port,
+                                 username, name + str(i), pem))
     for i, (node, port) in enumerate(server_hosts):
         name = 'server'
         pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
-        threads.append(start_ssh(prog, node, port, username, name + str(i)))
+        threads.append(start_ssh(prog, node, port,
+                                 username, name + str(i), pem))
 
     for t in threads:
         t.join()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Launch a distributed training job for BytePS')
+    parser = argparse.ArgumentParser(
+        description='Launch a distributed training job for BytePS')
     parser.add_argument('-WH', '--worker-hostfile', required=True, type=str,
-                        help = 'the hostfile of worker machines which will run the job.')
+                        help='the hostfile of worker machines which will run the job.')
     parser.add_argument('-SH', '--server-hostfile', required=True, type=str,
-                        help = 'the hostfile of server machines which will run the job.')
+                        help='the hostfile of server machines which will run the job.')
+    parser.add_argument('-i', '--identity_file', required=False, type=str,
+                        help='the identity_file of machines which will run the job.')
     parser.add_argument('--scheduler-ip', required=True, type=str,
-                        help = 'the ip address of the scheduler')
+                        help='the ip address of the scheduler')
     parser.add_argument('--scheduler-port', required=True, type=int,
-                        help = 'the port of the scheduler')
+                        help='the port of the scheduler')
     parser.add_argument('--interface', type=str, default='eth0',
-                        help = 'the network interface to use')
+                        help='the network interface to use')
     parser.add_argument('--env', action='append', default=[],
-                        help = 'Given a pair of environment_variable:value, sets this value of \
+                        help='Given a pair of environment_variable:value, sets this value of \
                         environment variable for all workers and servers. Example OMP_NUM_THREADS:3')
     parser.add_argument('--username', type=str,
-                        help = 'the username for ssh')
+                        help='the username for ssh')
     parser.add_argument('--scheduler-ssh-port', type=str, default='22',
-                        help = 'the ssh port of the scheduler')
-    parser.add_argument('command', nargs='+',
-                        help = 'command for launching the program')
+                        help='the ssh port of the scheduler')
+    parser.add_argument('command', nargs=argparse.REMAINDER,
+                        help='command for launching the program')
 
     args = parser.parse_args()
 
@@ -154,6 +169,7 @@ def main():
 def signal_handler(signal, frame):
     logging.info('Stop launcher')
     sys.exit(0)
+
 
 if __name__ == '__main__':
     fmt = '%(asctime)s %(levelname)s %(message)s'

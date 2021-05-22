@@ -13,7 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "vanilla_error_feedback.h"
+#include "corrected_error_feedback.h"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -28,26 +28,39 @@ namespace common {
 namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
-    "vanilla_ef",
+    "corrected_ef",
     [](const kwargs_t& kwargs, size_t size, DataType dtype,
        std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
       BPS_CHECK_NE(cptr, nullptr);
 
-      BPS_LOG(INFO) << "vanilla error feedback is registered.";
-      return std::unique_ptr<VanillaErrorFeedbackCompressor>(
-          new VanillaErrorFeedbackCompressor(size, dtype, std::move(cptr)));
+      BPS_LOG(INFO) << "corrected error feedback is registered.";
+      return std::unique_ptr<CorrectedErrorFeedbackCompressor>(
+          new CorrectedErrorFeedbackCompressor(size, dtype, std::move(cptr)));
     });
 }
 
-VanillaErrorFeedbackCompressor::VanillaErrorFeedbackCompressor(
+CorrectedErrorFeedbackCompressor::CorrectedErrorFeedbackCompressor(
     size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
-    : ErrorFeedback(size, dtype, std::move(cptr)) {}
+    : ErrorFeedback(size, dtype, std::move(cptr)) {
+  _fd = open("lr.s", O_RDONLY);
+  BPS_CHECK(_fd > 0) << "open lr.s failed, errno=" << strerror(errno);
+  void* ptr = mmap(nullptr, 8, PROT_READ, MAP_SHARED, _fd, 0);
+  BPS_CHECK_NE(ptr, MAP_FAILED) << "mmap failed, errno=" << strerror(errno);
+  _mm = ptr;
+  _pre_lr = _cur_lr = *reinterpret_cast<double*>(_mm);
+}
 
-VanillaErrorFeedbackCompressor::~VanillaErrorFeedbackCompressor() = default;
+CorrectedErrorFeedbackCompressor::~CorrectedErrorFeedbackCompressor() {
+  munmap(_mm, 8);
+  close(_fd);
+}
 
-void VanillaErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
-  sum(grad.data, _buf.get(), grad.size, static_cast<DataType>(grad.dtype), 1);
+void CorrectedErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
+  _cur_lr = *reinterpret_cast<double*>(_mm);
+  sum(grad.data, _buf.get(), grad.size, static_cast<DataType>(grad.dtype),
+      (_pre_lr / _cur_lr));
+  _pre_lr = _cur_lr;
 }
 
 }  // namespace compressor

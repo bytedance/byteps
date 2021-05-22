@@ -9,7 +9,8 @@ from torchvision import models
 import byteps.torch as bps
 import timeit
 import numpy as np
-import os, sys
+import os
+import sys
 
 # Benchmark settings
 parser = argparse.ArgumentParser(description='PyTorch Synthetic Benchmark',
@@ -60,12 +61,10 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 # BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(optimizer,
-                                     named_parameters=model.named_parameters(),
-                                     compression=compression)
+                                     named_parameters=model.named_parameters())
 
 # BytePS: broadcast parameters & optimizer state.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -81,10 +80,11 @@ for _ in range(100):
     datasets.append(data)
 data_index = 0
 
+
 def benchmark_step():
     global data_index
 
-    data = datasets[data_index%len(datasets)]
+    data = datasets[data_index % len(datasets)]
     data_index += 1
     optimizer.zero_grad()
     output = model(data)
@@ -128,4 +128,3 @@ img_sec_conf = 1.96 * np.std(img_secs)
 log('Img/sec per %s: %.1f +-%.1f' % (device, img_sec_mean, img_sec_conf))
 log('Total img/sec on %d %s(s): %.1f +-%.1f' %
     (bps.size(), device, bps.size() * img_sec_mean, bps.size() * img_sec_conf))
-

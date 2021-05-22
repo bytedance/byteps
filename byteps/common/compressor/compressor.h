@@ -52,77 +52,24 @@ namespace compressor {
  */
 class Compressor {
  public:
-  Compressor(size_t size, DataType dtype)
-      : _size(size), _dtype(dtype), _buf(new byte_t[size]){};
+  Compressor(size_t size, DataType dtype) : _size(size), _dtype(dtype) {
+    auto buf = new byte_t[size]();
+    BPS_CHECK(buf) << "failed to allocate " << size << " bytes memory.";
+    _buf.reset(buf);
+  };
   virtual ~Compressor() = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * \note Except for error-feedback and momentum, the underlying data of input
-   * should never be changed. this is because input is still used in error
-   * feedback if enabled.
-   *
-   * \note Compressed data should be stored in the buffer of the compressor. So
-   * it is not an inplace operation.
-   *
-   * \param grad gradient tensor, passed by value.
-   * \return compressed tensor. it is the buffer of the compressor,
-   * which contains the compressed data. the returned size is the size of
-   * compressed data.
-   */
-  virtual tensor_t Compress(tensor_t grad) = 0;
+  virtual void Compress(tensor_t grad, tensor_t& output) = 0;
 
-  /*!
-   * \brief Decompress function
-   *
-   * \note For servers, decompression is not an inplace operation. The
-   * decompressed results locates in the buffer of the compressor. For workers,
-   * it is an inplace operation.
-   *
-   * \param compressed compressed tensor.
-   * \return decompressed tensor. For servers, it is the buffer of the
-   * compressor, which contains the decompressed data. For workers, its pointer
-   * is the same as the input's, while the size is decompressed size, which is
-   * also the original size.
-   */
-  virtual tensor_t Decompress(tensor_t compressed) = 0;
+  virtual void Decompress(tensor_t compressed, tensor_t& output) = 0;
 
-  /*!
-   * \brief faster version of `UpdateError` via operation fusion
-   *
-   * \par
-   * This is a helper function implemented by each compressor. If defined,
-   * `ErrorFeedback` will use this function instead of defualt `UpdateError`
-   * function implemented in error_feedback.cc. If undefined, default
-   * `UpdateError` will be used.
-   *
-   * \par
-   * Typically `UpdateError` needs to decompress and do a substraction. But for
-   * most compressors, the step of decompression can be avoided. For example,
-   * for topk compressor, `UpdateError` can be simplied in this way:
-   * 1. e <- p (e is the error and p is the corrected gradient)
-   * 2. zero-fill e with selected k indices
-   *
-   * Actually it is a fusion of original decompression and substraction. It is
-   * optional to override.
-   *
-   * \param corrected gradient corrected with error
-   * \param error error
-   * \param compressed compressed gradient
-   */
-  virtual void FastUpdateError(tensor_t error, tensor_t corrected,
-                               tensor_t compressed) {
-    BPS_LOG(FATAL) << "FastUpdateError is not implemented";
+  virtual void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) {
+    BPS_CHECK(0) << "not implemented error.";
   };
 
  protected:
-  /*! \brief original size */
   size_t _size;
-
   DataType _dtype;
-
-  /*! \brief buffer to store compressed grad */
   std::unique_ptr<byte_t[]> _buf;
 };
 

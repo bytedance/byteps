@@ -13,13 +13,14 @@
 // limitations under the License.
 // =============================================================================
 
+#include "global.h"
+
 #include <malloc.h>
 #include <numa.h>
 
 #include <sstream>
 
 #include "compressor/compressor.h"
-#include "global.h"
 
 namespace byteps {
 namespace common {
@@ -40,7 +41,7 @@ bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job;
 bool BytePSGlobal::_is_cross_pcie_switch;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
-uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
+uint32_t BytePSGlobal::_min_compress_bytes = 0;
 
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
@@ -212,11 +213,11 @@ void BytePSGlobal::Init() {
   }
 
   if (_is_root_device) {
-    size_t pool_size = 4;
+    size_t pool_size = 0;
     if (getenv("BYTEPS_THREADPOOL_SIZE")) {
       pool_size = atoi(getenv("BYTEPS_THREADPOOL_SIZE"));
-      _thread_pool.reset(new ThreadPool(pool_size));
     }
+    _thread_pool.reset(new ThreadPool(pool_size));
   }
 
   // ReadyTable for cross-PCIe-switch reduce
@@ -441,6 +442,12 @@ void BytePSGlobal::RegisterCompressor(
   std::lock_guard<std::mutex> lock(_context_mutex);
   BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
       << name << " is not initialized";
+  std::stringstream ss;
+  ss << "Register Compressor args: ";
+  for (auto kv : kwargs) {
+    ss << kv.first << ":" << kv.second << ",\t";
+  }
+  BPS_LOG(DEBUG) << ss.str();
   _name_to_cxt[name].kwargs = std::move(kwargs);
 }
 
@@ -701,7 +708,7 @@ std::size_t PushPullSpeed::_limit = 1024;
 std::chrono::time_point<std::chrono::system_clock> PushPullSpeed::_last_ts;
 bool PushPullSpeed::_initialized = false;
 bool PushPullSpeed::_should_record =
-      getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : true;
+    getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : true;
 
 void PushPullSpeed::RecordSpeed(std::shared_ptr<TensorTableEntry> task) {
   std::lock_guard<std::mutex> lock(_mtx);
@@ -721,7 +728,7 @@ void PushPullSpeed::RecordSpeed(std::shared_ptr<TensorTableEntry> task) {
     auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
 
     entry->ts = msec.count();
-    entry->speed = _acc_size * 1.0 / 1.0e6 / 10; // MegaBytes per second
+    entry->speed = _acc_size * 1.0 / 1.0e6 / 10;  // MegaBytes per second
 
     _data_points.push(entry);
     _acc_size = 0;
@@ -741,15 +748,13 @@ std::shared_ptr<SpeedEntry> PushPullSpeed::GetSpeed() {
   } else {
     entry = std::make_shared<SpeedEntry>();
     entry->ts = 0;
-    entry->speed =  -5.0;
+    entry->speed = -5.0;
   }
 
   return entry;
 }
 
-bool PushPullSpeed::ShouldRecord() {
-  return _should_record;
-}
+bool PushPullSpeed::ShouldRecord() { return _should_record; }
 
 }  // namespace common
 }  // namespace byteps

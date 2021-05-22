@@ -41,13 +41,20 @@ def onebit(x, scaling):
 
 
 class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([True, False]))
-    def test_onebit(self, scaling):
+    TEST_BENCH = [
+        [True, False],
+        ["float32", "float16"]
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_onebit(self, scaling, dtype):
         bps.init()
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -57,6 +64,7 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "onebit",
             "scaling": scaling,
+            "fp16": True if dtype == "float16" else False
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -73,7 +81,7 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
                 params[i] = param._data[0].asnumpy()
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():
@@ -104,16 +112,39 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
 
         cnt = 0
         tot = 0
+        threshold = 0 if dtype == "float32" else 10
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
-        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
+        assert cnt <= threshold, "false/tot=%d/%d=%f" % (
+            cnt, tot, cnt/tot)
+
+    def test_byteps_push_pull_fp16_nan(self):
+        """
+        """
+        for i in range(10):
+            tensor = mx.nd.random.uniform(-1e5, 1e5, shape=100, ctx=mx.gpu(0))
+            tensor = tensor.astype('float16')
+            input = tensor.asnumpy().astype(np.float32)
+            input = np.nan_to_num(input, nan=0, posinf=0,
+                                  neginf=0)
+            input = onebit(input, True)
+            bps.byteps_declare_tensor("tensor_" + str(i), **{
+                "byteps_compressor_type": "onebit",
+                "byteps_compressor_onebit_scaling": "true"
+            })
+            bps.byteps_push_pull(tensor, name="tensor_" + str(i))
+            tensor.wait_to_read()
+            output = tensor.asnumpy()
+
+            assert np.allclose(input, output, np.finfo(np.float16).eps)
+        print('test_byteps_push_pull_fp16_nan passed')
 
 
 if __name__ == '__main__':

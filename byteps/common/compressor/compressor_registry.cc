@@ -15,6 +15,8 @@
 
 #include "compressor_registry.h"
 
+#include <vector>
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -36,23 +38,41 @@ CompressorRegistry::ctor_t CompressorRegistry::Find(const std::string& name) {
   return it->second;
 }
 
-std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
-                                                       size_t size, DataType dtype) {
+std::unique_ptr<Compressor> CompressorRegistry::Create(kwargs_t kwargs,
+                                                       size_t size,
+                                                       DataType dtype) {
 #ifndef BYTEPS_BUILDING_SERVER
-  const std::string types[] = {"momentum_type", "ef_type", "compressor_type"};
+  std::vector<std::string> types = {
+      "compressor_type",
+      "ef_type",
+      "momentum_type",
+  };
+  // lower data type should be cast into fp32
+  if (dtype == BYTEPS_FLOAT16) {
+    kwargs["cast_type"] = "fp16";
+    types.emplace_back("cast_type");
+    size *= 2;
+    dtype = BYTEPS_FLOAT32;
+  }
+  size = Align(size);
 #else
-  // server do not need momentum
-  const std::string types[] = {"ef_type", "compressor_type"};
+  // server do not need momentum and cast
+  std::vector<std::string> types = {
+      "compressor_type",
+      "ef_type",
+  };
 #endif
+  std::unique_ptr<Compressor> internal_cptr = nullptr;
   for (auto& type : types) {
     auto iter = kwargs.find(type);
     if (iter != kwargs.end()) {
       auto ctor = CompressorRegistry::Find(iter->second + "_" + type);
-      return ctor(kwargs, size, dtype);
+      internal_cptr =
+          std::move(ctor(kwargs, size, dtype, std::move(internal_cptr)));
     }
   }
 
-  return nullptr;
+  return internal_cptr;
 }
 
 }  // namespace compressor

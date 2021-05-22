@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_IMPL_RANDOMK_H
 
 #include <random>
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -38,64 +39,43 @@ namespace compressor {
  */
 class RandomkCompressor : public Compressor {
  public:
-  RandomkCompressor(size_t size, DataType dtype, unsigned int k, unsigned int seed = 0)
-      : Compressor(size, dtype), _k(k) {
-    if (seed != 0) {
-      BPS_LOG(INFO) << "SET SEED = " << seed;
-      _rng.set_seed(seed);
+  RandomkCompressor(size_t size, DataType dtype, unsigned int k,
+                    unsigned int seed = 0, bool is_scale = false)
+      : Compressor(size, dtype), _k(k), _is_scale(is_scale) {
+    if (seed) {
+      BPS_LOG(INFO) << "SET SEED = " << seed + k;
+      _rng.set_seed(seed + k);
     }
   };
-  virtual ~RandomkCompressor() = default;
+  ~RandomkCompressor() override = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * randomly select k entries and corresponding indices
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
-  tensor_t Compress(tensor_t grad) override;
+  void Compress(tensor_t grad, tensor_t& output) override;
 
-  /*!
-   * \brief Decompress function
-   *
-   * fill a zero tensor with topk entries and corresponding indices
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
-  tensor_t Decompress(tensor_t compressed) override;
+  void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  /*!
-   * \brief faster version of `UpdateError`
-   *
-   * 1. e <- p (e is the error and p is the corrected gradient)
-   * 2. zero-fill e with selected k indices
-   *
-   * \param corrected gradient corrected with error
-   * \param error error
-   * \param compressed compressed gradient
-   */
-  void FastUpdateError(tensor_t error, tensor_t corrected,
-                       tensor_t compressed) override;
+  void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:
-  template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  template <typename scalar_t>
+  size_t CompressImpl(scalar_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t len);
 
-  template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
-                          size_t compressed_size);
+  template <typename scalar_t>
+  void DecompressImpl(scalar_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t compressed_size,
+                      size_t dst_size);
 
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  template <typename scalar_t>
+  size_t FusedCompressImpl(scalar_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src,
+                           scalar_t* __restrict__ error, size_t len);
 
  private:
   unsigned int _k;
-  std::random_device _rd;
+
   XorShift128PlusBitShifterRNG _rng;
+  std::vector<uint32_t> _selected_idx;
+  bool _is_scale;
 };
 }  // namespace compressor
 }  // namespace common

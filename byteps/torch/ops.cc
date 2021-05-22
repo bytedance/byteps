@@ -14,15 +14,19 @@
 // limitations under the License.
 // =============================================================================
 
+#include "ops.h"
+
 #include <torch/extension.h>
 #include <torch/torch.h>
+
 #include <chrono>
+#include <iostream>
 #include <memory>
 #include <thread>
+#include <unordered_map>
 
 #include "../common/operations.h"
 #include "adapter.h"
-#include "ops.h"
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
@@ -52,8 +56,8 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 }  // namespace
 
 void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
-               const std::string tensor_name, int version, int priority, int handle) {
-
+               const std::string tensor_name, int version, int priority,
+               int handle) {
   auto device = GetDeviceID(tensor);
   auto ready_event = RecordReadyEvent(device);
   auto byteps_input = std::make_shared<TorchTensor>(tensor);
@@ -63,9 +67,9 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 
   auto& context = common::GetContextFromName(tensor_name);
   common::InitTensor(context, size, dtype,
-                      (device == CPU_DEVICE_ID)
-                      ? const_cast<void*>(byteps_input->data())
-                      : nullptr);
+                     (device == CPU_DEVICE_ID)
+                         ? const_cast<void*>(byteps_input->data())
+                         : nullptr);
 
   auto queue_list = common::GetPushQueueList(device);
   auto queue_list_pull = common::GetPullQueueList(device);
@@ -93,7 +97,6 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 
   ThrowIfError(enqueue_result);
   return;
-
 }
 
 int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
@@ -106,7 +109,8 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
   if (context.initialized) {
     StartTask(tensor, output, average, tensor_name, version, priority, handle);
   } else {
-    std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
+    std::thread t(StartTask, tensor, output, average, tensor_name, version,
+                  priority, handle);
     t.detach();
   }
   return handle;
@@ -121,9 +125,14 @@ void SetNumGrads(int num_grads) {
 
 int PollHandle(int handle) { return handle_manager.PollHandle(handle) ? 1 : 0; }
 
-void DeclareTensor(const std::string& name) {
+void DeclareTensor(const std::string& name,
+                   std::unordered_map<std::string, std::string> args) {
   std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
   common::IsTensorDeclared(tensor_name);
+
+  if (!args.empty()) {
+    common::RegisterCompressor(tensor_name, args);
+  }
 }
 
 void WaitAndClear(int handle) {
@@ -176,12 +185,18 @@ PYBIND11_MODULE(c_lib, m) {
 
   m.def("byteps_torch_set_num_grads", &SetNumGrads);
 
-  m.def("byteps_torch_push_pull_group_sync_torch_ByteTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_IntTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_LongTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_HalfTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_FloatTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_ByteTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_IntTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_LongTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_HalfTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_FloatTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor",
+        &DoPushPullGroupSync);
 
 #if HAVE_CUDA
   m.def("byteps_torch_push_pull_async_torch_cuda_ByteTensor", &DoPushPull);
@@ -191,12 +206,18 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_async_torch_cuda_FloatTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_DoubleTensor", &DoPushPull);
 
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_ByteTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_IntTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_LongTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_FloatTensor", &DoPushPullGroupSync);
-  m.def("byteps_torch_push_pull_group_sync_torch_cuda_DoubleTensor", &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_ByteTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_IntTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_LongTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_FloatTensor",
+        &DoPushPullGroupSync);
+  m.def("byteps_torch_push_pull_group_sync_torch_cuda_DoubleTensor",
+        &DoPushPullGroupSync);
 #endif
 
   // basics

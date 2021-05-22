@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "nesterov_momentum.h"
+
 #include "../compressor_registry.h"
 
 namespace byteps {
@@ -22,15 +23,14 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "nesterov_momentum",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       // register cptr
-      auto kwargs_clone = kwargs;
-      kwargs_clone.erase("momentum_type");
-      auto cptr = CompressorRegistry::Create(kwargs_clone, size, dtype);
       BPS_CHECK_NE(cptr, nullptr);
       // find \mu
       auto mu = HyperParamFinder<float>(kwargs, "momentum_mu");
+
+      BPS_LOG(INFO) << "nesterov momentum is registered.";
       return std::unique_ptr<NesterovMomentumCompressor>(
           new NesterovMomentumCompressor(size, dtype, std::move(cptr), mu));
     });
@@ -38,14 +38,13 @@ CompressorRegistry::Register reg(
 
 void NesterovMomentumCompressor::UpdateMom(tensor_t grad) {
   // m_t = \mu * m_{t-1} + g_t
-  this->_cpu_reducer->sum(_mom.get(), grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
+  sum(_buf.get(), grad.data, _buf.get(), grad.size,
+      static_cast<DataType>(grad.dtype), _mu);
 }
 
 void NesterovMomentumCompressor::UpdateGradient(tensor_t grad) {
   // p_t = \mu m_t + g_t
-  this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
-                          static_cast<DataType>(grad.dtype), _mu);
+  sum(grad.data, _buf.get(), grad.size, static_cast<DataType>(grad.dtype), _mu);
 }
 
 }  // namespace compressor

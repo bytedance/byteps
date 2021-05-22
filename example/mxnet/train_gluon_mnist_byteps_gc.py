@@ -58,6 +58,8 @@ parser.add_argument('--scaling', action='store_true', default=False,
                     help='enable scaling for onebit compressor')
 parser.add_argument('--k', type=int, default=1,
                     help='topk or randomk')
+parser.add_argument('--normalize', default='max', type=str,
+                    help='max or l2')
 parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                     help='use fp16 compression during pushpull')
 parser.add_argument('--logging-file', type=str, default='baseline',
@@ -148,7 +150,8 @@ model.cast(args.dtype)
 # Initialize parameters
 model.initialize(mx.init.MSRAPrelu(), ctx=context)
 # if bps.rank() == 0:
-model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(bps.local_rank())))
+model.summary(nd.ones((1, 1, 28, 28), ctx=mx.gpu(
+    bps.local_rank())).astype(args.dtype, copy=False))
 model.hybridize()
 
 params = model.collect_params()
@@ -157,12 +160,16 @@ params = model.collect_params()
 optimizer_params = {'momentum': args.momentum, 'wd': args.wd,
                     'learning_rate': args.lr * num_workers}
 
+if args.dtype == "float16":
+    optimizer_params["multi_precision"] = True
+
 compression_params = {
     "compressor": args.compressor,
     "ef": args.ef,
     "momentum": args.compress_momentum,
     "scaling": args.scaling,
     "k": args.k,
+    "normalize": args.normalize,
     "fp16": args.fp16_pushpull
 }
 

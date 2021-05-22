@@ -31,10 +31,9 @@
 #include <vector>
 
 // Add for profiling communication events
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <queue>
@@ -267,7 +266,8 @@ using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 enum class RequestType {
   kDefaultPushPull,
   kRowSparsePushPull,
-  kCompressedPushPull
+  kCompressedPushPull,
+  kConfigPushPull
 };
 
 int GetCommandType(RequestType requestType, int d);
@@ -278,10 +278,18 @@ ncclDataType_t getNcclDataType(DataType dtype);
 
 int getDataTypeLength(int dtype);
 
-inline size_t Align(size_t size, int dtype) {
-  const size_t min_size =
-      (getDataTypeLength(dtype) * getDataTypeLength(dtype)) * 8;
-  return size + (min_size - size % min_size) % min_size;
+inline size_t Align(size_t size) {
+  constexpr size_t MIN_SIZE = 512;
+  return size + (MIN_SIZE - size % MIN_SIZE) % MIN_SIZE;
+}
+
+// promote low-precision type into float32
+inline void Promote(size_t& size, int& dtype) {
+  size_t ele_size = getDataTypeLength(dtype);
+  if (ele_size < 4) {
+    size *= (4 / ele_size);
+    dtype = BYTEPS_FLOAT32;
+  }
 }
 }  // namespace common
 }  // namespace byteps

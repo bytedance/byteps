@@ -13,10 +13,11 @@
 // limitations under the License.
 // =============================================================================
 
+#include "randomk.h"
+
 #include <cstring>
 
 #include "../compressor_registry.h"
-#include "randomk.h"
 
 namespace byteps {
 namespace common {
@@ -24,8 +25,8 @@ namespace compressor {
 namespace {
 CompressorRegistry::Register reg(
     "randomk_compressor",
-    [](const kwargs_t& kwargs, size_t size,
-       DataType dtype) -> std::unique_ptr<Compressor> {
+    [](const kwargs_t& kwargs, size_t size, DataType dtype,
+       std::unique_ptr<Compressor> cptr) -> std::unique_ptr<Compressor> {
       auto factor = HyperParamFinder<float>(kwargs, "compressor_k", false,
                                             [](float x) { return x > 0; });
       unsigned k;
@@ -39,92 +40,199 @@ CompressorRegistry::Register reg(
       auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
                                              [](unsigned x) { return x != 0; });
 
+      bool is_scale = false;
+      // ef not enabled
+      if (kwargs.find("ef_type") == kwargs.end()) {
+        is_scale = true;
+      }
+
+      BPS_LOG(INFO) << "randomk compressor is registered. "
+                    << "\tsize=" << size << "\tk=" << k << "\tseed=" << seed
+                    << "\tis_scale=" << is_scale;
+
       return std::unique_ptr<Compressor>(
-          new RandomkCompressor(size, dtype, k, seed));
+          new RandomkCompressor(size, dtype, k, seed, is_scale));
     });
 }
 
-template <typename index_t, typename scalar_t>
-tensor_t RandomkCompressor::CompressImpl(index_t* dst, const scalar_t* src,
-                                         size_t len) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-  BPS_CHECK_LE(this->_k, len / 2);
-  using pair_t = std::pair<index_t, scalar_t>;
-  auto ptr = reinterpret_cast<pair_t*>(dst);
-
+template <typename scalar_t>
+size_t RandomkCompressor::CompressImpl(scalar_t* __restrict__ dst,
+                                       const scalar_t* __restrict__ src,
+                                       size_t len) {
   for (size_t i = 0; i < this->_k; ++i) {
-    auto index = _rng.Randint(0, len);
-    ptr[i] = std::make_pair(index, src[index]);
+    _selected_idx.push_back(_rng.Randint(0, len));
   }
 
-  return {dst, this->_k * sizeof(pair_t)};
-}
+  // to be unbiased
+  if (_is_scale) {
+    float scale = static_cast<float>(len) / this->_k;
+#pragma omp parallel for simd
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]] * scale;
+    }
+  } else {
+#pragma omp parallel for simd
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]];
+    }
+  }
+  // server does nothing
+  return this->_k * sizeof(scalar_t);
+}  // namespace compressor
 
-tensor_t RandomkCompressor::Compress(tensor_t grad) {
-  COMPRESS_IMPL_SWITCH(grad.dtype, CompressImpl, _buf.get(), grad.data,
-                       grad.size);
-}
-
-template <typename index_t, typename scalar_t>
-tensor_t RandomkCompressor::DecompressImpl(scalar_t* dst, const index_t* src,
-                                           size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-  using pair_t = std::pair<index_t, scalar_t>;
-
-  auto ptr = reinterpret_cast<const pair_t*>(src);
-  if ((void*)dst == (void*)src) {
-    auto buf = reinterpret_cast<pair_t*>(_buf.get());
-    std::memcpy(buf, ptr, compressed_size);
-    ptr = const_cast<const pair_t*>(buf);
+void RandomkCompressor::Compress(tensor_t grad, tensor_t& output) {
+#ifndef BYTEPS_BUILDING_SERVER
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+  if (output.data == nullptr) {
+    output.data = _buf.get();
   }
 
-  // reset to zeros
-  std::memset(dst, 0, _size);
-  size_t len = compressed_size / sizeof(pair_t);
-  for (size_t i = 0; i < len; ++i) {
-    auto& pair = ptr[i];
-    dst[pair.first] = pair.second;
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = CompressImpl(reinterpret_cast<half_t*>(output.data),
+                                     reinterpret_cast<const half_t*>(grad.data),
+                                     grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = CompressImpl(reinterpret_cast<float*>(output.data),
+                                     reinterpret_cast<const float*>(grad.data),
+                                     grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = CompressImpl(reinterpret_cast<double*>(output.data),
+                                     reinterpret_cast<const double*>(grad.data),
+                                     grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
   }
 
-  return {dst, _size};
-}
-
-tensor_t RandomkCompressor::Decompress(tensor_t compressed) {
-#ifdef BYTEPS_BUILDING_SERVER
-  auto dst = _buf.get();
+  output.size = compressed_size;
 #else
-  auto dst = compressed.data;
+  output = {grad.data, this->_k * getDataTypeLength(grad.dtype), grad.dtype};
 #endif
-  DECOMPRESS_IMPL_SWITCH(_dtype, DecompressImpl, dst, compressed.data,
-                         compressed.size);
 }
 
-template <typename index_t, typename scalar_t>
-void RandomkCompressor::FastUpdateErrorImpl(scalar_t* error,
-                                            scalar_t* corrected,
-                                            const index_t* compressed,
-                                            size_t compressed_size) {
-  static_assert(sizeof(index_t) == sizeof(scalar_t),
-                "index_t should be the same size as scalar_t");
-  using pair_t = std::pair<index_t, scalar_t>;
+template <typename scalar_t>
+void RandomkCompressor::DecompressImpl(scalar_t* __restrict__ dst,
+                                       const scalar_t* __restrict__ src,
+                                       size_t compressed_size,
+                                       size_t dst_size) {
+  // reset to zeros
+  std::memset(dst, 0, dst_size);
 
-  std::memcpy(error, corrected, _size);
-
-  auto ptr = reinterpret_cast<const pair_t*>(compressed);
+#pragma omp parallel for simd
   for (size_t i = 0; i < this->_k; ++i) {
-    auto& pair = ptr[i];
-    error[pair.first] = 0;
+    dst[_selected_idx[i]] = src[i];
   }
+
+  _selected_idx.clear();
 }
 
-void RandomkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
-                                        tensor_t compressed) {
-  FAST_UPDATE_ERROR_IMPL_SWITCH(_dtype, FastUpdateErrorImpl, error.data,
-                                corrected.data, compressed.data,
-                                compressed.size);
+void RandomkCompressor::Decompress(tensor_t compressed, tensor_t& output) {
+#ifndef BYTEPS_BUILDING_SERVER
+  BPS_CHECK(compressed.data);
+  BPS_CHECK(compressed.data != output.data);
+  BPS_CHECK(output.data);
+
+  switch (output.dtype) {
+    case BYTEPS_FLOAT16:
+      DecompressImpl(reinterpret_cast<half_t*>(output.data),
+                     reinterpret_cast<const half_t*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT32:
+      DecompressImpl(reinterpret_cast<float*>(output.data),
+                     reinterpret_cast<const float*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    case BYTEPS_FLOAT64:
+      DecompressImpl(reinterpret_cast<double*>(output.data),
+                     reinterpret_cast<const double*>(compressed.data),
+                     compressed.size, output.size);
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << output.dtype;
+  }
+#else
+  output = compressed;
+#endif
 }
+
+template <typename scalar_t>
+size_t RandomkCompressor::FusedCompressImpl(scalar_t* __restrict__ dst,
+                                            const scalar_t* __restrict__ src,
+                                            scalar_t* __restrict__ error,
+                                            size_t len) {
+  for (size_t i = 0; i < this->_k; ++i) {
+    _selected_idx.push_back(_rng.Randint(0, len));
+  }
+
+  memcpy_multithread(error, src, len * sizeof(scalar_t));
+
+  // to be unbiased
+  if (_is_scale) {
+    float scale = static_cast<float>(len) / this->_k;
+#pragma omp parallel for simd
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]] * scale;
+    }
+  } else {
+#pragma omp parallel for simd
+    for (size_t i = 0; i < this->_k; ++i) {
+      dst[i] = src[_selected_idx[i]];
+    }
+  }
+
+#pragma omp parallel for simd
+  for (size_t i = 0; i < this->_k; ++i) {
+    error[_selected_idx[i]] = 0;
+  }
+
+  return this->_k * sizeof(scalar_t);
+}
+
+void RandomkCompressor::FusedCompress(tensor_t grad, tensor_t& output,
+                                      tensor_t error) {
+#ifndef BYTEPS_BUILDING_SERVER
+  BPS_CHECK(grad.data);
+  BPS_CHECK(grad.data != output.data);
+  if (output.data == nullptr) {
+    output.data = _buf.get();
+  }
+
+  size_t compressed_size;
+  switch (grad.dtype) {
+    case BYTEPS_FLOAT16:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<half_t*>(output.data),
+          reinterpret_cast<const half_t*>(grad.data),
+          reinterpret_cast<half_t*>(error.data), grad.size / sizeof(half_t));
+      break;
+    case BYTEPS_FLOAT32:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<float*>(output.data),
+          reinterpret_cast<const float*>(grad.data),
+          reinterpret_cast<float*>(error.data), grad.size / sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      compressed_size = FusedCompressImpl(
+          reinterpret_cast<double*>(output.data),
+          reinterpret_cast<const double*>(grad.data),
+          reinterpret_cast<double*>(error.data), grad.size / sizeof(double));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type:" << grad.dtype;
+  }
+
+  output.size = compressed_size;
+#else
+  output = {grad.data, this->_k * getDataTypeLength(grad.dtype), grad.dtype};
+#endif
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

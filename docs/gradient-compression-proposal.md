@@ -103,29 +103,26 @@ We want developers to develop their own gradient compression algorithms without 
 ```c++
 class Compressor {
  public:
-  Compressor(size_t size, DataType dtype)
-      : _size(size),
-        _dtype(dtype),
-        _buf(new byte_t[size]),
-        _cpu_reducer(new CpuReducer(nullptr)){};
+  Compressor(size_t size, DataType dtype) : _size(size), _dtype(dtype) {
+    // fill zeros
+    auto buf = new byte_t[size]();
+    BPS_CHECK(buf) << "failed to allocate " << size << " bytes memory.";
+    _buf.reset(buf);
+  };
   virtual ~Compressor() = default;
 
-  virtual tensor_t Compress(tensor_t grad) = 0;
+  virtual void Compress(tensor_t grad, tensor_t& output) = 0;
 
-  virtual tensor_t Decompress(tensor_t compressed) = 0;
+  virtual void Decompress(tensor_t compressed, tensor_t& output) = 0;
 
-  virtual void FastUpdateError(tensor_t error, tensor_t corrected,
-                               tensor_t compressed) {
-    BPS_LOG(FATAL) << "FastUpdateError is not implemented";
+  virtual void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) {
+    BPS_CHECK(0) << "not implemented error.";
   };
 
-  std::unique_ptr<byte_t[]> _buf;
-
+ protected:
   size_t _size;
-
   DataType _dtype;
-
-  std::unique_ptr<CpuReducer> _cpu_reducer;
+  std::unique_ptr<byte_t[]> _buf;
 };
 ```
 
@@ -137,23 +134,15 @@ In order to support all these features and expose a unified API at the same time
 class ErrorFeedback : public Compressor {
  public:
   ErrorFeedback(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
-      : Compressor(size, dtype),
-        _cptr(std::move(cptr)),
-        _error(new byte_t[size]()) {}
-  virtual ~ErrorFeedback() = default;
+      : Compressor(size, dtype), _cptr(std::move(cptr)) {}
+  ~ErrorFeedback() override = default;
 
-  virtual tensor_t Compress(tensor_t grad) final;
+  void Compress(tensor_t grad, tensor_t& output) final;
 
-  virtual tensor_t Decompress(tensor_t compressed) final;
+  void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
-
   virtual void UpdateGradient(tensor_t grad) = 0;
-
-  virtual void UpdateError(tensor_t corrected, tensor_t compressed);
-
- protected:
-  std::unique_ptr<byte_t[]> _error;
 
  private:
   std::unique_ptr<Compressor> _cptr;
@@ -162,22 +151,21 @@ class ErrorFeedback : public Compressor {
 
 And the workflow is implemented in `Compress` and `Decompress`. For example,
 ```c++
-tensor_t ErrorFeedback::Compress(tensor_t grad) {
-  // 1. grad <- grad + error
+void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
+  BPS_CHECK(grad.data);
+
+  // 1. p <- g + e
   UpdateGradient(grad);
 
-  // 2. c <- Compress(grad)
-  auto compressed = _cptr->Compress(grad);
+  tensor_t error{_buf.get(), _size, _dtype};
 
-  // 3. e <- grad - Decompress(c)
-  UpdateError(grad, compressed);
-
-  return compressed;
+  // 2. c <- Compress(p) 3. e <- p - c
+  _cptr->FusedCompress(grad, output, error);
 }
 
-tensor_t ErrorFeedback::Decompress(tensor_t compressed) {
+void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& output) {
   // directly forward to internal compressor
-  return _cptr->Decompress(compressed);
+  _cptr->Decompress(compressed, output);
 }
 ```
 
@@ -282,8 +270,10 @@ The above figure shows that our implementation of dist-EF-SGDM reduces the train
 - [x] support onebit compressor
 - [x] support error-feedback
 - [x] support momentum
-- [ ] support other compressors
-- [ ] support PyTorch and Tensorflow
+- [x] support other compressors
+- [x] support PyTorch
+- [x] support FP16
+- [ ] support TensorFlow
 
 ## Precautions
 
@@ -291,4 +281,3 @@ The above figure shows that our implementation of dist-EF-SGDM reduces the train
 2. We only support Gluon for MXNet now. Raw MXNet's API does not support it.
 3. Since gradient compression also has some overhead, this is a trade-off. It is only suitable for some cases, e.g. slow network or large models. In other cases, gradient compression will even harm performance.
 4. Momentum here is the same as the framework's momentum. Why do we have to implement momentum again? This is because for some algorithms like [dist-EF-SGDM](https://papers.nips.cc/paper/9321-communication-efficient-distributed-blockwise-momentum-sgd-with-error-feedback.pdf) , momentum should be added first but many frameworks like MXNet exchange gradient first and then add the momentum. So we have to implement momentum inside BytePS. When inside momentum is used, outside momentum should be disabled (set \mu = 0) in the users' scripts.
-5. FP16 is not supported now. 

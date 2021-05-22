@@ -44,4 +44,48 @@ DMLC_NUM_WORKER=2 DMLC_NUM_SERVER=1 bpslaunch
 
 In this example, your scheduler must be able to bind to `10.0.0.1:9000`.
 
-The order of starting workers/servers/scheduler does not matter.
+The order of starting workers/servers/scheduler does not matter. 
+
+
+## Gradient Compression 
+
+Gradient compression is an optional feature in BytePS. The scalability of distributed training is severely hindered by communication overhead. One way to reduce the overhead is to perform lossy compression to gradients, i.e., gradient compression. If your workload is communication-intensive (e.g., large model), you can consider enabling this feature.  We provide some state-of-the-art algorithms to use, including 1-bit, top-k, random-k, and dithering. 
+
+To use it, you only need to add a few lines of code in your script. Specifically, which algorithm to use and its corresponding parameters are required to be passed to the BytePS's optimizer through a python dictionary. For example,
+
+```python
+compression_params = {
+    "compressor": args.compressor,
+    "ef": args.ef,
+    "momentum": args.compress_momentum,
+    "scaling": args.scaling,
+    "k": args.k,
+    "normalize": args.normalize,
+    "partition": args.partition,
+    "fp16": args.fp16_pushpull
+}
+
+# MXNet
+trainer = bps.DistributedTrainer(
+    params, "sgd", optimizer_params, compression_params=compression_params)
+
+
+# PyTorch
+optimizer = bps.DistributedOptimizer(optimizer,
+                                    named_parameters=model.named_parameters(),
+                                    compression_params=compression_params)
+```
+
+
+### References
+
+|name | valid input| note| 
+|---- | ---- | --- |
+|compressor| "onebit", "topk", "randomk", or "dithering"| algorithm |
+|ef | "vanilla", "corrected" and "sparse" | error-feedback, "sparse" is only valid for "randomk" |
+|momentum| "nesterov" | added before compression |
+|scaling| True or False| only valid for "onebit" |
+|k| float or integer | only valid for "topk", "randomk", and "dithering"| 
+|normalize| "l2" or "max"| only valid for "dithering" |
+|partiton| "linear" or "natural" | only valid for "dithering" |
+|fp16| True or False| fp16 pushpull|

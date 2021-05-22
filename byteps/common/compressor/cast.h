@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_MOMENTUM_H
-#define BYTEPS_COMPRESSOR_MOMENTUM_H
+#ifndef BYTEPS_COMPRESSOR_CAST_H
+#define BYTEPS_COMPRESSOR_CAST_H
 
 #include "../cpu_reducer.h"
 #include "compressor.h"
@@ -23,41 +23,34 @@ namespace byteps {
 namespace common {
 namespace compressor {
 /*!
- * \brief Momentum
+ * \brief Wrapper of Compressor to deal with low-precision types
  *
- * Stochastic gradient descent with momentum
+ * During summation, data in low-precision suffers from overflow problem.
+ * To solve the issue, we instead use float32 as our data type for inter-
+ * mediate buffers. When intra-node all-reduce is over, locally aggregated
+ * gradients are first transformed into float32 via the wrapper.
  *
- * \note
- * The momentum is added to gradient before compression. This should not be used
- * at the same time with the momentum implemented in the framework such as
- * MXNet, Tensorflow or PyTorch etc. The key difference between the two is the
- * position where they are added to the gradients. For this one, it is added
- * before push_pull. But for framework's momentum, it is added after push_pull.
+ * The wrapper has an internel fp32 buffer to store the transformed data.
  *
- * \note
- * The framework's momentum is disabled when using this momentum. User do not
- * need to disable it manully.
- *
- * \sa Compressor, NesterovMomentumCompressor
+ * \sa Compressor
  */
-class Momentum : public Compressor {
+class Cast : public Compressor {
  public:
-  Momentum(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr,
-           float mu)
-      : Compressor(size, dtype), _mu(mu), _cptr(std::move(cptr)){};
-  ~Momentum() override = default;
+  Cast(size_t size, DataType dtype, std::unique_ptr<Compressor> cptr)
+      : Compressor(size, dtype),
+        _fp32_buf(new byte_t[size]()),
+        _cptr(std::move(cptr)){};
+  ~Cast() override = default;
 
   void Compress(tensor_t grad, tensor_t& output) final;
 
   void Decompress(tensor_t compressed, tensor_t& output) final;
 
  protected:
-  virtual void UpdateMom(tensor_t grad) = 0;
-
-  virtual void UpdateGradient(tensor_t grad) = 0;
+  virtual tensor_t CastToFP32(tensor_t grad) = 0;
 
  protected:
-  float _mu;
+  std::unique_ptr<byte_t[]> _fp32_buf;
 
  private:
   std::unique_ptr<Compressor> _cptr;
@@ -66,4 +59,4 @@ class Momentum : public Compressor {
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_MOMENTUM_H
+#endif  // BYTEPS_COMPRESSOR_CAST_H

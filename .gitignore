@@ -117,3 +117,10 @@ venv.bak/
 # for development
 scripts/
 exps/
+sshlog/
+hosts
+example/mxnet/nohup.out
+example/mxnet/run.sh
+server-hosts
+worker-hosts
+*.sh

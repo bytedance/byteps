@@ -14,25 +14,25 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
+from __future__ import absolute_import, division, print_function
+
+import warnings
 from distutils.version import LooseVersion
 
-# Load all the necessary PyTorch C types.
-import torch
-
+from byteps.common import BytePSBasics as _BytePSBasics
 # PyTorch must be >= 1.0.0 (including nightly builds)
 # This should be guaranteed by setup.py
 # TODO: we may not support older pytorch. Raise exception here
 from byteps.torch import c_lib
-from byteps.common import BytePSBasics as _BytePSBasics
+from byteps.torch.compression import Compression
+
+# Load all the necessary PyTorch C types.
+import torch
+
 _basics = _BytePSBasics(__file__, 'c_lib')
 _NULL = ""
 
-
-from byteps.torch.compression import Compression
 
 # import basic methods
 init = _basics.init
@@ -63,11 +63,12 @@ def _check_function(function_factory, tensor):
 def _push_pull_function_factory(tensor):
     return 'byteps_torch_push_pull_async_' + tensor.type().replace('.', '_')
 
+
 def _push_pull_group_function_factory(tensor):
     return 'byteps_torch_push_pull_group_sync_' + tensor.type().replace('.', '_')
 
+
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
-    c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_function_factory, tensor)
     handle = getattr(c_lib, function)(tensor, output, average,
                                       name.encode() if name is not None else _NULL,
@@ -75,12 +76,12 @@ def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     _handle_map[handle] = (tensor, output)
     return handle
 
+
 def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=0):
-    c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_group_function_factory, tensor)
     handle, curr_count = getattr(c_lib, function)(tensor, output, average,
-                                      name.encode() if name is not None else _NULL,
-                                      version, priority)
+                                                  name.encode() if name is not None else _NULL,
+                                                  version, priority)
     _handle_map[handle] = (tensor, output)
     return handle, curr_count
 
@@ -147,7 +148,8 @@ def push_pull(tensor, average=True, name=None, version=0, priority=0, compressio
         processes.
     """
     if name == None:
-        raise AssertionError("To manually call push_pull, you must specify a name by name=...")
+        raise AssertionError(
+            "To manually call push_pull, you must specify a name by name=...")
     tensor_compressed, ctx = compression.compress(tensor)
     summed_tensor_compressed = BytePSPushPull.apply(
         tensor_compressed, average, name, version, priority)
@@ -173,8 +175,10 @@ def push_pull_async_inplace(tensor, average=True, name=None, version=0, priority
     """
     return _do_push_pull_async(tensor, tensor, average, name, version, priority)
 
+
 def push_pull_group_sync_inplace(tensor, average=True, name=None, version=0, priority=0):
     return _do_push_pull_group_sync(tensor, tensor, average, name, version, priority)
+
 
 def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0):
     """
@@ -211,13 +215,34 @@ def poll(handle):
     return c_lib.byteps_torch_poll(handle) != 0
 
 
-def declare(name):
-    c_lib.byteps_torch_declare_tensor(name.encode())
+def declare(name, **kwargs):
+    args = {}
+    for k, v in kwargs.items():
+        splits = k.split('_')
+        if len(splits) < 2 and not all(splits):
+            warnings.warn("Ignore invalid params %s of %s" % (k, name))
+            continue
+
+        # remove first prefix "byteps"
+        k = '_'.join(splits[1:])
+        if isinstance(v, str):
+            args[k] = v.lower()
+        elif isinstance(v, (int, float,)):
+            args[k] = str(v)
+        elif isinstance(v, bool):
+            args[k] = str(int(v)).lower()
+        else:
+            raise ValueError("Invalid %s of type %s of %s" %
+                             (v, type(v), name))
+
+    c_lib.byteps_torch_declare_tensor(name.encode(), args)
     return 0
+
 
 def byteps_torch_set_num_grads(num_grads_):
     c_lib.byteps_torch_set_num_grads(num_grads_)
     return 0
+
 
 def synchronize(handle):
     """

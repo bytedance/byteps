@@ -13,6 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
+#include "operations.h"
+
 #include <cuda_runtime.h>
 #include <unistd.h>
 
@@ -26,7 +28,6 @@
 #include "core_loops.h"
 #include "global.h"
 #include "logging.h"
-#include "operations.h"
 
 namespace byteps {
 namespace common {
@@ -342,7 +343,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
 
-  size_t aligned_size = Align(size, dtype);
+  size_t aligned_size = Align(size);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
     context.pcie_cpubuff =
         shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
@@ -380,7 +381,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // register
       if (!context.kwargs.empty()) {
         auto compressor_ptr = compressor::CompressorRegistry::Create(
-            context.kwargs, Align(len, dtype), static_cast<DataType>(dtype));
+            context.kwargs, len, static_cast<DataType>(dtype));
         context.compressor_list.push_back(std::move(compressor_ptr));
       }
     }
@@ -402,7 +403,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     for (auto key : key_list) {
       auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
       ps::SArray<char> vals(data, len, false);
-      int cmd = GetCommandType(RequestType::kCompressedPushPull, dtype);
+      int cmd = GetCommandType(RequestType::kConfigPushPull, dtype);
       ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
     }
   }

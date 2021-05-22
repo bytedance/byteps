@@ -44,16 +44,17 @@ def round_next_pow2(v):
 
 
 def dithering(x, k, state, partition='linear', norm="max"):
-    y = x.flatten()
+    dtype = x.dtype
+    y = x.flatten().astype(np.float32)
     if norm == "max":
         scale = np.max(np.abs(y))
     elif norm == "l2":
-        scale = np.linalg.norm(y.astype(np.float64), ord=2)
+        scale = np.linalg.norm(y, ord=2)
     else:
         raise ValueError("Unsupported normalization")
-    y /= scale
-    sign = np.sign(y)
+    sign = np.array(0 < y).astype(np.int32) - np.array(y < 0).astype(np.int32)
     y = np.abs(y)
+    y /= scale
 
     # stocastic rounding
     if partition == 'linear':
@@ -61,6 +62,7 @@ def dithering(x, k, state, partition='linear', norm="max"):
         low = np.floor(y)
         p = y - low  # whether to ceil
         y = low + bernoulli(p, state)
+        y *= scale
         y /= k
     elif partition == "natural":
         y *= 2**(k-1)
@@ -70,22 +72,32 @@ def dithering(x, k, state, partition='linear', norm="max"):
         p = (y - low) / length
         y = low + length * bernoulli(p, state)
         y = y.astype(np.float32)
+        y *= scale
         y /= 2**(k-1)
     else:
         raise ValueError("Unsupported partition")
 
     y *= sign
-    y *= scale
-    return y.reshape(x.shape)
+    return y.reshape(x.shape).astype(dtype)
 
 
 class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([2, 4, 8], ["linear, natural"], ["max", "l2"], np.random.randint(0, 2020, size=3).tolist()))
-    def test_dithering(self, k, ptype, ntype, seed):
+    TEST_BENCH = [
+        [2, 4, 8],
+        ["linear", "natural"],
+        ["l2"],
+        ["float16"],
+        np.random.randint(0, 2020, size=3).tolist()
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_dithering(self, k, ptype, ntype, dtype, seed):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -97,7 +109,8 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
             "k": k,
             "partition": ptype,
             "normalize": ntype,
-            "seed": seed
+            "seed": seed,
+            "fp16": True if dtype == "float16" else False
         }
         print(compression_params)
 
@@ -115,11 +128,12 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
         for i, param in enumerate(trainer._params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
-                rngs[i] = np.array([seed, seed], dtype=np.uint64)
-                rngs_s[i] = np.array([seed, seed], dtype=np.uint64)
+                s = seed + i
+                rngs[i] = np.array([s, s], dtype=np.uint64)
+                rngs_s[i] = np.array([s, s], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():
@@ -150,28 +164,30 @@ class DitheringTestCase(unittest.TestCase, metaclass=MetaTest):
 
                     np_g = c.flatten()
                     mx_g = param._grad[0].asnumpy().flatten()
-                    if not np.allclose(np_g, mx_g, atol=np.finfo(np.float32).eps):
+                    if not np.allclose(np_g, mx_g, atol=np.finfo(dtype).eps):
                         diff = np.abs(np_g - mx_g)
                         print("np", np_g)
                         print("mx", mx_g)
                         print("diff", diff)
                         print("max diff", np.max(diff))
-                        idx = np.nonzero(diff > 1e-5)
+                        idx = np.nonzero(diff > np.finfo(dtype).eps)
                         print("idx", idx, np_g[idx], mx_g[idx])
                         input()
 
         cnt = 0
         tot = 0
+        threshold = 0 if dtype == "float32" else 10
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
-        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
+        print("false/tot=%d/%d=%f" % (cnt, tot, cnt/tot))
+        assert cnt <= threshold, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
 if __name__ == '__main__':

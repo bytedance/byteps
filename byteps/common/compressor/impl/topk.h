@@ -35,54 +35,28 @@ class TopkCompressor : public Compressor {
  public:
   TopkCompressor(size_t size, DataType dtype, unsigned int k)
       : Compressor(size, dtype), _k(k){};
-  virtual ~TopkCompressor() = default;
+  ~TopkCompressor() override = default;
 
-  /*!
-   * \brief Compress function
-   *
-   * select topk entries and corresponding indices
-   *
-   * \note compare with absolute values
-   *
-   * \param grad gradient tensor
-   * \param compressed compressed tensor
-   */
-  tensor_t Compress(tensor_t grad) override;
+  void Compress(tensor_t grad, tensor_t& output) override;
 
-  /*!
-   * \brief Decompress function
-   *
-   * fill a zero tensor with topk entries and corresponding indices
-   *
-   * \param compressed compressed tensor
-   * \param decompressed decompressed tensor
-   */
-  tensor_t Decompress(tensor_t compressed) override;
+  void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  /*!
-   * \brief faster version of `UpdateError`
-   *
-   * 1. e <- p (e is the error and p is the corrected gradient)
-   * 2. zero-fill e with selected k indices
-   *
-   * \param corrected gradient corrected with error
-   * \param error error
-   * \param compressed compressed gradient
-   */
-  void FastUpdateError(tensor_t error, tensor_t corrected,
-                       tensor_t compressed) override;
+  void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:
-  template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  template <typename pair_t, typename scalar_t>
+  size_t CompressImpl(pair_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t len);
 
-  template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
-                          size_t compressed_size);
+  template <typename scalar_t, typename pair_t>
+  void DecompressImpl(scalar_t* __restrict__ dst,
+                      const pair_t* __restrict__ src, size_t compressed_size,
+                      size_t dst_size);
 
-  template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  template <typename pair_t, typename scalar_t>
+  size_t FusedCompressImpl(pair_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src,
+                           scalar_t* __restrict__ error, size_t len);
 
  private:
   unsigned int _k;

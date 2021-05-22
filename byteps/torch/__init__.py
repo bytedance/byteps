@@ -14,29 +14,36 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
+import collections
+import copy
+import os
+import struct
 from contextlib import contextmanager
+from math import isclose
+
+from torch import is_distributed
 
 from byteps.torch.compression import Compression
+from byteps.torch.ops import (declare, init, local_rank, local_size, poll,
+                              push_pull, push_pull_inplace)
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
-from byteps.torch.ops import push_pull
-from byteps.torch.ops import poll, synchronize, declare
-from byteps.torch.ops import init, shutdown, suspend, resume
-from byteps.torch.ops import size, local_size, rank, local_rank
+from byteps.torch.ops import rank, resume, shutdown, size, suspend, synchronize
 
-import os
 import torch
-import collections
 
 
 class _DistributedOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, named_parameters, compression,
-                 backward_passes_per_step=1):
+    def __init__(self, params, named_parameters, compression_params=None,
+                 backward_passes_per_step=1, pre_scale_factor=1.0/size(),
+                 post_scale_factor=1):
         super(self.__class__, self).__init__(params)
-        self._compression = compression
+        self._intra_compressor = self._register_compressor(
+            self.defaults, compression_params)
+
+        self.pre_scale_factor = pre_scale_factor
+        self.post_scale_factor = post_scale_factor
 
         if named_parameters is not None:
             named_parameters = list(named_parameters)
@@ -55,7 +62,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                              'tuples (name, parameter), usually produced by '
                              'model.named_parameters().')
 
-        dups = _DistributedOptimizer.find_duplicates([k for k, _ in named_parameters])
+        dups = _DistributedOptimizer.find_duplicates(
+            [k for k, _ in named_parameters])
         if len(dups) > 0:
             raise ValueError('Parameter names in named_parameters must be unique. '
                              'Found duplicates: %s' % ', '.join(dups))
@@ -70,7 +78,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 # https://github.com/pytorch/pytorch/issues/7733
                 self._parameter_names = {v.__hash__(): k for k, v
                                          in sorted(named_parameters)}
-                self._tensor_list = [tensor for name, tensor in named_parameters]
+                self._tensor_list = [tensor for name,
+                                     tensor in named_parameters]
             else:
                 self._is_tensor_instance = False
                 self._parameter_names = {v: k for k, v
@@ -87,17 +96,30 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._grad_accs = []
         self._requires_update = set()
         self._should_sync = True
-        if size() > 1:
+
+        force_distributed = int(os.getenv('BYTEPS_FORCE_DISTRIBUTED', 0))
+        if size() > 1 or force_distributed:
             self._register_hooks()
 
+        self._intra_compressors = {}
         # declare tensors
-        for name in sorted(self._parameter_names.values()):
-            declare("Gradient."+name)
-        # We use two loops for load-balancing
-        for name in sorted(self._parameter_names.values()):
-            declare("Parameter."+name)
+        for param_group in self.param_groups:
+            for param in param_group['params']:
+                self._intra_compressors[param] = copy.deepcopy(
+                    self._intra_compressor)
+                if param.requires_grad:
+                    if self._is_tensor_instance:
+                        name = self._parameter_names.get(param.__hash__())
+                    else:
+                        name = self._parameter_names.get(param)
 
-    @staticmethod
+                    byteps_params = dict(
+                        filter(lambda attr: attr[0].startswith(
+                            "byteps_",), param.__dict__.items())
+                    )
+                    declare("Gradient."+name, **byteps_params)
+
+    @ staticmethod
     def find_duplicates(lst):
         seen = set()
         dups = set()
@@ -112,6 +134,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         for p in self._push_pull_delay:
             self._push_pull_delay[p] = self.backward_passes_per_step
 
+    def set_scale_factor(self, pre_scale_factor, post_scale_factor):
+        self.pre_scale_factor = pre_scale_factor
+        self.post_scale_factor = post_scale_factor
+
     def _register_hooks(self):
         for param_group in self.param_groups:
             for p in param_group['params']:
@@ -123,6 +149,94 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     grad_acc.register_hook(self._make_hook(p))
                     self._grad_accs.append(grad_acc)
 
+    def _register_compressor(self, optimizer_params, compression_params):
+        """Register compressor for BytePS
+
+        optimizer_params : dict
+        compression_params : dict
+        """
+        intra_compressor = Compression.none
+        if not compression_params:
+            return intra_compressor
+
+        if compression_params.get("fp16"):
+            intra_compressor = Compression.fp16
+
+        if not compression_params.get("compressor"):
+            return intra_compressor
+
+        check_list = ["compressor", "ef", "momentum"]
+
+        for i, param_group in enumerate(self.param_groups):
+            for param in param_group['params']:
+                if not param.requires_grad:
+                    continue
+
+                # generic
+                for item in check_list:
+                    if compression_params.get(item):
+                        if isinstance(compression_params[item], str):
+                            setattr(param, "byteps_%s_type" %
+                                    item, compression_params[item])
+                        else:
+                            raise TypeError("%s should be str" % item)
+
+                # need parameter
+                compressor = compression_params["compressor"]
+                if compressor == "onebit":
+                    setattr(param, "byteps_compressor_onebit_scaling", str(
+                        compression_params.get("scaling", False)))
+                elif compressor == "topk" or compressor == "randomk" or \
+                        compressor == "dithering":
+                    # raise KeyError if 'k' is not found
+                    setattr(param, "byteps_compressor_k",
+                            compression_params["k"])
+
+                if compression_params.get("momentum"):
+                    setattr(param, "byteps_momentum_mu",
+                            optimizer_params["momentum"])
+
+                if compression_params.get("seed", None) is not None:
+                    seed = int(compression_params["seed"])
+                    setattr(param, "byteps_seed", seed + i)
+
+                if compression_params.get("partition"):
+                    if compression_params["partition"] == "linear":
+                        setattr(param, "byteps_dithering_partition", "0")
+                    elif compression_params["partition"] == "natural":
+                        setattr(param, "byteps_dithering_partition", "1")
+                    else:
+                        raise ValueError("Unsupported partition %s" %
+                                         compression_params["partition"])
+
+                if compression_params.get("normalize"):
+                    if compression_params["normalize"] == "max":
+                        setattr(param, "byteps_dithering_normalize", "0")
+                    elif compression_params["normalize"] == "l2":
+                        setattr(param, "byteps_dithering_normalize", "1")
+                    else:
+                        raise ValueError("Unsupported normalization %s" %
+                                         compression_params["normalize"])
+
+        # the following code will delete some items in `optimizer_params`
+        # to avoid duplication
+        if compression_params.get("momentum"):
+            threshold = int(os.environ.get(
+                "BYTEPS_MIN_COMPRESS_BYTES", 0))
+            mu = optimizer_params["momentum"]
+
+            # 1bit compressor use an additional momentum for weight decay
+            if "weight_decay" in optimizer_params:
+                wd = optimizer_params["weight_decay"]
+                intra_compressor = Compression.wdmom(intra_compressor,
+                                                     mu, wd, threshold)
+                optimizer_params["weight_decay"] = 0  # disable
+
+            intra_compressor = Compression.nag(intra_compressor, mu, threshold)
+            optimizer_params['momentum'] = 0  # disable
+
+        return intra_compressor
+
     def _push_pull_grad_async(self, p):
         if self._is_tensor_instance:
             name = self._parameter_names.get(p.__hash__())
@@ -133,8 +247,13 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             handle, ctx = None, None
         else:
             tensor = p.grad
-            tensor_compressed, ctx = self._compression.compress(tensor)
-            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+            # grad is scaled with pre_scale_factor
+            tensor *= self.pre_scale_factor
+            tensor_compressed, ctx = self._intra_compressors[p].compress(
+                tensor)
+
+            handle = byteps_push_pull(
+                tensor_compressed, average=False, name="Gradient."+name)
         return handle, ctx
 
     def _make_hook(self, p):
@@ -166,17 +285,24 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if handle is None:
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
-        for p, (handle, _) in self._handles.items():
+        for p, (handle, ctx) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
-                p.grad.set_(self._compression.decompress(output, ctx))
+                g = self._intra_compressors[p].decompress(
+                    output, ctx, x=p.data)
+
+                if not isclose(self.post_scale_factor, 1.0):
+                    g *= self.post_scale_factor
+                p.grad.set_(g)
+
         self._handles.clear()
 
-    @contextmanager
+    @ contextmanager
     def skip_synchronize(self):
         if self._enable_async:
-            raise AssertionError("skip_synchronize cannot be used in async training")
+            raise AssertionError(
+                "skip_synchronize cannot be used in async training")
         self._should_sync = False
         try:
             yield
@@ -201,7 +327,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         name = self._parameter_names.get(p.__hash__())
                     else:
                         name = self._parameter_names.get(p)
-                    handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+                    handle = byteps_push_pull(
+                        p, average=False, name="AsyncParam."+name)
                     _, ctx = self._compression.compress(p)
                     self._handles[p] = (handle, ctx)
 
@@ -211,12 +338,13 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # skip sync if calling skip_synchronize
             if self._should_sync:
                 self.synchronize()
+
             return super(self.__class__, self).step(closure)
 
 
 def DistributedOptimizer(optimizer, named_parameters=None,
-                         compression=Compression.none,
-                         backward_passes_per_step=1):
+                         compression_params=None,
+                         backward_passes_per_step=1, pre_scale_factor=1, post_scale_factor=1):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
@@ -239,21 +367,25 @@ def DistributedOptimizer(optimizer, named_parameters=None,
         optimizer: Optimizer to use for computing gradients and applying updates.
         named_parameters: A mapping between parameter names and values. Used for naming of
                           push_pull operations. Typically just `model.named_parameters()`.
-        compression: Compression algorithm used during push_pull to reduce the amount
-                     of data sent during the each parameter update step.  Defaults to
-                     not using compression.
+        compression_params : dict. Key-word arguments to be passed to gradient compression
+                             constructor. For example,`{'compressor': 'onebit', 'ef':
+                             'vanilla', 'momentum': 'nesterov', 'scaling': true}`.
+                             All compressor accept 'compressor', 'ef'. See each compressor's
+                             constructor for a list of additional supported arguments.
         backward_passes_per_step: Number of expected backward passes to perform
                                   before calling step()/synchronize(). This
                                   allows accumulating gradients over multiple
                                   mini-batches before executing averaging and
                                   applying them.
+        pre_scale_factor: scale the tensor before pushpull 
+        post_scale_factor: scale the tensor after pushpull 
     """
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override the `step()` method with an push_pull implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DistributedOptimizer.__dict__))
     return cls(optimizer.param_groups, named_parameters,
-               compression, backward_passes_per_step)
+               compression_params, backward_passes_per_step, pre_scale_factor, post_scale_factor)
 
 
 def broadcast_parameters(params, root_rank, prefix="Parameter."):
@@ -283,6 +415,8 @@ def broadcast_parameters(params, root_rank, prefix="Parameter."):
         if rank() != root_rank:
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
+        # We use two loops for load-balancing
+        declare("Parameter."+name)
         if name:
             handle = byteps_push_pull(p, average=False, name=prefix+name)
         else:
@@ -378,7 +512,8 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             key = '%s.%d' % (option_key, index)
             dtypes = _get_types(option_value)
             option_tensor = torch.Tensor([option_value]).cuda()
-            callbacks[key] = _create_option_callback(index, option_key, option_tensor, dtypes)
+            callbacks[key] = _create_option_callback(
+                index, option_key, option_tensor, dtypes)
             params.append((key, option_tensor))
 
         # The params list here is ordered by the layers in the model

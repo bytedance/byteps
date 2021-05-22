@@ -1,4 +1,4 @@
-// Copyright 2019 Amazon Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,45 +13,45 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_IMPL_VANILLA_ERROR_FEEDBACK_H
-#define BYTEPS_COMPRESSOR_IMPL_VANILLA_ERROR_FEEDBACK_H
+#ifndef BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
+#define BYTEPS_COMPRESSOR_IMPL_SPARSE_ERROR_FEEDBACK_H
 
 #include "../error_feedback.h"
+#include "../utils.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
 
 /*!
- * \brief Vanilla Error Feedback Compressor
+ * \brief Sprase Error Feedback Compressor
  *
- * paper: Communication-efficient distributed blockwise momentum sgd with
- * error-feedback
- * https://arxiv.org/pdf/1905.10936.pdf
+ * Sparse Error Feedback Update.
  *
- * each worker i:
- *    p_{t,i} <- g_{t,i} + e_{t,i}
- *    c_{t,i} <- Compress(p_{t,i})
- *    e_{t,i} <- p_{t,i} - c_{t,i}
- *
- * server:
- *    \tilde{p}_{t} <- \frac{1}{M} \sum_{i=1}^{M} c_{t,i}
- * + \tilde{e_t} \tilde{e}_{t+1} <-
- * \tilde{p}_{t}-\tilde{c_t}
- *
+ * Error-correction: error needs to be scaled with \frac{\eta_{t-1}}{\eta_t}.
  */
-class VanillaErrorFeedbackCompressor : public ErrorFeedback {
+class SparseErrorFeedbackCompressor : public ErrorFeedback {
  public:
-  VanillaErrorFeedbackCompressor(size_t size, DataType dtype,
-                                 std::unique_ptr<Compressor> cptr);
-  ~VanillaErrorFeedbackCompressor() override;
+  SparseErrorFeedbackCompressor(size_t size, DataType dtype,
+                                std::unique_ptr<Compressor> cptr, size_t k,
+                                unsigned int seed = 0);
+  ~SparseErrorFeedbackCompressor() override;
 
  protected:
   void UpdateGradient(tensor_t grad) override;
 
  private:
+  template <typename scalar_t>
+  void UpdateErrorImpl(scalar_t* error);
+
+  double _pre_lr, _cur_lr;
+
   int _fd;
   void* _mm;
+
+  size_t _k;
+  XorShift128PlusBitShifterRNG _rng;
+  std::vector<uint32_t> _selected_idx;
 };
 }  // namespace compressor
 }  // namespace common

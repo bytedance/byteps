@@ -10,12 +10,11 @@ The only thing you can tune is `BYTEPS_PCIE_SWITCH_SIZE`. If you know your hardw
 
 If you have NVLinks, leave `BYTEPS_PCIE_SWITCH_SIZE` unmodified. If you don't know your hardware topology, leave `BYTEPS_PCIE_SWITCH_SIZE` unmodified.
 
-
 ## Multi-machine (distributed mode)
 
 ### With additional CPU servers
 
-This mode requires at least **4** physical machines. Two of the machines should have GPUs and run as workers. The other two run as CPU servers and do not need GPUs. The scheduler can run on any machine.
+This mode requires at least **4** physical machines. Two of the machines should have GPUs and run as workers. The other two run a
 
 The key here is to make sure the following:
 * Servers must be on different physical machines from workers.

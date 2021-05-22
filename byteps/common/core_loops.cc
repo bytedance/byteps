@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "core_loops.h"
 
 #include <cuda_runtime.h>
 
@@ -21,7 +22,6 @@
 
 #include "common.h"
 #include "compressor/compressor.h"
-#include "core_loops.h"
 #include "global.h"
 #include "logging.h"
 
@@ -328,7 +328,7 @@ bool RunNonRootNcclLoopOnce() {
   struct BytePSCommMsg msg = {};
 
   NCCLCHECK(ncclGroupStart());
-  while (1) {
+  while (true) {
     signal_comm->recvSignalFromRoot(&msg, sizeof(BytePSCommMsg));
     if (BytePSGlobal::ShouldShutdown()) return true;
     if (msg.signal == DO_GROUP) {
@@ -511,8 +511,9 @@ bool RunCompressLoopOnce() {
                                       task->offset);
       int len = task->len;
       int dtype = task->tensor->dtype();
-      compressor::tensor_t grad(data, len, dtype);
-      auto compressed = task->compressor->Compress(grad);
+      compressor::tensor_t grad(data, len, dtype), compressed;
+      task->compressor->Compress(grad, compressed);
+      BPS_CHECK(compressed.data);
       BPS_CHECK_LE(compressed.size, len)
           << "Compressor Implementation Error "
           << ", key=" << task->key << ", src_len=" << len
@@ -560,7 +561,6 @@ bool RunPushLoopOnce() {
         BPS_LOG(DEBUG) << "PUSH with gradient compression. key=" << task->key;
         data = task->compressed->data;
         len = task->compressed->size;
-        task->compressed = nullptr;
       }
 
       // false means not to delete data when SArray is deleted
@@ -600,6 +600,12 @@ bool RunPullLoopOnce() {
     // get metadata
     const int dtype = task->output->dtype();
 
+    // use compressed data/len
+    if (task->compressed) {
+      BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
+      data = task->compressed->data;
+    }
+
     // false means not to delete data when SArray is deleted
     auto vals = new ps::SArray<char>(data, len, false);
 
@@ -633,10 +639,12 @@ bool RunDecompressLoopOnce() {
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, 0);
       auto len = pskv.lens[0];
       int dtype = task->tensor->dtype();
-      compressor::tensor_t compressed(data, len, dtype);
-      auto decompressed = task->compressor->Decompress(compressed);
-      BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
+      compressor::tensor_t compressed{task->compressed->data, len},
+          output(data, task->len, dtype);
 
+      task->compressor->Decompress(compressed, output);
+
+      task->compressed = nullptr;
       FinishOrProceed(task);
     });
 

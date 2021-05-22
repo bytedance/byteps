@@ -32,7 +32,7 @@ from utils import fake_data
 
 def topk(x, k):
     y = x.flatten()
-    indices = np.argsort(np.abs(y))[-k:][::-1]
+    indices = np.argpartition(np.abs(y), len(y)-k)[-k:]
     vals = y[indices]
     y.fill(0)
     for idx, val in zip(indices, vals):
@@ -41,12 +41,19 @@ def topk(x, k):
 
 
 class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([1, 3, 5]))
-    def test_topk(self, k):
+    TEST_BENCH = [
+        [1, 3, 5],
+        ["float32", "float16"]
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_topk(self, k, dtype):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -56,6 +63,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "topk",
             "k": k,
+            "fp16": True if dtype == "float16" else False
         }
 
         trainer = bps.DistributedTrainer(net.collect_params(
@@ -72,7 +80,7 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
                 params[i] = param._data[0].asnumpy()
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():
@@ -103,16 +111,17 @@ class TopkTestCase(unittest.TestCase, metaclass=MetaTest):
 
         cnt = 0
         tot = 0
+        threshold = 0 if dtype == "float32" else 10
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
-        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
+        assert cnt <= threshold, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
 if __name__ == '__main__':

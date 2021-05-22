@@ -1,12 +1,16 @@
 from __future__ import print_function
+
 import argparse
 import os
+
+import byteps.torch as bps
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 import torch.utils.data.distributed
-import byteps.torch as bps
+
+from torchvision import datasets, transforms
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -14,10 +18,10 @@ parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                     help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=100, metavar='N',
+parser.add_argument('--epochs', type=int, default=5, metavar='N',
                     help='number of epochs to train (default: 100)')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
+parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+                    help='learning rate (default: 0.001)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -26,8 +30,25 @@ parser.add_argument('--seed', type=int, default=42, metavar='S',
                     help='random seed (default: 42)')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
+
+# additional arguments for gradient compression
+parser.add_argument('--compressor', type=str, default='',
+                    help='which compressor')
+parser.add_argument('--ef', type=str, default='',
+                    help='which error-feedback')
+parser.add_argument('--compress-momentum', type=str, default='',
+                    help='which compress momentum')
+parser.add_argument('--onebit-scaling', action='store_true', default=False,
+                    help='enable scaling for onebit compressor')
+parser.add_argument('--k', default=1, type=float,
+                    help='topk or randomk')
+parser.add_argument('--partition', default='linear', type=str,
+                    help='linear or natural')
+parser.add_argument('--normalize', default='max', type=str,
+                    help='max or l2')
 parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                     help='use fp16 compression during pushpull')
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -39,6 +60,7 @@ if args.cuda:
     # BytePS: pin GPU to local rank.
     torch.cuda.set_device(bps.local_rank())
     torch.cuda.manual_seed(args.seed)
+    cudnn.benchmark = True
 
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
@@ -95,18 +117,27 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=args.lr * bps.size(),
                       momentum=args.momentum)
 
-# BytePS: (optional) compression algorithm.
-compression = bps.Compression.fp16 if args.fp16_pushpull else bps.Compression.none
+compression_params = {
+    "compressor": args.compressor,
+    "ef": args.ef,
+    "momentum": args.compress_momentum,
+    "scaling": args.onebit_scaling,
+    "k": args.k,
+    "partition": args.partition,
+    "normalize": args.normalize,
+    "seed": args.seed
+}
 
 # BytePS: wrap optimizer with DistributedOptimizer.
 optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
-                                     compression=compression)
+                                     compression_params=compression_params)
 
 
 # BytePS: broadcast parameters.
 bps.broadcast_parameters(model.state_dict(), root_rank=0)
 bps.broadcast_optimizer_state(optimizer, root_rank=0)
+
 
 def train(epoch):
     model.train()
@@ -129,11 +160,10 @@ def train(epoch):
 
 
 def metric_average(val, name):
-    tensor = torch.tensor(val)
-    if args.cuda:
-        tensor = tensor.cuda()
-    avg_tensor = bps.push_pull(tensor, name=name)
-    return avg_tensor.item()
+    tensor = torch.tensor(val).cuda()
+    bps.declare(name)
+    avg_tensor = bps.push_pull_inplace(tensor, average=False, name=name)
+    return avg_tensor.item() / bps.size()
 
 
 def test():

@@ -30,7 +30,6 @@ from meta_test import MetaTest
 from utils import fake_data, randint
 
 
-@jit(nopython=True)
 def randomk(x, k, state):
     y = x.flatten()
     low = np.uint64(0)
@@ -39,18 +38,27 @@ def randomk(x, k, state):
                         for _ in range(k)], dtype=np.uint64)
     vals = y[indices]
     y.fill(0)
+    scale = len(y) / k
     for idx, val in zip(indices, vals):
-        y[idx] = val
+        y[idx] = val * scale
     return y.reshape(x.shape)
 
 
 class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
-    @parameterized.expand(itertools.product([1, 3, 5], np.random.randint(0, 2020, size=3).tolist()))
-    def test_randomk(self, k, seed):
+    TEST_BENCH = [
+        [1, 3, 5],
+        ["float32", "float16"],
+        np.random.randint(0, 2020, size=3).tolist()
+    ]
+
+    @parameterized.expand(itertools.product(*TEST_BENCH))
+    def test_randomk(self, k, dtype, seed):
         ctx = mx.gpu(0)
         net = get_model("resnet18_v2")
+        net.cast(dtype)
         net.initialize(mx.init.Xavier(), ctx=ctx)
-        net.summary(nd.ones((1, 3, 224, 224), ctx=ctx))
+        net.summary(nd.ones((1, 3, 224, 224),
+                            ctx=ctx).astype(dtype, copy=False))
 
         # hyper-params
         batch_size = 32
@@ -60,9 +68,11 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
         compression_params = {
             "compressor": "randomk",
             "k": k,
-            "seed": seed
+            "seed": seed,
+            "fp16": True if dtype == "float16" else False
         }
 
+        params = net.collect_params()
         trainer = bps.DistributedTrainer(net.collect_params(
         ), "sgd", optimizer_params, compression_params=compression_params)
 
@@ -77,11 +87,12 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
         for i, param in enumerate(trainer._params):
             if param.grad_req != 'null':
                 params[i] = param._data[0].asnumpy()
-                rngs[i] = np.array([seed, seed], dtype=np.uint64)
-                rngs_s[i] = np.array([seed, seed], dtype=np.uint64)
+                s = seed + i + k
+                rngs[i] = np.array([s, s], dtype=np.uint64)
+                rngs_s[i] = np.array([s, s], dtype=np.uint64)
 
         for it, batch in tqdm(enumerate(train_data)):
-            data = batch[0].as_in_context(ctx)
+            data = batch[0].as_in_context(ctx).astype(dtype, copy=False)
             label = batch[1].as_in_context(ctx)
 
             with autograd.record():
@@ -105,23 +116,21 @@ class RandomkTestCase(unittest.TestCase, metaclass=MetaTest):
                     g = gs[i] / (batch_size * bps.size())
                     c = randomk(g, k, rngs[i])
 
-                    cs = randomk(c, k, rngs_s[i])
-                    c = cs
-
                     params[i] -= optimizer_params["learning_rate"] * c
 
         cnt = 0
         tot = 0
+        threshold = 0 if dtype == "float32" else 10
         for i, param in enumerate(trainer._params):
             if param.grad_req != "null":
                 x = param._data[0].asnumpy()
                 tot += len(x.flatten())
-                if not np.allclose(params[i], x, atol=np.finfo(np.float32).eps):
+                if not np.allclose(params[i], x, atol=np.finfo(dtype).eps):
                     diff = np.abs(x.flatten() - params[i].flatten())
-                    idx = np.where(diff > np.finfo(np.float32).eps)
+                    idx = np.where(diff > np.finfo(dtype).eps)
                     cnt += len(idx[0])
 
-        assert cnt == 0, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
+        assert cnt <= threshold, "false/tot=%d/%d=%f" % (cnt, tot, cnt/tot)
 
 
 if __name__ == '__main__':

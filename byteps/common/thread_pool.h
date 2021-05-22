@@ -35,6 +35,8 @@ class ThreadPool {
 
 // the constructor just launches some amount of workers
 inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
+  unsigned int ncores = std::thread::hardware_concurrency();
+  if (threads == 0) threads = ncores / 2;
   for (size_t i = 0; i < threads; ++i)
     workers.emplace_back([this] {
       for (;;) {

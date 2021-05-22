@@ -17,6 +17,7 @@
 #define BYTEPS_COMPRESSOR_UTILS_H
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <random>
@@ -24,6 +25,7 @@
 #include <string>
 #include <type_traits>
 
+#include "../half.h"
 #include "common.h"
 
 namespace byteps {
@@ -91,11 +93,6 @@ class XorShift128PlusBitShifterRNG {
 
   void set_seed(uint64_t seed) { _state = {seed, seed}; }
 
- private:
-  struct xorshift128p_state {
-    uint64_t a, b;
-  };
-
   uint64_t xorshift128p() {
     uint64_t t = _state.a;
     uint64_t const s = _state.b;
@@ -107,15 +104,16 @@ class XorShift128PlusBitShifterRNG {
     return t + s;
   };
 
+ private:
+  struct xorshift128p_state {
+    uint64_t a, b;
+  };
+
   xorshift128p_state _state;
 
   static constexpr uint64_t MAX = std::numeric_limits<uint64_t>::max();
 };
 
-/*!
- * \brief Bit Writer
- *
- */
 template <typename T>
 class BitWriter {
  public:
@@ -150,10 +148,6 @@ class BitWriter {
   size_t _blocks;
 };
 
-/*!
- * \brief Bit Reader
- *
- */
 template <typename T>
 class BitReader {
  public:
@@ -176,7 +170,7 @@ class BitReader {
   T _accum;
 };
 
-inline uint32_t RoundNextPow2(uint32_t v) {
+inline auto RoundNextPow2(uint32_t v) -> uint32_t {
   v -= 1;
   v |= v >> 1;
   v |= v >> 2;
@@ -198,7 +192,7 @@ void EliasDeltaEncode(BitWriter<T>& bit_writer, unsigned long x) {
 }
 
 template <typename T>
-unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
+auto EliasDeltaDecode(BitReader<T>& bit_reader) -> unsigned long {
   unsigned long num = 1;
   int len = 1;
   int lenth_of_len = 0;
@@ -215,8 +209,9 @@ unsigned long EliasDeltaDecode(BitReader<T>& bit_reader) {
 }
 
 template <typename T, class F = std::function<bool(T)>>
-T HyperParamFinder(const kwargs_t& kwargs, std::string name,
-                   bool optional = false, F&& check = [](T) { return true; }) {
+auto HyperParamFinder(const kwargs_t& kwargs, std::string name,
+                      bool optional = false,
+                      F&& check = [](T) -> bool { return true; }) -> T {
   static_assert(std::is_fundamental<T>::value,
                 "custom type is not allow for HyperParamFinder");
   T value{T()};
@@ -244,6 +239,149 @@ T HyperParamFinder(const kwargs_t& kwargs, std::string name,
   BPS_LOG(INFO) << "Register hyper-parameter '" << name << "'=" << value;
   return value;
 }
+
+inline void memcpy_multithread(void* __restrict__ dst,
+                               const void* __restrict__ src, size_t len) {
+  auto in = (float*)src;
+  auto out = (float*)dst;
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len / 4; ++i) {
+    out[i] = in[i];
+  }
+  if (len % 4) {
+    std::memcpy(out + len / 4, in + len / 4, len % 4);
+  }
+}
+
+template <typename T>
+auto sgn(T val) -> int {
+  return (T(0) < val) - (val < T(0));
+}
+
+template <typename T>
+int _sum(T* __restrict__ dst, const T* __restrict__ src, size_t len,
+         float alpha) {
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
+    dst[i] = dst[i] + alpha * src[i];
+  }
+  return 0;
+}
+
+inline int sum(void* dst, const void* src, size_t len, DataType dtype,
+               float alpha) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _sum(reinterpret_cast<float*>(dst),
+                  reinterpret_cast<const float*>(src), len, alpha);
+    case BYTEPS_FLOAT64:
+      return _sum(reinterpret_cast<double*>(dst),
+                  reinterpret_cast<const double*>(src), len, alpha);
+    case BYTEPS_FLOAT16:
+      return _sum(reinterpret_cast<half_t*>(dst),
+                  reinterpret_cast<const half_t*>(src), len, alpha);
+    case BYTEPS_UINT8:
+      return _sum(reinterpret_cast<uint8_t*>(dst),
+                  reinterpret_cast<const uint8_t*>(src), len, alpha);
+    case BYTEPS_INT32:
+      return _sum(reinterpret_cast<int32_t*>(dst),
+                  reinterpret_cast<const int32_t*>(src), len, alpha);
+    case BYTEPS_INT8:
+      return _sum(reinterpret_cast<int8_t*>(dst),
+                  reinterpret_cast<const int8_t*>(src), len, alpha);
+    case BYTEPS_INT64:
+      return _sum(reinterpret_cast<int64_t*>(dst),
+                  reinterpret_cast<const int64_t*>(src), len, alpha);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+  return 0;
+}
+
+template <typename T>
+int _sum(T* __restrict__ dst, const T* __restrict__ src1,
+         const T* __restrict__ src2, size_t len, float alpha) {
+#pragma omp parallel for simd
+  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
+    dst[i] = src1[i] + alpha * src2[i];
+  }
+  return 0;
+}
+
+inline int sum(void* dst, const void* src1, const void* src2, size_t len,
+               DataType dtype, float alpha) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _sum(reinterpret_cast<float*>(dst),
+                  reinterpret_cast<const float*>(src1),
+                  reinterpret_cast<const float*>(src2), len, alpha);
+    case BYTEPS_FLOAT64:
+      return _sum(reinterpret_cast<double*>(dst),
+                  reinterpret_cast<const double*>(src1),
+                  reinterpret_cast<const double*>(src2), len, alpha);
+    case BYTEPS_FLOAT16:
+      return _sum(reinterpret_cast<half_t*>(dst),
+                  reinterpret_cast<const half_t*>(src1),
+                  reinterpret_cast<const half_t*>(src2), len, alpha);
+    case BYTEPS_UINT8:
+      return _sum(reinterpret_cast<uint8_t*>(dst),
+                  reinterpret_cast<const uint8_t*>(src1),
+                  reinterpret_cast<const uint8_t*>(src2), len, alpha);
+    case BYTEPS_INT32:
+      return _sum(reinterpret_cast<int32_t*>(dst),
+                  reinterpret_cast<const int32_t*>(src1),
+                  reinterpret_cast<const int32_t*>(src2), len, alpha);
+    case BYTEPS_INT8:
+      return _sum(reinterpret_cast<int8_t*>(dst),
+                  reinterpret_cast<const int8_t*>(src1),
+                  reinterpret_cast<const int8_t*>(src2), len, alpha);
+    case BYTEPS_INT64:
+      return _sum(reinterpret_cast<int64_t*>(dst),
+                  reinterpret_cast<const int64_t*>(src1),
+                  reinterpret_cast<const int64_t*>(src2), len, alpha);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+  return 0;
+}
+
+template <typename T>
+int _sparse_sum(T* __restrict__ dst, T* __restrict__ src, size_t len,
+                float alpha, const std::vector<uint32_t>& idx_list) {
+  size_t size = idx_list.size();
+
+#pragma omp parallel for simd
+  for (size_t i = 0; i < size; ++i) {
+    dst[i] += src[idx_list[i]] * alpha;
+    src[idx_list[i]] = 0;
+  }
+
+  return 0;
+}
+
+inline int sparse_sum(void* dst, void* src, size_t size, DataType dtype,
+                      float alpha, const std::vector<uint32_t>& idx_list) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _sparse_sum(reinterpret_cast<float*>(dst),
+                         reinterpret_cast<float*>(src), size / sizeof(float),
+                         alpha, idx_list);
+    case BYTEPS_FLOAT64:
+      return _sparse_sum(reinterpret_cast<double*>(dst),
+                         reinterpret_cast<double*>(src),
+
+                         size / sizeof(double), alpha, idx_list);
+    case BYTEPS_FLOAT16:
+      return _sparse_sum(reinterpret_cast<half_t*>(dst),
+                         reinterpret_cast<half_t*>(src),
+
+                         size / sizeof(half_t), alpha, idx_list);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+  return 0;
+}
+
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

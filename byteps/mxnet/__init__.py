@@ -21,6 +21,7 @@ import os
 import struct
 import warnings
 
+import numpy as np
 import mxnet as mx
 import mxnet.ndarray as nd
 
@@ -176,7 +177,8 @@ class DistributedTrainer(mx.gluon.Trainer):
         The set of parameters to optimize.
     optimizer : str or Optimizer
         The optimizer to use. See
-        `help <http://mxnet.io/api/python/optimization/optimization.html#the-mxnet-optimizer-package>`_
+        # the-mxnet-optimizer-package>`_
+        `help <http://mxnet.io/api/python/optimization/optimization.html
         on Optimizer for a list of available optimizers.
     optimizer_params : dict
         Key-word arguments to be passed to optimizer constructor. For example,
@@ -186,9 +188,9 @@ class DistributedTrainer(mx.gluon.Trainer):
     root_rank : int
         rank of root
     compression_params : dict
-        Key-word arguments to be passed to gradient compression constructor. For example, 
+        Key-word arguments to be passed to gradient compression constructor. For example,
         `{'compressor': 'onebit', 'ef': 'vanilla', 'momentum': 'nesterov', 'scaling': true}`.
-        All compressor accept 'compressor', 'ef'. See each compressor's constructor for a list 
+        All compressor accept 'compressor', 'ef'. See each compressor's constructor for a list
         of additional supported arguments
     """
 
@@ -203,11 +205,11 @@ class DistributedTrainer(mx.gluon.Trainer):
             for key in sorted(list(params.keys())):
                 param_list.append(params[key])
 
-        self._intra_compressor = self._register_compressor(
-            params, optimizer_params, compression_params)
-
         super(DistributedTrainer, self).__init__(
             param_list, optimizer, optimizer_params=optimizer_params, kvstore=None)
+
+        self._intra_compressor = self._register_compressor(
+            optimizer_params, compression_params)
 
         if local_rank() == 0:
             self._f = open("lr.s", "wb")
@@ -225,7 +227,9 @@ class DistributedTrainer(mx.gluon.Trainer):
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
                 )
-                byteps_declare_tensor("gradient_" + str(i), **byteps_params)
+
+                byteps_declare_tensor(
+                    "gradient_" + str(i), **byteps_params)
 
     def __del__(self):
         if local_rank() == 0:
@@ -233,10 +237,9 @@ class DistributedTrainer(mx.gluon.Trainer):
             if os.path.exists("lr.s"):
                 os.remove("lr.s")
 
-    def _register_compressor(self, params, optimizer_params, compression_params):
+    def _register_compressor(self, optimizer_params, compression_params):
         """Register compressor for BytePS
 
-        params : mx.gluon.ParameterDict 
         optimizer_params : dict
         compression_params : dict
         """
@@ -247,13 +250,15 @@ class DistributedTrainer(mx.gluon.Trainer):
         if compression_params.get("fp16"):
             intra_compressor = Compression.fp16
 
-        if "compressor" not in compression_params:
-            warnings.warn("Compressor is not defined")
+        if not compression_params.get("compressor"):
             return intra_compressor
 
         check_list = ["compressor", "ef", "momentum"]
 
-        for _, param in params.items():
+        for i, param in enumerate(self._params):
+            if param.grad_req == 'null':
+                continue
+
             # generic
             for item in check_list:
                 if compression_params.get(item):
@@ -278,8 +283,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                         optimizer_params["momentum"])
 
             if compression_params.get("seed", None) is not None:
-                setattr(param, "byteps_seed",
-                        compression_params["seed"])
+                seed = int(compression_params["seed"])
+                setattr(param, "byteps_seed", seed + i)
 
             if compression_params.get("partition"):
                 if compression_params["partition"] == "linear":
@@ -287,7 +292,8 @@ class DistributedTrainer(mx.gluon.Trainer):
                 elif compression_params["partition"] == "natural":
                     setattr(param, "byteps_dithering_partition", "1")
                 else:
-                    raise ValueError("Unsupported partition")
+                    raise ValueError("Unsupported partition %s" %
+                                     compression_params["partition"])
 
             if compression_params.get("normalize"):
                 if compression_params["normalize"] == "max":
@@ -295,17 +301,18 @@ class DistributedTrainer(mx.gluon.Trainer):
                 elif compression_params["normalize"] == "l2":
                     setattr(param, "byteps_dithering_normalize", "1")
                 else:
-                    raise ValueError("Unsupported normalization")
+                    raise ValueError("Unsupported normalization %s" %
+                                     compression_params["normalize"])
 
         # the following code will delete some items in `optimizer_params`
         # to avoid duplication
         if compression_params.get("momentum"):
             threshold = int(os.environ.get(
-                "BYTEPS_MIN_COMPRESS_BYTES", 65536))
+                "BYTEPS_MIN_COMPRESS_BYTES", 0))
             mu = optimizer_params["momentum"]
 
             # 1bit compressor use an additional momentum for weight decay
-            if compressor == "onebit" and "wd" in optimizer_params:
+            if "wd" in optimizer_params:
                 wd = optimizer_params["wd"]
                 intra_compressor = Compression.wdmom(intra_compressor,
                                                      mu, wd, threshold)

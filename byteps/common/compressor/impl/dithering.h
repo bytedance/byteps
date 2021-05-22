@@ -13,8 +13,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
-#define BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
+#ifndef BYTEPS_COMPRESSOR_IMPL_DITHERING_H
+#define BYTEPS_COMPRESSOR_IMPL_DITHERING_H
+
+#include <vector>
 
 #include "../compressor.h"
 #include "../utils.h"
@@ -43,47 +45,77 @@ namespace compressor {
 class DitheringCompressor : public Compressor {
  public:
   enum class PartitionType { LINEAR = 0, NATURAL = 1 };
-  enum class NomalizeType { MAX = 0, L2 = 1 };
+  enum class NormalizeType { MAX = 0, L2 = 1 };
 
   DitheringCompressor(size_t size, DataType dtype, unsigned int s,
                       unsigned int seed = 0,
                       PartitionType ptype = PartitionType::LINEAR,
-                      NomalizeType ntype = NomalizeType::MAX)
+                      NormalizeType ntype = NormalizeType::MAX)
       : Compressor(size, dtype), _s(s), _ptype(ptype), _ntype(ntype) {
     if (seed) {
       _rng.set_seed(seed);
     }
   };
-  virtual ~DitheringCompressor() = default;
+  ~DitheringCompressor() override = default;
 
-  tensor_t Compress(tensor_t grad) override;
+  void Compress(tensor_t grad, tensor_t& output) override;
 
-  tensor_t Decompress(tensor_t compressed) override;
+  void Decompress(tensor_t compressed, tensor_t& output) override;
 
-  void FastUpdateError(tensor_t error, tensor_t corrected,
-                       tensor_t compressed) override;
+  void FusedCompress(tensor_t grad, tensor_t& output, tensor_t error) override;
 
  private:
   template <typename index_t, typename scalar_t>
-  tensor_t CompressImpl(index_t* dst, const scalar_t* src, size_t len);
+  size_t CompressImpl(index_t* __restrict__ dst,
+                      const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  tensor_t DecompressImpl(scalar_t* dst, const index_t* src,
-                          size_t compressed_size);
+  size_t CompressImplMax(index_t* __restrict__ dst,
+                         const scalar_t* __restrict__ src, size_t len);
 
   template <typename index_t, typename scalar_t>
-  void FastUpdateErrorImpl(scalar_t* error, scalar_t* corrected,
-                           const index_t* compressed, size_t compressed_size);
+  size_t CompressImplL2(index_t* __restrict__ dst,
+                        const scalar_t* __restrict__ src, size_t len);
 
-  /*! \brief number of levels */
+  template <typename scalar_t, typename index_t>
+  void DecompressImplL2(scalar_t* __restrict__ dst,
+                        const index_t* __restrict__ src, size_t compressed_size,
+                        size_t dst_size);
+
+  template <typename scalar_t, typename index_t>
+  void DecompressImplMax(scalar_t* __restrict__ dst,
+                         const index_t* __restrict__ src,
+                         size_t compressed_size, size_t dst_size);
+
+  template <typename scalar_t, typename index_t>
+  void DecompressImpl(scalar_t* __restrict__ dst,
+                      const index_t* __restrict__ src, size_t compressed_size,
+                      size_t dst_size);
+
+  template <typename index_t, typename scalar_t>
+  size_t FusedCompressImplL2(index_t* __restrict__ dst,
+                             const scalar_t* __restrict__ src,
+                             scalar_t* __restrict__ error, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  size_t FusedCompressImplMax(index_t* __restrict__ dst,
+                              const scalar_t* __restrict__ src,
+                              scalar_t* __restrict__ error, size_t len);
+
+  template <typename index_t, typename scalar_t>
+  size_t FusedCompressImpl(index_t* __restrict__ dst,
+                           const scalar_t* __restrict__ src,
+                           scalar_t* __restrict__ error, size_t len);
+
   const unsigned int _s;
 
   PartitionType _ptype;
-  NomalizeType _ntype;
+  NormalizeType _ntype;
   XorShift128PlusBitShifterRNG _rng;
+  std::vector<uint64_t> _rand_list;
 };
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
 
-#endif  // BYTEPS_COMPRESSOR_IMPL_MULTIBIT_H
+#endif  // BYTEPS_COMPRESSOR_IMPL_DITHERING_H

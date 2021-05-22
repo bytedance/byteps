@@ -1,4 +1,4 @@
-// Copyright 2019 Amazon Inc. or its affiliates. All Rights Reserved.
+// Copyright 2020 Amazon Inc. or its affiliates. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,29 +13,33 @@
 // limitations under the License.
 // =============================================================================
 
-#include "error_feedback.h"
+#ifndef BYTEPS_COMPRESSOR_IMPL_FP16_CAST_H
+#define BYTEPS_COMPRESSOR_IMPL_FP16_CAST_H
+
+#include "../cast.h"
 
 namespace byteps {
 namespace common {
 namespace compressor {
+/*!
+ * \brief FP16 Cast Wrapper
+ *
+ * Cast fp16 gradients into fp32 and then compress
+ *
+ * \sa Cast
+ */
+class FP16CastCompressor : public Cast {
+ public:
+  FP16CastCompressor(size_t size, DataType dtype,
+                     std::unique_ptr<Compressor> cptr)
+      : Cast(size, dtype, std::move(cptr)) {}
+  ~FP16CastCompressor() override = default;
 
-void ErrorFeedback::Compress(tensor_t grad, tensor_t& output) {
-  BPS_CHECK(grad.data);
-
-  // 1. p <- g + e
-  UpdateGradient(grad);
-
-  tensor_t error{_buf.get(), _size, _dtype};
-
-  // 2. c <- Compress(p) 3. e <- p - c
-  _cptr->FusedCompress(grad, output, error);
-}
-
-void ErrorFeedback::Decompress(tensor_t compressed, tensor_t& output) {
-  // directly forward to internal compressor
-  _cptr->Decompress(compressed, output);
-}
-
+ protected:
+  tensor_t CastToFP32(tensor_t grad) override;
+};
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
+
+#endif  // BYTEPS_COMPRESSOR_IMPL_FP16_CAST_H
