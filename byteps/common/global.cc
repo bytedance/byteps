@@ -114,9 +114,10 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
+std::string BytePSGlobal::_uuid;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
-
+// hash functions
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
 unsigned int BytePSGlobal::_built_in_hash_coefficient;
 volatile bool BytePSGlobal::_mixed_mode = false;
@@ -173,6 +174,7 @@ void BytePSGlobal::Init() {
                    : "./trace";
 
   // Set p2p related variables
+  _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
   _skip_d2h = getenv("BYTEPS_P2P_SKIP_D2H") ? atoi(getenv("BYTEPS_P2P_SKIP_D2H")) : false;

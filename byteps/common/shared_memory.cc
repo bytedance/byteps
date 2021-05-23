@@ -63,33 +63,34 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
   return ptr;
 }
 
-std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(uint64_t key,
+std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(const std::string& prefix,
+                                                            uint64_t key,
                                                             size_t size) {
   std::vector<void*> r;
 #if BYTEPS_BUILDING_CUDA == 1
   for (int i = 0; i < BytePSGlobal::GetPcieSwitchNum(); i++) {
-    auto prefix = std::string("BytePS_Pcie") + std::to_string(i) + "_Shm_";
+    auto prefix_i = prefix + std::to_string(i) + "_Shm_";
     if (BytePSGlobal::IsDistributed()) {
       if (BytePSGlobal::IsCrossPcieSwitch()) {
         if (i <= numa_max_node()) {
           numa_set_preferred(i);
-          r.push_back(openSharedMemory(prefix, key, size));
+          r.push_back(openSharedMemory(prefix_i, key, size));
           numa_set_preferred(-1);
         } else {
           numa_set_preferred(numa_max_node());
-          r.push_back(openSharedMemory(prefix, key, size));
+          r.push_back(openSharedMemory(prefix_i, key, size));
           numa_set_preferred(-1);
         }
       } else {
-        r.push_back(openSharedMemory(prefix, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size));
       }
     } else {
       if (BytePSGlobal::IsCrossPcieSwitch()) {
         numa_set_interleave_mask(numa_all_nodes_ptr);
-        r.push_back(openSharedMemory(prefix, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size));
         numa_set_interleave_mask(numa_no_nodes_ptr);
       } else {
-        r.push_back(openSharedMemory(prefix, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size));
       }
     }
   }
@@ -99,20 +100,20 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(uint64_t key,
   return r;
 }
 
-std::vector<void*> BytePSSharedMemory::openNumaSharedMemory(uint64_t key,
+std::vector<void*> BytePSSharedMemory::openNumaSharedMemory(const std::string& prefix,
+                                                            uint64_t key,
                                                             size_t size) {
   std::vector<void*> ret;
 
   for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
-    std::string prefix = std::string("BytePS_Numa_")
-                         + std::to_string(BytePSGlobal::GetPhyNodeID())
+    std::string prefix_i = prefix + std::to_string(BytePSGlobal::GetPhyNodeID())
                          + std::string("_") + std::to_string(i) + "_ShM_";
     if (i <= numa_max_node()) {
       numa_set_preferred(i);
     } else {
       numa_set_preferred(numa_max_node());
     }
-    ret.push_back(openSharedMemory(prefix, key, size));
+    ret.push_back(openSharedMemory(prefix_i, key, size));
     numa_set_preferred(-1);
   }
 

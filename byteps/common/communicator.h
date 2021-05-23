@@ -34,9 +34,9 @@
 #include <vector>
 #include "logging.h"
 
-#define DEFAULT_BASE_SOCKET_PATH_RECV "/tmp/socket_recv_"
-#define DEFAULT_BASE_SOCKET_PATH_SEND "/tmp/socket_send_"
-#define MAX_LINE 8000
+#define BYTEPS_DEFAULT_BASE_SOCKET_PATH_RECV "/tmp/socket_recv_"
+#define BYTEPS_DEFAULT_BASE_SOCKET_PATH_SEND "/tmp/socket_send_"
+#define BYTEPS_COMM_MAX_LINE 8000
 
 namespace byteps {
 namespace common {

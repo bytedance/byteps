@@ -275,7 +275,7 @@ class TensorFlowTests:
                 niter += 1
 
     def test_allreduce(self):
-        total_niter = 200
+        total_niter = 1000
         dtype = tf.float32
         rank = bps.rank()
         size = bps.size()
@@ -291,7 +291,7 @@ class TensorFlowTests:
             tensor = tf.ones([tensor_size, 1], dtype=dtype) * (rank + 1)
             while niter < total_niter:
                 # forward
-                result = bps.push_pull(tensor, name=f'test_allreduce_iter{niter}')
+                result = bps.push_pull(tensor, name=f'test_allreduce_iter_{niter % 10}')
                 expected = (1 + size + 1) * size / 2.0
                 assert np.sum(result != expected), (result, expected)
                 niter += 1

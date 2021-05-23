@@ -120,8 +120,9 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
     _recv_path = std::string(getenv("BYTEPS_SOCKET_PATH")) +
                  std::string("/socket_recv_");
   } else {
-    _send_path = std::string(DEFAULT_BASE_SOCKET_PATH_SEND);
-    _recv_path = std::string(DEFAULT_BASE_SOCKET_PATH_RECV);
+    auto uuid = BytePSGlobal::GetUUID();
+    _send_path = std::string(BYTEPS_DEFAULT_BASE_SOCKET_PATH_SEND) + uuid + "_";
+    _recv_path = std::string(BYTEPS_DEFAULT_BASE_SOCKET_PATH_RECV) + uuid + "_";
   }
 
   _send_fd = initSocket(_local_rank, _send_path);
@@ -181,7 +182,7 @@ int BytePSCommSocket::initSocket(int rank, const std::string& path) {
 void BytePSCommSocket::startListenThread() {  // only root starts this in
                                               // background thread
   BPS_LOG(DEBUG) << "Listening on socket " << _local_rank;
-  char buffer[MAX_LINE];
+  char buffer[BYTEPS_COMM_MAX_LINE];
   while (true) {
     int rc;
     while (true) {
@@ -274,7 +275,7 @@ int BytePSCommSocket::sendSignalToRoot(void* data, int len) {
 int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   int rc;
   while (true) {
-    rc = recv(_recv_fd, data, MAX_LINE, MSG_WAITALL);
+    rc = recv(_recv_fd, data, BYTEPS_COMM_MAX_LINE, MSG_WAITALL);
     if (rc < 0 && errno == EINTR) continue;
     if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EBADF)) { // timeout or shutdown
         if (BytePSGlobal::ShouldShutdown()) break; // on exit

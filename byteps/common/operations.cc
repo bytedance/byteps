@@ -584,10 +584,9 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
   CHECK(!BytePSGlobal::IsCrossPcieSwitch());
-  std::string shm_name;
   // use a different prefix for p2p tensors
-  std::string wid = std::to_string(BytePSGlobal::GetWorkerID());
-  shm_name = std::string("BytePS_P2P_ShM_") + wid + "_";
+  std::string wid = "_" + std::to_string(BytePSGlobal::GetWorkerID()) + "_";
+  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetUUID() + wid;
   accumulated = 0;
   context.cpubuff = nullptr;
   auto my_rank = BytePSGlobal::GetRank();
@@ -599,15 +598,18 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
     // When encoding for the first time, declare len = bound
     auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
     // the shared memory is always created at partition size
-    void* buff;
-    buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
-    context.cpubuff_list.emplace_back(buff);
+    void* buff = nullptr;
     if (sender == my_rank) {
+      buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
+      context.cpubuff_list.emplace_back(buff);
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals((char*) buff, bound, false);
       int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+    } else {
+      // no need to create the cpubuff as a receiver
+      context.cpubuff_list.emplace_back(buff);
     }
     accumulated += len;
   }
@@ -694,11 +696,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
+    // TODO: add BytePS UUID for openPcieSharedMemory and update the corresponding name in RDMAVan
     context.pcie_cpubuff =
-        shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
+        shm_obj->openPcieSharedMemory(std::string("BytePS_Pcie"), key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
-    context.numa_cpubuff = shm_obj->openNumaSharedMemory(key_list[0], aligned_size);
+    auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
+    context.numa_cpubuff = shm_obj->openNumaSharedMemory(shm_prefix, key_list[0], aligned_size);
     context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;

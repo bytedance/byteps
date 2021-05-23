@@ -49,8 +49,8 @@ class BytePSSharedMemory {
   }
 
   void *openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
-  std::vector<void *> openPcieSharedMemory(uint64_t key, size_t size);
-  std::vector<void *> openNumaSharedMemory(uint64_t key, size_t size);
+  std::vector<void *> openPcieSharedMemory(const std::string &prefix, uint64_t key, size_t size);
+  std::vector<void *> openNumaSharedMemory(const std::string &prefix, uint64_t key, size_t size);
 
  private:
   std::unordered_map<std::string, void *> _key_shm_addr;
