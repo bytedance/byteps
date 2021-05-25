@@ -16,7 +16,9 @@
 #ifndef BYTEPS_GPU_REDUCER_H
 #define BYTEPS_GPU_REDUCER_H
 
+#if BYTEPS_BUILDING_CUDA == 1
 #include <cuda_runtime.h>
+#endif // BYTEPS_BUILDING_CUDA == 1
 #include "common.h"
 #include "logging.h"
 
