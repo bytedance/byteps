@@ -34,6 +34,7 @@ class MXTensor : public Tensor {
   virtual const void* data() const override;
   virtual int64_t size() const override;
   virtual void resize(const common::TensorShape&) override;
+  virtual int device() const override;
 
  protected:
   T* tensor_;

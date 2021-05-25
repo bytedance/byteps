@@ -42,14 +42,17 @@ class TFReadyEvent : public common::ReadyEvent {
 
 class TFTensor : public common::Tensor {
  public:
-  TFTensor(::tensorflow::Tensor& tensor);
+  TFTensor(::tensorflow::Tensor& tensor, int device);
+  // constructor for TF outputs whose memory may be allocated later
   TFTensor(::tensorflow::OpKernelContext* context,
-           ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx);
+           ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx,
+           int device);
   virtual const common::DataType dtype() const override;
   virtual const common::TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;
   virtual void resize(const common::TensorShape&) override;
+  virtual int device() const override;
 
  protected:
   ::tensorflow::Tensor tensor_;
@@ -59,6 +62,8 @@ class TFTensor : public common::Tensor {
   int idx_;
   // allocated
   bool allocated_ = true;
+  // the device id
+  int device_;
 };
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name);

@@ -31,6 +31,7 @@
 #include "common.h"
 #include "communicator.h"
 #include "cpu_reducer.h"
+#include "gpu_reducer.h"
 #include "logging.h"
 #include "nccl_manager.h"
 #include "ps/ps.h"
@@ -68,6 +69,10 @@ class BytePSGlobal {
   static int GetWorkerID() { return _worker_id; }
   static int GetPhyNodeID() { return _phy_node_id; }
   static int GetNumWorker() { return _num_worker; }
+  // number of visible devices. This is usually used to make sure
+  // the device ordinal of `cudaSetDevice` does not go out of bound.
+  // In the CPU-only case, it is set to local_size.
+  static int GetNumDevice() { return _num_devices; }
   static bool IsRootDevice() { return _is_root_device; }
   static bool IsDistributed() { return _is_distributed_job; }
   static std::string GetUUID() { return _uuid; }
@@ -93,7 +98,7 @@ class BytePSGlobal {
   static bool IsQueueLockless() { return _lockless_queue; }
   static int GetLoopParallel() { return _num_loop_parallel; }
   static ps::KVWorker<char>* GetPS(int index = 0) { CHECK(_ps.size()); return _ps.at(index % _ps.size()); }
-  // index: the KVWorker instance index. It is useful when DMLC_GROUP_SIZE is set.
+  // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(int index = 0);
 
   static bool IsTensorDeclared(const std::string& name);
@@ -157,6 +162,7 @@ class BytePSGlobal {
   static ReadyTable* GetCopyTable() { return _copy_table; }
 
   static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
+  static std::shared_ptr<GpuReducer> GetGpuReducer() { return _gpu_reducer; }
 
   static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
 
@@ -209,6 +215,7 @@ class BytePSGlobal {
   static int _local_root;
   static int _server_local_root;
   static int _num_worker;
+  static int _num_devices;
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_joint;
@@ -282,6 +289,7 @@ class BytePSGlobal {
   static std::vector<int> _reduce_roots;
 
   static std::shared_ptr<CpuReducer> _cpu_reducer;
+  static std::shared_ptr<GpuReducer> _gpu_reducer;
 
   // for debug sampling
   static uint64_t _sample_key;

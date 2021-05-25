@@ -45,6 +45,7 @@ int BytePSGlobal::_num_phy_node = 1;
 int BytePSGlobal::_local_root = -1;
 int BytePSGlobal::_server_local_root = -1;
 int BytePSGlobal::_num_worker = 1;
+int BytePSGlobal::_num_devices = -1;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job = false;
@@ -116,6 +117,7 @@ std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
 std::string BytePSGlobal::_uuid;
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
+std::shared_ptr<GpuReducer> BytePSGlobal::_gpu_reducer;
 std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
 // hash functions
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
@@ -182,10 +184,8 @@ void BytePSGlobal::Init() {
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 1;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
-                << ", skip_d2h=" << _skip_d2h
-                << ", loop_parallel=" << _num_loop_parallel
-                << ", lockless=" << _lockless_queue << ", trace=" << _is_trace
-                << ", session_id=" << _alltoall_session_size;
+                << ", skip_d2h=" << _skip_d2h << ", trace=" << _is_trace
+                << ", session_size=" << _alltoall_session_size;
 
   if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
     _local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
@@ -264,12 +264,38 @@ void BytePSGlobal::Init() {
                  << (IsDistributed() ? "" : "non-") << "distributed job";
 
   _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
-
-  // Set to associated GPU
-  CUDA_CALL(cudaSetDevice(_local_rank));
+  _num_devices = _local_size;
 
   // Init NCCL
 #if BYTEPS_BUILDING_CUDA == 1
+  auto visible_device = getenv("CUDA_VISIBLE_DEVICES");
+  if (visible_device) {
+    auto visible_device_str = std::string(visible_device);
+    std::unordered_set<int> device_set;
+    size_t pos_begin = 0;
+    for (size_t i = 1; i < visible_device_str.size(); i++) {
+      if (visible_device_str[i] == ',') {
+        size_t pos_end = i;
+        auto last_device = visible_device_str.substr(pos_begin, pos_end);
+        if (last_device.size()) {
+          auto curr_device = atoi(last_device.c_str());
+          device_set.insert(curr_device);
+        }
+	pos_begin = i + 1;
+      }
+    }
+    auto last_device = visible_device_str.substr(pos_begin);
+    if (last_device.size()) {
+      auto curr_device = atoi(last_device.c_str());
+      device_set.insert(curr_device);
+    }
+    _num_devices = device_set.size();
+  }
+  BPS_CHECK(_num_devices > 0) << _num_devices;
+
+  // Set to associated GPU
+  CUDA_CALL(cudaSetDevice(_local_rank % _num_devices));
+
   _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
   _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
   // Bind to NUMA node
@@ -288,6 +314,7 @@ void BytePSGlobal::Init() {
     // cpu reducer is used for CPU allreduce and alltoall
     _cpu_reducer = std::make_shared<CpuReducer>(nullptr);
   }
+  _gpu_reducer = std::make_shared<GpuReducer>();
 
   // ready table for send & recv
   if (_is_joint) {

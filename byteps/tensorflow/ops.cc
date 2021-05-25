@@ -133,11 +133,11 @@ bool TFReadyEvent::Ready() const {
          perftools::gputools::Event::Status::kPending;
 }
 
-TFTensor::TFTensor(::tensorflow::Tensor& tensor) : tensor_(tensor) {}
+TFTensor::TFTensor(::tensorflow::Tensor& tensor, int device) : tensor_(tensor), device_(device) {}
 
 TFTensor::TFTensor(::tensorflow::OpKernelContext* context,
-                   ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx) :
-                   context_(context), done_(done), idx_(output_idx), allocated_(false) {}
+                   ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx, int device) :
+                   context_(context), done_(done), idx_(output_idx), allocated_(false), device_(device) {}
 
 void TFTensor::resize(const common::TensorShape& shape) {
   CHECK(!allocated_);
@@ -176,8 +176,11 @@ int64_t TFTensor::size() const {
   return (int64_t)tensor_.tensor_data().size();
 }
 
-// On GPU this event will signal that data is ready, and tensors are
-// allocated.
+int TFTensor::device() const {
+  return device_;
+}
+
+// On GPU this event will signal that data is ready, and tensors are allocated.
 common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
   auto device_context = context->op_device_context();
   if (device_context != nullptr) {
@@ -281,8 +284,8 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
     // ReadyEvent makes sure input tensor is ready, and output is allocated.
     auto ready_event =
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    auto bps_input = std::make_shared<TFTensor>(tensor);
-    auto bps_output = std::make_shared<TFTensor>(*output);
+    auto bps_input = std::make_shared<TFTensor>(tensor, GetDeviceID(context));
+    auto bps_output = std::make_shared<TFTensor>(*output, GetDeviceID(context));
     auto node_name = name();
     std::string tmp_name;
     if (input_tensor_name == "default_tensor_name") {
@@ -353,7 +356,7 @@ void StartP2PTask(::tensorflow::OpKernelContext* context,
                       ? const_cast<void*>(tensor->data())
                       : nullptr;
   common::InitTensorP2P(byteps_context, size, dtype, cpubuff,
-                        sender, receiver);
+                        sender, receiver, false);
 
   std::shared_ptr<std::vector<common::QueueType>> queue_list; 
 
@@ -401,7 +404,7 @@ class BytePSSendOp : public ::tensorflow::AsyncOpKernel {
     auto tensor = context->input(0);
     auto ready_event =
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto bps_input = std::make_shared<TFTensor>(tensor, GetDeviceID(context));
     auto node_name = name();
     if (sender == -1) sender = common::byteps_rank();
     if (receiver == -1) receiver = common::byteps_rank();
@@ -449,7 +452,7 @@ class BytePSRecvOp : public ::tensorflow::AsyncOpKernel {
     auto tensor = context->input(0);
     auto ready_event =
         std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    auto bps_input = std::make_shared<TFTensor>(tensor);
+    auto bps_input = std::make_shared<TFTensor>(tensor, GetDeviceID(context));
     auto node_name = name();
     if (sender == -1) sender = common::byteps_rank();
     if (receiver == -1) receiver = common::byteps_rank();
@@ -498,7 +501,6 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         TaskType task, bool recv_split_unknown,
                         std::string name_wo_session) {
   // the counter for all send/recv tasks generated for alltoall
-  const int my_rank = common::byteps_rank();
   int num_ranks = split_count.size();
   // one recv per rank (including memcpy). one d2h_send
   int num_tasks = recv_split_unknown ? 2 : num_ranks + 1;
@@ -506,7 +508,6 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
 
   // common fields
   auto device = GetDeviceID(context);
-  auto dtype = byteps_input->dtype();
   int priority = 0;
   auto callback = [context, done, counter_ptr, name_wo_session](const common::Status& status) {
     // we use a counter to track each subtask
@@ -537,30 +538,26 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
 }
 
+template <bool cross_device>
 class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
  private:
      std::string input_tensor_name;
      bool recv_split_unknown;
      int partition_bytes;
-     int no_op;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-          context->GetAttr("input_name", &input_tensor_name);
-          context->GetAttr("recv_split_unknown", &recv_split_unknown);
-          if (recv_split_unknown) {
-            CHECK(getenv("BYTEPS_PARTITION_BYTES"))
-              << "BYTEPS_PARTITION_BYTES is required if recv_split_unknown=True";
-            partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
-            if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
-              partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
-            }
-          }
-          no_op = 0;
-          if (getenv("BYTEPS_ALLTOALL_NO_OP")) {
-            no_op = atoi(getenv("BYTEPS_ALLTOALL_NO_OP"));
-          }
+      context->GetAttr("input_name", &input_tensor_name);
+      context->GetAttr("recv_split_unknown", &recv_split_unknown);
+      if (recv_split_unknown) {
+        CHECK(getenv("BYTEPS_PARTITION_BYTES"))
+          << "BYTEPS_PARTITION_BYTES is required if recv_split_unknown=True";
+        partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
+        if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
+          partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
+        }
+      }
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -600,7 +597,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     ::tensorflow::TensorShape result_shape;
     GetIntList(split_tensor, &dim0_split_count);
     int dim0 = 0;
-    int num_ranks = split_tensor.shape().dim_size(0);
     int dim0_aggregate = 0;
     // the split tensor is based on axis 0, hence scale it by stride
     for (int i = 0; i < dim0_split_count.size(); ++i) {
@@ -639,21 +635,34 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     for (int i = 1; i < tensor.shape().dims(); ++i) {
       result_shape.AddDim(tensor.shape().dim_size(i));
     }
+    auto device_id = GetDeviceID(context);
+    int output_device = device_id;
+    int input_device = device_id;
+    // adjust device_id in cross device case
+    if (cross_device) {
+      if (context->input_memory_type(0) == ::tensorflow::HOST_MEMORY) {
+        input_device = CPU_DEVICE_ID;
+      }
+      if (context->output_memory_type(0) == ::tensorflow::HOST_MEMORY) {
+        output_device = CPU_DEVICE_ID;
+      }
+    }
     std::shared_ptr<TFTensor> bps_output;
     if (recv_split_unknown) {
-      bps_output = std::make_shared<TFTensor>(context, done, 0);
+      bps_output = std::make_shared<TFTensor>(context, done, 0, output_device);
     } else {
       OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(0, result_shape, &output_data), done);
-      bps_output = std::make_shared<TFTensor>(*output_data);
+      bps_output = std::make_shared<TFTensor>(*output_data, output_device);
     }
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(1, split_tensor.shape(), &output_sizes), done);
 
     // naming and declarations
     auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    auto bps_input = std::make_shared<TFTensor>(tensor);
-    auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes);
+    auto bps_input = std::make_shared<TFTensor>(tensor, input_device);
+    // TODO: pass the correct aux_output device id
+    auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes, CPU_DEVICE_ID);
     const int my_rank = common::byteps_rank();
     // Add session_id prefix to node_name
     std::string name_send = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
@@ -662,7 +671,7 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
     std::string session_name_send = session_prefix + name_send;
     std::string session_tmp_name = session_prefix + tmp_name;
-    if (no_op || (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0)) {
+    if (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0) {
       // TODO: fill in size tensor
       done();
       return;
@@ -682,9 +691,45 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("BytepsAlltoall").Device(::tensorflow::DEVICE_CPU),
-                        BytepsAllToAllOp);
+                        BytepsAllToAllOp<false>);
 
 REGISTER_OP("BytepsAlltoall")
+    .Attr(
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+    .Attr("input_name: string = 'default_tensor_name'") 
+    .Input("tensor: T")
+    .Input("splits: int32")
+    .Input("recv_splits: int32")
+    .Attr("recv_split_unknown: bool = False")
+    .Output("output: T")
+    .Output("recv_bytes: int32") // TODO: rename this output
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &output));
+      c->set_output(0, output);
+      c->set_output(1, c->input(1));
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+
+Perform an MPI Alltoall on a tensor.
+Arguments
+    tensor:     A tensor to be distributed with all to all  // for send counts (dim0)
+    splits:     A list of integers in rank order describing how many elements
+                in `tensor` to send to each worker.  // for recv counts (dim0)
+    recv_split_unknown: A bool to indicate whether recv splits is unknown  
+Output
+    output:    The collected tensor data from all workers.
+)doc");
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallCputogpu").Device(::tensorflow::DEVICE_GPU)
+                                                      .HostMemory("tensor")
+                                                      .HostMemory("splits")
+                                                      .HostMemory("recv_splits")
+                                                      .HostMemory("recv_bytes"),
+                        BytepsAllToAllOp<true>);
+
+REGISTER_OP("BytepsAlltoallCputogpu")
     .Attr(
         "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
     .Attr("input_name: string = 'default_tensor_name'") 
@@ -703,7 +748,7 @@ REGISTER_OP("BytepsAlltoall")
     })
     .Doc(R"doc(
 
-Perform an MPI Alltoall on a tensor.
+Perform an MPI Alltoall on a tensor from CPU to GPU.
 Arguments
     tensor:     A tensor to be distributed with all to all  // for send counts (dim0)
     splits:     A list of integers in rank order describing how many elements

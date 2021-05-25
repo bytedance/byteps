@@ -36,9 +36,13 @@ enum class RequestType {
 struct DataHandleType {
   RequestType requestType;
   int dtype;
+  // the type of the device when handling data requests.
+  // usually this only matters for push requests,
+  // since server may need to register gpu buffers for GDR
+  int device;
 };
 
-int GetCommandType(RequestType requestType, int d);
+int GetCommandType(RequestType requestType, int dtype, int device);
 
 DataHandleType DepairDataHandleType(int cmd);
 

@@ -61,6 +61,11 @@ void MXTensor<T>::resize(const common::TensorShape&) {
   BPS_CHECK(false) << "NOT IMPLEMENTED";
 }
 
+int MXTensor<T>::device() const {
+  BPS_CHECK(false) << "NOT IMPLEMENTED";
+  return -1;
+}
+
 template class MXTensor<NDArray>;
 
 }  // namespace mxnet

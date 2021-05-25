@@ -259,41 +259,13 @@ class Tensor {
   virtual const TensorShape shape() const = 0;
   virtual const void* data() const = 0;
   virtual int64_t size() const = 0;
+  // allocate the size of the tensor. This is only used for
+  // output tensors
   virtual void resize(const common::TensorShape&) = 0;
   virtual ~Tensor() = default;
-};
-
-class TensorView : public Tensor {
- public:
-  // A view on [begin, end) on the original tensor.
-  // tensor: the original tensor
-  // begin: index of the starting element of the flatten tensor
-  // end: index of the starting element of the flatten tensor
-  TensorView(std::shared_ptr<Tensor> tensor, int begin, int end);
-
-  // the data type of the view
-  const DataType dtype() const;
-  
-  // the shape of the view
-  const TensorShape shape() const;
-
-  // the pointer to the view data
-  const void* data() const;
-
-  // the size of the view data in bytes
-  int64_t size() const;
-
-  // resize the tensor.
-  void resize(const common::TensorShape&);
-
-  ~TensorView() = default;
-
-  std::shared_ptr<Tensor> tensor_;
-  int begin_;
-  int end_;
-  int size_;
-  void* data_;
-  TensorShape shape_;
+  // TODO: remove virtual?
+  // the device ID of this tensor
+  virtual int device() const = 0;
 };
 
 // A callback to call after the PS communication completes.

@@ -5,7 +5,6 @@ import os
 
 import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')
-parser.add_argument('--rank', type=int, default=-1)
 parser.add_argument('--backend', type=str, default='byteps')
 
 args = parser.parse_args()
@@ -17,6 +16,15 @@ else:
     bps.init()
 
 print(bps)
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+  try:
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+  except RuntimeError as e:
+    print(e)
+    exit()
 
 class TensorFlowTests:
     """
@@ -73,6 +81,7 @@ class TensorFlowTests:
 
     def test_all2all(self, total_niter=1000, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
+        print('test_all2all', flush=True)
         rank = self.rank
         size = self.size
         # TODO: record type info in declare_tensor
@@ -105,8 +114,44 @@ class TensorFlowTests:
                         index = end
                     niter += 1
 
+    def test_all2all_cpu2gpu(self, total_niter=1000, compression=bps.Compression.none):
+        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
+        print('test_all2all_cpu2gpu', flush=True)
+        rank = self.rank
+        size = self.size
+        # TODO: record type info in declare_tensor
+        dtypes = [tf.int64, tf.float32, tf.int32]
+        vector_dim = 2
+        idx_dtype = tf.int32
+        # every worker should have the same size
+        rng = np.random.default_rng(size)
+        for dtype in dtypes:
+            niter = 0
+            while niter < total_niter:
+                p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size,size)
+                splits_list = list(p2p_matrix[rank])
+                recv_splits_list = list(p2p_matrix[:, rank])
+                print(f'rank={rank}/{size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}, dim={vector_dim}, dtype={dtype}', flush=True)
+                with tf.device("/cpu:0"):
+                    splits = tf.constant(splits_list, dtype=idx_dtype)
+                    recv_splits = tf.constant(recv_splits_list, dtype=idx_dtype)
+                    tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
+                result = bps.alltoall_cpu2gpu(tensor, splits=splits, recv_splits=recv_splits, name=f'test_iter{niter % 10}',
+                                              compression=compression)
+                print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
+                index = 0
+                for i in range(size):
+                    begin = index
+                    end = index + recv_splits_list[i]
+                    subset = result[begin:end]
+                    val = i + 1
+                    assert np.sum(subset != val) == 0, (subset, val, result)
+                    index = end
+                niter += 1
+
     def test_all2all_no_recv_splits(self, total_niter=1000, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors without recv_splits."""
+        print('test_all2all_no_recv_splits', flush=True)
         dtype = tf.float32
         rank = self.rank
         size = self.size
@@ -117,7 +162,7 @@ class TensorFlowTests:
             p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size)
             splits_list = list(p2p_matrix[rank])
             recv_splits_list = list(p2p_matrix[:, rank])
-            print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix}', flush=True)
+            print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
             with tf.device("/cpu:0"):
                 splits = tf.constant(splits_list, dtype=tf.int32)
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
@@ -185,7 +230,7 @@ class TensorFlowTests:
         print('test_send_recv DONE', flush=True)
 
     # TODO: test other dtypes
-    def test_all2all_benchmark(self, total_niter=100):
+    def test_all2all_benchmark(self, total_niter=250, dst_gpu=False):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         dtype, int_dtype = tf.float32, tf.int32
         if args.backend == 'byteps':
@@ -205,13 +250,12 @@ class TensorFlowTests:
             splits = tf.constant(splits_list, dtype=int_dtype)
             recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
             tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-            size_data = tf.ones([size], dtype=dtype)
-            size_splits = tf.ones([size], dtype=int_dtype)
         t0 = time.time()
-        interval = 100
+        interval = 10
+        alltoall_fn = bps.alltoall_cpu2gpu if dst_gpu else bps.alltoall
         while niter < total_niter:
             if args.backend == 'byteps':
-                result = bps.alltoall(tensor, splits=splits, recv_splits=recv_splits, name='data')
+                result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name='data')
             else:
                 result = bps.alltoall(tensor, splits=splits)
             niter += 1
@@ -241,7 +285,6 @@ class TensorFlowTests:
                 p2p_matrices = []
                 print(f'iter={niter}', flush=True)
                 for slot in range(num_slots):
-                    # FIXME: the test is limited to 2 workers only
                     p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size) + 1
                     splits_list = list(p2p_matrix[rank])
                     recv_splits_list = list(p2p_matrix[:, rank])
@@ -298,14 +341,20 @@ class TensorFlowTests:
                 print(f'DONE iter={niter}', flush=True)
 
 tests = TensorFlowTests()
+
 # FIXME: send to myself hangs
-tests.test_allreduce()
 # tests.test_self_send_recv()
 # tests.test_send_recv()
+
+
+tests.test_allreduce()
 tests.test_all2all()
 tests.test_all2all(compression=bps.Compression.fp16)
 
 tests.test_all2all_no_recv_splits()
 tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
-# tests.test_all2all_benchmark()
-time.sleep(3)
+tests.test_all2all_benchmark()
+
+tests.test_all2all_cpu2gpu()
+tests.test_all2all_benchmark(dst_gpu=True)
+time.sleep(1)

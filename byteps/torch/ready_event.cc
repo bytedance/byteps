@@ -49,7 +49,7 @@ static ReadyEventRegistry ready_event_registry;
 
 TorchReadyEvent::TorchReadyEvent(int device) : device_(device) {
   assert(device_ != CPU_DEVICE_ID);
-
+  // TODO: would torch give an out-of-bound device ordinal?
   with_device device_context(device_);
   {
     std::lock_guard<std::mutex> guard(ready_event_registry.mutex);

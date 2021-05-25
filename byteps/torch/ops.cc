@@ -81,7 +81,7 @@ void StartP2PTask(::torch::Tensor tensor, int sender, int receiver,
   common::InitTensorP2P(context, size, dtype,
                         (device == CPU_DEVICE_ID)
                         ? const_cast<void*>(tensor_ptr->data())
-                        : nullptr, sender, receiver);
+                        : nullptr, sender, receiver, false);
 
   std::shared_ptr<std::vector<QueueType>> queue_list;
   if (task == kSend) {

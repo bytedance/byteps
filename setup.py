@@ -282,6 +282,7 @@ def get_common_options(build_ext):
                'byteps/common/shared_memory.cc',
                'byteps/common/nccl_manager.cc',
                'byteps/common/cpu_reducer.cc',
+               'byteps/common/gpu_reducer.cc',
                'byteps/server/server.cc',
                'byteps/server/common.cc'] + [
                'byteps/common/compressor/compressor_registry.cc',
@@ -357,6 +358,7 @@ def build_server(build_ext, options):
                         'byteps/common/shared_memory.cc',
                         'byteps/common/nccl_manager.cc',
                         'byteps/common/cpu_reducer.cc',
+                        'byteps/common/gpu_reducer.cc',
                         'byteps/server/server.cc',
                         'byteps/server/common.cc'] + [
                           'byteps/common/compressor/compressor_registry.cc',

@@ -55,8 +55,8 @@ bool DoFinishOrProceed(T& task) {
                      << *((float *)(task->output->data()) + j)
                      << "\t after stage: " << LogStrings[this_op];
     } else {
-      float i0, i1, o0, o1;
 #if BYTEPS_BUILDING_CUDA == 1
+      float i0, i1, o0, o1;
       cudaMemcpy(&i0, (float *)(task->tensor->data()) + i, 4,
                  cudaMemcpyDeviceToHost);
       cudaMemcpy(&i1, (float *)(task->tensor->data()) + j, 4,
@@ -713,35 +713,35 @@ void CoordinatePushLoop() {
 }
 
 void PcieReduceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void RootNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunNonRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void SyncNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunSyncNcclOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void CopyDevice2HostLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -760,21 +760,21 @@ void DecompressLoop() {
 }
 
 void RootCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyListenLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunNonRootCopyListenLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunNonRootCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -814,7 +814,7 @@ bool RunPushLoopOnce() {
       ps::SArray<char> vals(data, len, false);
 
 
-      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype);
+      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, CPU);
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
       BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
                                    [task, q]() { FinishOrProceed(task); });
@@ -852,7 +852,7 @@ bool RunPullLoopOnce() {
     // false means not to delete data when SArray is deleted
     auto vals = new ps::SArray<char>(data, len, false);
 
-    int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype);
+    int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, CPU);
     auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
     // issue pull
     BytePSGlobal::GetPS()->ZPull(pskv.keys, vals, &pskv.lens, cmd,
@@ -888,27 +888,36 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
   auto len = task->len;
   auto offset = task->offset;
   int sender = task->context->sender;
-  int my_rank =  BytePSGlobal::GetRank();
+  int my_rank = BytePSGlobal::GetRank();
+  bool is_cpu = tensor->device() == CPU_DEVICE_ID;
   if (sender == my_rank) {
     // copy to myself
-    BPS_LOG(TRACE) << "self H2D key=" << key << ", offset=" << offset << " len = " << len;
-    auto src_addr = ((char *)(task->tensor->data())) + offset;
-    auto dst_addr = ((char *)(tensor->data())) + task->offset_list[sender];
-    BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+    BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
+                   << " len=" << len << " cpu=" << is_cpu << " device=" << tensor->device();
+    auto src_addr = ((char*)(task->tensor->data())) + offset;
+    auto dst_addr = ((char*)(tensor->data())) + task->offset_list[sender];
+    if (is_cpu) {
+      BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+    } else {
+      // XXX it only happens with CPU-GPU alltoall.
+      BytePSGlobal::GetGpuReducer()->copy_h2d(dst_addr, src_addr, len);
+    }
     return;
   }
-  auto gpu_addr = (char *)(tensor->data()) + task->offset_list[sender];
-  bool is_cpu = task->device == CPU_DEVICE_ID;
-  // update the output (aux)
+  auto gpu_addr = (char*)(tensor->data()) + task->offset_list[sender];
   auto recv_arr = server::BytePSServer::GetRecvPartition(key);
   int recv_len = recv_arr.len;
   void* recv_addr = recv_arr.val.data();
   BPS_CHECK(recv_len == len) << recv_len << ", " << len;
   // update the output (data)
-  BPS_LOG(TRACE) << "H2D key=" << key << (long long) recv_addr << " len = " << len;
-  CHECK(is_cpu) << key;
+  BPS_LOG(TRACE) << "H2D key=" << key << (long long) recv_addr << " len=" << len << " cpu=" << is_cpu;
   CHECK(recv_addr != nullptr) << key;
-  BytePSGlobal::GetCpuReducer()->copy(gpu_addr, recv_addr, recv_len);
+  if (is_cpu) {
+    BytePSGlobal::GetCpuReducer()->copy(gpu_addr, recv_addr, recv_len);
+  } else {
+    // XXX it only happens with CPU-GPU alltoall. ps-lite buffer is already on GPU
+    BytePSGlobal::GetGpuReducer()->copy_d2d(gpu_addr, recv_addr, recv_len);
+  }
   return;
 }
 
@@ -949,7 +958,6 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
       auto in_shape = task->tensor->shape();
       auto ndims = in_shape.dims();
       // handle the case with [0] input
-      int dim0 = in_shape.dim_size(0);
       int remaining_dims = 1;
       for (int i = 1; i < ndims; ++i) {
         BPS_CHECK(in_shape.dim_size(i)) << in_shape.dim_size(i);
@@ -975,7 +983,6 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
       std::vector<server::RecvArray> recv_arrs = server::BytePSServer::GetRecvPartitions(keys);
       // get the length of all ranks
       for (uint64_t i = 0; i < num_ranks; ++i) {
-        uint64_t key = (i << 32) + (task->key << 16) + req_key;
         int64_t recv_len;
         if (i == my_rank) {
           // self send-recv does not go through ps-lite
@@ -1004,7 +1011,7 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
       task->output->resize(output_shape);
       // finally, perform copy.
       char* dst = (char*)(const_cast<void*>(task->output->data()));
-      for (uint64_t i = 0; i < num_ranks; ++i) {
+      for (int i = 0; i < num_ranks; ++i) {
         // calculate output offset
         if (i == my_rank) {
           // copy to myself
@@ -1045,7 +1052,7 @@ bool RunSendLoopOnce(int index) {
 
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals(data, len, false);
-      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype);
+      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, CPU);
       auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
       if (BytePSGlobal::IsDirectResponse() == 2) {
         BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd);
@@ -1075,7 +1082,7 @@ void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
   if (from_cpu) {
     BytePSGlobal::GetCpuReducer()->copy(dst, src, len);
   } else {
-#ifdef BYTEPS_BUILDING_CUDA == 1
+#if BYTEPS_BUILDING_CUDA == 1
     auto copy_d2h_Stream = BytePSGlobal::GetCopyDevice2HostStream();
     CUDA_CALL(cudaMemcpyAsync(
       (void *)(dst),
@@ -1127,7 +1134,10 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
     int num_ranks = task->pcie_cpubuff.size();
     const int dtype = task->tensor->dtype();
     bool output_size_unknown = task->output == nullptr;
-    BPS_LOG(TRACE) << "output_size_unknown = " << output_size_unknown;
+    BPS_CHECK(task->tensor->device() == CPU_DEVICE_ID) << "GPU send is not implemented yet";
+    // task->device denotes the output device,
+    // while task->tensor->device() denotes the input devices
+    int output_device = task->device == CPU_DEVICE_ID ? CPU : GPU;
     auto req_type = server::RequestType::kDefaultSend;
     // the output tensor is not yet allocated. the receiver
     // must receive the entire group of tensors before copying
@@ -1135,9 +1145,10 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
     if (output_size_unknown) {  
       req_type = server::RequestType::kGroupSend;
     }
-    int cmd = server::GetCommandType(req_type, dtype);
+    int cmd = server::GetCommandType(req_type, dtype, output_device);
     // used for group send with split=0
-    int empty_cmd = server::GetCommandType(server::RequestType::kEmptyGroupSend, dtype);
+    int empty_cmd = server::GetCommandType(server::RequestType::kEmptyGroupSend,
+                                           dtype, output_device);
     for (int rank_offset = 0; rank_offset < num_ranks; ++rank_offset) {
       int i = (my_rank + rank_offset + 1) % num_ranks;
       auto len = task->offset_list[i + 1] - task->offset_list[i];
@@ -1178,7 +1189,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
 }
 
 void P2PCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunP2PCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1186,7 +1197,7 @@ void P2PCopyHost2DeviceLoop() {
 }
 
 void P2PGroupCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunP2PGroupCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1195,7 +1206,7 @@ void P2PGroupCopyHost2DeviceLoop() {
 
 void P2PCopyDevice2HostLoop(int index) {
   CHECK(index >= 0);
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunP2PCopyDevice2HostLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1209,7 +1220,7 @@ void SendLoop(int index) {
 
 void P2PCopyDevice2HostSendLoop(int index) {
   CHECK(index >= 0);
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunP2PCopyDevice2HostSendLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1429,10 +1440,7 @@ bool RunCpuBcastLoopOnce() {
     auto tensor = task->tensor;
 
     auto key = task->key;
-    auto unit_len = tensor->size() / tensor->shape().num_elements();
-
     int my_lrank = BytePSGlobal::GetLocalRank();
-    int local_size = BytePSGlobal::GetLocalSize();
     auto basic_comm = BytePSGlobal::GetBasicComm();
     int local_root = basic_comm->getRoot();
 

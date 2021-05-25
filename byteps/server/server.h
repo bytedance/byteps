@@ -40,7 +40,10 @@ namespace server {
 #define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
 #define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
 
-using namespace ps;
+using ps::SArray;
+using ps::Key;
+using ps::KVServer;
+using ps::KVWorker;
 using common::ReadyTable;
 
 enum BytePSEngineOperation {
@@ -57,6 +60,7 @@ struct BytePSArray {
   size_t len;
   int dtype;
   ps::KVPairs<char> tmp_sarray;
+  common::DeviceType device = common::CPU;
 };
 
 struct RecvArray {

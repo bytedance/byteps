@@ -95,44 +95,6 @@ int64_t TensorShape::num_elements() const {
   return result;
 }
 
-
-TensorView::TensorView(std::shared_ptr<Tensor> tensor, int begin, int end)
-  : tensor_(tensor), begin_(begin), end_(end) {
-  TensorShape shape(tensor_->shape());
-  // shape
-  BPS_CHECK(shape.dims() > 0);
-  int64_t num_elements = shape.num_elements();
-  int64_t stride = num_elements / shape.shape_[0];
-  shape.shape_[0] = begin / stride;
-  shape_ = shape;
-  // size
-  int64_t num_elements_view = end - begin;
-  int unit = tensor->size() / num_elements;
-  size_ = unit * num_elements_view;
-  data_ = ((char*) tensor->data()) + unit * begin;
-}
-
-const DataType TensorView::dtype() const {
-  return tensor_->dtype();
-}
-
-const TensorShape TensorView::shape() const {
-  return shape_;
-}
-
-int64_t TensorView::size() const {
-  return size_;
-}
-
-const void* TensorView::data() const {
-  return data_;
-}
-
-void TensorView::resize(const common::TensorShape&) {
-  BPS_CHECK(false) << "NOT IMPLEMENTED";
-}
-
-
 #if BYTEPS_BUILDING_CUDA == 1
 ncclDataType_t getNcclDataType(DataType dtype) {
   switch (dtype) {

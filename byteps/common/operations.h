@@ -98,7 +98,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
-                   int sender, int receiver);
+                   int sender, int receiver, bool recv_on_gpu = false);
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorDeclared(const std::string &name);

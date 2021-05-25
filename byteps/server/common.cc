@@ -20,21 +20,23 @@
 namespace byteps {
 namespace server {
 
-int GetCommandType(RequestType requestType, int d) {
+int GetCommandType(RequestType requestType, int dtype, int device) {
+  // command is 32 bit. from higher positions to lower ones:
+  // 16 bits unused
+  // 6 bits for request type
+  // 6 bits for dtype
+  // 4 bit for device
   int m = static_cast<int>(requestType);
-  return (((m + d) * (m + d + 1)) / 2) + d;
+  m = (m << 6) + dtype;
+  m = (m << 4) + device;
+  return m;
 }
 
 DataHandleType DepairDataHandleType(int cmd) {
-  int w = std::floor((std::sqrt(8 * cmd + 1) - 1)/2);
-  int t = ((w * w) + w) / 2;
-  int y = cmd - t;
-  int x = w - y;
-  BPS_CHECK_GE(x, 0);
-  BPS_CHECK_GE(y, 0);
   DataHandleType type;
-  type.requestType = static_cast<RequestType>(x);
-  type.dtype = y;
+  type.requestType = static_cast<RequestType>((cmd << 16) >> (32 - 6));
+  type.dtype = (cmd << (16 + 6)) >> (32 - 6);
+  type.device = (cmd << (16 + 6 + 6)) >> (32 - 4);
   return type;
 }
 

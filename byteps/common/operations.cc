@@ -180,7 +180,6 @@ void PartitionTensor(
   size_t bound = BytePSGlobal::GetPartitionBound();
   size_t accumulated = 0;
   int i = 0;
-  auto my_rank = BytePSGlobal::GetRank();
 
   while (accumulated < size) {
     std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
@@ -268,13 +267,14 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // the accumulated offset list always starts with 0
   send_task->offset_list.push_back(0);
   // send to all ranks
+  bool recv_on_gpu = output->device() != CPU_DEVICE_ID;
   for (size_t i = 0; i < num_ranks; ++i) {
     // Note: shuffle is done inside core_loops
     int size = unit_size * (send_begin[i+1] - send_begin[i]);
     send_task->offset_list.push_back(send_begin[i + 1] * unit_size);
     std::string name_i = send_name_prefix + std::to_string(i);
     auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, my_rank, i);
+    common::InitTensorP2P(byteps_context, size, dtype, nullptr, my_rank, i, recv_on_gpu);
     // XXX: use pcie_cpubuff as container of the list of aligned memory buffs
     send_task->pcie_cpubuff.push_back(byteps_context.cpubuff_list[0]);
     send_task->key_list.push_back(byteps_context.key_list[0]);
@@ -295,8 +295,11 @@ Status EnqueueAlltoAllTensor(std::string& name,
       send_task->output = output;
     }
     send_task->aux_output = nullptr;
+
     send_task->ready_event = ready_event;
-    send_task->device = device;
+    // the device of the send task denotes the remote device type
+    // data will be sent to (i.e. the output tensor device)
+    send_task->device = output->device();
     send_task->priority = priority;
     send_task->version = version;
     send_task->callback = callback;
@@ -336,10 +339,10 @@ Status EnqueueAlltoAllTensor(std::string& name,
   std::vector<TensorTableEntry*> recv_tasks;
   for (size_t i = 0; i < num_ranks; ++i) {
     // check the case for send-recv with myself, or nothing to send
-    int size = unit_size * (recv_begin[i+1] - recv_begin[i]);
+    int size = unit_size * (recv_begin[i + 1] - recv_begin[i]);
     std::string name_i = name_prefix + std::to_string(i) + recv_name_suffix;
     auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank);
+    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank, false);
     tensor_key = (byteps_context.key_list[0] << 32) >> 48;
     recv_task->offset_list.push_back(recv_begin[i + 1] * unit_size);
     if (output_size_unknown) {
@@ -511,7 +514,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 }
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
-                   int sender, int receiver) {
+                   int sender, int receiver, bool recv_on_gpu) {
   auto bound = BytePSGlobal::GetP2PPartitionBound();
   std::lock_guard<std::mutex> lock(context.init_mutex);
   // XXX: in alltoall, the size might be 0 when first seen.
@@ -531,7 +534,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   if (receiver == -1) {
     receiver = BytePSGlobal::GetRank();
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   // Get metadata
   auto &name = context.tensor_name;
   context.buff_len = size;
@@ -559,7 +562,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
     accumulated +=
         ((size - accumulated) > bound) ? bound : (size - accumulated);
   }
-  
+
   BPS_LOG(DEBUG) << name << " partitioned to " << context.key_list.size()
                  << " part(s)"
                  << ", total_len=" << size << ", key_range=["
@@ -594,7 +597,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   auto ps = BytePSGlobal::GetOrInitPS();
   for (auto k : key_list) {
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    // XXX: support variable data size. We assume the number of partitions do not change
+    // XXX: We assume the number of partitions do not change
     // When encoding for the first time, declare len = bound
     auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
     // the shared memory is always created at partition size
@@ -604,7 +607,8 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
       context.cpubuff_list.emplace_back(buff);
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals((char*) buff, bound, false);
-      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype);
+      DeviceType device = recv_on_gpu ? GPU : CPU;
+      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, device);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
     } else {
@@ -628,7 +632,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (context.initialized) {
     return;
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
 
   BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
   // Get metadata
@@ -725,7 +729,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals(data + accumulated, len, false);
       // cmd type
-      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype);
+      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, CPU);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
       BPS_LOG(TRACE) << "registereed with server, key " << key;
@@ -754,7 +758,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     for (auto key : key_list) {
       auto &kv = BytePSGlobal::EncodeDefaultKey(key, len);
       ps::SArray<char> vals(data, len, false);
-      int cmd = server::GetCommandType(server::RequestType::kCompressedPushPull, dtype);
+      int cmd = server::GetCommandType(server::RequestType::kCompressedPushPull, dtype, CPU);
       ps->Wait(ps->ZPush(kv.keys, vals, kv.lens, cmd));
     }
   }

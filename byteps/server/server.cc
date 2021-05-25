@@ -23,7 +23,11 @@
 namespace byteps {
 namespace server {
 
-using namespace ps;
+using ps::SArray;
+using ps::Key;
+using ps::KVServer;
+using ps::KVWorker;
+using ps::GetEnv;
 
 // engine related
 std::vector<PriorityQueue*> engine_queues_;
@@ -368,15 +372,31 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   auto len = (size_t) req_data.lens[0];
   // initialization
   if (!stored->tensor) {
-    // TODO: actually there's no need to store this tensor
-    // init stored buffer, use page aligned memory
-    std::string prefix = p2p_shm_prefix_ + std::to_string(preferred_rank_);
-    std::string shm_name = prefix + "_" + std::to_string(req_data.keys[0]);
-    PageAlignedMalloc((void**)&stored->tensor, len);
-    if (log_key_info_) {
-      LOG(INFO) << "stored tensor for key=" << key << ", name=" << shm_name << " created"
-                << ", worker_id=" << preferred_rank_ << ", len=" << len;
+    if (type.device == common::GPU) {
+      int worker_rank = key >> 32;
+      // prepare buffer
+      // CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank()));
+      ps::SArray<ps::Key> keys;
+      ps::SArray<char> vals;
+      ps::SArray<int> lens;
+      CUDA_CALL(cudaMalloc(&(stored->tensor), len));
+      keys.push_back(req_data.keys[0]);
+      vals.reset((char*) stored->tensor, len * sizeof(char), [](void *){});
+      lens.push_back(len);
+      stored->device = common::GPU;
+      // perform registration
+      server->RegisterRecvBufferWithRank(worker_rank, keys, vals, lens);
+    } else {
+      // init stored buffer, use page aligned memory
+      std::string prefix = p2p_shm_prefix_ + std::to_string(preferred_rank_);
+      std::string shm_name = prefix + "_" + std::to_string(req_data.keys[0]);
+      PageAlignedMalloc((void**)&stored->tensor, len);
     }
+    if (log_key_info_) {
+      LOG(INFO) << "stored tensor for key=" << key << "\tcreated, rank="
+                << preferred_rank_ << " len=" << len << " device=" << stored->device;
+    }
+    // TODO: actually there's no need to store this tensor
     // the max length
     stored->len = len;
     stored->dtype = type.dtype;
@@ -408,7 +428,7 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   } else {
     if (debug_mode_) {
       LOG(INFO) << "set recv val addr = " << (long long) req_data.vals.data()
-                << " data=" << *((float*)req_data.vals.data()) << " len =  " << len;
+                << " len =  " << len;
     }
     SetRecvPartition(key, arr);
     GetP2PCopyTable()->AddReadyCount(key);
@@ -573,7 +593,6 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
       SendPushResponse(key, req_meta, server);
       if (sync_mode_ && updates.request.size() == num_expected_workers_) {
         auto stored = GetStore(key);
-        auto& update = updates.merged;
         if (debug_mode_ && (debug_key_ == key)) {
           std::lock_guard<std::mutex> lock(debug_mu_);
           LOG(INFO) << "stage: COPY_MERGED_TO_STORE \t"
@@ -669,8 +688,7 @@ void BytePSServer::init_global_env() {
   auto debug_mode_str = getenv("BYTEPS_SERVER_DEBUG");
   debug_mode_ = debug_mode_str ? atoi(debug_mode_str) : false;
   debug_key_ = GetEnv("BYTEPS_SERVER_DEBUG_KEY", 0);
-  if (debug_mode_)
-    LOG(INFO) << "Debug mode enabled! Printing key " << debug_key_;
+  if (debug_mode_) LOG(INFO) << "Debug mode enabled! Printing key " << debug_key_;
 
   // number of engine thread
   // invalid if is_engine_blocking = true
@@ -770,9 +788,8 @@ void BytePSServer::Init(int rank) {
   }
 
   // clean the server resource
-  LOG(INFO) << "Waiting for ps-lite to finalize.";
+  LOG(INFO) << "Waiting for all ranks to finalize.";
   Finalize(0, role, true);
-  LOG(INFO) << "ps-lite server has finalized.";
   LOG(INFO) << "BytePS server is stopping ...";
   should_stop_ = true;
   for (auto server : byteps_server_) {
@@ -790,7 +807,11 @@ void BytePSServer::Init(int rank) {
 
   for (auto& it : store_) {
     if (it.second.tensor) {
-      free(it.second.tensor);
+      if (it.second.device == common::CPU) {
+        free(it.second.tensor);
+      } else {
+        CUDA_CALL(cudaFree(it.second.tensor));
+      }
     }
   }
 

@@ -69,6 +69,11 @@ void TorchTensor::resize(const common::TensorShape&) {
   CHECK(false) << "NOT IMPLEMENTED";
 }
 
+int TorchTensor::device() const {
+  CHECK(false) << "NOT IMPLEMENTED";
+  return -1;
+}
+
 void ThrowIfError(Status status) {
   switch (status.type()) {
     case StatusType::OK:
