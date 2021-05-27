@@ -4,9 +4,9 @@ path="`dirname $0`"
 set -x
 
 export PATH=~/.local/bin:$PATH
-export BYTEPS_OMP_THREAD_PER_GPU=1
-export LD_LIBRARY_PATH=$UCX_HOME/lib:$LD_LIBRARY_PATH:/opt/tiger/cuda/lib64
-export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:=1}
+export BYTEPS_OMP_THREAD_PER_GPU=0
+export LD_LIBRARY_PATH=$CUDA_HOME/lib:$UCX_HOME/lib:$LD_LIBRARY_PATH
+export DMLC_ENABLE_RDMA=${DMLC_ENABLE_RDMA:-0}
 export DMLC_NUM_WORKER=2
 export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
 export DMLC_PS_ROOT_URI=${DMLC_PS_ROOT_URI:-10.188.182.139}
@@ -47,6 +47,11 @@ if [ $1 == "server" ]; then
   exit
 fi
 
+if [ "$#" -ne 3 ]; then
+  echo "Usage: bash run_byteps_test_byteccl.sh role rank test_script"
+  exit
+fi
+BIN="$3"
 # export GDB=" gdb -ex run --args "
 export GDB=" "
 
@@ -54,10 +59,10 @@ if [ $1 == "worker" ] || [ $1 == "joint" ]; then
   export DMLC_ROLE=$1
   if [ "$TEST_TYPE" == "tensorflow" ]; then
     echo "TEST TENSORFLOW ..."
-    $GDB python3 $path/test_tensorflow_p2p.py
+    $GDB python3 $path/$BIN --rank $2
   elif [ "$TEST_TYPE" == "torch" ]; then
     echo "TEST TORCH ..."
-    python3 $path/test_torch_p2p.py --rank $2
+    python3 $path/$BIN --rank $2
   else
     echo "Error: unsupported $TEST_TYPE"
     exit 1

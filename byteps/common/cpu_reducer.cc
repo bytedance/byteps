@@ -51,7 +51,6 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
     _num_threads = 4;
   }
   if (_num_threads > 0) omp_set_num_threads(_num_threads);
-  std::cout << "BYTEPS_OMP_THREAD_PER_GPU=" << _num_threads << std::endl;
   return;
 }
 
@@ -428,6 +427,83 @@ int CpuReducer::_sum_float16(void* dst, const void* src1, const void* src2,
     Float2HalfBits(&out_float, out + i);
   }
 #endif
+  return 0;
+}
+
+int CpuReducer::div(void* dst, size_t len, DataType dtype, float alpha) {
+  switch (dtype) {
+    case BYTEPS_FLOAT32:
+      return _div(reinterpret_cast<float*>(dst), len, alpha);
+    case BYTEPS_FLOAT64:
+      return _div(reinterpret_cast<double*>(dst), len, alpha);
+    case BYTEPS_FLOAT16:
+      return _div_float16(dst, len, alpha);
+    case BYTEPS_UINT8:
+      return _div(reinterpret_cast<uint8_t*>(dst), len, alpha);
+    case BYTEPS_INT32:
+      return _div(reinterpret_cast<int32_t*>(dst), len, alpha);
+    case BYTEPS_INT8:
+      return _div(reinterpret_cast<int8_t*>(dst), len, alpha);
+    case BYTEPS_INT64:
+      return _div(reinterpret_cast<int64_t*>(dst), len, alpha);
+    default:
+      BPS_CHECK(0) << "Unsupported data type: " << dtype;
+  }
+  return 0;
+}
+
+template <typename T>
+int CpuReducer::_div(T* dst, size_t len, float alpha) {
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < len / (size_t)sizeof(T); ++i) {
+    dst[i] = dst[i] / alpha;
+  }
+  return 0;
+}
+
+int CpuReducer::_div_float16(void* dst, size_t len, float alpha) {
+  // cast dst to your float16 type
+  auto inout = reinterpret_cast<unsigned short*>(dst);
+  len = len / (size_t)2;
+
+#if __AVX__ && __F16C__
+  float mm256_alpha[8];
+  auto inv_alpha = 1.0 / alpha;
+  for (int i = 0; i < 8; ++i) mm256_alpha[i] = inv_alpha;
+
+  if (is_avx_and_f16c()) {
+    __m256 __mm256_alpha = _mm256_loadu_ps(mm256_alpha);
+#pragma omp parallel for simd num_threads(_num_threads)
+    for (size_t i = 0; i < (size_t)(len / 8) * 8; i += 8) {
+      // convert inout to m256
+      __m256 inout_m256 =
+          _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)(inout + i)));
+
+      // scale it
+      __m256 scaled_inout_m256 = _mm256_mul_ps(inout_m256, __mm256_alpha);
+
+      // convert back and store in inout
+      __m128i new_inout_m128i = _mm256_cvtps_ph(scaled_inout_m256, 0);
+      _mm_storeu_si128((__m128i*)(inout + i), new_inout_m128i);
+    }
+  }
+
+  for (size_t i = (len / 8) * 8; i < (size_t)len; ++i) {
+    float inout_float;
+    HalfBits2Float(inout + i, &inout_float);
+    inout_float *= inv_alpha;
+    Float2HalfBits(&inout_float, inout + i);
+  }
+#else
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (size_t i = 0; i < (size_t)len; ++i) {
+    float inout_float;
+    HalfBits2Float(inout + i, &inout_float);
+    inout_float *= inv_alpha;
+    Float2HalfBits(&inout_float, inout + i);
+  }
+#endif
+
   return 0;
 }
 

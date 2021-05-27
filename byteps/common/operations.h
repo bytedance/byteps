@@ -73,7 +73,8 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      std::shared_ptr<ReadyEvent> ready_event, const int device,
                      const int priority, const int version,
                      StatusCallback callback,
-                     std::shared_ptr<std::vector<QueueType>> queue_list);
+                     std::shared_ptr<std::vector<QueueType>> queue_list,
+                     ReduceOp op = REDUCE_OP_SUM);
 
 // size_output: an auxiliary output tensor. In all-to-all, when recv_split is not provided,
 // we also store the value of recv_split in `size_output`. When recv_split is provided,

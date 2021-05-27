@@ -234,7 +234,8 @@ void StartTask(::tensorflow::OpKernelContext* context,
                ::tensorflow::AsyncOpKernel::DoneCallback done,
                std::string node_name, std::shared_ptr<TFTensor> byteps_input,
                std::shared_ptr<TFTensor> byteps_output,
-               std::shared_ptr<common::ReadyEvent> ready_event) {
+               std::shared_ptr<common::ReadyEvent> ready_event,
+               common::ReduceOp op) {
   auto& byteps_context = common::GetContextFromName(node_name);
   auto device = GetDeviceID(context);
   auto size = byteps_input->size();
@@ -258,17 +259,27 @@ void StartTask(::tensorflow::OpKernelContext* context,
                       context->SetStatus(ConvertStatus(status));
                       done();
                     },
-                    queue_list);
+                    queue_list, op);
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
 }
 
 class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
   private:
      std::string input_tensor_name;
+     std::string op;
+     common::ReduceOp reduce_op;
  public:
   explicit BytePSPushPullOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
           context->GetAttr("input_name", &input_tensor_name);
+          context->GetAttr("op", &op);
+          if (op == std::string("average")) {
+            reduce_op = common::REDUCE_OP_AVERAGE;
+          } else if (op == std::string("sum")) {
+            reduce_op = common::REDUCE_OP_SUM;
+          } else {
+            throw std::logic_error("operation type.");
+          }
       }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -296,10 +307,11 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
 
     auto& bps_context = common::GetContextFromName(tmp_name);
     if (bps_context.initialized) {
-      StartTask(context, done, tmp_name, bps_input, bps_output, ready_event);
+      StartTask(context, done, tmp_name, bps_input, bps_output, ready_event,
+                reduce_op);
     } else {
       std::thread t(StartTask, context, done, tmp_name, bps_input, bps_output,
-                    ready_event);
+                    ready_event, reduce_op);
       t.detach();
     }
   }
@@ -314,6 +326,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
 REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Attr("input_name: string = 'default_tensor_name'")
+    .Attr("op: string = 'average'")
     .Input("tensor: T")
     .Output("sum: T")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {

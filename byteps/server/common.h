@@ -22,6 +22,7 @@ namespace server {
 enum class RequestType {
   kDefaultPushPull,
   kLeaderPushPull,
+  kLeaderPushPullAvg,
   kRowSparsePushPull,
   kCompressedPushPull,
   kDefaultSend,

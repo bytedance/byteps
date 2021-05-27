@@ -30,14 +30,11 @@ from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu
 from byteps.tensorflow.ops import send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
+from byteps.tensorflow.ops import Average, Sum, Adasum
 from byteps.tensorflow.util import _executing_eagerly
 
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
-
-Average = "Average"
-Sum = "Sum"
-Adasum = "Adasum"
 
 def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
               compression=Compression.none, op=None, enable_async=False,
@@ -66,21 +63,21 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
         A tensor of the same shape and type as `tensor`, summed across all
         processes.
     """
-    op = handle_average_backwards_compatibility(op, average).value
-    # Averaging happens in framework code, so translate that to Sum for the actual call
-    true_op = Sum if op == Average else op
+    op = handle_average_backwards_compatibility(op, average)
 
     with tf.device(device_dense):
         byteps_size = tf.cast(size(), dtype=tensor.dtype)
         tensor_compressed, ctx = compression.compress(tensor)
-        summed_tensor_compressed = _push_pull(tensor_compressed, scope, name)
-        summed_tensor = compression.decompress(summed_tensor_compressed, ctx)
-        if not enable_async:
-            _div = tf.div if hasattr(tf, 'div') else tf.math.divide
-            new_tensor = (_div(summed_tensor, byteps_size)
-                          if op == Average else summed_tensor)
-        else: # no need to average for async training
-            new_tensor = summed_tensor
+        reduced_tensor_compressed = _push_pull(tensor_compressed, scope, name, op)
+        reduced_tensor = compression.decompress(reduced_tensor_compressed, ctx)
+        if enable_async: # no need to average for async training
+            new_tensor = reduced_tensor
+        else:
+            # c++ gradient compressors does not support performing average on
+            # the server side. For MXNet and PyTorch, we need to check if a
+            # particular tensor has registered c++ compressor. If so, we need to
+            # disable server-side averaging.
+            new_tensor = reduced_tensor
     return new_tensor
 
 

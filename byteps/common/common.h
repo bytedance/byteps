@@ -131,6 +131,12 @@ enum OperationType {
   P2P_OP,
 };
 
+enum ReduceOp {
+  REDUCE_OP_AVERAGE,
+  REDUCE_OP_SUM,
+  REDUCE_OP_UNKNOWN,
+};
+
 const int QueueNum =
     (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
 
@@ -325,6 +331,7 @@ struct TensorTableEntry {
   std::vector<int> offset_list;
   // list of involved keys, used for alltoall only
   std::vector<uint64_t> key_list;
+  ReduceOp reduce_op;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
 

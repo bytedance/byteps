@@ -47,6 +47,7 @@ class CpuReducer {
   int sum(void* dst, const void* src, size_t len, DataType dtype, float alpha);
   int sum(void* dst, const void* src1, const void* src2, size_t len,
           DataType dtype, float alpha);
+  int div(void* data, size_t len, DataType dtype, float alpha);
 
   int copy(void* dst, const void* src, size_t len);
 
@@ -187,9 +188,13 @@ class CpuReducer {
   template <typename T>
   int _sum(T* dst, const T* src1, const T* src2, size_t len, float alpha);
 
+  template <typename T>
+  int _div(T* dst, size_t len, float alpha);
+
   int _sum_float16(void* dst, const void* src, size_t len, float alpha);
   int _sum_float16(void* dst, const void* src1, const void* src2, size_t len,
                    float alpha);
+  int _div_float16(void* dst, size_t len, float alpha);
 
   float _convert_half_to_full_precision(uint16_t h);
   uint16_t _convert_full_to_half_precision(float f);

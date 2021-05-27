@@ -217,6 +217,7 @@ void PartitionTensor(
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
     CHECK(e->queue_idx >= 0 && e->queue_idx < BytePSGlobal::GetLoopParallel()) << e->queue_idx;
+    e->reduce_op = entry->reduce_op;
     if (!entry->context->compressor_list.empty()) {
       e->compressor = entry->context->compressor_list[i];
     }
@@ -407,7 +408,8 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      std::shared_ptr<ReadyEvent> ready_event, const int device,
                      const int priority, const int version,
                      StatusCallback callback,
-                     std::shared_ptr<std::vector<QueueType>> queue_list) {
+                     std::shared_ptr<std::vector<QueueType>> queue_list,
+                     ReduceOp op) {
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
@@ -438,6 +440,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->priority = priority;
   e->version = version;
   e->callback = callback;
+  e->reduce_op = op;
 
   // send/recv ops do not need gpu_ptr
   if (device == CPU_DEVICE_ID && context.op_type == PUSH_PULL_OP) {

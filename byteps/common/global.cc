@@ -412,7 +412,6 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
     const char* role_val = getenv("DMLC_ROLE");
     CHECK(role_val) << "DMLC_ROLE is not set";
     ps::Node::Role ps_role = ps::GetRole(std::string(role_val));
-    BPS_CHECK(_worker_id >= 0) << "rank must be larger than 0: " << _worker_id;
     auto val = getenv("DMLC_GROUP_SIZE");
     int group_size = val ? atoi(val) : 1;
     BPS_LOG(DEBUG) << "Initializing PS worker. rank=" << _worker_id

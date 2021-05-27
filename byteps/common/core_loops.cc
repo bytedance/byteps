@@ -814,11 +814,15 @@ bool RunPushLoopOnce() {
       ps::SArray<char> vals(data, len, false);
 
 
-      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, CPU);
+      int output_device = task->device == CPU_DEVICE_ID ? CPU : GPU;
+      int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, output_device);
+      if (task->reduce_op == REDUCE_OP_AVERAGE) {
+        cmd = server::GetCommandType(server::RequestType::kLeaderPushPullAvg, dtype, output_device);
+      }
       auto &pskv = BytePSGlobal::EncodeDefaultKey(task->key, len);
       BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
                                    [task, q]() { FinishOrProceed(task); });
-    BPS_LOG(TRACE) << " push finished for key=" << task->key;
+      BPS_LOG(TRACE) << " push finished for key=" << task->key;
     } else {
       // This is a dummy barrier for IsCrossPcieSwitch()
       BPS_CHECK(BytePSGlobal::IsCrossPcieSwitch());
@@ -1242,7 +1246,7 @@ bool RunCpuCopyLoopOnce() {
   auto len = task->len;
   auto offset = task->offset;
   reducer->copy((void *)((char *)(task->cpubuff) + offset),
-                  (char *)((task->tensor->data()) + offset), len);
+                  (char *)(task->tensor->data()) + offset, len);
 
   FinishOrProceed(task);
   return true;
@@ -1448,7 +1452,7 @@ bool RunCpuBcastLoopOnce() {
     BPS_LOG(TRACE) << "dst " << (void *) ((char *)(task->cpubuff) + offset)
       << " src " << (void *) ((task->numa_cpubuff[local_root]) + offset) ;
     reducer->copy((void *)((char *)(task->output->data()) + offset),
-                  (char *)((task->numa_cpubuff[local_root]) + offset), len);
+                  (char *)(task->numa_cpubuff[local_root]) + offset, len);
 
     BytePSCommSignal sig = CPU_BCAST_DONE;
     struct BytePSCommMsg msg = {my_lrank, sig, key};

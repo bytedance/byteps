@@ -95,7 +95,11 @@ class ReduceOps(Enum):
     # averaging is taken care of there.
     Average = "Average"
     Sum = "Sum"
-    Adsum = "Adsum"
+    Adasum = "Adasum"
+
+Average = ReduceOps.Average
+Sum = ReduceOps.Sum
+Adasum = ReduceOps.Adasum
 
 handle_average_backwards_compatibility = get_average_backwards_compatibility_fun(ReduceOps)
 
@@ -108,7 +112,7 @@ def randomString(stringLength=16):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
-def _push_pull(tensor, scope='', name=None):
+def _push_pull(tensor, scope='', name=None, op=Average):
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
     shape must be the same on all BytePS processes for a given name. The reduction
@@ -133,7 +137,8 @@ def _push_pull(tensor, scope='', name=None):
         full_name = "empty_name_" + randomString()
     full_name_ascii = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
-    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name,
+                                  op=op.value.lower())
 
 def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_size=False,
               compression=None):

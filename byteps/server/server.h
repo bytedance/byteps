@@ -136,6 +136,7 @@ class BytePSServer {
 
     static size_t num_phy_node_;
     static size_t num_expected_workers_;
+    static size_t num_byteps_workers_;
 
     // received tensor info
     static std::unordered_map<uint64_t, RecvArray> recved_partitions_;

@@ -51,6 +51,7 @@ std::mutex BytePSServer::recved_partitions_mu_;
 
 size_t BytePSServer::num_phy_node_;
 size_t BytePSServer::num_expected_workers_;
+size_t BytePSServer::num_byteps_workers_;
 
 // debug
 uint64_t BytePSServer::debug_key_;
@@ -282,6 +283,11 @@ void BytePSServer::BytePSServerEngineThread(int i) {
       } break;
 
       case ALL_RECV: {
+        auto bps_type = bps_reducer_->GetDataType(msg.type.dtype);
+        if (msg.type.requestType == RequestType::kLeaderPushPullAvg) {
+          CHECK_GE(bps_reducer_->div(msg.dst, msg.len, bps_type,
+                                     num_byteps_workers_ * 1.0), 0);
+        }
         std::lock_guard<std::mutex> lock(flag_mu_[i]);
         if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
           is_push_finished_[i][msg.key] = false;
@@ -447,7 +453,8 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
     P2PHandler(req_meta, req_data, server);
     return;
   }
-  if (type.requestType == RequestType::kLeaderPushPull) {
+  if (type.requestType == RequestType::kLeaderPushPull
+      || type.requestType == RequestType::kLeaderPushPullAvg) {
     num_expected_workers_ = num_phy_node_;
   } else {
     num_expected_workers_ = (size_t) ps::NumWorkers();
@@ -715,10 +722,15 @@ void BytePSServer::init_global_env() {
     auto local_size_str = getenv("BYTEPS_LOCAL_SIZE");
     CHECK(local_size_str);
     num_phy_node_ = atoi(num_worker_str) / atoi(local_size_str);
-  } else {
+    num_byteps_workers_ = atoi(num_worker_str);
+  } else if (role_str != "scheduler") {
+    auto local_size_str = getenv("BYTEPS_LOCAL_SIZE");
+    CHECK(local_size_str);
     num_phy_node_ = atoi(num_worker_str);
+    num_byteps_workers_ = atoi(num_worker_str) * atoi(local_size_str);
   }
   LOG(INFO) << "Using num_phy_node " << num_phy_node_;
+  LOG(INFO) << "Using num_byteps_workers_ " << num_byteps_workers_;
 }
 
 
