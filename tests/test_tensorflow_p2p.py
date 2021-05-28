@@ -275,7 +275,10 @@ class TensorFlowTests:
             else:
                 alltoall_fn = bps.alltoall_cpu2gpu
         else:
-            alltoall_fn = bps.alltoall
+            if src_gpu:
+                alltoall_fn = bps.alltoall_gpu2cpu
+            else:
+                alltoall_fn = bps.alltoall
         while niter < total_niter:
             if args.backend == 'byteps':
                 name = 'data_'
@@ -398,6 +401,7 @@ if is_direct_resp == 0:
     tests.test_all2all_cpu2gpu()
     tests.test_all2all_benchmark()
     tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
+    tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
     tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
 
 time.sleep(1)

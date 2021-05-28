@@ -219,6 +219,46 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
     return tensor_decompressed, recved_size
 
 
+def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None,
+                      with_size=False, compression=None):
+    assert splits is not None
+    # For now, `splits` is required.
+    if name is None and not _executing_eagerly():
+        name = 'BytePSAlltoAll_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + name + "_gpu2cpu"
+    full_name = full_name.encode("ascii")
+
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(ctypes.c_char_p(full_name))
+    if recv_splits is None:
+        recv_split_unknown = True
+        recv_splits = splits    
+    else:
+        recv_split_unknown = False
+
+    # compress if needed
+    tensor_compressed, dtype = compression.compress(tensor)
+    recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
+                                                              name=name, input_name=full_name,
+                                                              recv_split_unknown=recv_split_unknown)
+    tensor_decompressed = compression.decompress(recved_data, dtype)
+    if not with_size:
+        return tensor_decompressed
+    # TODO: recved_size returned from the op might not be set when recv_split is given. Here we directly
+    # return recv_splits back to the user instead
+    if not recv_split_unknown:
+        recved_size = recv_splits
+    return tensor_decompressed, recved_size
+
+
 @ops.RegisterGradient('BytepsAlltoall')
 def _alltoall_grad(op, grad, recv_bytes):
     """Gradient for alltoall op.

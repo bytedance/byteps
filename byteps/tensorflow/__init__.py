@@ -26,7 +26,7 @@ import warnings
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
 from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_speed
-from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu
+from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu, _alltoall_gpu2cpu
 from byteps.tensorflow.ops import send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
@@ -140,6 +140,37 @@ def alltoall_cpu2gpu(tensor, splits, recv_splits=None, scope='', name=None,
       If with_size is True, return the received splits.
     """
     results = _alltoall_cpu2gpu(tensor, scope, splits=splits, recv_splits=recv_splits,
+                                name=name, with_size=with_size, compression=compression)
+    return results
+
+def alltoall_gpu2cpu(tensor, splits, recv_splits=None, scope='', name=None,
+                     with_size=False, compression=Compression.none):
+    """An op that scatters slices of the input tensor to all other BytePS processes
+    and returns a tensor of gathered slices from all other BytePS processes.
+    The slicing is done on the first dimension, so the input tensors on the
+    different processes must have the same rank and shape, except for the first
+    dimension, which is allowed to be different. Different from `alltoall`, this
+    operator sends tensor on GPUs to remote CPUs.
+
+    Arguments:
+        tensor: A tensor to distribute with alltoall on GPU
+        splits: A tensor of integers in rank order describing how many
+                elements in `tensor` to send to each worker.  Splitting is
+                applied along the first dimension of `tensor` on GPU
+        recv_splits: A tensor of integers in rank order describing how many
+                elements in `tensor` to receive from each worker.  Splitting is
+                applied along the first dimension of other ranks' `tensor` on GPU
+        name: A name of the alltoall operation.
+        with_size: return the `recv_splits`
+
+    Returns:
+      A tensor of the same type as `tensor` on CPU, concatenated on dimension zero
+      across all processes. The shape is identical to the input shape, except for
+      the first dimension, which may be greater and is the sum of all first
+      dimensions of the gathered tensor slices from different BytePS processes.
+      If with_size is True, return the received splits.
+    """
+    results = _alltoall_gpu2cpu(tensor, scope, splits=splits, recv_splits=recv_splits,
                                 name=name, with_size=with_size, compression=compression)
     return results
 

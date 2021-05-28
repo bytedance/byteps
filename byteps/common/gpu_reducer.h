@@ -30,19 +30,41 @@ class GpuReducer {
  public:
   GpuReducer() { InitStream(); }
   int copy_h2d(void* dst, const void* src, size_t len);
+  int copy_d2h(void* dst, const void* src, size_t len);
   int copy_d2d(void* dst, const void* src, size_t len);
+
+#if BYTEPS_BUILDING_CUDA == 1
+  ~GpuReducer() {
+    if (_h2d_stream) {
+      CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
+      free(_h2d_stream);
+    }
+    if (_d2h_stream) {
+      CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
+      free(_d2h_stream);
+    }
+    if (_d2d_stream) {
+      CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
+      free(_d2d_stream);
+    }
+  }
+#endif // BYTEPS_BUILDING_CUDA == 1
 
  private:
 #if BYTEPS_BUILDING_CUDA == 1
   cudaStream_t* _h2d_stream = NULL;
+  cudaStream_t* _d2h_stream = NULL;
   cudaStream_t* _d2d_stream = NULL;
 
   void InitStream() {
     _h2d_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t));
+    _d2h_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t));
     _d2d_stream = (cudaStream_t*) malloc(sizeof(cudaStream_t));
     CUDA_CALL(cudaStreamCreateWithFlags(_h2d_stream, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(_d2h_stream, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamCreateWithFlags(_d2d_stream, cudaStreamNonBlocking));
     CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
+    CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
     CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
   }
 #else

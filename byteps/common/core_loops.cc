@@ -902,7 +902,11 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
     auto src_addr = ((char*)(task->tensor->data())) + offset;
     auto dst_addr = ((char*)(tensor->data())) + task->offset_list[sender];
     if (is_recv_cpu) {
-      BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+      if (is_send_cpu) {
+        BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+      } else {
+        BytePSGlobal::GetGpuReducer()->copy_d2h(dst_addr, src_addr, len);
+      }
     } else {
       // XXX it only happens with CPU-GPU alltoall.
       if (is_send_cpu) {
@@ -913,7 +917,7 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
     }
     return;
   }
-  auto gpu_addr = (char*)(tensor->data()) + task->offset_list[sender];
+  auto dst_addr = (char*)(tensor->data()) + task->offset_list[sender];
   auto recv_arr = server::BytePSServer::GetRecvPartition(key);
   int recv_len = recv_arr.len;
   void* recv_addr = recv_arr.val.data();
@@ -924,10 +928,10 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
       << " send_cpu=" << is_send_cpu;
   CHECK(recv_addr != nullptr) << key;
   if (is_recv_cpu) {
-    BytePSGlobal::GetCpuReducer()->copy(gpu_addr, recv_addr, recv_len);
+    BytePSGlobal::GetCpuReducer()->copy(dst_addr, recv_addr, recv_len);
   } else {
     // ps-lite buffer is already on GPU
-    BytePSGlobal::GetGpuReducer()->copy_d2d(gpu_addr, recv_addr, recv_len);
+    BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, recv_addr, recv_len);
   }
   return;
 }
@@ -940,7 +944,8 @@ bool RunP2PCopyHost2DeviceLoopOnce() {
     if (!BytePSGlobal::IsSkipH2D()) {
       P2PCopyHost2Device(task);
     }
-    if (BytePSGlobal::IsDirectResponse() == 0 && task->context->sender != BytePSGlobal::GetRank()) {
+    if (BytePSGlobal::IsDirectResponse() == 0 
+        && task->context->sender != BytePSGlobal::GetRank()) {
       server::BytePSServer::SendPushResponse(task->key);
     }
     FinishOrProceedLite(task);

@@ -42,6 +42,18 @@ int GpuReducer::copy_h2d(void* dst, const void* src, size_t len) {
   return 0;
 }
 
+int GpuReducer::copy_d2h(void* dst, const void* src, size_t len) {
+#if BYTEPS_BUILDING_CUDA == 1
+  CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
+    (cudaMemcpyKind) cudaMemcpyDeviceToHost,
+    (cudaStream_t)*_d2h_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
+#else
+  BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+#endif // BYTEPS_BUILDING_CUDA == 1
+  return 0;
+}
+
 }  // namespace common
 }  // namespace byteps
 
