@@ -125,6 +125,7 @@ unsigned int BytePSGlobal::_built_in_hash_coefficient;
 volatile bool BytePSGlobal::_mixed_mode = false;
 
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
+bool BytePSGlobal::_should_sample = false;
 std::atomic_int BytePSGlobal::joined_thread_cnt;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType, int index) {
@@ -398,6 +399,7 @@ void BytePSGlobal::Init() {
   BPS_LOG(DEBUG) << "my_pid " << getpid();
 
   if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
+    _should_sample = true;
     _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
   }
   return;

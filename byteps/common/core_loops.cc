@@ -893,18 +893,23 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
   auto offset = task->offset;
   int sender = task->context->sender;
   int my_rank = BytePSGlobal::GetRank();
-  bool is_cpu = tensor->device() == CPU_DEVICE_ID;
+  bool is_recv_cpu = tensor->device() == CPU_DEVICE_ID;
+  bool is_send_cpu = task->tensor->device() == CPU_DEVICE_ID;
   if (sender == my_rank) {
     // copy to myself
     BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
-                   << " len=" << len << " cpu=" << is_cpu << " device=" << tensor->device();
+                   << " len=" << len << " cpu=" << is_recv_cpu << " device=" << tensor->device();
     auto src_addr = ((char*)(task->tensor->data())) + offset;
     auto dst_addr = ((char*)(tensor->data())) + task->offset_list[sender];
-    if (is_cpu) {
+    if (is_recv_cpu) {
       BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
     } else {
       // XXX it only happens with CPU-GPU alltoall.
-      BytePSGlobal::GetGpuReducer()->copy_h2d(dst_addr, src_addr, len);
+      if (is_send_cpu) {
+        BytePSGlobal::GetGpuReducer()->copy_h2d(dst_addr, src_addr, len);
+      } else {
+        BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, len);
+      }
     }
     return;
   }
@@ -914,12 +919,14 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
   void* recv_addr = recv_arr.val.data();
   BPS_CHECK(recv_len == len) << recv_len << ", " << len;
   // update the output (data)
-  BPS_LOG(TRACE) << "H2D key=" << key << (long long) recv_addr << " len=" << len << " cpu=" << is_cpu;
+  BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) recv_addr 
+      << " len=" << len << " recv_cpu=" << is_recv_cpu
+      << " send_cpu=" << is_send_cpu;
   CHECK(recv_addr != nullptr) << key;
-  if (is_cpu) {
+  if (is_recv_cpu) {
     BytePSGlobal::GetCpuReducer()->copy(gpu_addr, recv_addr, recv_len);
   } else {
-    // XXX it only happens with CPU-GPU alltoall. ps-lite buffer is already on GPU
+    // ps-lite buffer is already on GPU
     BytePSGlobal::GetGpuReducer()->copy_d2d(gpu_addr, recv_addr, recv_len);
   }
   return;
@@ -933,7 +940,7 @@ bool RunP2PCopyHost2DeviceLoopOnce() {
     if (!BytePSGlobal::IsSkipH2D()) {
       P2PCopyHost2Device(task);
     }
-    if (BytePSGlobal::IsDirectResponse() == 0) {
+    if (BytePSGlobal::IsDirectResponse() == 0 && task->context->sender != BytePSGlobal::GetRank()) {
       server::BytePSServer::SendPushResponse(task->key);
     }
     FinishOrProceedLite(task);
@@ -1138,7 +1145,6 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
     int num_ranks = task->pcie_cpubuff.size();
     const int dtype = task->tensor->dtype();
     bool output_size_unknown = task->output == nullptr;
-    BPS_CHECK(task->tensor->device() == CPU_DEVICE_ID) << "GPU send is not implemented yet";
     // task->device denotes the output device,
     // while task->tensor->device() denotes the input devices
     int output_device = task->device == CPU_DEVICE_ID ? CPU : GPU;
@@ -1174,17 +1180,38 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
         // split != 0. Do a copy followed by send
         const char* data = (const char*) task->tensor->data();
         auto offset = task->offset_list[i];
-        char* cpubuff = (char*) task->pcie_cpubuff[i];
-        CHECK(cpubuff != nullptr);
-        CopyD2H(cpubuff, data + offset, len, true);
-        // perform send. false means not to delete data when SArray is deleted
-        ps::SArray<char> vals(cpubuff, len, false);
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
-        BPS_CHECK(BytePSGlobal::IsDirectResponse() == 2);
-        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd);
+        char* tensor;
+        if (task->tensor->device() == CPU_DEVICE_ID 
+            && BytePSGlobal::IsDirectResponse() == 2) {
+          char* cpubuff = (char*) task->pcie_cpubuff[i];
+          CHECK(cpubuff != nullptr);
+          CopyD2H(cpubuff, data + offset, len, true);
+          tensor = cpubuff;
+        } else {
+          BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
+          tensor = (char*) data + offset;
+        }
+        // perform send. false means not to delete data when SArray is deleted
+        ps::SArray<char> vals(tensor, len, false);
+        if (BytePSGlobal::IsDirectResponse() == 2) {
+          BytePSGlobal::GetPS(index)
+            ->ZPush(pskv.keys, vals, pskv.lens, cmd);
+        } else { // should be 0 for now
+          BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
+          BytePSGlobal::GetPS(index)
+            ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
+              int v = task->counter_a2a.get()->fetch_sub(1);
+              if (v == 1) {
+                FinishOrProceedLite(task);
+              }
+            });
+        }
       }
     }
-    FinishOrProceedLite(task);
+    if (BytePSGlobal::IsDirectResponse() != 0) {
+      FinishOrProceedLite(task);
+    }
     return true;
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));

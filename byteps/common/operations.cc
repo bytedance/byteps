@@ -284,6 +284,11 @@ Status EnqueueAlltoAllTensor(std::string& name,
       has_send = true;
     } else if (i != my_rank && size != 0) {
       has_send = true;
+      // avoid init shared_ptr if has_send == false
+      if (!send_task->counter_a2a.get()) { 
+        send_task->counter_a2a = std::make_shared<std::atomic_int>(0);
+      }
+      send_task->counter_a2a.get()->fetch_add(1);
     }
   }
   if (has_send) {
@@ -343,7 +348,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
     int size = unit_size * (recv_begin[i + 1] - recv_begin[i]);
     std::string name_i = name_prefix + std::to_string(i) + recv_name_suffix;
     auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank, false);
+    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank, recv_on_gpu);
     tensor_key = (byteps_context.key_list[0] << 32) >> 48;
     recv_task->offset_list.push_back(recv_begin[i + 1] * unit_size);
     if (output_size_unknown) {

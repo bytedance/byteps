@@ -331,6 +331,9 @@ struct TensorTableEntry {
   std::vector<int> offset_list;
   // list of involved keys, used for alltoall only
   std::vector<uint64_t> key_list;
+  // counter of alltoall
+  std::shared_ptr<std::atomic_int> counter_a2a;
+  // Reduce Op
   ReduceOp reduce_op;
 };
 using TensorTable = std::unordered_map<std::string, TensorTableEntry>;

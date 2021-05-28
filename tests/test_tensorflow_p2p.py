@@ -6,6 +6,10 @@ import os
 import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')
 parser.add_argument('--backend', type=str, default='byteps')
+parser.add_argument('--iter', type=int, default=250)
+
+# no usage for now, temporarily add for compat
+parser.add_argument('--rank', type=int, default=-1) 
 
 args = parser.parse_args()
 if args.backend == 'byteps':
@@ -16,6 +20,8 @@ else:
     bps.init()
 
 print(bps)
+
+args.iter = int(os.environ.get('NUM_ITER', args.iter))
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -79,7 +85,7 @@ class TensorFlowTests:
                 niter += 1
 
 
-    def test_all2all(self, total_niter=1000, compression=bps.Compression.none):
+    def test_all2all(self, total_niter=100, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         print('test_all2all', flush=True)
         rank = self.rank
@@ -114,7 +120,7 @@ class TensorFlowTests:
                         index = end
                     niter += 1
 
-    def test_all2all_cpu2gpu(self, total_niter=1000, compression=bps.Compression.none):
+    def test_all2all_cpu2gpu(self, total_niter=100, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         print('test_all2all_cpu2gpu', flush=True)
         rank = self.rank
@@ -136,7 +142,7 @@ class TensorFlowTests:
                     splits = tf.constant(splits_list, dtype=idx_dtype)
                     recv_splits = tf.constant(recv_splits_list, dtype=idx_dtype)
                     tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                result = bps.alltoall_cpu2gpu(tensor, splits=splits, recv_splits=recv_splits, name=f'test_iter{niter % 10}',
+                result = bps.alltoall_cpu2gpu(tensor, splits=splits, recv_splits=recv_splits, name=f'test_iter_c2g_{niter % 10}',
                                               compression=compression)
                 print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
                 index = 0
@@ -229,8 +235,19 @@ class TensorFlowTests:
             raise RuntimeError
         print('test_send_recv DONE', flush=True)
 
+    def validate_a2a(self, recv_splits_list, result, size, rank):
+        index = 0
+        for i in range(size):
+            begin = index
+            end = index + recv_splits_list[i]
+            subset = result[begin:end]
+            val = i + 1
+            assert np.sum(subset != val) == 0, (subset, val, result)
+            index = end
+        print(f'rank {rank} result is correct')
+
     # TODO: test other dtypes
-    def test_all2all_benchmark(self, total_niter=250, dst_gpu=False):
+    def test_all2all_benchmark(self, total_niter=args.iter, dst_gpu=False, src_gpu=False):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         dtype, int_dtype = tf.float32, tf.int32
         if args.backend == 'byteps':
@@ -246,16 +263,33 @@ class TensorFlowTests:
         splits_list = list(p2p_matrix[rank])
         recv_splits_list = list(p2p_matrix[:, rank])
         print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
-        with tf.device("/cpu:0"):
-            splits = tf.constant(splits_list, dtype=int_dtype)
-            recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
+        splits = tf.constant(splits_list, dtype=int_dtype)
+        recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
+        with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
             tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
         t0 = time.time()
         interval = 10
-        alltoall_fn = bps.alltoall_cpu2gpu if dst_gpu else bps.alltoall
+        if dst_gpu:
+            if src_gpu:
+                alltoall_fn = bps.alltoall
+            else:
+                alltoall_fn = bps.alltoall_cpu2gpu
+        else:
+            alltoall_fn = bps.alltoall
         while niter < total_niter:
             if args.backend == 'byteps':
-                result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name='data')
+                name = 'data_'
+                if src_gpu:
+                    if dst_gpu:
+                        name += 'g2g'
+                    else:
+                        name += 'g2c'
+                else:
+                    if dst_gpu:
+                        name += 'c2g'
+                    else:
+                        name += 'c2c'
+                result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=name)
             else:
                 result = bps.alltoall(tensor, splits=splits)
             niter += 1
@@ -265,6 +299,8 @@ class TensorFlowTests:
                 goodput = total_len*32*interval/(t1-t0)/1000000000
                 print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
                 t0 = time.time()
+        print(f'Finish all2all_benchmark, srcdev={tensor.device}, dstdev={result.device}')
+        self.validate_a2a(recv_splits_list, result, size, rank)
 
     def test_all2all_fused_graph(self, total_niter=20, num_slots=20, num_groups=1):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
@@ -318,7 +354,8 @@ class TensorFlowTests:
                 niter += 1
 
     def test_allreduce(self):
-        total_niter = 1000
+        print('test_allreduce', flush=True)
+        total_niter = 10
         dtype = tf.float32
         rank = bps.rank()
         size = bps.size()
@@ -346,15 +383,21 @@ tests = TensorFlowTests()
 # tests.test_self_send_recv()
 # tests.test_send_recv()
 
+# TODO: remove this when we fix direct response
+is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
 
 tests.test_allreduce()
-tests.test_all2all()
-tests.test_all2all(compression=bps.Compression.fp16)
 
-tests.test_all2all_no_recv_splits()
-tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
-tests.test_all2all_benchmark()
+if is_direct_resp == 2:
+    tests.test_all2all()
+    tests.test_all2all(compression=bps.Compression.fp16)
+    tests.test_all2all_no_recv_splits()
+    tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
 
-tests.test_all2all_cpu2gpu()
-tests.test_all2all_benchmark(dst_gpu=True)
+if is_direct_resp == 0:
+    tests.test_all2all_cpu2gpu()
+    tests.test_all2all_benchmark()
+    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
+    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
+
 time.sleep(1)

@@ -164,7 +164,7 @@ class BytePSGlobal {
   static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
   static std::shared_ptr<GpuReducer> GetGpuReducer() { return _gpu_reducer; }
 
-  static bool IsTensorSampled(uint64_t key) { return (key == _sample_key); }
+  static bool IsTensorSampled(uint64_t key) { return _should_sample && (key == _sample_key); }
 
   static void SetProfileFlag(BPSContext* ctxt);
   static void EmitTrace(std::ostream* os, const BPSCommTime* ret,
@@ -293,7 +293,7 @@ class BytePSGlobal {
 
   // for debug sampling
   static uint64_t _sample_key;
-
+  static bool _should_sample;
 
   static int AlignTo(int input, int alignment) {
     return input / alignment * alignment;

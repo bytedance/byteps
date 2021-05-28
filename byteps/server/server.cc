@@ -349,6 +349,7 @@ void BytePSServer::BytePSServerEngineThread(int i) {
 
 void BytePSServer::SendPushResponse(uint64_t key) {
   std::lock_guard<std::mutex> lk(req_meta_mu_);
+  CHECK_NE(response_meta_.find(key), response_meta_.end()) << key;
   auto response_meta = response_meta_[key];
   SendPushResponse(key, response_meta.first, response_meta.second);
 }

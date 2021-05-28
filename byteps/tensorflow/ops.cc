@@ -706,6 +706,12 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
 REGISTER_KERNEL_BUILDER(Name("BytepsAlltoall").Device(::tensorflow::DEVICE_CPU),
                         BytepsAllToAllOp<false>);
 
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoall").Device(::tensorflow::DEVICE_GPU)
+                                                  .HostMemory("splits")
+                                                  .HostMemory("recv_splits")
+                                                  .HostMemory("recv_bytes"),
+                        BytepsAllToAllOp<false>);
+
 REGISTER_OP("BytepsAlltoall")
     .Attr(
         "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
