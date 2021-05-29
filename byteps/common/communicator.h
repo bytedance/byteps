@@ -161,7 +161,7 @@ class BytePSCommSocket : public BytePSComm {
   void startListenThread();
   int initSocket(int rank, const std::string& path);
 
-  std::thread* _listen_thread;
+  std::thread* _listen_thread = nullptr;
 
   std::string _send_path;
   std::string _recv_path;
