@@ -53,7 +53,6 @@ void byteps_lazy_init() {
 
   // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
-    multi_func.push_back(SendLoop);
     func.push_back(P2PCopyHost2DeviceLoop);
     multi_func.push_back(P2PCopyDevice2HostLoop);
     multi_func.push_back(P2PCopyDevice2HostSendLoop);
@@ -101,12 +100,10 @@ void byteps_lazy_init() {
   if (BytePSGlobal::IsRootDevice()) {
     func.push_back(CpuCopyLoop);
     func.push_back(CpuReduceLoop);
-    func.push_back(CpuReduceFinishLoop);
     func.push_back(CpuBcastLoop);
     func.push_back(CpuBcastFinishLoop);
   } else {
     func.push_back(CpuCopyLoop);
-    func.push_back(CpuCoordinateLoop);
     func.push_back(CpuReduceLoop);
     func.push_back(CpuBcastLoop);
   }
@@ -857,10 +854,8 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueListCPU(int device) {
   if (BytePSGlobal::IsRootDevice()) {
     queue_list->push_back(CPU_COPY);
     queue_list->push_back(CPU_REDUCE);
-    queue_list->push_back(CPU_REDUCE_FINISH);
   } else {
     queue_list->push_back(CPU_COPY);
-    queue_list->push_back(COORDINATE_CPU_REDUCE);
     queue_list->push_back(CPU_REDUCE);
   }
 

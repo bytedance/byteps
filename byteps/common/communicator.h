@@ -53,7 +53,6 @@ enum BytePSCommSignal {
   DO_COPYH2D,
   CPU_REDUCE_READY,
   DO_CPU_REDUCE,
-  CPU_REDUCE_DONE,
   DO_CPU_BCAST,
   CPU_BCAST_DONE
 };
@@ -70,7 +69,6 @@ SigLogStrings = {
   "DO_COPYH2D",
   "CPU_REDUCE_READY",
   "DO_CPU_REDUCE",
-  "CPU_REDUCE_DONE",
   "DO_CPU_BCAST",
   "CPU_BCAST_DONE",
 };

@@ -145,7 +145,6 @@ class BytePSGlobal {
   static ReadyTable* GetBroadcastTable() { return _broadcast_table; }
   static ReadyTable* GetPushTable() { return _push_table; }
   static ReadyTable* GetCpuReduceTable() { return _cpu_reduce_table; }
-  static ReadyTable* GetCpuReduceFinishTable() { return _cpu_reduce_finish_table; }
   static ReadyTable* GetCpuBcastTable() { return _cpu_bcast_table; }
   static ReadyTable* GetCpuBcastFinishTable() { return _cpu_bcast_finish_table; }
 
@@ -274,7 +273,6 @@ class BytePSGlobal {
   static ReadyTable* _broadcast_table;
   static ReadyTable* _push_table;
   static ReadyTable* _cpu_reduce_table;
-  static ReadyTable* _cpu_reduce_finish_table;
   static ReadyTable* _cpu_bcast_table;
   static ReadyTable* _cpu_bcast_finish_table;
 

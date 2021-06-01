@@ -92,7 +92,6 @@ ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
 ReadyTable* BytePSGlobal::_push_table;
 ReadyTable* BytePSGlobal::_cpu_reduce_table;
-ReadyTable* BytePSGlobal::_cpu_reduce_finish_table;
 ReadyTable* BytePSGlobal::_cpu_bcast_table;
 ReadyTable* BytePSGlobal::_cpu_bcast_finish_table;
 ReadyTable* BytePSGlobal::_copy_table;
@@ -116,8 +115,10 @@ cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
 std::string BytePSGlobal::_uuid;
+// reduction
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 std::shared_ptr<GpuReducer> BytePSGlobal::_gpu_reducer;
+
 std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
 // hash functions
 std::hash<std::string> BytePSGlobal::_built_in_hash_fn;
@@ -323,9 +324,8 @@ void BytePSGlobal::Init() {
   }
   // ReadyTable for Push & Pull
   if (_is_root_device) {
-    _push_table = new ReadyTable(0, "PUSH");
+    _push_table = new ReadyTable(_local_size - 1, "PUSH");
     _cpu_reduce_table = new ReadyTable(_local_size - 1, "CPU_REDUCE");
-    _cpu_reduce_finish_table = new ReadyTable(_local_size - 1, "CPU_REDUCE_FINISH");
     _cpu_bcast_finish_table = new ReadyTable(_local_size - 1, "CPU_BCAST_FINISH");
   } else {
     _copy_table = new ReadyTable(1, "COPY");

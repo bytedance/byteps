@@ -114,9 +114,7 @@ enum QueueType {
   P2P_GROUP_COPYH2D,
   // for pure CPU allreduce
   CPU_COPY,
-  COORDINATE_CPU_REDUCE,
   CPU_REDUCE,
-  CPU_REDUCE_FINISH,
   // for pure CPU allreduce
   CPU_BCAST,
   CPU_BCAST_FINISH,
@@ -158,9 +156,7 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "P2P_COPYD2H_SEND",
                                              "P2P_GROUP_COPYH2D",
                                              "CPU_COPY",
-                                             "COORDINATE_CPU_REDUCE",
                                              "CPU_REDUCE",
-                                             "CPU_REDUCE_FINISH",
                                              "CPU_BCAST",
                                              "CPU_BCAST_FINISH"};
 

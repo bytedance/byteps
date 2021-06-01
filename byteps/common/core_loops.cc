@@ -1049,46 +1049,6 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
   return true;
 }
 
-bool RunSendLoopOnce(int index) {
-  QueueType this_op = SEND;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
-  auto task = q->getTask();
-  if (task) {
-    if (BytePSGlobal::IsDistributed()) {
-      auto len = task->len;
-
-      char *data;
-      BPS_CHECK(task->cpubuff);
-      data = const_cast<char *>(static_cast<const char *>(task->cpubuff));
-
-      // get metadata
-      const int dtype = task->tensor->dtype();
-      int receiver = task->context->receiver;
-      CHECK_GE(receiver, 0);
-
-      // false means not to delete data when SArray is deleted
-      ps::SArray<char> vals(data, len, false);
-      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, CPU);
-      auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
-      if (BytePSGlobal::IsDirectResponse() == 2) {
-        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd);
-        FinishOrProceed(task);
-      } else {
-        BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, cmd,
-                                    [task]() {
-          FinishOrProceed(task);
-        });
-      }
-    } else {
-      BPS_CHECK(false) << "NOT REACHED";
-      FinishOrProceed(task);
-    }
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-  }
-  return true;
-}
-
 // TODO: remove sync?
 void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
   if (!len) {
@@ -1248,12 +1208,6 @@ void P2PCopyDevice2HostLoop(int index) {
   BytePSGlobal::ReportThreadFinish();
 }
 
-void SendLoop(int index) {
-  while (RunSendLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
-}
-
 void P2PCopyDevice2HostSendLoop(int index) {
   CHECK(index >= 0);
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
@@ -1281,6 +1235,18 @@ bool RunCpuCopyLoopOnce() {
                   (char *)(task->tensor->data()) + offset, len);
 
   FinishOrProceed(task);
+  std::shared_ptr<BytePSComm> comm = BytePSGlobal::GetBasicComm();
+  int rank = BytePSGlobal::GetLocalRank();
+  if (rank != comm->getRoot()) {
+    BytePSCommSignal sig = CPU_REDUCE_READY;
+    // only non-root device should enter COORDINATE loop
+    struct BytePSCommMsg msg = {rank, sig, task->key};
+    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+    BPS_CHECK(task->tensor_name != "");
+    BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "
+                   << "Signal=" << sig << "(" << SigLogStrings[sig] << ")"
+                   << ", rank=" << rank << ", key=" << task->key;
+  }
   return true;
 }
 
@@ -1290,56 +1256,6 @@ void CpuCopyLoop() {
   }
   BytePSGlobal::ReportThreadFinish();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
-}
-
-bool RunCpuCoordinateLoopOnce(QueueType this_op) {
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (task) {
-    int rank = BytePSGlobal::GetLocalRank();
-    auto key = task->key;
-
-    // first send to next queue and then broadcast signal
-    // to guarantee the entry is available when getTask(key) at Reduce/Broadcast
-    // thread
-    FinishOrProceed(task);
-
-    BytePSCommSignal sig = CPU_REDUCE_READY;
-    std::shared_ptr<BytePSComm> comm;
-
-    switch (this_op) {
-      case COORDINATE_CPU_REDUCE: {
-        sig = CPU_REDUCE_READY;
-        comm = BytePSGlobal::GetBasicComm();
-        break;
-      }
-      default:
-        BPS_CHECK(0) << "unsupported op: " << this_op;
-    }
-
-    BPS_CHECK_NE(rank, comm->getRoot())
-        << "only non-root device should enter COORDINATE loop";
-
-    struct BytePSCommMsg msg = {rank, sig, key};
-    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
-
-    BPS_CHECK(task->tensor_name != "");
-    BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "
-                   << "Signal=" << sig << "(" << SigLogStrings[sig] << ")"
-                   << ", myrank=" << rank << ", key=" << key;
-
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-  }
-  return true;
-}
-
-void CpuCoordinateLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
-  while (RunCpuCoordinateLoopOnce(COORDINATE_CPU_REDUCE) &&
-         !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
 }
 
 bool RunCpuReduceLoopOnce() {
@@ -1389,7 +1305,7 @@ bool RunCpuReduceLoopOnce() {
     }
 
     // send signal to root
-    BytePSCommSignal sig = CPU_REDUCE_DONE;
+    BytePSCommSignal sig = PUSH_READY;
     struct BytePSCommMsg msg = {my_lrank, sig, key};
     comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
     BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "
@@ -1423,28 +1339,6 @@ bool RunCpuReduceLoopOnce() {
 void CpuReduceLoop() {
   BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
   while (RunCpuReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
-  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
-}
-
-bool RunCpuReduceFinishLoopOnce() {
-  // BPS_LOG(TRACE) << "running once: " << __PRETTY_FUNCTION__;
-  QueueType this_op = CPU_REDUCE_FINISH;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (!task) {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-    return true;
-  }
-
-  FinishOrProceed(task);
-  return true;
-}
-
-void CpuReduceFinishLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
-  while (RunCpuReduceFinishLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
@@ -1485,7 +1379,6 @@ bool RunCpuBcastLoopOnce() {
       << " src " << (void *) ((task->numa_cpubuff[local_root]) + offset) ;
     reducer->copy((void *)((char *)(task->output->data()) + offset),
                   (char *)(task->numa_cpubuff[local_root]) + offset, len);
-
     BytePSCommSignal sig = CPU_BCAST_DONE;
     struct BytePSCommMsg msg = {my_lrank, sig, key};
     auto comm = BytePSGlobal::GetBasicComm();

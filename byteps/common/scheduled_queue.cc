@@ -109,9 +109,6 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
     case CPU_REDUCE:
       _rt = BytePSGlobal::GetCpuReduceTable();
       break;
-    case CPU_REDUCE_FINISH:
-      _rt = BytePSGlobal::GetCpuReduceFinishTable();
-      break;
     case CPU_BCAST:
       _rt = BytePSGlobal::GetCpuBcastTable();
       break;
