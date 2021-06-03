@@ -85,9 +85,10 @@ class TensorFlowTests:
                 niter += 1
 
 
-    def test_all2all(self, total_niter=100, compression=bps.Compression.none):
+    def test_all2all(self, total_niter=100, compression=bps.Compression.none,
+                     src_device='cpu', dst_device='cpu'):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
-        print('test_all2all', flush=True)
+        print(f'test all2all {src_device}->{dst_device}', flush=True)
         rank = self.rank
         size = self.size
         # TODO: record type info in declare_tensor
@@ -96,20 +97,29 @@ class TensorFlowTests:
         idx_dtype = tf.int32
         # every worker should have the same size
         rng = np.random.default_rng(size)
+        alltoall_fn = bps.alltoall
+        if src_device is 'cpu' and dst_device is 'gpu':
+            alltoall_fn = bps.alltoall_cpu2gpu
+        if src_device is 'gpu' and dst_device is 'cpu':
+            alltoall_fn = bps.alltoall_gpu2cpu
         for dtype in dtypes:
             niter = 0
             while niter < total_niter:
-                p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size,size)
+                p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size)
                 splits_list = list(p2p_matrix[rank])
                 recv_splits_list = list(p2p_matrix[:, rank])
-                print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}, dim={vector_dim}, dtype={dtype}', flush=True)
-                with tf.device("/cpu:0"):
-                    splits = tf.constant(splits_list, dtype=idx_dtype)
-                    recv_splits = tf.constant(recv_splits_list, dtype=idx_dtype)
+                print(f'rank={rank}/{size}, split={splits_list}, recv_split={recv_splits_list},\
+                        mat={p2p_matrix.tolist()}, dim={vector_dim}, {dtype}', flush=True)
+                with tf.device(f"/cpu:0"):
+                    splits = tf.constant(splits_list, dtype=tf.int32)
+                    recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
+                with tf.device(f"/{src_device}:0"):
                     tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                    result = bps.alltoall(tensor, splits=splits, recv_splits=recv_splits, name=f'test_iter{niter % 10}',
-                                          compression=compression)
-                    print(f'DONE iter={niter}, shape={result.shape}, {result.shape}')
+                with tf.device(f"/{dst_device}:0"):
+                    result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits,
+                                         name=f'test_{src_device}_{dst_device}_iter_{niter % 10}',
+                                         compression=compression)
+                    print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
                     index = 0
                     for i in range(size):
                         begin = index
@@ -120,44 +130,9 @@ class TensorFlowTests:
                         index = end
                     niter += 1
 
-    def test_all2all_cpu2gpu(self, total_niter=100, compression=bps.Compression.none):
-        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
-        print('test_all2all_cpu2gpu', flush=True)
-        rank = self.rank
-        size = self.size
-        # TODO: record type info in declare_tensor
-        dtypes = [tf.int64, tf.float32, tf.int32]
-        vector_dim = 2
-        idx_dtype = tf.int32
-        # every worker should have the same size
-        rng = np.random.default_rng(size)
-        for dtype in dtypes:
-            niter = 0
-            while niter < total_niter:
-                p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size,size)
-                splits_list = list(p2p_matrix[rank])
-                recv_splits_list = list(p2p_matrix[:, rank])
-                print(f'rank={rank}/{size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}, dim={vector_dim}, dtype={dtype}', flush=True)
-                with tf.device("/cpu:0"):
-                    splits = tf.constant(splits_list, dtype=idx_dtype)
-                    recv_splits = tf.constant(recv_splits_list, dtype=idx_dtype)
-                    tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                result = bps.alltoall_cpu2gpu(tensor, splits=splits, recv_splits=recv_splits, name=f'test_iter_c2g_{niter % 10}',
-                                              compression=compression)
-                print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
-                index = 0
-                for i in range(size):
-                    begin = index
-                    end = index + recv_splits_list[i]
-                    subset = result[begin:end]
-                    val = i + 1
-                    assert np.sum(subset != val) == 0, (subset, val, result)
-                    index = end
-                niter += 1
-
-    def test_all2all_no_recv_splits(self, total_niter=1000, compression=bps.Compression.none):
+    def test_all2all_no_recv_splits(self, total_niter=500, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors without recv_splits."""
-        print('test_all2all_no_recv_splits', flush=True)
+        print('test all2all_no_recv_splits', flush=True)
         dtype = tf.float32
         rank = self.rank
         size = self.size
@@ -168,13 +143,14 @@ class TensorFlowTests:
             p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size)
             splits_list = list(p2p_matrix[rank])
             recv_splits_list = list(p2p_matrix[:, rank])
-            print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
+            print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list},\
+                    matrix={p2p_matrix.tolist()}', flush=True)
             with tf.device("/cpu:0"):
                 splits = tf.constant(splits_list, dtype=tf.int32)
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                result, recv_size = bps.alltoall(tensor, splits=splits, name=f'no_recv_iter_{niter % 10}',
+                result, recv_split = bps.alltoall(tensor, splits=splits, name=f'no_recv_iter_{niter % 10}',
                                                  with_size=True, compression=compression)
-                print(f'DONE iter={niter}, shape={result.shape}')
+                print(f'DONE iter={niter}, shape={result.shape}', flush=True)
                 index = 0
                 for i in range(2):
                     begin = index
@@ -183,8 +159,8 @@ class TensorFlowTests:
                     val = i + 1
                     assert np.sum(subset != val) == 0, (subset, val, result)
                     index = end
-                recv_size = recv_size.numpy()
-                assert np.sum(recv_size != p2p_matrix[:, rank]) == 0, (recv_splits_list, recv_size)
+                recv_split = recv_split.numpy()
+                assert np.sum(recv_split != p2p_matrix[:, rank]) == 0, (recv_splits_list, recv_split)
                 niter += 1
 
     def test_self_send_recv(self):
@@ -398,7 +374,11 @@ if is_direct_resp == 2:
     tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
 
 if is_direct_resp == 0:
-    tests.test_all2all_cpu2gpu()
+    tests.test_all2all_no_recv_splits()
+    tests.test_all2all(src_device='cpu', dst_device='cpu')
+    tests.test_all2all(src_device='gpu', dst_device='gpu')
+    tests.test_all2all(src_device='cpu', dst_device='gpu')
+    tests.test_all2all(src_device='gpu', dst_device='cpu')
     tests.test_all2all_benchmark()
     tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
     tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)

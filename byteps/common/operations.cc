@@ -257,6 +257,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   std::string reference_send_name = send_name_prefix + std::to_string(next_rank);
   std::string reference_recv_name = name_prefix + std::to_string(next_rank) + recv_name_suffix;
   // track the tasks and determine if we need to update counter_ptr
+  // if the output_size is unknown, there will definitely be ps-lite send/recv operations
   bool has_send = output_size_unknown;
   bool has_recv = output_size_unknown;
 
@@ -276,10 +277,9 @@ Status EnqueueAlltoAllTensor(std::string& name,
     // XXX: use pcie_cpubuff as container of the list of aligned memory buffs
     send_task->pcie_cpubuff.push_back(byteps_context.cpubuff_list[0]);
     send_task->key_list.push_back(byteps_context.key_list[0]);
-    // check the case for send-recv with myself, or nothing to send
-    if (output_size_unknown) {
-      has_send = true;
-    } else if (i != my_rank && size != 0) {
+    // when output size is known, check if we need to update `has_send
+    // we check the case for send-recv with myself, or nothing to send
+    if (i != my_rank && size != 0) {
       has_send = true;
       // avoid init shared_ptr if has_send == false
       if (!send_task->counter_a2a.get()) { 

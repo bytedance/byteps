@@ -1039,6 +1039,9 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
           int recv_len = recv_arrs[idx].len;
           void* recv_addr = recv_arrs[idx].val.data();
           BytePSGlobal::GetCpuReducer()->copy(dst + offsets[i], recv_addr, recv_len);
+          if (BytePSGlobal::IsDirectResponse() == 0) {
+            server::BytePSServer::SendPushResponse(keys[idx]);
+          }
         }
       }
     }
@@ -1137,7 +1140,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
           char* cpubuff = (char*) task->pcie_cpubuff[i];
           ps::SArray<char> vals(cpubuff, 1, false);
           auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
-          BPS_CHECK(BytePSGlobal::IsDirectResponse() == 2);
+	  // for empty send without known output_size, we never wait for response
           BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
         }
         continue;
@@ -1174,7 +1177,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
         }
       }
     }
-    if (BytePSGlobal::IsDirectResponse() != 0) {
+    if (BytePSGlobal::IsDirectResponse() == 2 || task->counter_a2a == nullptr) {
       FinishOrProceedLite(task);
     }
     return true;

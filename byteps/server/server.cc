@@ -360,7 +360,8 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   auto req_type = type.requestType;
-  CHECK(req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend || req_type == RequestType::kEmptyGroupSend);
+  CHECK(req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend ||
+        req_type == RequestType::kEmptyGroupSend);
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   CHECK(req_meta.push) << "unexpected pull key="
