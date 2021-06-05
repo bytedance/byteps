@@ -27,6 +27,7 @@ from enum import Enum
 import random
 import string
 
+from byteps.tensorflow.compression import Compression
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -141,7 +142,7 @@ def _push_pull(tensor, scope='', name=None, op=Average):
                                   op=op.value.lower())
 
 def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_size=False,
-              compression=None):
+              compression=Compression.none):
     assert splits is not None
     # For now, `splits` is required.
     if name is None and not _executing_eagerly():
@@ -180,7 +181,7 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
     return tensor_decompressed, recved_size
 
 def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None,
-                      with_size=False, compression=None):
+                      with_size=False, compression=Compression.none):
     assert splits is not None
     # For now, `splits` is required.
     if name is None and not _executing_eagerly():
@@ -220,7 +221,7 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
 
 
 def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None,
-                      with_size=False, compression=None):
+                      with_size=False, compression=Compression.none):
     assert splits is not None
     # For now, `splits` is required.
     if name is None and not _executing_eagerly():
@@ -272,9 +273,28 @@ def _alltoall_grad(op, grad, recv_bytes):
     tensor = op.inputs[0]
     splits = op.inputs[1]
     recv_splits = op.inputs[2]
+    # FIXME: this might not work if recv_splits is not provided
     result = _alltoall(grad, splits=recv_splits, recv_splits=splits)
     return [result, None, None]
 
+
+@ops.RegisterGradient('BytepsAlltoallCputogpu')
+def _alltoall_cpu2gpu_grad(op, grad, recv_bytes):
+    """Gradient for alltoall op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradient with respect to the input of the op.
+    """
+    print('BytepsAlltoallCputogpu grad invoked')
+    tensor = op.inputs[0]
+    splits = op.inputs[1]
+    recv_splits = op.inputs[2]
+    # FIXME: this might not work if recv_splits is not provided
+    result = _alltoall_gpu2cpu(grad, splits=recv_splits, recv_splits=splits)
+    return [result, None, None]
+    
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):

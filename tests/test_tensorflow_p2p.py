@@ -7,6 +7,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')
 parser.add_argument('--backend', type=str, default='byteps')
 parser.add_argument('--iter', type=int, default=250)
+parser.add_argument('--test_autograd', action='store_true', default=False)
 
 # no usage for now, temporarily add for compat
 parser.add_argument('--rank', type=int, default=-1) 
@@ -41,49 +42,43 @@ class TensorFlowTests:
         self.size = bps.size()
 
 
-    def test_all2all_grad(self, total_niter=1):
-        # w = tf.Variable([[1.0]])
-        # with tf.GradientTape() as tape:
-        #     loss = w * w
-
-        # grad = tape.gradient(loss, w)
-        # print('grad is ', grad)
-        # exit()
-
+    def test_all2all_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
         dtype = tf.float32
         rank = self.rank
         size = self.size
         vector_dim = 2
         # every worker should have the same size
-        rng = np.random.default_rng(size)
+        rng = np.random.default_rng(54321)
         niter = 0
+        if src_gpu and dst_gpu:
+            alltoall_fn = bps.alltoall
+            name = 'autograd_gpu2gpu'
+        elif not src_gpu and dst_gpu:
+            alltoall_fn = bps.alltoall_cpu2gpu
+            name = 'autograd_cpu2gpu'
+        elif not src_gpu and not dst_gpu:
+            alltoall_fn = bps.alltoall
+            name = 'autograd_cpu2cpu'
+        else:
+            assert False, "GPU -> CPU alltoall is not supported using autograd"
+
         while niter < total_niter:
             # FIXME: the test is limited to 2 workers only
-            p2p_matrix = rng.integers(low=0, high=10, size=4).reshape(2,2) + 1
+            p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size, size) 
             splits_list = list(p2p_matrix[rank])
             recv_splits_list = list(p2p_matrix[:, rank])
-            print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
-            with tf.device("/cpu:0"):
-                splits = tf.constant(splits_list, dtype=tf.int64)
-                recv_splits = tf.constant(recv_splits_list, dtype=tf.int64)
+            if rank == 0: 
+                print(f'Start alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
+            splits = tf.constant(splits_list, dtype=tf.int32)
+            recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
+            with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 w = tf.Variable(tensor.numpy().tolist())
                 with tf.GradientTape() as tape:
-                    loss = bps.alltoall(w, splits=splits, recv_splits=recv_splits)
-
+                    loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter{niter}')
                 grad = tape.gradient(loss, w)
-
-                print(f'DONE iter={niter}, grad={grad}, loss={loss.shape}')
-                # index = 0
-                # for i in range(2):
-                #     begin = index
-                #     end = index + recv_splits_list[i]
-                #     subset = result[begin:end]
-                #     val = i + 1
-                #     assert np.sum(subset != val) == 0, (subset, val)
-                #     index = end
+                print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}\n')
                 niter += 1
-
 
     def test_all2all(self, total_niter=100, compression=bps.Compression.none,
                      src_device='cpu', dst_device='cpu'):
@@ -357,6 +352,13 @@ class TensorFlowTests:
                 print(f'DONE iter={niter}', flush=True)
 
 tests = TensorFlowTests()
+
+if args.test_autograd:
+    print("Perform autograd tests")
+    tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
+    tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
+    tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
+    exit(0)
 
 # FIXME: send to myself hangs
 # tests.test_self_send_recv()
