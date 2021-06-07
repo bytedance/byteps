@@ -886,21 +886,29 @@ void PullLoop() {
 }
 
 void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
-  auto tensor = task->output;
-  BPS_CHECK(tensor);
+  int send_dev = task->tensor 
+               ? task->tensor->device() 
+               : task->group_tensors[0]->device();
+  int recv_dev = task->output 
+               ? task->output->device()
+               : task->group_outputs[0]->device();
   auto key = task->key;
   auto len = task->len;
   auto offset = task->offset;
   int sender = task->context->sender;
   int my_rank = BytePSGlobal::GetRank();
-  bool is_recv_cpu = tensor->device() == CPU_DEVICE_ID;
-  bool is_send_cpu = task->tensor->device() == CPU_DEVICE_ID;
+  bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
+  bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
   if (sender == my_rank) {
     // copy to myself
     BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
-                   << " len=" << len << " cpu=" << is_recv_cpu << " device=" << tensor->device();
-    auto src_addr = ((char*)(task->tensor->data())) + offset;
-    auto dst_addr = ((char*)(tensor->data())) + task->offset_list[sender];
+                   << " len=" << len << " cpu=" << is_recv_cpu << " device=" << recv_dev;
+    auto src_addr = task->tensor
+                  ? (char*)task->tensor->data() + offset
+                  : (char*)task->group_tensors[my_rank]->data();
+    auto dst_addr = task->output
+                  ? (char*)task->output->data() + task->offset_list[my_rank]
+                  : (char*)task->group_outputs[my_rank]->data();
     if (is_recv_cpu) {
       if (is_send_cpu) {
         BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
@@ -917,7 +925,9 @@ void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
     }
     return;
   }
-  auto dst_addr = (char*)(tensor->data()) + task->offset_list[sender];
+  auto dst_addr = task->output
+                ? (char*)task->output->data() + task->offset_list[sender]
+                : (char*)task->group_outputs[sender]->data();
   auto recv_arr = server::BytePSServer::GetRecvPartition(key);
   int recv_len = recv_arr.len;
   void* recv_addr = recv_arr.val.data();
@@ -1111,8 +1121,14 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
     // shuffle the receiver rank
     int my_rank =  BytePSGlobal::GetRank();
     int num_ranks = task->pcie_cpubuff.size();
-    const int dtype = task->tensor->dtype();
-    bool output_size_unknown = task->output == nullptr;
+    bool is_group = (task->group_tensors.size() > 0);
+    const int dtype = is_group
+                    ? task->group_tensors[0]->dtype()
+                    : task->tensor->dtype();
+    bool output_size_unknown 
+                    = is_group
+                    ? false
+                    : (task->output == nullptr);
     // task->device denotes the output device,
     // while task->tensor->device() denotes the input devices
     int output_device = task->device == CPU_DEVICE_ID ? CPU : GPU;
@@ -1140,17 +1156,24 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
           char* cpubuff = (char*) task->pcie_cpubuff[i];
           ps::SArray<char> vals(cpubuff, 1, false);
           auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
-	  // for empty send without known output_size, we never wait for response
+          // for empty send without known output_size, we never wait for response
           BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
         }
         continue;
       } else {
         // split != 0. Do a copy followed by send
-        const char* data = (const char*) task->tensor->data();
-        auto offset = task->offset_list[i];
+        const char* data = is_group
+                    ? (const char*) task->group_tensors[i]->data()
+                    : (const char*) task->tensor->data();
+        auto offset = is_group 
+                    ? 0
+                    : task->offset_list[i];
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
         char* tensor;
-        if (task->tensor->device() == CPU_DEVICE_ID 
+        bool input_device = is_group
+                    ? task->group_tensors[i]->device()
+                    : task->tensor->device();
+        if (input_device == CPU_DEVICE_ID 
             && BytePSGlobal::IsDirectResponse() == 2) {
           char* cpubuff = (char*) task->pcie_cpubuff[i];
           CHECK(cpubuff != nullptr);

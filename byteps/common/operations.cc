@@ -227,7 +227,9 @@ void PartitionTensor(
 
 Status EnqueueAlltoAllTensor(std::string& name,
                              std::shared_ptr<Tensor> input,
+                             std::vector<std::shared_ptr<Tensor>>& group_inputs,
                              std::shared_ptr<Tensor> output,
+                             std::vector<std::shared_ptr<Tensor>>& group_outputs,
                              std::shared_ptr<Tensor> size_output,
                              std::shared_ptr<ReadyEvent> ready_event,
                              const int device,
@@ -243,7 +245,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // ========== COMMON INFO =========
   // send_begin always starts with a zero
   int num_ranks = send_begin.size() - 1;
-  auto dtype = input->dtype();
+  auto dtype = input ? input->dtype() : group_inputs[0]->dtype();
   auto unit_size = getDataTypeLength(dtype);
   const int my_rank = common::byteps_rank();
   int next_rank = (my_rank + 1) % num_ranks;
@@ -266,7 +268,10 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // the accumulated offset list always starts with 0
   send_task->offset_list.push_back(0);
   // send to all ranks
-  bool recv_on_gpu = output->device() != CPU_DEVICE_ID;
+  int output_device = output 
+                    ? output->device()
+                    : group_outputs[0]->device();
+  bool recv_on_gpu = (output_device != CPU_DEVICE_ID);
   for (size_t i = 0; i < num_ranks; ++i) {
     // Note: shuffle is done inside core_loops
     int size = unit_size * (send_begin[i+1] - send_begin[i]);
@@ -294,15 +299,17 @@ Status EnqueueAlltoAllTensor(std::string& name,
     auto& byteps_context = common::GetContextFromName(reference_send_name);
     send_task->context = &byteps_context;
     send_task->tensor = input;
+    send_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
     if (!output_size_unknown) {
       send_task->output = output;
+      send_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
     }
     send_task->aux_output = nullptr;
 
     send_task->ready_event = ready_event;
     // the device of the send task denotes the remote device type
     // data will be sent to (i.e. the output tensor device)
-    send_task->device = output->device();
+    send_task->device = output_device;
     send_task->priority = priority;
     send_task->version = version;
     send_task->callback = callback;
@@ -327,7 +334,9 @@ Status EnqueueAlltoAllTensor(std::string& name,
   TensorTableEntry* recv_task = new TensorTableEntry;
   recv_task->offset = 0;
   recv_task->tensor = input;
+  recv_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
   recv_task->output = output;
+  recv_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
   recv_task->ready_event = ready_event;
   recv_task->device = device;
   recv_task->priority = priority;

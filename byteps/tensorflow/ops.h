@@ -43,6 +43,7 @@ class TFReadyEvent : public common::ReadyEvent {
 class TFTensor : public common::Tensor {
  public:
   TFTensor(::tensorflow::Tensor& tensor, int device);
+  TFTensor(::tensorflow::Tensor* tensor, int device);
   // constructor for TF outputs whose memory may be allocated later
   TFTensor(::tensorflow::OpKernelContext* context,
            ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx,

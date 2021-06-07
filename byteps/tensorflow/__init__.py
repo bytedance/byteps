@@ -83,14 +83,14 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
 
 def alltoall(tensor, splits, recv_splits=None, scope='', name=None,
              with_size=False, compression=Compression.none):
-    """An op that scatters slices of the input tensor to all other BytePS processes
-    and returns a tensor of gathered slices from all other BytePS processes.
+    """An op that scatters slices of the input tensor(s) to all other BytePS processes
+    and returns the gathered slices from all other BytePS processes.
     The slicing is done on the first dimension, so the input tensors on the
     different processes must have the same rank and shape, except for the first
     dimension, which is allowed to be different.
 
     Arguments:
-        tensor: A tensor to distribute with alltoall.
+        tensor: A tensor or a list/tuple of tensors to distribute with alltoall.
         splits: A tensor of integers in rank order describing how many
                 elements in `tensor` to send to each worker.  Splitting is
                 applied along the first dimension of `tensor`.
@@ -101,8 +101,11 @@ def alltoall(tensor, splits, recv_splits=None, scope='', name=None,
         with_size: return the `recv_splits`
 
     Returns:
-      A tensor of the same type as `tensor`, concatenated on dimension zero
-      across all processes. The shape is identical to the input shape, except for
+      If the input `tensor` is a single tensor, then returns a tensor of 
+      the same type as `tensor`, concatenated on dimension zero across all processes. 
+      If the input `tensor` is a list/tuple of tensors, then returns a list of tensors
+      with the size and type as `tensor`, with their size specified by `recv_splits`.
+      For each tensor, The shape is identical to the input shape, except for
       the first dimension, which may be greater and is the sum of all first
       dimensions of the gathered tensor slices from different BytePS processes.
       If with_size is True, return the received splits.

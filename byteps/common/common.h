@@ -284,8 +284,12 @@ struct TensorTableEntry {
   BPSContext* context;
   // Input tensor.
   std::shared_ptr<Tensor> tensor;
+  // A group of input tensors
+  std::vector<std::shared_ptr<Tensor>> group_tensors;
   // Pre-allocated output tensor.
   std::shared_ptr<Tensor> output;
+  // A group of output tensors
+  std::vector<std::shared_ptr<Tensor>> group_outputs;
   // Pre-allocated auxiliary output tensor.
   std::shared_ptr<Tensor> aux_output;
   // Priroity

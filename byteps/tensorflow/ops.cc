@@ -134,6 +134,7 @@ bool TFReadyEvent::Ready() const {
 }
 
 TFTensor::TFTensor(::tensorflow::Tensor& tensor, int device) : tensor_(tensor), device_(device) {}
+TFTensor::TFTensor(::tensorflow::Tensor* tensor, int device) : tensor_(*tensor), device_(device) {}
 
 TFTensor::TFTensor(::tensorflow::OpKernelContext* context,
                    ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx, int device) :
@@ -506,9 +507,11 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         ::tensorflow::AsyncOpKernel::DoneCallback done,
                         std::string node_name,
                         std::shared_ptr<TFTensor> byteps_input,
+                        std::vector<std::shared_ptr<TFTensor>> byteps_group_input,
                         std::vector<int32_t> split_count,
                         std::vector<int32_t> recv_split_count,
                         std::shared_ptr<TFTensor> byteps_output,
+                        std::vector<std::shared_ptr<TFTensor>> byteps_group_output,
                         std::shared_ptr<TFTensor> byteps_aux_output,
                         std::shared_ptr<common::ReadyEvent> ready_event,
                         TaskType task, bool recv_split_unknown,
@@ -542,8 +545,17 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
     send_begin.push_back(send_begin.back() + split_count.at(i));
     recv_begin.push_back(recv_begin.back() + recv_split_count.at(i));
   }
-  enqueue_result = common::EnqueueAlltoAllTensor(node_name, byteps_input,
-                                                 byteps_output, byteps_aux_output,
+  std::vector<std::shared_ptr<common::Tensor>> group_input;
+  for (auto tensor : byteps_group_input) {
+    group_input.push_back(tensor);
+  }
+  std::vector<std::shared_ptr<common::Tensor>> group_output;
+  for (auto tensor : byteps_group_output) {
+    group_output.push_back(tensor);
+  }
+  enqueue_result = common::EnqueueAlltoAllTensor(node_name, 
+                                                 byteps_input, group_input,
+                                                 byteps_output, group_output, byteps_aux_output,
                                                  ready_event, device,
                                                  priority, 0, callback,
                                                  send_begin, recv_begin,
@@ -690,14 +702,173 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       return;
     }
     auto& bps_context = common::GetContextFromName(session_name_send);
+    std::vector<std::shared_ptr<TFTensor>> empty_group_inputs;
+    std::vector<std::shared_ptr<TFTensor>> empty_group_outputs;
     if (bps_context.initialized) {
-      StartAlltoAllTask(context, done, session_tmp_name, bps_input, split_count,
-                        recv_split_count, bps_output, bps_aux_output, ready_event,
+      StartAlltoAllTask(context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
+                        recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
                         kAlltoAll, recv_split_unknown, name_send);
     } else {
-      std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, split_count,
-                    recv_split_count, bps_output, bps_aux_output, ready_event,
+      std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
+                    recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
                     kAlltoAll, recv_split_unknown, name_send);
+      t.detach();
+    }
+  }
+};
+
+
+template <bool cross_device>
+class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
+ private:
+     std::string input_tensor_name;
+     bool recv_split_unknown;
+
+ public:
+  explicit BytepsAllToAllGroupOp(::tensorflow::OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+      context->GetAttr("input_name", &input_tensor_name);
+      context->GetAttr("recv_split_unknown", &recv_split_unknown);
+    }
+
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
+                         done);
+    const int num_outputs = context->num_outputs();
+    const int num_inputs = context->num_inputs();
+    CHECK(!recv_split_unknown) << "recv_split_unknown=true is not supported now";
+
+    // naming
+    auto node_name = name();
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+      tmp_name = node_name;
+    } else {
+      tmp_name = input_tensor_name;
+    }
+
+    const int n = num_inputs - 2;
+    std::vector<const ::tensorflow::Tensor*> tensors(n);
+    for (int i = 0; i < n; ++i) {
+      tensors[i] = &context->input(i);
+    }
+
+    int64_t stride = 1;
+    for (auto& tensor : tensors) {
+      for (int i = 1; i < tensor->shape().dims(); ++i) { 
+        stride *= tensor->shape().dim_size(i);
+      }
+    }
+    // calculate counts based on the stride
+    const auto split_tensor = context->input(num_inputs - 2);
+    // Note: if recv_is_approximate=True, recv_split_tensor reuses split_tensor
+    const auto recv_split_tensor = context->input(num_inputs - 1);
+    std::vector<int32_t> dim0_split_count;
+    std::vector<int32_t> split_count;
+    std::vector<int32_t> recv_split_count;
+    std::vector<::tensorflow::TensorShape> result_shape(num_outputs / 2);
+    GetIntList(split_tensor, &dim0_split_count);
+    int dim0_aggregate = 0;
+    // the split tensor is based on axis 0, hence scale it by stride
+    for (int i = 0; i < dim0_split_count.size(); ++i) {
+      dim0_aggregate += dim0_split_count[i];
+      split_count.push_back(dim0_split_count[i] * stride);
+      if (dim0_split_count[i] < 0) {
+        std::string err_msg = "invalid split for " + tmp_name + " at idx " 
+                            + std::to_string(i) + ": " + std::to_string(dim0_split_count[i]);
+        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
+        OP_REQUIRES_OK_ASYNC(context, status, done);
+      }
+    }
+    // sanity checks
+    unsigned int aggregated_len = 0;
+    for (auto tensor : tensors) {
+      for (int i = 1; i < tensor->shape().dims(); ++i) {
+        aggregated_len += tensor->shape().dim_size(i);
+      }
+    }
+    CHECK(split_tensor.shape().dim_size(0) == recv_split_tensor.shape().dim_size(0));
+    GetIntList(recv_split_tensor, &recv_split_count);
+    // translate the split value (for dim0) with stride (considering all dimensions)
+    int dim0 = 0;
+    for (int i = 0; i < recv_split_count.size(); ++i) {
+      if (recv_split_count[i] < 0) {
+        std::string err_msg = "invalid recv_split for " + tmp_name + " at index " 
+                            + std::to_string(i) + ": " + std::to_string(recv_split_count[i]);
+        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
+        OP_REQUIRES_OK_ASYNC(context, status, done);
+      }
+      dim0 += recv_split_count[i];
+      recv_split_count[i] *= stride;
+    }
+    // Allocate output
+    CHECK(recv_split_count.size() == result_shape.size());
+    CHECK(recv_split_count.size() == tensors.size());
+    for (int i = 0; i < recv_split_count.size(); ++i) {
+      result_shape[i].AddDim(recv_split_count[i]);
+      for (int j = 1; j < tensors[i]->shape().dims(); ++j) { 
+        result_shape[i].AddDim(tensors[i]->shape().dim_size(j));
+      }
+    }
+    // TODO: fix the shape 
+    auto device_id = GetDeviceID(context);
+    int output_device = device_id;
+    int input_device = device_id;
+    // adjust device_id in cross device case
+    if (cross_device) {
+      if (context->input_memory_type(0) == ::tensorflow::HOST_MEMORY) {
+        input_device = CPU_DEVICE_ID;
+      }
+      if (context->output_memory_type(0) == ::tensorflow::HOST_MEMORY) {
+        output_device = CPU_DEVICE_ID;
+      }
+    }
+
+    int n_tensor = num_outputs / 2;
+    std::vector<::tensorflow::Tensor*> output_data(n_tensor);
+    std::vector<::tensorflow::Tensor*> output_sizes(n_tensor);
+    std::vector<std::shared_ptr<TFTensor>> bps_group_output(n_tensor);
+
+    for (int i = 0; i < n_tensor; ++i) {
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(i, result_shape[i], &output_data[i]), done);
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(i + n_tensor, split_tensor.shape(), &output_sizes[i]), done);
+      bps_group_output[i] = std::make_shared<TFTensor>(*output_data[i], output_device);
+    }
+
+    // naming and declarations
+    auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    
+    std::vector<std::shared_ptr<TFTensor>> bps_group_input;
+    for (auto& tensor : tensors) {
+      bps_group_input.push_back(std::make_shared<TFTensor>((::tensorflow::Tensor*)tensor, input_device));
+    }
+    // TODO: pass the correct aux_output device id
+    auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes[0], CPU_DEVICE_ID);
+    const int my_rank = common::byteps_rank();
+    // Add session_id prefix to node_name
+    std::string name_send = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
+    int session_id = common::byteps_session_id(name_send.c_str());
+    int session_size = common::byteps_session_size();
+    std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
+    std::string session_name_send = session_prefix + name_send;
+    std::string session_tmp_name = session_prefix + tmp_name;
+    if (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0) {
+      // TODO: fill in size tensor
+      done();
+      return;
+    }
+    auto& bps_context = common::GetContextFromName(session_name_send);
+    if (bps_context.initialized) {
+      StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
+                        split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
+                        ready_event, kAlltoAll, recv_split_unknown, name_send);
+    } else {
+      std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
+                    split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
+                    ready_event, kAlltoAll, recv_split_unknown, name_send);
       t.detach();
     }
   }
@@ -734,6 +905,48 @@ REGISTER_OP("BytepsAlltoall")
 Perform an MPI Alltoall on a tensor.
 Arguments
     tensor:     A tensor to be distributed with all to all  // for send counts (dim0)
+    splits:     A list of integers in rank order describing how many elements
+                in `tensor` to send to each worker.  // for recv counts (dim0)
+    recv_split_unknown: A bool to indicate whether recv splits is unknown  
+Output
+    output:    The collected tensor data from all workers.
+)doc");
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGroup").Device(::tensorflow::DEVICE_CPU),
+                        BytepsAllToAllGroupOp<false>);
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGroup").Device(::tensorflow::DEVICE_GPU)
+                                                  .HostMemory("splits")
+                                                  .HostMemory("recv_splits")
+                                                  .HostMemory("recv_bytes"),
+                        BytepsAllToAllGroupOp<false>);
+
+REGISTER_OP("BytepsAlltoallGroup")
+    .Attr(
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+    .Attr("input_name: string = 'default_tensor_name'") 
+    .Attr("N: int >=1")
+    .Input("tensors: N * T")
+    .Input("splits: int32")
+    .Input("recv_splits: int32")
+    .Attr("recv_split_unknown: bool = False")
+    .Output("output: N * T")
+    .Output("recv_bytes: N * int32") // TODO: rename this output
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      int n = c->num_outputs() / 2;
+      for (int i = 0; i < n; ++i) {
+        ::tensorflow::shape_inference::ShapeHandle output;
+        TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(i), 0, c->UnknownDim(), &output));
+        c->set_output(i, output);
+        c->set_output(i + n, c->input(n));
+      }
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+
+Perform an MPI Alltoall on a group of tensors.
+Arguments
+    tensors:    A group of tensors to be distributed with all to all  // for send counts (dim0)
     splits:     A list of integers in rank order describing how many elements
                 in `tensor` to send to each worker.  // for recv counts (dim0)
     recv_split_unknown: A bool to indicate whether recv splits is unknown  

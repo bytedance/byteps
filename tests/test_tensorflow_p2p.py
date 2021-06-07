@@ -276,6 +276,142 @@ class TensorFlowTests:
         print(f'Finish all2all_benchmark, srcdev={tensor.device}, dstdev={result.device}')
         self.validate_a2a(recv_splits_list, result, size, rank)
 
+    def test_all2all_group(self, total_niter=10, compression=bps.Compression.none,
+                     src_device='gpu', dst_device='gpu'):
+        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
+        print(f'test all2all group {src_device}->{dst_device}', flush=True)
+        rank = self.rank
+        size = self.size
+        # TODO: record type info in declare_tensor
+        dtypes = [tf.int64, tf.float32, tf.int32]
+        vector_dim = 1
+        idx_dtype = tf.int32
+        # every worker should have the same size
+        rng = np.random.default_rng(size)
+        alltoall_fn = bps.alltoall
+        if src_device is 'cpu' and dst_device is 'gpu':
+            alltoall_fn = bps.alltoall_cpu2gpu
+        if src_device is 'gpu' and dst_device is 'cpu':
+            alltoall_fn = bps.alltoall_gpu2cpu
+        for dtype in dtypes:
+            niter = 0
+            while niter < total_niter:
+                p2p_matrix = rng.integers(low=1, high=10, size=size*size).reshape(size,size)
+                splits_list = list(p2p_matrix[rank])
+                recv_splits_list = list(p2p_matrix[:, rank])
+                print(f'rank={rank}/{size}, split={splits_list}, recv_split={recv_splits_list}, {dtype}', flush=True)
+                with tf.device(f"/cpu:0"):
+                    splits = tf.constant(splits_list, dtype=tf.int32)
+                    recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
+                with tf.device(f"/{src_device}:0"):
+                    tensors = [tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
+                               for i in range(len(splits_list))]
+                with tf.device(f"/{dst_device}:0"):
+                    results = alltoall_fn(tensors, splits=splits, recv_splits=recv_splits,
+                                         name=f'alltoall_group_test_{src_device}_{dst_device}_iter_{niter % 10}',
+                                         compression=compression)
+                    print(f'AlltoAll group tests: Done iter={niter}, shape={results[0].shape}')
+                    # validate result
+                    index = 0
+                    for i in range(size):
+                        begin = index
+                        end = index + recv_splits_list[i]
+                        subset = results[i]
+                        val = i + 1
+                        assert np.sum(subset != val) == 0, (subset, val, results[i])
+                        index = end
+                    niter += 1
+
+    def test_all2all_group_benchmark(self, total_niter=args.iter, dst_gpu=False, src_gpu=False):
+        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
+        dtype, int_dtype = tf.float32, tf.int32
+        if args.backend == 'byteps':
+            int_dtype = tf.int32
+        else:
+            assert False, 'horovod is not supported for this test'
+        rank = self.rank
+        size = self.size
+        vector_dim = 1
+        niter = 0
+        total_len = int(os.environ.get('TOTAL_LEN', '2048000'))
+        len_per_worker = int(total_len / size)
+        assert total_len % size == 0
+        p2p_matrix = np.array([len_per_worker]*(size*size)).reshape(size, size)
+        splits_list = list(p2p_matrix[rank])
+        recv_splits_list = list(p2p_matrix[:, rank])
+        print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
+        splits = tf.constant(splits_list, dtype=int_dtype)
+        recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
+        with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
+            tensors = [tf.ones([splits_list[i], vector_dim], dtype=dtype) * (rank + 1) 
+                       for i in range(len(splits_list))]
+        if rank == 0: print('start group all2all test\n')
+        t0 = time.time()
+        interval = 10
+        name = 'group_test_data_'
+        if dst_gpu:
+            if src_gpu:
+                name += 'g2g'
+                alltoall_fn = bps.alltoall
+            else:
+                name += 'c2g'
+                alltoall_fn = bps.alltoall_cpu2gpu
+        else:
+            if src_gpu:
+                name += 'g2c'
+                alltoall_fn = bps.alltoall_gpu2cpu
+            else:
+                name += 'c2c'
+                alltoall_fn = bps.alltoall
+        while niter < total_niter:
+            results = alltoall_fn(tensors, splits=splits, recv_splits=recv_splits, name=name)
+            niter += 1
+            if niter % interval == 0:
+                t1 = time.time()
+                latency = (t1-t0)/interval*1000
+                goodput = total_len*32*interval/(t1-t0)/1000000000
+                print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
+                t0 = time.time()
+        print(f'Finish all2all_group_benchmark, srcdev={tensors[0].device}, dstdev={results[0].device}')
+
+    def test_all2all_group_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
+        dtype = tf.float32
+        rank = self.rank
+        size = self.size
+        vector_dim = 1
+        # every worker should have the same size
+        rng = np.random.default_rng(54321)
+        niter = 0
+        if src_gpu and dst_gpu:
+            alltoall_fn = bps.alltoall
+            name = 'autograd_group_gpu2gpu'
+        elif not src_gpu and dst_gpu:
+            alltoall_fn = bps.alltoall_cpu2gpu
+            name = 'autograd_group_cpu2gpu'
+        elif not src_gpu and not dst_gpu:
+            alltoall_fn = bps.alltoall
+            name = 'autograd_group_cpu2cpu'
+        else:
+            assert False, "GPU -> CPU alltoall is not supported using autograd_group"
+        while niter < total_niter:
+            # need to use fixed length for each rank, 
+            # since tf op requires identical shapes for all inputs during BP
+            p2p_matrix = np.array([1]*(size*size)).reshape(size, size)
+            splits_list = list(p2p_matrix[rank])
+            recv_splits_list = list(p2p_matrix[:, rank])
+            print(f'Start alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
+            splits = tf.constant(splits_list, dtype=tf.int32)
+            recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
+            with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
+                tensors = [tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
+                          for _ in range(len(splits_list))]
+                group_w = [tf.Variable(tensor.numpy().tolist()) for tensor in tensors] 
+                with tf.GradientTape() as tape:
+                    group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter{niter}')
+                grad = tape.gradient(group_loss, group_w)
+                print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}\n')
+                niter += 1
+
     def test_all2all_fused_graph(self, total_niter=20, num_slots=20, num_groups=1):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         rank = self.rank
@@ -358,6 +494,7 @@ if args.test_autograd:
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
     tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
+    tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=True)
     exit(0)
 
 # FIXME: send to myself hangs
@@ -385,5 +522,7 @@ if is_direct_resp == 0:
     tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
     tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
     tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
+    tests.test_all2all_group()
+    tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
 
 time.sleep(1)
