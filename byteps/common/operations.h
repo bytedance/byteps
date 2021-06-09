@@ -58,11 +58,13 @@ int byteps_size();
 // Returns -1 if byteps is not initialized.
 int byteps_local_size();
 
+// TODO: C interface not needed.
 uint64_t byteps_session_id(const char* name);
 
 uint32_t byteps_session_size();
 
 void byteps_mark_done(const char* name);
+
 }
 
 extern "C" PyObject* byteps_get_pushpull_speed();
@@ -109,6 +111,8 @@ bool IsTensorDeclaredP2P(const std::string &name, int sender, int receiver);
 
 void RegisterCompressor(const std::string &name,
                         std::unordered_map<std::string, std::string> &kwargs);
+
+void PinMemory(void* ptr, int numa_node, size_t bytes);
 
 BPSContext &GetContextFromName(const std::string &name);
 

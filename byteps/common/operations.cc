@@ -796,6 +796,10 @@ void RegisterCompressor(const std::string &name,
   return BytePSGlobal::RegisterCompressor(name, kwargs);
 }
 
+void PinMemory(void* ptr, int numa_node, size_t bytes) {
+  return BytePSGlobal::PinMemory(ptr, numa_node, bytes);
+}
+
 bool IsTensorDeclaredP2P(const std::string &name, int sender, int receiver) {
   return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver);
 }

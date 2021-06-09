@@ -62,6 +62,7 @@ int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
 int BytePSGlobal::_end_step = 20;
 std::string BytePSGlobal::_trace_dir;
+bool BytePSGlobal::_prof_zpush_latency = false;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
 
@@ -178,6 +179,7 @@ void BytePSGlobal::Init() {
                    : "./trace";
 
   // Set p2p related variables
+  _prof_zpush_latency = getenv("BYTEPS_PROFILE_ZPUSH") ? atoi(getenv("BYTEPS_PROFILE_ZPUSH")) : false;
   _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
@@ -646,6 +648,14 @@ void BytePSGlobal::RegisterCompressor(
   BPS_CHECK(_name_to_cxt.find(name) != _name_to_cxt.end())
       << name << " is not initialized";
   _name_to_cxt[name].kwargs = std::move(kwargs);
+}
+
+void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
+  auto worker = GetOrInitPS(0);
+  CHECK(_ps.size() == 1);
+  bool gpu = true;
+  ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
+  BPS_LOG(INFO) << "Pinned memory " << ptr << " device_id=" << device_id << " bytes=" << bytes;
 }
 
 // Append for communication traces

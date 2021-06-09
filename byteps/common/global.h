@@ -86,6 +86,7 @@ class BytePSGlobal {
   // 2: sender does not wait for response, and receiver does not response either.
   static int IsDirectResponse();
   static bool IsTrace() { return _is_trace; }
+  static bool IsProfileZPush() { return _prof_zpush_latency; }
   static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
   static BytePSRole GetMyRole() { return _my_role; }
   static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
@@ -109,6 +110,7 @@ class BytePSGlobal {
 
   static void RegisterCompressor(const std::string& name, 
                                  std::unordered_map<std::string, std::string>& kwargs);
+  static void PinMemory(void* ptr, int numa_node, size_t bytes);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
@@ -255,6 +257,7 @@ class BytePSGlobal {
   static int _start_step;
   static int _end_step;
   static std::string _trace_dir;
+  static bool _prof_zpush_latency;
 
   // cuda
 #if BYTEPS_BUILDING_CUDA == 1

@@ -1129,6 +1129,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
                     = is_group
                     ? false
                     : (task->output == nullptr);
+    long long total_zpush_time = 0;
     // task->device denotes the output device,
     // while task->tensor->device() denotes the input devices
     int output_device = task->device == CPU_DEVICE_ID ? CPU : GPU;
@@ -1190,15 +1191,36 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
             ->ZPush(pskv.keys, vals, pskv.lens, cmd);
         } else { // should be 0 for now
           BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
-          BytePSGlobal::GetPS(index)
-            ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
-              int v = task->counter_a2a.get()->fetch_sub(1);
-              if (v == 1) {
-                FinishOrProceedLite(task);
-              }
-            });
+	  if (BytePSGlobal::IsProfileZPush()) {
+            auto now = std::chrono::system_clock::now();
+            auto duration = now.time_since_epoch();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+
+            BytePSGlobal::GetPS(index)
+              ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
+                int v = task->counter_a2a.get()->fetch_sub(1);
+                if (v == 1) {
+                  FinishOrProceedLite(task);
+                }
+              });
+            auto then = std::chrono::system_clock::now();
+            auto then_duration = then.time_since_epoch();
+            auto then_us = std::chrono::duration_cast<std::chrono::microseconds>(then_duration);
+            total_zpush_time += (then_us.count() - us.count());
+	  } else {
+            BytePSGlobal::GetPS(index)
+              ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
+                int v = task->counter_a2a.get()->fetch_sub(1);
+                if (v == 1) {
+                  FinishOrProceedLite(task);
+                }
+              });
+	  }
         }
       }
+    }
+    if (BytePSGlobal::IsProfileZPush()) {
+      BPS_LOG(INFO) << "rank=" << my_rank << " ZPush time = " << total_zpush_time << " us";
     }
     if (BytePSGlobal::IsDirectResponse() == 2 || task->counter_a2a == nullptr) {
       FinishOrProceedLite(task);

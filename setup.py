@@ -527,7 +527,8 @@ def build_tf_extension(build_ext, options):
     tensorflow_lib.define_macros = options['MACROS']
     tensorflow_lib.include_dirs = options['INCLUDES']
     tensorflow_lib.sources = options['SOURCES'] + \
-        ['byteps/tensorflow/ops.cc']
+        ['byteps/tensorflow/ops.cc',
+         'byteps/tensorflow/memory_visitor.cc']
     tensorflow_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
         tf_compile_flags
     tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags
