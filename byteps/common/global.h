@@ -103,7 +103,7 @@ class BytePSGlobal {
   static ps::KVWorker<char>* GetOrInitPS(int index = 0);
 
   static bool IsTensorDeclared(const std::string& name);
-  static bool IsTensorDeclaredP2P(const std::string& name, int sender, int receiver);
+  static int32_t IsTensorDeclaredP2P(const std::string& name, int sender, int receiver, int provided_key);
   static void ReDeclareTensor();
   static bool IsResuming() { return _is_resuming; }
   static void SetResumingFlag(bool flag) {_is_resuming = flag; }

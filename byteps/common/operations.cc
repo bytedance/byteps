@@ -569,7 +569,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   // The last 10 bits encodes the partition id
   // Therefore, we support up to 2^16 tensors, and up to 2^10 partitions per tensor
   ps::Key start_key = (uint64_t) sender << 32;
-  start_key += context.declared_key << 16;
+  start_key += ((uint64_t) context.declared_key) << 16;
   start_key += (uint32_t) P2P_OP << 10;
   while (accumulated < size) {
     context.key_list.push_back(start_key++);
@@ -800,8 +800,8 @@ void PinMemory(void* ptr, int numa_node, size_t bytes) {
   return BytePSGlobal::PinMemory(ptr, numa_node, bytes);
 }
 
-bool IsTensorDeclaredP2P(const std::string &name, int sender, int receiver) {
-  return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver);
+int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver, int provided_key) {
+  return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver, provided_key);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {

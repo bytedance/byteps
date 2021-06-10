@@ -222,7 +222,7 @@ typedef struct BytePSContext {
   // tensor name
   std::string tensor_name;
   // using ps::Key = uint64_t
-  uint64_t declared_key;
+  int32_t declared_key;
   // the actual keys being used
   std::vector<uint64_t> key_list;
   // a copy on CPU, backed by shm
