@@ -107,7 +107,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
 
 // Only call these in Framework plugins for the best performance
 bool IsTensorDeclared(const std::string &name);
-int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver, int provided_key);
+bool IsTensorDeclaredP2P(const std::string &name, int sender, int receiver);
 
 void RegisterCompressor(const std::string &name,
                         std::unordered_map<std::string, std::string> &kwargs);
