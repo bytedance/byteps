@@ -1232,6 +1232,122 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
   return true;
 }
 
+bool RunP2PPullLoopOnce() {
+  QueueType this_op = P2P_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTaskLite();
+  if (task) {
+    int my_rank = BytePSGlobal::GetRank();
+    int num_ranks = task->pcie_cpubuff.size();
+    int output_device = (task->device == CPU_DEVICE_ID) ? CPU : GPU;
+    bool is_group = (task->group_tensors.size() > 0);
+    for (int r = 0; r < num_ranks; ++r) {
+      int i = (my_rank + r + 1) % num_ranks;
+      if (i == my_rank) continue;
+      auto len = task->offset_list[i+1] - task->offset_list[i];
+      auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, i);
+      const char* dest = is_group
+                  ? (const char*) task->group_outputs[i]->data()
+                  : (const char*) task->output->data();
+      auto offset = is_group 
+                  ? 0
+                  : task->offset_list[i];
+      const int dtype = is_group 
+                  ? task->group_outputs[i]->dtype()
+                  : task->output->dtype();
+      int cmd = server::GetCommandType(server::RequestType::kDefaultPull, 
+                                       dtype, output_device);
+      char* output = (char*) dest + offset;
+      auto vals = new ps::SArray<char>(output, len, false);
+      BytePSGlobal::GetPS()
+        ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, dtype, output_device]() {
+          if (!BytePSGlobal::IsP2PAckDisabled()) {
+            // notify the server that the response is received
+            // perform zpush with 1 byte data
+            char* cpubuff = (char*) task->pcie_cpubuff[i];
+            ps::SArray<char> ack_vals(cpubuff, 1, false);
+            auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
+            int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device);
+            // no need to wait for this zpush 
+            BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
+          }
+          // the rest of the callbacks are for zpull          
+          delete vals;
+          int v = task->counter_a2a.get()->fetch_sub(1);
+          if (v == 1) {
+            FinishOrProceedLite(task);
+          }
+        });
+    }
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunP2PPullResponseOnce() {
+  QueueType this_op = P2P_PULL_RESPONSE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTaskLite();
+  if (task) {
+    BPS_CHECK(task->tensor);
+    int sender = task->context->sender;
+    int my_rank = BytePSGlobal::GetRank();
+    char* tensor = (char*) task->tensor->data() + task->offset;
+    if (sender == my_rank) {
+      // copy to myself
+      auto src_addr = tensor;
+      auto dst_addr = (char*) task->output->data() + task->offset;
+      BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, task->len);
+      if (!BytePSGlobal::IsP2PAckDisabled()) {
+        BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
+      }
+    } else {
+      server::BytePSServer::SendPullResponse(task->key, tensor, task->len);
+    } 
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunP2PAckLoopOnce() {
+  QueueType this_op = P2P_WAIT_ACK;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTaskLite();
+  if (task) {
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void P2PPullLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  while (RunP2PPullLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+};
+
+void P2PPullResponseLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  while (RunP2PPullResponseOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void P2PAckLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  while (RunP2PAckLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 void P2PCopyHost2DeviceLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   while (RunP2PCopyHost2DeviceLoopOnce() &&

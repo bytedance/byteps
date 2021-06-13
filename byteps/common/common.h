@@ -112,6 +112,12 @@ enum QueueType {
   // for alltoall recv when the recv split is unknown
   // it waits for the entire group of data before starting to copy
   P2P_GROUP_COPYH2D,
+  // for alltoall pull 
+  P2P_PULL, 
+  // for alltoall pull response
+  P2P_PULL_RESPONSE,
+  // for alltoall notification that the pull response is received
+  P2P_WAIT_ACK,
   // for pure CPU allreduce
   CPU_COPY,
   CPU_REDUCE,
@@ -155,6 +161,9 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "P2P_COPYD2H",
                                              "P2P_COPYD2H_SEND",
                                              "P2P_GROUP_COPYH2D",
+                                             "P2P_PULL",
+                                             "P2P_PULL_RESPONSE",
+                                             "P2P_WAIT_ACK",
                                              "CPU_COPY",
                                              "CPU_REDUCE",
                                              "CPU_BCAST",

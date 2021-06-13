@@ -211,7 +211,10 @@ class TensorFlowTests:
         for i in range(size):
             begin = index
             end = index + recv_splits_list[i]
-            subset = result[begin:end]
+            if isinstance(result, list):
+                subset = result[i]
+            else:
+                subset = result[begin:end]
             val = i + 1
             assert np.sum(subset != val) == 0, (subset, val, result)
             index = end
@@ -373,6 +376,7 @@ class TensorFlowTests:
                 print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
                 t0 = time.time()
         print(f'Finish all2all_group_benchmark, srcdev={tensors[0].device}, dstdev={results[0].device}')
+        self.validate_a2a(recv_splits_list, results, size, rank)
 
     def test_all2all_group_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
         dtype = tf.float32

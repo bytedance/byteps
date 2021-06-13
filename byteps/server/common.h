@@ -26,6 +26,8 @@ enum class RequestType {
   kRowSparsePushPull,
   kCompressedPushPull,
   kDefaultSend,
+  kDefaultPull,
+  kAckSignal,
   // wait for a group of send before copying them to output.
   // used when the total output size is unknown
   kGroupSend,

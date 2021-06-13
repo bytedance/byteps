@@ -190,8 +190,12 @@ class BytePSServer {
 
     static ReadyTable* GetP2PCopyTable() { return p2p_copy_table_; }
     static ReadyTable* GetP2PGroupCopyTable() { return p2p_group_copy_table_; }
+    static ReadyTable* GetP2PPullResponseTable() { return p2p_pull_response_table_; }
+    static ReadyTable* GetP2PAckTable() { return p2p_ack_table_; }
+    
     static void InitP2PCopyTable();
     static int IsP2PDirectResponse() { return p2p_direct_response_; }
+    static void SendPullResponse(uint64_t key, char* data, int len);
 
   private:
     // functions
@@ -213,8 +217,11 @@ class BytePSServer {
 
     static ReadyTable* p2p_copy_table_;
     static ReadyTable* p2p_group_copy_table_;
+    static ReadyTable* p2p_pull_response_table_;
+    static ReadyTable* p2p_ack_table_;
     static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
-
+    
+    static std::unordered_map<uint64_t, ps::KVMeta> p2p_pull_reqmetas_;
 };
 
 extern "C" void byteps_server();

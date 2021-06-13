@@ -65,6 +65,9 @@ int BytePSServer::preferred_rank_ = -1;
 bool BytePSServer::enable_preferred_rank_ = false;
 ps::Node::Role BytePSServer::role_;
 int BytePSServer::p2p_direct_response_ = 0;
+std::unordered_map<uint64_t, ps::KVMeta> BytePSServer::p2p_pull_reqmetas_;
+ReadyTable* BytePSServer::p2p_pull_response_table_;
+ReadyTable* BytePSServer::p2p_ack_table_;
 // ========= for p2p ==========
 
 std::vector<KVServer<char>*> BytePSServer::byteps_server_;
@@ -185,6 +188,20 @@ void BytePSServer::SendPushResponse(uint64_t key, const ps::KVMeta& req,
     ps::KVPairs<char>* response = &iterator->second;
     server->Response(req, *response);
   }
+}
+
+// For alltoall use only 
+void BytePSServer::SendPullResponse(uint64_t key, char* data, int len) {
+  ps::KVMeta req_meta;
+  {
+    std::lock_guard<std::mutex> lk(pullresp_mu_);
+    req_meta = p2p_pull_reqmetas_[key];
+  }
+  ps::KVPairs<char> response;
+  response.keys = {key};
+  response.lens = {len};
+  response.vals = ps::SArray<char>(data, len, false); // zero copy
+  byteps_server_[0]->Response(req_meta, response);
 }
 
 void BytePSServer::SendPullResponse(const DataHandleType type,
@@ -360,24 +377,42 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   auto req_type = type.requestType;
-  CHECK(req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend ||
-        req_type == RequestType::kEmptyGroupSend);
+  CHECK(req_type == RequestType::kDefaultSend 
+        || req_type == RequestType::kGroupSend 
+        || req_type == RequestType::kEmptyGroupSend
+        || req_type == RequestType::kDefaultPull
+        || req_type == RequestType::kAckSignal);
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
-  CHECK(req_meta.push) << "unexpected pull key="
-                       << (uint64_t) DecodeKey(req_data.keys[0])
-                       << "\t sender=" << req_meta.sender;
-  CHECK_EQ(req_data.lens.size(), (size_t)1);
-  CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0])
-    << req_data.vals.size() << " v.s. " << req_data.lens[0];
-  if (debug_mode_) {
-    LOG(INFO) << "push key=" << DecodeKey(req_data.keys[0])
-              << "\t sender=" << req_meta.sender
-              << "\t size=" << (size_t) req_data.lens[0];
+  if (req_meta.push) {
+    CHECK_EQ(req_data.lens.size(), (size_t)1) << req_data.lens.size();
+    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0])
+      << req_data.vals.size() << " v.s. " << req_data.lens[0];
   }
   uint64_t key = DecodeKey(req_data.keys[0]);
+  if (debug_mode_) {
+    LOG(INFO) << "server receive key=" << key
+              << "\t msgtype=" << (req_meta.push ? "push" : "pull")
+              << "\t sender=" << req_meta.sender;
+  }
+  if (req_type == RequestType::kAckSignal) {
+    GetP2PAckTable()->AddReadyCount(key);
+    return;
+  }
+  // not ack message
+  size_t len;
+  if (req_meta.push) {
+    len = (size_t) req_data.lens[0];
+  } else { // pull 
+    CHECK_EQ(req_type, RequestType::kDefaultPull);
+    {
+      std::lock_guard<std::mutex> lk(pullresp_mu_);
+      p2p_pull_reqmetas_[key] = req_meta;
+    }
+    GetP2PPullResponseTable()->AddReadyCount(key);
+    return;
+  }
   auto stored = GetStore(key);
-  auto len = (size_t) req_data.lens[0];
   // initialization
   if (!stored->tensor) {
     if (type.device == common::GPU) {
@@ -451,7 +486,11 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
                                  ps::KVServer<char>* server) {
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   auto req_type = type.requestType;
-  if (req_type == RequestType::kDefaultSend || req_type == RequestType::kGroupSend || req_type == RequestType::kEmptyGroupSend) {
+  if (req_type == RequestType::kDefaultSend 
+      || req_type == RequestType::kGroupSend 
+      || req_type == RequestType::kEmptyGroupSend
+      || req_type == RequestType::kDefaultPull
+      || req_type == RequestType::kAckSignal) {
     P2PHandler(req_meta, req_data, server);
     return;
   }
@@ -665,6 +704,8 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
 
 void BytePSServer::InitP2PCopyTable() {
   p2p_copy_table_ = new ReadyTable(1, "P2P_COPYH2D");
+  p2p_pull_response_table_ = new ReadyTable(1, "P2P_PULL_RESPONSE");
+  p2p_ack_table_ = new ReadyTable(1, "P2P_WAIT_ACK");
   auto num_worker_str = getenv("DMLC_NUM_WORKER");
   CHECK(num_worker_str);
   int num_workers = atoi(num_worker_str);

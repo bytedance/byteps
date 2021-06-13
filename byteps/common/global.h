@@ -159,6 +159,8 @@ class BytePSGlobal {
   // p2p ready tables
   static ReadyTable* GetP2PCopyTable();
   static ReadyTable* GetP2PGroupCopyTable();
+  static ReadyTable* GetP2PPullResponseTable();
+  static ReadyTable* GetP2PAckTable();
   // for non-root
   static ReadyTable* GetCopyTable() { return _copy_table; }
 
@@ -201,6 +203,8 @@ class BytePSGlobal {
 
   static uint32_t GetSessionSize() { return _alltoall_session_size; }
 
+  static bool IsP2PAckDisabled() { return _p2p_disable_pull_ack; }
+  
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;
@@ -258,6 +262,7 @@ class BytePSGlobal {
   static int _end_step;
   static std::string _trace_dir;
   static bool _prof_zpush_latency;
+  static bool _p2p_disable_pull_ack;
 
   // cuda
 #if BYTEPS_BUILDING_CUDA == 1

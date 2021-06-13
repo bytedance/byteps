@@ -57,6 +57,12 @@ void P2PCopyDevice2HostSendLoop(int index);
 
 void P2PGroupCopyHost2DeviceLoop();
 
+void P2PPullLoop();
+
+void P2PPullResponseLoop();
+
+void P2PAckLoop();
+
 // cpu allreduce
 void CpuCopyLoop();
 void CpuReduceLoop();

@@ -64,6 +64,14 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
     case P2P_COPYH2D: {
       _rt = BytePSGlobal::GetP2PCopyTable();
       break;
+    }    
+    case P2P_PULL_RESPONSE: {
+      _rt = BytePSGlobal::GetP2PPullResponseTable();
+      break;
+    }
+    case P2P_WAIT_ACK: {
+      _rt = BytePSGlobal::GetP2PAckTable();
+      break;
     }
     case REDUCE:
 #if BYTEPS_BUILDING_CUDA == 1

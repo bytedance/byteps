@@ -515,7 +515,8 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         std::shared_ptr<TFTensor> byteps_aux_output,
                         std::shared_ptr<common::ReadyEvent> ready_event,
                         TaskType task, bool recv_split_unknown,
-                        std::string name_wo_session) {
+                        std::string name_wo_session, 
+                        bool use_pull) {
   // the counter for all send/recv tasks generated for alltoall
   int num_ranks = split_count.size();
   // one recv per rank (including memcpy). one d2h_send
@@ -553,7 +554,17 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   for (auto tensor : byteps_group_output) {
     group_output.push_back(tensor);
   }
-  enqueue_result = common::EnqueueAlltoAllTensor(node_name, 
+  enqueue_result = use_pull
+                 ? common::EnqueueAlltoAllTensorPullImpl(
+                                                 node_name, 
+                                                 byteps_input, group_input,
+                                                 byteps_output, group_output, byteps_aux_output,
+                                                 ready_event, device,
+                                                 priority, 0, callback,
+                                                 send_begin, recv_begin,
+                                                 counter_ptr.get(), recv_split_unknown)
+                 : common::EnqueueAlltoAllTensor(
+                                                 node_name, 
                                                  byteps_input, group_input,
                                                  byteps_output, group_output, byteps_aux_output,
                                                  ready_event, device,
@@ -707,11 +718,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                         recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_send);
+                        kAlltoAll, recv_split_unknown, name_send, false);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                     recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_send);
+                    kAlltoAll, recv_split_unknown, name_send, false);
       t.detach();
     }
   }
@@ -723,12 +734,16 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
  private:
      std::string input_tensor_name;
      bool recv_split_unknown;
+     bool use_pull;
 
  public:
   explicit BytepsAllToAllGroupOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
+      use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
+               ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
+               : true;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -864,11 +879,11 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, name_send);
+                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, name_send);
+                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull);
       t.detach();
     }
   }

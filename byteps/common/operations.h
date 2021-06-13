@@ -100,6 +100,21 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              std::atomic_int* counter_ptr,
                              bool output_size_unknown);
 
+Status EnqueueAlltoAllTensorPullImpl(std::string& name,
+                             std::shared_ptr<Tensor> input,
+                             std::vector<std::shared_ptr<Tensor>>& group_inputs,
+                             std::shared_ptr<Tensor> output,
+                             std::vector<std::shared_ptr<Tensor>>& group_outputs,
+                             std::shared_ptr<Tensor> size_output,
+                             std::shared_ptr<ReadyEvent> ready_event,
+                             const int device,
+                             const int priority, const int version,
+                             StatusCallback callback,
+                             const std::vector<int>& send_begin, // begin offsets for send
+                             const std::vector<int>& recv_begin, // begin offsets for recv
+                             std::atomic_int* counter_ptr,
+                             bool output_size_unknown);
+
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,

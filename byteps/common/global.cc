@@ -104,6 +104,7 @@ uint32_t BytePSGlobal::_alltoall_session_size = 1;
 std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_session_ids;
 std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_completions;
 std::mutex BytePSGlobal::_alltoall_session_mu;
+bool BytePSGlobal::_p2p_disable_pull_ack = false;
 
 std::vector<std::string> BytePSGlobal::_declared_tensors;
 bool BytePSGlobal::_is_resuming = false;
@@ -210,6 +211,10 @@ void BytePSGlobal::Init() {
                     &_my_role, &_num_phy_node, &_phy_node_id);
 
   _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+
+  if (getenv("BYTEPS_DISABLE_P2P_ACK")) {
+    _p2p_disable_pull_ack = atoi(getenv("BYTEPS_DISABLE_P2P_ACK"));
+  }
 
   // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
@@ -845,7 +850,7 @@ PSKV BytePSGlobal::EncodeP2PKey(uint64_t key, size_t len, int receiver) {
   BPS_CHECK_GT(num_servers, 0);
   // send it to the target server
   int server = receiver;
-  CHECK_LT(server, num_servers)
+  BPS_CHECK_LT(server, num_servers)
     << "server=" << server << ", num_servers=" << num_servers;
   ps::Key ps_key = krs[server].begin() + key;
   PSKV pskv;
@@ -945,6 +950,14 @@ ReadyTable* BytePSGlobal::GetP2PCopyTable() {
 
 ReadyTable* BytePSGlobal::GetP2PGroupCopyTable() {
   return server::BytePSServer::GetP2PGroupCopyTable();
+}
+
+ReadyTable* BytePSGlobal::GetP2PPullResponseTable() {
+  return server::BytePSServer::GetP2PPullResponseTable();
+}
+
+ReadyTable* BytePSGlobal::GetP2PAckTable() {
+  return server::BytePSServer::GetP2PAckTable();
 }
 
 int BytePSGlobal::IsDirectResponse() {
