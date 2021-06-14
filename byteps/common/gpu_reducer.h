@@ -32,8 +32,10 @@ class GpuReducer {
   int copy_h2d(void* dst, const void* src, size_t len);
   int copy_d2h(void* dst, const void* src, size_t len);
   int copy_d2d(void* dst, const void* src, size_t len);
-
+  
 #if BYTEPS_BUILDING_CUDA == 1
+  int copy_async(void* dst, const void* src, size_t len, 
+                 cudaMemcpyKind cuda_memcpy_kind, cudaStream_t* stream);
   ~GpuReducer() {
     if (_h2d_stream) {
       CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));

@@ -885,80 +885,118 @@ void PullLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
-void P2PCopyHost2Device(byteps::common::TensorTableEntry* task) {
-  int send_dev = task->tensor 
-               ? task->tensor->device() 
-               : task->group_tensors[0]->device();
-  int recv_dev = task->output 
-               ? task->output->device()
-               : task->group_outputs[0]->device();
-  auto key = task->key;
-  auto len = task->len;
-  auto offset = task->offset;
-  int sender = task->context->sender;
+void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
   int my_rank = BytePSGlobal::GetRank();
-  bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
-  bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
-  if (sender == my_rank) {
-    // copy to myself
-    BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
-                   << " len=" << len << " cpu=" << is_recv_cpu << " device=" << recv_dev;
-    auto src_addr = task->tensor
-                  ? (char*)task->tensor->data() + offset
-                  : (char*)task->group_tensors[my_rank]->data();
-    auto dst_addr = task->output
-                  ? (char*)task->output->data() + task->offset_list[my_rank]
-                  : (char*)task->group_outputs[my_rank]->data();
-    if (is_recv_cpu) {
-      if (is_send_cpu) {
-        BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+#if BYTEPS_BUILDING_CUDA == 1
+  cudaStream_t* p2p_stream = BytePSGlobal::GetP2PCopyStream();
+#endif
+  for (auto& task : tasks) {
+    int send_dev = task->tensor 
+                 ? task->tensor->device() 
+                 : task->group_tensors[0]->device();
+    int recv_dev = task->output 
+                 ? task->output->device()
+                 : task->group_outputs[0]->device();
+    auto key = task->key;
+    auto len = task->len;
+    auto offset = task->offset;
+    int sender = task->context->sender;
+    bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
+    bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
+    if (sender == my_rank) {
+      // copy to myself
+      BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
+                    << " len=" << len << " cpu=" << is_recv_cpu << " device=" << recv_dev;
+      auto src_addr = task->tensor
+                    ? (char*)task->tensor->data() + offset
+                    : (char*)task->group_tensors[my_rank]->data();
+      auto dst_addr = task->output
+                    ? (char*)task->output->data() + task->offset_list[my_rank]
+                    : (char*)task->group_outputs[my_rank]->data();
+      if (is_recv_cpu) {
+        if (is_send_cpu) {
+          BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
+        } else {
+#if BYTEPS_BUILDING_CUDA == 1
+          BytePSGlobal::GetGpuReducer()
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToHost, p2p_stream);
+#endif
+        }
       } else {
-        BytePSGlobal::GetGpuReducer()->copy_d2h(dst_addr, src_addr, len);
+#if BYTEPS_BUILDING_CUDA == 1
+        // it only happens with CPU-GPU alltoall.
+        if (is_send_cpu) {
+          BytePSGlobal::GetGpuReducer()
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyHostToDevice, p2p_stream);
+        } else {
+          BytePSGlobal::GetGpuReducer()
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToDevice, p2p_stream);
+        }
+#endif
       }
-    } else {
-      // XXX it only happens with CPU-GPU alltoall.
-      if (is_send_cpu) {
-        BytePSGlobal::GetGpuReducer()->copy_h2d(dst_addr, src_addr, len);
+    } else { // not myself
+      auto dst_addr = task->output
+                    ? (char*)task->output->data() + task->offset_list[sender]
+                    : (char*)task->group_outputs[sender]->data();
+      auto recv_arr = server::BytePSServer::GetRecvPartition(key);
+      int recv_len = recv_arr.len;
+      void* recv_addr = recv_arr.val.data();
+      BPS_CHECK(recv_len == len) << recv_len << ", " << len;
+      // update the output (data)
+      BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) recv_addr 
+          << " len=" << len << " recv_cpu=" << is_recv_cpu
+          << " send_cpu=" << is_send_cpu;
+      CHECK(recv_addr) << key;
+      if (is_recv_cpu) {
+        BytePSGlobal::GetCpuReducer()->copy(dst_addr, recv_addr, recv_len);
       } else {
-        BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, len);
+#if BYTEPS_BUILDING_CUDA == 1
+        // ps-lite buffer is already on GPU
+        BytePSGlobal::GetGpuReducer()
+            ->copy_async(dst_addr, recv_addr, recv_len, cudaMemcpyDeviceToDevice, p2p_stream);
+#endif
       }
     }
-    return;
   }
-  auto dst_addr = task->output
-                ? (char*)task->output->data() + task->offset_list[sender]
-                : (char*)task->group_outputs[sender]->data();
-  auto recv_arr = server::BytePSServer::GetRecvPartition(key);
-  int recv_len = recv_arr.len;
-  void* recv_addr = recv_arr.val.data();
-  BPS_CHECK(recv_len == len) << recv_len << ", " << len;
-  // update the output (data)
-  BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) recv_addr 
-      << " len=" << len << " recv_cpu=" << is_recv_cpu
-      << " send_cpu=" << is_send_cpu;
-  CHECK(recv_addr != nullptr) << key;
-  if (is_recv_cpu) {
-    BytePSGlobal::GetCpuReducer()->copy(dst_addr, recv_addr, recv_len);
-  } else {
-    // ps-lite buffer is already on GPU
-    BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, recv_addr, recv_len);
-  }
+#if BYTEPS_BUILDING_CUDA == 1
+  CUDA_CALL(cudaStreamSynchronize(*p2p_stream));
+#endif
   return;
 }
 
 bool RunP2PCopyHost2DeviceLoopOnce() {
   QueueType this_op = P2P_COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTaskLite();
-  if (task) {
+  std::vector<TensorTableEntry*> tasks;
+  for (int i = 0; i < BytePSGlobal::GetP2PCopyGroupSize(); ++i) {
+    auto task = q->getTaskLite();
+    if (!task) {
+      break;
+    }
+    tasks.push_back(task);
+  }
+  if (tasks.size()) {
     if (!BytePSGlobal::IsSkipH2D()) {
-      P2PCopyHost2Device(task);
+      if (BytePSGlobal::IsProfileAlltoall()) {
+        auto now = std::chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
+        P2PCopyGroup(tasks);
+        auto then = std::chrono::system_clock::now();
+        auto then_duration = then.time_since_epoch();
+        auto then_us = std::chrono::duration_cast<std::chrono::microseconds>(then_duration);
+        BPS_LOG(INFO) << "Group Copy time = " << then_us.count() - us.count() << " us (" << tasks.size()<< " tensors)";
+      } else {
+        P2PCopyGroup(tasks);
+      }
     }
-    if (BytePSGlobal::IsDirectResponse() == 0 
-        && task->context->sender != BytePSGlobal::GetRank()) {
-      server::BytePSServer::SendPushResponse(task->key);
+    for (auto& task : tasks) {
+      if (BytePSGlobal::IsDirectResponse() == 0 
+          && task->context->sender != BytePSGlobal::GetRank()) {
+        server::BytePSServer::SendPushResponse(task->key);
+      }
+      FinishOrProceedLite(task);
     }
-    FinishOrProceedLite(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
@@ -1191,11 +1229,10 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
             ->ZPush(pskv.keys, vals, pskv.lens, cmd);
         } else { // should be 0 for now
           BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
-          if (BytePSGlobal::IsProfileZPush()) {
+          if (BytePSGlobal::IsProfileAlltoall()) {
             auto now = std::chrono::system_clock::now();
             auto duration = now.time_since_epoch();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-
             BytePSGlobal::GetPS(index)
               ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
                 int v = task->counter_a2a.get()->fetch_sub(1);
@@ -1207,7 +1244,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
             auto then_duration = then.time_since_epoch();
             auto then_us = std::chrono::duration_cast<std::chrono::microseconds>(then_duration);
             total_zpush_time += (then_us.count() - us.count());
-	  } else {
+          } else {
             BytePSGlobal::GetPS(index)
               ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
                 int v = task->counter_a2a.get()->fetch_sub(1);
@@ -1215,12 +1252,12 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
                   FinishOrProceedLite(task);
                 }
               });
-	  }
+          }
         }
       }
     }
-    if (BytePSGlobal::IsProfileZPush()) {
-      BPS_LOG(INFO) << "rank=" << my_rank << " ZPush time = " << total_zpush_time << " us";
+    if (BytePSGlobal::IsProfileAlltoall()) {
+      BPS_LOG(INFO) << "ZPush time = " << total_zpush_time << " us (" << task->tensor_name << ")";
     }
     if (BytePSGlobal::IsDirectResponse() == 2 || task->counter_a2a == nullptr) {
       FinishOrProceedLite(task);

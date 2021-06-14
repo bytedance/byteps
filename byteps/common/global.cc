@@ -62,7 +62,7 @@ int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
 int BytePSGlobal::_end_step = 20;
 std::string BytePSGlobal::_trace_dir;
-bool BytePSGlobal::_prof_zpush_latency = false;
+bool BytePSGlobal::_prof_all2all_latency = false;
 std::unordered_map<std::string, int> BytePSGlobal::_name2end;
 int BytePSGlobal::_output_counter = 0;
 
@@ -114,6 +114,8 @@ std::unordered_map<int, unsigned int> p2p_next_keys_;
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
+cudaStream_t* BytePSGlobal::_p2p_copy_stream = NULL;
+
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
 std::string BytePSGlobal::_uuid;
@@ -130,6 +132,7 @@ volatile bool BytePSGlobal::_mixed_mode = false;
 uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 bool BytePSGlobal::_should_sample = false;
 std::atomic_int BytePSGlobal::joined_thread_cnt;
+int BytePSGlobal::_p2p_copy_group_size;
 
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType, int index) {
   if (queueType == P2P_COPYD2H) {
@@ -180,7 +183,7 @@ void BytePSGlobal::Init() {
                    : "./trace";
 
   // Set p2p related variables
-  _prof_zpush_latency = getenv("BYTEPS_PROFILE_ZPUSH") ? atoi(getenv("BYTEPS_PROFILE_ZPUSH")) : false;
+  _prof_all2all_latency = getenv("BYTEPS_PROFILE_ALL2ALL") ? atoi(getenv("BYTEPS_PROFILE_ALL2ALL")) : false;
   _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
@@ -188,6 +191,7 @@ void BytePSGlobal::Init() {
   _num_loop_parallel = getenv("BYTEPS_LOOP_PARALLEL") ? atoi(getenv("BYTEPS_LOOP_PARALLEL")) : 1;
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 1;
+  _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
                 << ", skip_d2h=" << _skip_d2h << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size;
@@ -383,12 +387,16 @@ void BytePSGlobal::Init() {
   // Create CUDA streams for GPU-CPU copies
   _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _p2p_copy_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
                                       cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_stream,
+                                      cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_stream));
 #endif
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
@@ -532,6 +540,10 @@ void BytePSGlobal::Shutdown() {
   if (_copy_host2device_stream) {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
     _copy_host2device_stream = NULL;
+  }
+  if (_p2p_copy_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_stream));
+    _p2p_copy_stream = NULL;
   }
 #endif
 

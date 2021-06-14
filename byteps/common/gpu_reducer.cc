@@ -54,6 +54,16 @@ int GpuReducer::copy_d2h(void* dst, const void* src, size_t len) {
   return 0;
 }
 
+#if BYTEPS_BUILDING_CUDA == 1
+int GpuReducer::copy_async(void* dst, const void* src, size_t len, 
+                           cudaMemcpyKind cuda_memcpy_kind, cudaStream_t* stream) {
+  CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
+    (cudaMemcpyKind) cuda_memcpy_kind,
+    (cudaStream_t)*stream));
+  return 0;
+}
+#endif // BYTEPS_BUILDING_CUDA == 1
+
 }  // namespace common
 }  // namespace byteps
 

@@ -86,7 +86,7 @@ class BytePSGlobal {
   // 2: sender does not wait for response, and receiver does not response either.
   static int IsDirectResponse();
   static bool IsTrace() { return _is_trace; }
-  static bool IsProfileZPush() { return _prof_zpush_latency; }
+  static bool IsProfileAlltoall() { return _prof_all2all_latency; }
   static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
   static BytePSRole GetMyRole() { return _my_role; }
   static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
@@ -139,6 +139,7 @@ class BytePSGlobal {
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
   static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
+  static cudaStream_t* GetP2PCopyStream() { return _p2p_copy_stream; }
 #endif
 
   // methods to access or modify the _ready_table
@@ -202,7 +203,7 @@ class BytePSGlobal {
   }
 
   static uint32_t GetSessionSize() { return _alltoall_session_size; }
-
+  static int GetP2PCopyGroupSize() { return _p2p_copy_group_size; }
   static bool IsP2PAckDisabled() { return _p2p_disable_pull_ack; }
   
  private:
@@ -261,13 +262,16 @@ class BytePSGlobal {
   static int _start_step;
   static int _end_step;
   static std::string _trace_dir;
-  static bool _prof_zpush_latency;
+  static bool _prof_all2all_latency;
   static bool _p2p_disable_pull_ack;
+
+  static int _p2p_copy_group_size;
 
   // cuda
 #if BYTEPS_BUILDING_CUDA == 1
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
+  static cudaStream_t* _p2p_copy_stream;
   static std::shared_ptr<NcclManager> _nccl_manager;
 #endif
 
