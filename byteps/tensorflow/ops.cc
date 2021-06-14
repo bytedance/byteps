@@ -198,28 +198,28 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name) {
 
 extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int receiver) {
   std::string prefix = "byteps_p2p_send_";
+  int32_t tensor_key;
   if (sender == -1) sender = common::byteps_rank();
   if (receiver == -1) receiver = common::byteps_rank();
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name, 0);
-  common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
+  tensor_key = common::IsTensorDeclaredP2P(tensor_name, sender, receiver, -1);
 }
 
-extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name) {
+extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key, uint32_t session_size) {
   const int my_rank = common::byteps_rank();
   const int size = common::byteps_size();
   // Declare tensors for alltoall
   std::string name_prefix = std::string(name);
   std::string my_rank_str = std::to_string(my_rank);
-  uint32_t session_size = common::byteps_session_size();
   for (uint32_t session_id = 0; session_id < session_size; session_id++) {
     std::string session_prefix = "session_" + std::to_string(session_id) + "_" + name_prefix;
     for (size_t i = 0; i < size; ++i) {
       std::string target_rank = std::to_string(i);
       std::string name_send = session_prefix + "_alltoall_send_" + my_rank_str + "_recv_" + target_rank;
       std::string name_recv = session_prefix + "_alltoall_send_" + target_rank + "_recv_" + my_rank_str;
-      common::IsTensorDeclaredP2P(name_send, my_rank, i);
-      common::IsTensorDeclaredP2P(name_recv, i, my_rank);
+      tensor_key[session_id] = common::IsTensorDeclaredP2P(name_send, my_rank, i, -1);
+      tensor_key[session_id] = common::IsTensorDeclaredP2P(name_recv, i, my_rank, -1);
     }
   }
 }
@@ -580,12 +580,14 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      std::string input_tensor_name;
      bool recv_split_unknown;
      int partition_bytes;
+     std::vector<int32_t> tensor_key;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
+      context->GetAttr("tensor_key", &tensor_key);
       if (recv_split_unknown) {
         CHECK(getenv("BYTEPS_PARTITION_BYTES"))
           << "BYTEPS_PARTITION_BYTES is required if recv_split_unknown=True";
@@ -712,6 +714,22 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       done();
       return;
     }
+
+    int32_t declared_key;
+    std::string sess_prefix;
+    for (int j = 0; j < tensor_key.size(); ++j) {
+      int num_ranks = split_tensor.shape().dim_size(0);
+      sess_prefix = "session_" + std::to_string(j) + "_";
+      for (size_t i = 0; i < num_ranks; ++i) {
+        std::string nsend = sess_prefix + tmp_name + "_alltoall_send_" 
+                          + std::to_string(my_rank) + "_recv_" + std::to_string(i);
+        std::string nrecv = sess_prefix + tmp_name + "_alltoall_send_" 
+                          + std::to_string(i) + "_recv_" + std::to_string(my_rank);
+        declared_key = common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key[j]);
+        declared_key = common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key[j]);
+      }
+    }
+
     auto& bps_context = common::GetContextFromName(session_name_send);
     std::vector<std::shared_ptr<TFTensor>> empty_group_inputs;
     std::vector<std::shared_ptr<TFTensor>> empty_group_outputs;
@@ -735,12 +753,14 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
      std::string input_tensor_name;
      bool recv_split_unknown;
      bool use_pull;
+     std::vector<int32_t> tensor_key;
 
  public:
   explicit BytepsAllToAllGroupOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
+      context->GetAttr("tensor_key", &tensor_key);
       use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
                ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
                : true;
@@ -875,6 +895,22 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
       done();
       return;
     }
+
+    int32_t declared_key;
+    std::string sess_prefix;
+    for (int j = 0; j < tensor_key.size(); ++j) {
+      int num_ranks = split_tensor.shape().dim_size(0);
+      sess_prefix = "session_" + std::to_string(j) + "_";
+      for (size_t i = 0; i < num_ranks; ++i) {
+        std::string nsend = sess_prefix + tmp_name + "_alltoall_send_" 
+                          + std::to_string(my_rank) + "_recv_" + std::to_string(i);
+        std::string nrecv = sess_prefix + tmp_name + "_alltoall_send_" 
+                          + std::to_string(i) + "_recv_" + std::to_string(my_rank);
+        declared_key = common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key[j]);
+        declared_key = common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key[j]);
+      }
+    }
+
     auto& bps_context = common::GetContextFromName(session_name_send);
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
@@ -906,6 +942,7 @@ REGISTER_OP("BytepsAlltoall")
     .Input("splits: int32")
     .Input("recv_splits: int32")
     .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
     .Output("output: T")
     .Output("recv_bytes: int32") // TODO: rename this output
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -945,6 +982,7 @@ REGISTER_OP("BytepsAlltoallGroup")
     .Input("splits: int32")
     .Input("recv_splits: int32")
     .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
     .Output("output: N * T")
     .Output("recv_bytes: N * int32") // TODO: rename this output
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -984,6 +1022,7 @@ REGISTER_OP("BytepsAlltoallCputogpu")
     .Input("splits: int32")
     .Input("recv_splits: int32")
     .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
     .Output("output: T")
     .Output("recv_bytes: int32")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -1021,6 +1060,7 @@ REGISTER_OP("BytepsAlltoallGputocpu")
     .Input("splits: int32")
     .Input("recv_splits: int32")
     .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
     .Output("output: T")
     .Output("recv_bytes: int32")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
