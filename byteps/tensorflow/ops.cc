@@ -1045,7 +1045,7 @@ Output
 )doc");
 
 
-REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpu").Device(::tensorflow::DEVICE_CPU)
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpu").Device(::tensorflow::DEVICE_GPU)
                                                       .HostMemory("splits")
                                                       .HostMemory("recv_splits")
                                                       .HostMemory("recv_bytes")
