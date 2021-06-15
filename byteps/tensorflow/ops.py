@@ -64,7 +64,7 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 get_pushpull_speed = _basics.get_pushpull_speed
-session_size = int(os.environ['BYTEPS_ALLTOALL_SESSION_SIZE'])
+session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
