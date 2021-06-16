@@ -87,6 +87,7 @@ class BytePSGlobal {
   static int IsDirectResponse();
   static bool IsTrace() { return _is_trace; }
   static bool IsProfileAlltoall() { return _prof_all2all_latency; }
+  static bool IsAlltoallUsePull() { return _is_alltoall_use_pull; }
   static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
   static BytePSRole GetMyRole() { return _my_role; }
   static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
@@ -233,6 +234,8 @@ class BytePSGlobal {
   static std::unordered_map<std::string, uint64_t> _alltoall_completions;
   static uint32_t _alltoall_session_size;
   static std::mutex _alltoall_session_mu;
+
+  static bool _is_alltoall_use_pull;
 
   static bool _is_cross_pcie_switch;
   static BytePSRole _my_role;
