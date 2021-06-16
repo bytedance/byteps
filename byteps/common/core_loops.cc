@@ -1209,7 +1209,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
                     : task->offset_list[i];
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
         char* tensor;
-        bool input_device = is_group
+        int input_device = is_group
                     ? task->group_tensors[i]->device()
                     : task->tensor->device();
         if (input_device == CPU_DEVICE_ID 
