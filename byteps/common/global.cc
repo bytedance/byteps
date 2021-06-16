@@ -691,7 +691,15 @@ void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
   auto worker = GetOrInitPS(0);
   CHECK(_ps.size() == 1);
   bool gpu = true;
-  ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
+  bool is_alltoall_pull 
+           = getenv("BYTEPS_ALL2ALL_USE_PULL") 
+           ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
+           : true;
+  if (is_alltoall_pull) {
+    ps::Postoffice::GetServer()->van()->PinMemory(ptr, bytes, gpu);
+  } else {
+    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
+  }
   BPS_LOG(INFO) << "Pinned memory " << ptr << " device_id=" << device_id << " bytes=" << bytes;
 }
 

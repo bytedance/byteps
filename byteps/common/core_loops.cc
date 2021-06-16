@@ -1340,7 +1340,14 @@ bool RunP2PPullResponseOnce() {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
       }
     } else {
-      server::BytePSServer::SendPullResponse(task->key, tensor, task->len);
+      if (BytePSGlobal::IsProfileAlltoall()) {
+        auto ts = std::chrono::high_resolution_clock::now();
+        server::BytePSServer::SendPullResponse(task->key, tensor, task->len);
+        auto te = std::chrono::high_resolution_clock::now();
+        BPS_LOG(INFO)<< "RESP time = " << std::chrono::duration<double, std::milli>(te-ts).count() << " ms";
+      } else {
+        server::BytePSServer::SendPullResponse(task->key, tensor, task->len);
+      }
     } 
     FinishOrProceedLite(task);
   } else {
