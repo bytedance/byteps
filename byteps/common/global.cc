@@ -697,6 +697,7 @@ void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
   bool gpu = true;
   if (BytePSGlobal::IsAlltoallUsePull()) {
     ps::Postoffice::GetServer()->van()->PinMemory(ptr, bytes, gpu);
+    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
   } else {
     ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
   }
