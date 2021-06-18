@@ -32,17 +32,17 @@ pushd $path
 function getip() { echo $(ip a show $1 | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}'); }
 
 if [ "$RANK" == "0" ]; then
-    bash run_byteps_test_byteccl.sh scheduler &
+    bash run_byteccl_test.sh scheduler &
 fi
 
-CUDA_VISIBLE_DEVICES=0 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteps_test_byteccl.sh joint $((OFFSET+0)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=1 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteps_test_byteccl.sh joint $((OFFSET+1)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=2 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteps_test_byteccl.sh joint $((OFFSET+2)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=3 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteps_test_byteccl.sh joint $((OFFSET+3)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=4 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteps_test_byteccl.sh joint $((OFFSET+4)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=5 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteps_test_byteccl.sh joint $((OFFSET+5)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=6 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteps_test_byteccl.sh joint $((OFFSET+6)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=7 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteps_test_byteccl.sh joint $((OFFSET+7)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=0 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteccl_test.sh joint $((OFFSET+0)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=1 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteccl_test.sh joint $((OFFSET+1)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=2 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteccl_test.sh joint $((OFFSET+2)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=3 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteccl_test.sh joint $((OFFSET+3)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=4 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteccl_test.sh joint $((OFFSET+4)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=5 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteccl_test.sh joint $((OFFSET+5)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=6 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteccl_test.sh joint $((OFFSET+6)) test_tensorflow_p2p.py &
+CUDA_VISIBLE_DEVICES=7 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteccl_test.sh joint $((OFFSET+7)) test_tensorflow_p2p.py &
 
 popd 
 

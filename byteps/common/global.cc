@@ -112,7 +112,7 @@ std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 unsigned int next_key_ = 0;
 std::unordered_map<int, unsigned int> p2p_next_keys_;
 std::unordered_map<int, std::unordered_set<unsigned int>> p2p_used_keys_;
-bool BytePSGlobal::_is_alltoall_use_pull = true;
+bool BytePSGlobal::_is_alltoall_use_pull = false;
 
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
@@ -195,7 +195,7 @@ void BytePSGlobal::Init() {
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 1;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
-  _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : true;
+  _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
                 << ", skip_d2h=" << _skip_d2h << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size

@@ -763,7 +763,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
       context->GetAttr("tensor_key", &tensor_key);
       use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
                ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
-               : true;
+               : false;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
