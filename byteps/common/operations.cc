@@ -765,10 +765,10 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
 
   auto key_list = context.key_list;
 
-  BPS_CHECK_GT(key_list.size(), 0) << name;
-  BPS_CHECK_EQ(key_list.size(),
-               (unsigned int)(size + bound - 1) / bound)  // round up
-      << key_list.size() << ", size=" << size << ", bound=" << bound;
+  // For now, we do not implement partitioning for P2P operations
+  BPS_CHECK_EQ(key_list.size(), 1)
+      << name << ", size=" << size << ", buff_size=" << bound
+      << ", please consider increasing BYTEPS_P2P_PARTITION_BYTES";
 
   BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
                  << ", parts=" << key_list.size();

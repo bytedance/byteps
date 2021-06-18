@@ -93,9 +93,9 @@ class TensorFlowTests:
         # every worker should have the same size
         rng = np.random.default_rng(size)
         alltoall_fn = bps.alltoall
-        if src_device is 'cpu' and dst_device is 'gpu':
+        if src_device == 'cpu' and dst_device == 'gpu':
             alltoall_fn = bps.alltoall_cpu2gpu
-        if src_device is 'gpu' and dst_device is 'cpu':
+        if src_device == 'gpu' and dst_device == 'cpu':
             alltoall_fn = bps.alltoall_gpu2cpu
         for dtype in dtypes:
             niter = 0
@@ -292,9 +292,9 @@ class TensorFlowTests:
         # every worker should have the same size
         rng = np.random.default_rng(size)
         alltoall_fn = bps.alltoall
-        if src_device is 'cpu' and dst_device is 'gpu':
+        if src_device == 'cpu' and dst_device == 'gpu':
             alltoall_fn = bps.alltoall_cpu2gpu
-        if src_device is 'gpu' and dst_device is 'cpu':
+        if src_device == 'gpu' and dst_device == 'cpu':
             alltoall_fn = bps.alltoall_gpu2cpu
         for dtype in dtypes:
             niter = 0
