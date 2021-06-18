@@ -1330,16 +1330,19 @@ bool RunP2PPullResponseOnce() {
     BPS_CHECK(task->tensor);
     int sender = task->context->sender;
     int my_rank = BytePSGlobal::GetRank();
-    char* tensor = (char*) task->tensor->data() + task->offset;
     if (sender == my_rank) {
       // copy to myself
-      auto src_addr = tensor;
+      bool is_group = (task->group_tensors.size() > 0);
+      auto src_addr = (char*) task->tensor->data() 
+                    + (is_group ? task->offset : task->offset_list[my_rank]);
       auto dst_addr = (char*) task->output->data() + task->offset;
+      // FIXME: add h2d / d2h
       BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, task->len);
       if (!BytePSGlobal::IsP2PAckDisabled()) {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
       }
     } else {
+      char* tensor = (char*) task->tensor->data() + task->offset;
       if (BytePSGlobal::IsProfileAlltoall()) {
         auto ts = std::chrono::high_resolution_clock::now();
         server::BytePSServer::SendPullResponse(task->key, tensor, task->len);

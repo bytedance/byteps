@@ -526,6 +526,8 @@ Status EnqueueAlltoAllTensorPullImpl(
   response_task->cpubuff = nullptr;
   response_task->gpu_ptr = nullptr;
   response_task->aux_output = size_output;
+  response_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
+  response_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
 
   // the accumulated offset list always starts with 0
   response_task->offset_list.push_back(0);

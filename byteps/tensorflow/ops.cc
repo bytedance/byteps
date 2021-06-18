@@ -581,6 +581,7 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      bool recv_split_unknown;
      int partition_bytes;
      std::vector<int32_t> tensor_key;
+     bool use_pull;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
@@ -596,6 +597,9 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
           partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
         }
       }
+      use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
+               ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
+               : false;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -736,11 +740,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                         recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_send, false);
+                        kAlltoAll, recv_split_unknown, name_send, use_pull);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                     recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_send, false);
+                    kAlltoAll, recv_split_unknown, name_send, use_pull);
       t.detach();
     }
   }
