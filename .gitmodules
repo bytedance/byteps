@@ -2,3 +2,6 @@
 	path = 3rdparty/ps-lite
 	url = https://github.com/bytedance/ps-lite
 	branch = byteps
+[submodule "3rdparty/ucx"]
+	path = 3rdparty/ucx
+	url = https://github.com/openucx/ucx

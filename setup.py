@@ -245,6 +245,10 @@ def use_cuda():
     byteps_with_gpu = int(os.environ.get('BYTEPS_WITH_GPU', 1))
     return byteps_with_gpu
 
+def use_nvtx():
+    byteps_with_nvtx = int(os.environ.get('BYTEPS_WITH_NVTX', 1))
+    return byteps_with_nvtx
+
 def use_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '0'))
     return byteps_with_ucx
@@ -523,6 +527,10 @@ def build_tf_extension(build_ext, options):
         options['INCLUDES'] += cuda_include_dirs
         options['LIBRARY_DIRS'] += cuda_lib_dirs
         options['LIBRARIES'] += ['cudart']
+        # XXX: link TF op to nvtx temporarily. Later we shall move the code
+        # to core for cross-platform support
+        if use_nvtx():
+          options['LIBRARIES'] += ['nvToolsExt']
 
     tensorflow_lib.define_macros = options['MACROS']
     tensorflow_lib.include_dirs = options['INCLUDES']
@@ -1019,6 +1027,8 @@ class custom_build_ext(build_ext):
         # servers are always built without GPU
         if use_cuda():
             options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_CUDA=1']
+        if use_nvtx():
+            options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_NVTX=1']
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS

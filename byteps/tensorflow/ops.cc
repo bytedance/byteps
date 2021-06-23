@@ -19,9 +19,13 @@
 #include <thread>
 #include <unordered_map>
 #include <atomic>
+#include <chrono>
 
 #include "ops.h"
 #include "../common/logging.h"
+#if BYTEPS_BUILDING_NVTX == 1
+#include "nvToolsExt.h"
+#endif
 
 using namespace byteps;
 
@@ -516,7 +520,7 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         std::shared_ptr<common::ReadyEvent> ready_event,
                         TaskType task, bool recv_split_unknown,
                         std::string name_wo_session, 
-                        bool use_pull) {
+                        bool use_pull, bool use_nvtx) {
   // the counter for all send/recv tasks generated for alltoall
   int num_ranks = split_count.size();
   // one recv per rank (including memcpy). one d2h_send
@@ -526,15 +530,34 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   // common fields
   auto device = GetDeviceID(context);
   int priority = 0;
-  auto callback = [context, done, counter_ptr, name_wo_session](const common::Status& status) {
-    // we use a counter to track each subtask
-    // the alltoall operator is completed after all subtasks are done
-    if (--(*counter_ptr) <= 0) {
-      common::byteps_mark_done(name_wo_session.c_str());
-      context->SetStatus(ConvertStatus(status));
-      done();
-    }
-  };
+
+  common::StatusCallback callback;
+#if BYTEPS_BUILDING_NVTX == 1
+  if (use_nvtx) {
+    auto range_id = nvtxRangeStartA(name_wo_session.c_str());
+    callback = [context, done, counter_ptr, name_wo_session, range_id](const common::Status& status) {
+      // we use a counter to track each subtask
+      // the alltoall operator is completed after all subtasks are done
+      if (--(*counter_ptr) <= 0) {
+        nvtxRangeEnd(range_id);
+        common::byteps_mark_done(name_wo_session.c_str());
+        context->SetStatus(ConvertStatus(status));
+        done();
+      }
+    };
+  } else
+#endif
+  {
+    callback = [context, done, counter_ptr, name_wo_session](const common::Status& status) {
+      // we use a counter to track each subtask
+      // the alltoall operator is completed after all subtasks are done
+      if (--(*counter_ptr) <= 0) {
+        common::byteps_mark_done(name_wo_session.c_str());
+        context->SetStatus(ConvertStatus(status));
+        done();
+      }
+    };
+  }
 
   common::Status enqueue_result;
   // the begin index of tensor views for send/recv
@@ -582,6 +605,7 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      int partition_bytes;
      std::vector<int32_t> tensor_key;
      bool use_pull;
+     bool use_nvtx;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
@@ -600,6 +624,13 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
                ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
                : false;
+      use_nvtx = false;
+#if BYTEPS_BUILDING_NVTX == 1
+      if (getenv("BYTEPS_USE_NVTX") && atoi(getenv("BYTEPS_USE_NVTX"))) {
+        use_nvtx = true;
+      }
+#endif
+      std::cout << "BYTEPS_USE_NVTX=" << use_nvtx << std::endl;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -740,11 +771,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                         recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_send, use_pull);
+                        kAlltoAll, recv_split_unknown, name_send, use_pull, use_nvtx);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
                     recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_send, use_pull);
+                    kAlltoAll, recv_split_unknown, name_send, use_pull, use_nvtx);
       t.detach();
     }
   }
@@ -919,11 +950,11 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull);
+                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull);
+                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false);
       t.detach();
     }
   }
