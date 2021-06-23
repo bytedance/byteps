@@ -1236,7 +1236,6 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
           CopyD2H(cpubuff, data + offset, len, true);
           tensor = cpubuff;
         } else {
-          BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
           tensor = (char*) data + offset;
         }
         // perform send. false means not to delete data when SArray is deleted
@@ -1244,8 +1243,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
         if (BytePSGlobal::IsDirectResponse() == 2) {
           BytePSGlobal::GetPS(index)
             ->ZPush(pskv.keys, vals, pskv.lens, cmd);
-        } else { // should be 0 for now
-          BPS_CHECK_EQ(BytePSGlobal::IsDirectResponse(), 0);
+        } else {
           if (BytePSGlobal::IsProfileAlltoall()) {
             auto now = std::chrono::system_clock::now();
             auto duration = now.time_since_epoch();
