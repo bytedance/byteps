@@ -140,7 +140,9 @@ class BytePSGlobal {
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
   static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
-  static cudaStream_t* GetP2PCopyStream() { return _p2p_copy_stream; }
+  static cudaStream_t* GetP2PCopyD2DStream() { return _p2p_copy_d2d_stream; }
+  static cudaStream_t* GetP2PCopyD2HStream() { return _p2p_copy_d2h_stream; }
+  static cudaStream_t* GetP2PCopyH2DStream() { return _p2p_copy_h2d_stream; }
 #endif
 
   // methods to access or modify the _ready_table
@@ -274,7 +276,9 @@ class BytePSGlobal {
 #if BYTEPS_BUILDING_CUDA == 1
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
-  static cudaStream_t* _p2p_copy_stream;
+  static cudaStream_t* _p2p_copy_d2d_stream;
+  static cudaStream_t* _p2p_copy_h2d_stream;
+  static cudaStream_t* _p2p_copy_d2h_stream;
   static std::shared_ptr<NcclManager> _nccl_manager;
 #endif
 

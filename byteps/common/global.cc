@@ -117,7 +117,9 @@ bool BytePSGlobal::_is_alltoall_use_pull = false;
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
-cudaStream_t* BytePSGlobal::_p2p_copy_stream = NULL;
+cudaStream_t* BytePSGlobal::_p2p_copy_d2d_stream = NULL;
+cudaStream_t* BytePSGlobal::_p2p_copy_d2h_stream = NULL;
+cudaStream_t* BytePSGlobal::_p2p_copy_h2d_stream = NULL;
 
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
@@ -392,16 +394,24 @@ void BytePSGlobal::Init() {
   // Create CUDA streams for GPU-CPU copies
   _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  _p2p_copy_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _p2p_copy_d2d_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _p2p_copy_d2h_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _p2p_copy_h2d_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
                                       cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_stream,
+  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_d2d_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_d2h_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_h2d_stream,
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_d2d_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_d2h_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_h2d_stream));
 #endif
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
@@ -546,9 +556,17 @@ void BytePSGlobal::Shutdown() {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
     _copy_host2device_stream = NULL;
   }
-  if (_p2p_copy_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_stream));
-    _p2p_copy_stream = NULL;
+  if (_p2p_copy_d2d_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_d2d_stream));
+    _p2p_copy_d2d_stream = NULL;
+  }
+  if (_p2p_copy_d2h_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_d2h_stream));
+    _p2p_copy_d2h_stream = NULL;
+  }
+  if (_p2p_copy_h2d_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_h2d_stream));
+    _p2p_copy_h2d_stream = NULL;
   }
 #endif
 

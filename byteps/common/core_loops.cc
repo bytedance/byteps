@@ -888,7 +888,12 @@ void PullLoop() {
 void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
   int my_rank = BytePSGlobal::GetRank();
 #if BYTEPS_BUILDING_CUDA == 1
-  cudaStream_t* p2p_stream = BytePSGlobal::GetP2PCopyStream();
+  cudaStream_t* p2p_d2d_stream = BytePSGlobal::GetP2PCopyD2DStream();
+  cudaStream_t* p2p_d2h_stream = BytePSGlobal::GetP2PCopyD2HStream();
+  cudaStream_t* p2p_h2d_stream = BytePSGlobal::GetP2PCopyH2DStream();
+  bool has_d2d_copy = false;
+  bool has_d2h_copy = false;
+  bool has_h2d_copy = false;
 #endif
   for (auto& task : tasks) {
     int send_dev = task->tensor 
@@ -919,7 +924,10 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
         } else {
 #if BYTEPS_BUILDING_CUDA == 1
           BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToHost, p2p_stream);
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToHost, p2p_d2h_stream);
+          has_d2h_copy = true;
+#else 
+          BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
 #endif
         }
       } else {
@@ -927,11 +935,15 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
         // it only happens with CPU-GPU alltoall.
         if (is_send_cpu) {
           BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyHostToDevice, p2p_stream);
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyHostToDevice, p2p_h2d_stream);
+          has_h2d_copy = true;
         } else {
           BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToDevice, p2p_stream);
+              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToDevice, p2p_d2d_stream);
+          has_d2d_copy = true;
         }
+#else 
+        BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
 #endif
       }
     } else { // not myself
@@ -953,13 +965,18 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
 #if BYTEPS_BUILDING_CUDA == 1
         // ps-lite buffer is already on GPU
         BytePSGlobal::GetGpuReducer()
-            ->copy_async(dst_addr, recv_addr, recv_len, cudaMemcpyDeviceToDevice, p2p_stream);
+            ->copy_async(dst_addr, recv_addr, recv_len, cudaMemcpyDeviceToDevice, p2p_d2d_stream);
+        has_d2d_copy = true;
+#else 
+        BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
 #endif
       }
     }
   }
 #if BYTEPS_BUILDING_CUDA == 1
-  CUDA_CALL(cudaStreamSynchronize(*p2p_stream));
+  if (has_d2d_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_d2d_stream));
+  if (has_d2h_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_d2h_stream));
+  if (has_h2d_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_h2d_stream));
 #endif
   return;
 }
