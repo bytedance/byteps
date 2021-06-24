@@ -73,7 +73,7 @@ class TensorFlowTests:
             recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
             with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                w = tf.Variable(tensor.numpy().tolist())
+                w = tf.Variable(tensor)
                 with tf.GradientTape() as tape:
                     loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter{niter}')
                 grad = tape.gradient(loss, w)
