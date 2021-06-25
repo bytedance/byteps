@@ -60,7 +60,8 @@ class TensorFlowTests:
             alltoall_fn = bps.alltoall
             name = 'autograd_cpu2cpu'
         else:
-            assert False, "GPU -> CPU alltoall is not supported using autograd"
+            alltoall_fn = bps.alltoall_gpu2cpu
+            name = 'autograd_gpu2cpu'
 
         while niter < total_niter:
             # FIXME: the test is limited to 2 workers only
@@ -77,6 +78,7 @@ class TensorFlowTests:
                 with tf.GradientTape() as tape:
                     loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter{niter}')
                 grad = tape.gradient(loss, w)
+                assert grad.shape == tensor.shape, "the shapes of tensor and grad are not identical."
                 print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}\n')
                 niter += 1
 
@@ -409,7 +411,7 @@ class TensorFlowTests:
             with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
                 tensors = [tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                           for _ in range(len(splits_list))]
-                group_w = [tf.Variable(tensor.numpy().tolist()) for tensor in tensors] 
+                group_w = [tf.Variable(tensor) for tensor in tensors] 
                 with tf.GradientTape() as tape:
                     group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter{niter}')
                 grad = tape.gradient(group_loss, group_w)
@@ -493,13 +495,6 @@ class TensorFlowTests:
 
 tests = TensorFlowTests()
 
-if args.test_autograd:
-    print("Perform autograd tests")
-    tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
-    tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
-    tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
-    tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=True)
-    exit(0)
 
 # FIXME: send to myself hangs
 # tests.test_self_send_recv()
@@ -517,6 +512,12 @@ if is_direct_resp == 2:
     tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
 
 if is_direct_resp == 0:
+    tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
+    tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
+    tests.test_all2all_autograd(src_gpu=True, dst_gpu=False)
+    tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
+    tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=True)
+    tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=False)
     tests.test_all2all_no_recv_splits()
     tests.test_all2all(src_device='cpu', dst_device='cpu')
     tests.test_all2all(src_device='gpu', dst_device='gpu')

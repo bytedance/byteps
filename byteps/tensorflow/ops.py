@@ -304,12 +304,12 @@ def _alltoall_grad(op, grad, recv_bytes):
     Returns:
       The gradient with respect to the input of the op.
     """
-    print('BytepsAlltoall grad invoked')
     tensor = op.inputs[0]
     splits = op.inputs[1]
     recv_splits = op.inputs[2]
+    name = op.get_attr('input_name').decode() + '_bwd_'
     # FIXME: this might not work if recv_splits is not provided
-    result = _alltoall(grad, splits=recv_splits, recv_splits=splits)
+    result = _alltoall(grad, splits=recv_splits, recv_splits=splits, name=name)
     return [result, None, None]
 
 @ops.RegisterGradient('BytepsAlltoallGroup')
@@ -321,13 +321,13 @@ def _alltoall_group_grad(op, *outputs):
     Returns:
       The gradients with respect to the input of the op.
     """
-    print('BytepsAlltoallGroup grad invoked')
     n = len(outputs)
     grads = outputs[0:int(n/2)]
     splits = op.inputs[-2]
     recv_splits = op.inputs[-1]
+    name = op.get_attr('input_name').decode() + '_bwd_'
     # FIXME: this might not work if recv_splits is not provided
-    results = _alltoall(grads, splits=recv_splits, recv_splits=splits)
+    results = _alltoall(grads, splits=recv_splits, recv_splits=splits, name=name)
     return list(results) + [None, None] 
 
 @ops.RegisterGradient('BytepsAlltoallCputogpu')
@@ -339,14 +339,31 @@ def _alltoall_cpu2gpu_grad(op, grad, recv_bytes):
     Returns:
       The gradient with respect to the input of the op.
     """
-    print('BytepsAlltoallCputogpu grad invoked')
     tensor = op.inputs[0]
     splits = op.inputs[1]
     recv_splits = op.inputs[2]
+    name = op.get_attr('input_name').decode() + '_bwd_'
     # FIXME: this might not work if recv_splits is not provided
-    result = _alltoall_gpu2cpu(grad, splits=recv_splits, recv_splits=splits)
+    result = _alltoall_gpu2cpu(grad, splits=recv_splits, recv_splits=splits, name=name)
     return [result, None, None]
-    
+
+@ops.RegisterGradient('BytepsAlltoallGputocpu')
+def _alltoall_gpu2cpu_grad(op, grad, recv_bytes):
+    """Gradient for alltoall op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradient with respect to the input of the op.
+    """
+    tensor = op.inputs[0]
+    splits = op.inputs[1]
+    recv_splits = op.inputs[2]
+    name = op.get_attr('input_name').decode() + '_bwd_'
+    # FIXME: this might not work if recv_splits is not provided
+    result = _alltoall_cpu2gpu(grad, splits=recv_splits, recv_splits=splits, name=name)
+    return [result, None, None]
+
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):
