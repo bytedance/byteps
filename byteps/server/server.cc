@@ -406,20 +406,20 @@ void BytePSHandler(const ps::KVMeta& req_meta,
 
 void init_global_env() {
   // enable to print key profile
-  log_key_info_ = GetEnv("PS_KEY_LOG", false);
+  log_key_info_ = GetEnv("PS_KEY_LOG", 0);
 
   // enable engine block mode (default disabled)
-  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
+  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", 0);
   if (is_engine_blocking_)
     LOG(INFO) << "Enable blocking mode of the server engine";
 
   // sync or async training
-  sync_mode_ = !GetEnv("BYTEPS_ENABLE_ASYNC", false);
+  sync_mode_ = !GetEnv("BYTEPS_ENABLE_ASYNC", 0);
   if (!sync_mode_)
     LOG(INFO) << "BytePS server is enabled asynchronous training";
 
   // debug mode
-  debug_mode_ = GetEnv("BYTEPS_SERVER_DEBUG", false);
+  debug_mode_ = GetEnv("BYTEPS_SERVER_DEBUG", 0);
   debug_key_ = GetEnv("BYTEPS_SERVER_DEBUG_KEY", 0);
   if (debug_mode_)
     LOG(INFO) << "Debug mode enabled! Printing key " << debug_key_;
@@ -433,7 +433,7 @@ void init_global_env() {
   CHECK_GE(engine_thread_num_, 1);
 
   // enable scheduling for server engine
-  enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
+  enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", 0);
   if (enable_schedule_)
     LOG(INFO) << "Enable engine scheduling for BytePS server";
 }
