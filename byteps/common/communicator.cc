@@ -191,6 +191,9 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
       case BCAST_READY:
         BytePSGlobal::GetBroadcastTable()->AddReadyCount(message.key);
         break;
+      case ALLGATHER_READY:
+        BytePSGlobal::GetAllgatherTable()->AddReadyCount(message.key);
+        break;
       case PUSH_READY:
         BytePSGlobal::GetPushTable()->AddReadyCount(message.key);
         break;

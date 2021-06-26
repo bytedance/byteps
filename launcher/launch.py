@@ -85,10 +85,10 @@ def allocate_cpu(local_size):
 
     def _get_quota(nodes, local_size):
         if len(nodes) > 1:
-            cpu_nums = reduce(lambda x, y: (len(x) + len(y)), nodes)
+            cpu_nums = reduce(lambda x, y: (x + len(y)), nodes, 0)
         else:
             cpu_nums = len(nodes[0])
-        
+
         # default quota is the number of cpus for non-root processess
         default_quota = int(os.getenv("BYTEPS_NUMA_DEFAULT_QUOTA", 6))
         while default_quota >= 1 and default_quota * local_size > cpu_nums:

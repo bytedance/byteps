@@ -98,6 +98,8 @@ enum QueueType {
   COPYH2D,
   COORDINATE_BROADCAST,
   BROADCAST,
+  ALLGATHER,
+  COORDINATE_ALLGATHER,
   QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
 };
 
@@ -115,7 +117,10 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "DECOMPRESS",
                                              "COPYH2D",
                                              "COORDINATE_BROADCAST",
-                                             "BROADCAST"};
+                                             "BROADCAST",
+                                             "ALLGATHER",
+                                             "COORDINATE_ALLGATHER",
+};
 
 class Status {
  public:

@@ -68,6 +68,7 @@ std::mutex BytePSGlobal::_encode_mutex;
 ReadyTable* BytePSGlobal::_reduce_table;
 ReadyTable* BytePSGlobal::_pcie_reduce_table;
 ReadyTable* BytePSGlobal::_broadcast_table;
+ReadyTable* BytePSGlobal::_allgather_table;
 ReadyTable* BytePSGlobal::_push_table;
 ReadyTable* BytePSGlobal::_copy_table;
 bool BytePSGlobal::_is_using_reduce = false;
@@ -232,6 +233,9 @@ void BytePSGlobal::Init() {
     _reduce_table = new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_REDUCE");
     _broadcast_table =
         new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_BROADCAST");
+    _allgather_table =
+        new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_ALLGATHER");
+    BPS_LOG(DEBUG) << "Created reduce table, broadcast table and alltagher table";
   }
 
   // Configure the reduce strategy
@@ -369,6 +373,10 @@ void BytePSGlobal::Shutdown() {
   if (_broadcast_table) {
     delete _broadcast_table;
     _broadcast_table = NULL;
+  }
+  if (_allgather_table) {
+    delete _allgather_table;
+    _allgather_table = NULL;
   }
   if (_push_table) {
     delete _push_table;
@@ -701,7 +709,7 @@ std::size_t PushPullSpeed::_limit = 1024;
 std::chrono::time_point<std::chrono::system_clock> PushPullSpeed::_last_ts;
 bool PushPullSpeed::_initialized = false;
 bool PushPullSpeed::_should_record =
-      getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : true;
+      getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : false;
 
 void PushPullSpeed::RecordSpeed(std::shared_ptr<TensorTableEntry> task) {
   std::lock_guard<std::mutex> lock(_mtx);

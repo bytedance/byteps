@@ -66,12 +66,13 @@ def _push_pull_function_factory(tensor):
 def _push_pull_group_function_factory(tensor):
     return 'byteps_torch_push_pull_group_sync_' + tensor.type().replace('.', '_')
 
-def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
+def _do_push_pull_async(tensor, output, average, name, version=0, priority=0,
+        node_local=False):
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
     function = _check_function(_push_pull_function_factory, tensor)
     handle = getattr(c_lib, function)(tensor, output, average,
                                       name.encode() if name is not None else _NULL,
-                                      version, priority)
+                                      version, priority, node_local)
     _handle_map[handle] = (tensor, output)
     return handle
 
@@ -85,7 +86,8 @@ def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=
     return handle, curr_count
 
 
-def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
+def push_pull_async(tensor, average=True, name=None, version=0, priority=0,
+        node_local=False):
     """
     A function that performs asynchronous averaging or summation of the input tensor
     over all the BytePS processes. The input tensor is not modified.
@@ -103,7 +105,8 @@ def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
         `synchronize()`.
     """
     output = tensor.new(tensor.shape)
-    return _do_push_pull_async(tensor, output, average, name, version, priority)
+    return _do_push_pull_async(tensor, output, average, name, version, priority,
+            node_local)
 
 
 class BytePSPushPull(torch.autograd.Function):
@@ -195,6 +198,96 @@ def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0):
     """
     handle = push_pull_async_inplace(tensor, average, name, version, priority)
     return synchronize(handle)
+
+def _allgather_function_factory(tensor):
+    return 'byteps_torch_allgather_async_' + tensor.type().replace('.', '_')
+
+
+def _do_allgather_async(tensor, output, name, version, priority, node_local):
+    average = False
+    c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
+    function = _check_function(_allgather_function_factory, tensor)
+    handle = getattr(c_lib, function)(
+            tensor, output, average, name.encode() if name is not None else _NULL,
+            version, priority, node_local)
+    _handle_map[handle] = (tensor, output)
+    return handle
+
+
+def allgather_async(tensor, name=None, version=0, priority=0, node_local=True):
+    """
+    A function that asynchronously concatenates the input tensor with the same input
+    tensor on all other Horovod processes. The input tensor is not modified.
+
+    The concatenation is done on the first dimension, so the input tensors on the
+    different processes must have the same rank and shape, except for the first
+    dimension, which is allowed to be different.
+
+    Arguments:
+        tensor: A tensor to allgather.
+        name: A name of the allgather operation.
+        node_local: if True, the allgather is performed among ranks on the same
+                    node. If False, the allgather is performed globally among
+                    all ranks. Only node_local = True is implemented for the
+                    moment.
+
+    Returns:
+        A handle to the allgather operation that can be used with `poll()` or
+        `synchronize()`.
+    """
+    output_shape = list(tensor.shape)
+    output_shape[0] *= local_size()
+    output = torch.empty(output_shape).cuda()
+    return _do_allgather_async(tensor, output, name, version, priority, node_local)
+
+class BytepsAllgather(torch.autograd.Function):
+    """An autograd function that performs allgather on a tensor."""
+
+    @staticmethod
+    def forward(ctx, tensor, name):
+        ctx.dim = tensor.shape[0]
+        ctx.name = name
+        ctx.version = version
+        ctx.priority = priority
+        handle = allgather_async(tensor, name)
+        return synchronize(handle)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_reduced = allreduce(grad_output, average=True)
+
+        dim_t = torch.IntTensor([ctx.dim])
+        dim = allgather(dim_t).view(size())
+
+        r = rank()
+        offset = torch.sum(dim.narrow(0, 0, r)).item() if r != 0 else 0
+        return grad_reduced.narrow(0, offset, ctx.dim), None
+
+
+def allgather(tensor, name=None, version=0, priority=0):
+    """
+    A function that concatenates the input tensor with the same input tensor on
+    all other Horovod processes. The input tensor is not modified.
+
+    The concatenation is done on the first dimension, so the input tensors on the
+    different processes must have the same rank and shape, except for the first
+    dimension, which is allowed to be different.
+
+    This acts as a thin wrapper around an autograd function.  If your input
+    tensor requires gradients, then callings this function will allow gradients
+    to be computed and backpropagated.
+
+    Arguments:
+        tensor: A tensor to allgather.
+        name: A name of the allgather operation.
+
+    Returns:
+        A tensor of the same type as `tensor`, concatenated on dimension zero
+        across all processes. The shape is identical to the input shape, except for
+        the first dimension, which may be greater and is the sum of all first
+        dimensions of the tensors in different Horovod processes.
+    """
+    return BytepsAllgather.apply(tensor, name, version, priority)
 
 
 def poll(handle):

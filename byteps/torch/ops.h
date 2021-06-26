@@ -39,7 +39,7 @@ size_t grad_count_;
 #define PUSHPULL_H(torch_Tensor, THTensor)                         \
   extern "C" int byteps_torch_push_pull_async_##torch_Tensor(      \
       THTensor* tensor, THTensor* output, int average, char* name, \
-      int version, int priority);
+      int version, int priority, bool node_local = false);
 
 PUSHPULL_H(torch_ByteTensor, THByteTensor)
 PUSHPULL_H(torch_IntTensor, THIntTensor)

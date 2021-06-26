@@ -22,10 +22,11 @@ from contextlib import contextmanager
 
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
-from byteps.torch.ops import push_pull
+from byteps.torch.ops import push_pull, allgather
 from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown, suspend, resume
 from byteps.torch.ops import size, local_size, rank, local_rank
+from byteps.torch.sync_batch_norm import SyncBatchNorm
 
 import os
 import torch
