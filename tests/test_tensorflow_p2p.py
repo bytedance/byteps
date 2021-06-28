@@ -539,15 +539,15 @@ tests = TensorFlowTests()
 # TODO: remove this when we fix direct response
 is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
 
-#tests.test_allreduce()
-#tests.test_all2all_invalid_splits()
+tests.test_allreduce()
+tests.test_all2all_invalid_splits()
 
 
-#if is_direct_resp == 2:
-#    tests.test_all2all()
-#    tests.test_all2all(compression=bps.Compression.fp16)
-#    tests.test_all2all_no_recv_splits()
-#    tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
+if is_direct_resp == 2:
+    tests.test_all2all()
+    tests.test_all2all(compression=bps.Compression.fp16)
+    tests.test_all2all_no_recv_splits()
+    tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
 
 if is_direct_resp == 0:
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
@@ -558,19 +558,19 @@ if is_direct_resp == 0:
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=False)
     tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=False)
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=True)
-    #tests.test_all2all_no_recv_splits()
-    #tests.test_all2all(src_device='cpu', dst_device='cpu')
-    #tests.test_all2all(src_device='gpu', dst_device='gpu')
-    #tests.test_all2all(src_device='cpu', dst_device='gpu')
-    #tests.test_all2all(src_device='gpu', dst_device='cpu')
-    #tests.test_all2all_benchmark()
-    #tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
-    #tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
-    #tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
+    tests.test_all2all_no_recv_splits()
+    tests.test_all2all(src_device='cpu', dst_device='cpu')
+    tests.test_all2all(src_device='gpu', dst_device='gpu')
+    tests.test_all2all(src_device='cpu', dst_device='gpu')
+    tests.test_all2all(src_device='gpu', dst_device='cpu')
+    tests.test_all2all_benchmark()
+    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
+    tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
+    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
     tests.test_all2all_group(src_device='cpu', dst_device='cpu')
     tests.test_all2all_group(src_device='gpu', dst_device='cpu')
     tests.test_all2all_group(src_device='cpu', dst_device='gpu')
     tests.test_all2all_group(src_device='gpu', dst_device='gpu')
-    #tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
+    tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
 
 time.sleep(1)
