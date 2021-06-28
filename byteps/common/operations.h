@@ -115,6 +115,26 @@ Status EnqueueAlltoAllTensorPullImpl(std::string& name,
                              std::atomic_int* counter_ptr,
                              bool output_size_unknown);
 
+// shape: input tensor shape
+// tensor_key: the 32-bit tensor_key returned from declare_alltoall_tensor
+// split_list: the split list for alltoall send
+// recv_split_list: the recv split list for alltoall recv
+// name: the provided name for the operation
+// split_indices_list (output): the split indices based on strides
+// recv_split_indices_list (output): the recv split indices based on strides
+// dim0_in (output): the size of dimension 0 of the input
+// dim0_out (output): the size of dimension 0 of the output
+// session_name (output): the op name with session prefix
+// initialized (output): whether the byteps context is already initialized
+Status PrepareAlltoallTensor(TensorShape shape,
+  const std::vector<int32_t>& tensor_key,
+  const std::vector<int32_t>& split_list,
+  const std::vector<int32_t>& recv_split_list, std::string& name,
+  std::vector<int32_t>* split_indices_list,
+  std::vector<int32_t>* recv_split_indices_list,
+  int32_t* dim0_in, int32_t* dim0_out,
+  std::string* session_name, bool* initialized);
+
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,

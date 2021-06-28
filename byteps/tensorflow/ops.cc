@@ -597,6 +597,7 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
 }
 
+// cross_device: true for cpu-gpu alltoall, or gpu-cpu alltoall
 template <bool cross_device>
 class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
  private:
@@ -635,6 +636,7 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
                     DoneCallback done) override {
+    // tf sanity checks
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
                          done);
     const int num_outputs = context->num_outputs();
@@ -651,67 +653,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       tmp_name = input_tensor_name;
     }
 
-    auto tensor = context->input(0);
-    ::tensorflow::Tensor* output_data;
-    ::tensorflow::Tensor* output_sizes;
-    // TODO: move some of these logics to BytePS core
-    // calculate the stride based on axis[1:]
-    int64_t stride = 1;
-    for (int i = 1; i < tensor.shape().dims(); ++i) {
-      stride *= tensor.shape().dim_size(i);
-    }
-    // calculate counts based on the stride
-    const auto split_tensor = context->input(1);
-    // Note: if recv_is_approximate=True, recv_split_tensor reuses split_tensor
-    const auto recv_split_tensor = context->input(2);
-    std::vector<int32_t> dim0_split_count;
-    std::vector<int32_t> split_count;
-    std::vector<int32_t> recv_split_count;
-    ::tensorflow::TensorShape result_shape;
-    GetIntList(split_tensor, &dim0_split_count);
-    int dim0 = 0;
-    int dim0_aggregate = 0;
-    // the split tensor is based on axis 0, hence scale it by stride
-    for (int i = 0; i < dim0_split_count.size(); ++i) {
-      dim0_aggregate += dim0_split_count[i];
-      split_count.push_back(dim0_split_count[i] * stride);
-      if (dim0_split_count[i] < 0) {
-        std::string err_msg = "invalid split for " + tmp_name + " at idx " + std::to_string(i) + ": " + std::to_string(dim0_split_count[i]);
-        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
-        OP_REQUIRES_OK_ASYNC(context, status, done);
-      }
-    }
-    // sanity checks
-    if (dim0_aggregate != tensor.shape().dim_size(0)) {
-      std::string count_str;
-      for (int i = 0; i < dim0_split_count.size(); ++i) {
-        count_str += std::to_string(dim0_split_count[i]) + ",";
-      }
-      count_str = "invalid split for " + tmp_name + ". dim0 = " + std::to_string(tensor.shape().dim_size(0)) + ". split = " + count_str;
-      auto status = ::tensorflow::errors::InvalidArgument(count_str);
-      OP_REQUIRES_OK_ASYNC(context, status, done);
-    }
-    CHECK(split_tensor.shape().dim_size(0) == recv_split_tensor.shape().dim_size(0));
-    GetIntList(recv_split_tensor, &recv_split_count);
-    // translate the split value (for dim0) with stride (considering all dimensions)
-    for (int i = 0; i < recv_split_count.size(); ++i) {
-      if (recv_split_count[i] < 0) {
-        std::string err_msg = "invalid recv_split for " + tmp_name + " at index " + std::to_string(i) + ": " + std::to_string(recv_split_count[i]);
-        auto status = ::tensorflow::errors::InvalidArgument(err_msg);
-        OP_REQUIRES_OK_ASYNC(context, status, done);
-      }
-      dim0 += recv_split_count[i];
-      recv_split_count[i] *= stride;
-    }
-    // Allocate output
-    result_shape.AddDim(dim0);
-    for (int i = 1; i < tensor.shape().dims(); ++i) {
-      result_shape.AddDim(tensor.shape().dim_size(i));
-    }
+    // device context
     auto device_id = GetDeviceID(context);
     int output_device = device_id;
     int input_device = device_id;
-    // adjust device_id in cross device case
+    // adjust device_id in case of cross device alltoalls
     if (cross_device) {
       if (context->input_memory_type(0) == ::tensorflow::HOST_MEMORY) {
         input_device = CPU_DEVICE_ID;
@@ -719,6 +665,45 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       if (context->output_memory_type(0) == ::tensorflow::HOST_MEMORY) {
         output_device = CPU_DEVICE_ID;
       }
+    }
+    auto tensor = context->input(0);
+    const auto split_tensor = context->input(1);
+    // XXX: if `recv_is_approximate`=True, users don't pass in `recv_split_tensor`.
+    // in ops.py we simply REUSES `split_tensor` for `recv_split_tensor`.
+    // (an alternative is to register another tensorflow operator with fewer input tensors,
+    // which is not done as of now)
+    const auto recv_split_tensor = context->input(2);
+    auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto bps_input = std::make_shared<TFTensor>(tensor, input_device);
+
+    // make a copy of split tensors, which are based on dimension 0 only
+    std::vector<int32_t> split_list;
+    std::vector<int32_t> recv_split_list;
+    GetIntList(split_tensor, &split_list);
+    GetIntList(recv_split_tensor, &recv_split_list);
+    CHECK(split_tensor.shape().dim_size(0) == recv_split_tensor.shape().dim_size(0));
+    // split/recv_split "indices" considers dimensions beyond dim 0
+    std::vector<int32_t> split_indices_list;
+    std::vector<int32_t> recv_split_indices_list;
+    int dim0_out = 0;
+    int dim0_in = 0;
+    std::string session_name;
+    bool initialized;
+    auto status = PrepareAlltoallTensor(bps_input->shape(), tensor_key, split_list,
+        recv_split_list, tmp_name, &split_indices_list, &recv_split_indices_list,
+        &dim0_in, &dim0_out, &session_name, &initialized);
+    if (status.type() == common::INVALID_ARGUMENT) {
+      auto tf_error = ::tensorflow::errors::InvalidArgument(status.reason());
+      OP_REQUIRES_OK_ASYNC(context, tf_error, done);
+    }
+
+    ::tensorflow::Tensor* output_data;
+    ::tensorflow::Tensor* output_sizes;
+    ::tensorflow::TensorShape result_shape;
+    // Allocate output
+    result_shape.AddDim(dim0_out);
+    for (int i = 1; i < tensor.shape().dims(); ++i) {
+      result_shape.AddDim(tensor.shape().dim_size(i));
     }
     std::shared_ptr<TFTensor> bps_output;
     if (recv_split_unknown) {
@@ -731,51 +716,26 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         context, context->allocate_output(1, split_tensor.shape(), &output_sizes), done);
 
-    // naming and declarations
-    auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
-    auto bps_input = std::make_shared<TFTensor>(tensor, input_device);
     // TODO: pass the correct aux_output device id
     auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes, CPU_DEVICE_ID);
-    const int my_rank = common::byteps_rank();
-    // Add session_id prefix to node_name
-    std::string name_send = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
-    int session_id = common::byteps_session_id(name_send.c_str());
-    int session_size = common::byteps_session_size();
-    std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
-    std::string session_name_send = session_prefix + name_send;
-    std::string session_tmp_name = session_prefix + tmp_name;
-    if (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0) {
-      // TODO: fill in size tensor
+    if (!recv_split_unknown && dim0_out == 0 && dim0_in == 0) {
+      // XXX: the output size tensor is not updated at all in this case
       done();
       return;
     }
 
-    int32_t declared_key;
-    std::string sess_prefix;
-    for (int j = 0; j < tensor_key.size(); ++j) {
-      int num_ranks = split_tensor.shape().dim_size(0);
-      sess_prefix = "session_" + std::to_string(j) + "_";
-      for (size_t i = 0; i < num_ranks; ++i) {
-        std::string nsend = sess_prefix + tmp_name + "_alltoall_send_" 
-                          + std::to_string(my_rank) + "_recv_" + std::to_string(i);
-        std::string nrecv = sess_prefix + tmp_name + "_alltoall_send_" 
-                          + std::to_string(i) + "_recv_" + std::to_string(my_rank);
-        declared_key = common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key[j]);
-        declared_key = common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key[j]);
-      }
-    }
-
-    auto& bps_context = common::GetContextFromName(session_name_send);
+    const int my_rank = common::byteps_rank();
+    std::string name_wo_session = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
     std::vector<std::shared_ptr<TFTensor>> empty_group_inputs;
     std::vector<std::shared_ptr<TFTensor>> empty_group_outputs;
-    if (bps_context.initialized) {
-      StartAlltoAllTask(context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
-                        recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_send, use_pull, use_nvtx);
+    if (initialized) {
+      StartAlltoAllTask(context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
+                        recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
+                        kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx);
     } else {
-      std::thread t(StartAlltoAllTask, context, done, session_tmp_name, bps_input, empty_group_inputs, split_count,
-                    recv_split_count, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_send, use_pull, use_nvtx);
+      std::thread t(StartAlltoAllTask, context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
+                    recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
+                    kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx);
       t.detach();
     }
   }

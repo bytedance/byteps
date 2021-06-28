@@ -82,6 +82,41 @@ class TensorFlowTests:
                 print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}\n')
                 niter += 1
 
+
+    def test_all2all_invalid_splits(self):
+        """Test alltoall with invalid splits/recv_splits."""
+        print(f'test all2all invalid splits. You may see OP_REQUIRES errors from TF', flush=True)
+        rank = self.rank
+        size = self.size
+        dtype = tf.float32
+        vector_dim = 2
+        # every worker should have the same size
+        rng = np.random.default_rng(size)
+        alltoall_fn = bps.alltoall
+        p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size)
+        splits_list = list(p2p_matrix[rank])
+        recv_splits_list = list(p2p_matrix[:, rank])
+        def check_invalid_alltoall(split_delta, recv_split_delta, splits_list, recv_splits_list):
+            splits_list_copy = splits_list.copy()
+            recv_splits_list_copy = recv_splits_list.copy()
+            splits_list_copy[0] += split_delta
+            recv_splits_list_copy[0] += recv_split_delta
+            splits = tf.constant(splits_list_copy, dtype=tf.int32)
+            recv_splits = tf.constant(recv_splits_list_copy, dtype=tf.int32)
+            tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype)
+            try:
+                alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=f'test_invalid_splits')
+                assert False
+            except tf.errors.InvalidArgumentError:
+                pass
+        # check split with negative values
+        check_invalid_alltoall(-100, 0, splits_list, recv_splits_list)
+        # check recv_split with negative values
+        check_invalid_alltoall(0, -100, splits_list, recv_splits_list)
+        # check split inconsistent with shape[0]
+        check_invalid_alltoall(1, 0, splits_list, recv_splits_list)
+        print(f'DONE testing all2all invalid splits', flush=True)
+
     def test_all2all(self, total_niter=100, compression=bps.Compression.none,
                      src_device='cpu', dst_device='cpu'):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
@@ -504,6 +539,8 @@ tests = TensorFlowTests()
 is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
 
 tests.test_allreduce()
+tests.test_all2all_invalid_splits()
+
 
 if is_direct_resp == 2:
     tests.test_all2all()

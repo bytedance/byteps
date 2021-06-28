@@ -228,6 +228,79 @@ void PartitionTensor(
   }
 }
 
+Status PrepareAlltoallTensor(TensorShape shape,
+  const std::vector<int32_t>& tensor_key,
+  const std::vector<int32_t>& split_list,
+  const std::vector<int32_t>& recv_split_list,
+  std::string& name,
+  std::vector<int32_t>* split_indices_list,
+  std::vector<int32_t>* recv_split_indices_list,
+  int32_t* dim0_in, int32_t* dim0_out,
+  std::string* session_name, bool* initialized) {
+  // calculate the stride based on shape[1:]
+  int64_t stride = 1;
+  for (int i = 1; i < shape.dims(); ++i) {
+    stride *= shape.dim_size(i);
+  }
+  // calculate split indices
+  for (size_t i = 0; i < split_list.size(); ++i) {
+    int32_t split_i = split_list.at(i);
+    *dim0_in += split_i;
+    // the split tensor is based on axis 0, hence scale it by stride
+    split_indices_list->push_back(split_i * stride);
+    if (split_i < 0) {
+      std::string reason = name + ": invalid split[" + std::to_string(i) + "]="+ std::to_string(split_list[i]);
+      return Status::InvalidArgument(reason);
+    }
+  }
+  // sanity check: sum(split) == shape[0]
+  auto expected_dim0 = shape.dim_size(0);
+  if (*dim0_in != expected_dim0) {
+    std::string reason;
+    for (size_t i = 0; i < split_list.size(); ++i) {
+      reason += std::to_string(split_list.at(i)) + ",";
+    }
+    reason = name + ": invalid split. tensor.shape[0]=" + std::to_string(expected_dim0) + ". split=" + reason;
+    return Status::InvalidArgument(reason);
+  }
+  // calculate recv_split indices
+  for (size_t i = 0; i < recv_split_list.size(); ++i) {
+    int32_t recv_split_i = recv_split_list.at(i);
+    if (recv_split_i < 0) {
+      std::string reason = name + ": invalid recv_split[" + std::to_string(i) + "]=" + std::to_string(recv_split_i);
+      return Status::InvalidArgument(reason);
+    }
+    *dim0_out += recv_split_i;
+    recv_split_indices_list->push_back(recv_split_i * stride);
+  }
+
+  // naming and declarations
+  const int my_rank = common::byteps_rank();
+  // Add session_id prefix to node_name
+  std::string name_send = name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
+  int session_id = common::byteps_session_id(name_send.c_str());
+  int session_size = common::byteps_session_size();
+  std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
+  std::string session_name_send = session_prefix + name_send;
+  *session_name = session_prefix + name;
+
+  for (int j = 0; j < tensor_key.size(); ++j) {
+    int num_ranks = split_list.size();
+    std::string sess_prefix = "session_" + std::to_string(j) + "_";
+    for (size_t i = 0; i < num_ranks; ++i) {
+      std::string nsend = sess_prefix + name + "_alltoall_send_"
+                        + std::to_string(my_rank) + "_recv_" + std::to_string(i);
+      std::string nrecv = sess_prefix + name + "_alltoall_send_"
+                        + std::to_string(i) + "_recv_" + std::to_string(my_rank);
+      common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key.at(j));
+      common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key.at(j));
+    }
+  }
+  auto& bps_context = common::GetContextFromName(session_name_send);
+  *initialized = bps_context.initialized;
+  return Status::OK();
+}
+
 Status EnqueueAlltoAllTensor(std::string& name,
                              std::shared_ptr<Tensor> input,
                              std::vector<std::shared_ptr<Tensor>>& group_inputs,
