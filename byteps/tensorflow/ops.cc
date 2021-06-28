@@ -1040,10 +1040,10 @@ Output
 )doc");
 
 REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallCputogpuGroup").Device(::tensorflow::DEVICE_GPU)
-                                                  .HostMemory("tensors")
-                                                  .HostMemory("splits")
-                                                  .HostMemory("recv_splits")
-                                                  .HostMemory("recv_bytes"),
+                                                           .HostMemory("tensors")
+                                                           .HostMemory("splits")
+                                                           .HostMemory("recv_splits")
+                                                           .HostMemory("recv_bytes"),
                         BytepsAllToAllGroupOp<true>);
 
 REGISTER_OP("BytepsAlltoallCputogpuGroup")
@@ -1118,10 +1118,10 @@ Output
 )doc");
 
 REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpuGroup").Device(::tensorflow::DEVICE_GPU)
-                                                  .HostMemory("splits")
-                                                  .HostMemory("recv_splits")
-                                                  .HostMemory("recv_bytes")
-                                                  .HostMemory("output"),
+                                                           .HostMemory("splits")
+                                                           .HostMemory("recv_splits")
+                                                           .HostMemory("recv_bytes")
+                                                           .HostMemory("output"),
                         BytepsAllToAllGroupOp<true>);
 
 REGISTER_OP("BytepsAlltoallGputocpuGroup")
