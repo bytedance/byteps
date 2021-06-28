@@ -47,7 +47,8 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
       << "CUDA: " << cudaGetErrorString(e)
       << ". Invalid pointer. prefix = " << prefix
       << ", key = " << key << ", size = " << size
-      << ", error = " << e;
+      << ", error = " << e << e == cudaErrorInvalidValue ?
+      ". Please check if you have enough space for shared memory (df -h /dev/shm)" : ".";
   }
   // mlock(ptr, size);
 #endif
