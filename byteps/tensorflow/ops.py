@@ -179,7 +179,7 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         recv_split_unknown = False
 
     if is_group(tensor):
-        assert with_size is true, "alltoall with a list of tensors does not support with_size=True"
+        assert with_size is False, "alltoall with a list of tensors does not support with_size=True"
         # For now, the returned received splits count is not supported.
         tensors = []
         for t in tensor:
@@ -247,7 +247,7 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
         recv_split_unknown = False
 
     if is_group(tensor):
-        assert with_size is true, "alltoall with a list of tensors does not support with_size=True"
+        assert with_size is False, "alltoall with a list of tensors does not support with_size=True"
         # For now, the returned received splits count is not supported.
         tensors = []
         for t in tensor:
@@ -314,7 +314,7 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
         recv_split_unknown = False
 
     if is_group(tensor):
-        assert with_size is true, "alltoall with a list of tensors does not support with_size=True"
+        assert with_size is False, "alltoall with a list of tensors does not support with_size=True"
         # For now, the returned received splits count is not supported.
         tensors = []
         for t in tensor:
