@@ -179,6 +179,8 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         recv_split_unknown = False
 
     if is_group(tensor):
+        assert with_size, "alltoall with a list of tensors does not support with_size=True"
+        # For now, the returned received splits count is not supported.
         tensors = []
         for t in tensor:
             t_compressed, dtype = compression.compress(t)
@@ -209,10 +211,18 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
 
 def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None,
                       with_size=False, compression=Compression.none):
+    def is_group(tensor):
+        if isinstance(tensor, list): return True
+        if isinstance(tensor, tuple): return True
+        return False
+    
     assert splits is not None
     # For now, `splits` is required.
     if name is None and not _executing_eagerly():
-        name = 'BytePSAlltoAll_%s' % _normalize_name(tensor.name)
+        if is_group(tensor):
+            name = 'BytePSAlltoAll_%s' % _normalize_name(tensor[0].name)
+        else:
+            name = 'BytePSAlltoAll_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -236,12 +246,31 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
     else:
         recv_split_unknown = False
 
-    # compress if needed
-    tensor_compressed, dtype = compression.compress(tensor)
-    recved_data, recved_size = C_LIB.byteps_alltoall_cputogpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
-                                                              name=name, input_name=full_name,
-                                                              recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
-    tensor_decompressed = compression.decompress(recved_data, dtype)
+    if is_group(tensor):
+        assert with_size, "alltoall with a list of tensors does not support with_size=True"
+        # For now, the returned received splits count is not supported.
+        tensors = []
+        for t in tensor:
+            # compress if needed
+            t_compressed, dtype = compression.compress(t)
+            tensors.append(t_compressed)
+        # TensorFlow requires the shape of input tensors to be identical.
+        # You should guarantee this before calling this op.
+        recved_data, recved_size = C_LIB.byteps_alltoall_cputogpu_group(tensors, splits=splits, recv_splits=recv_splits,
+                                                  name=name, input_name=full_name,
+                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+        tensors_decompressed = []
+        for i in range(len(recved_data)):
+            tensors_decompressed.append(compression.decompress(recved_data[i], dtype))
+        return tensors_decompressed
+    else: # single tensor
+        # compress if needed
+        tensor_compressed, dtype = compression.compress(tensor)
+        recved_data, recved_size = C_LIB.byteps_alltoall_cputogpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
+                                                        name=name, input_name=full_name,
+                                                        recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+        tensor_decompressed = compression.decompress(recved_data, dtype)
+
     if not with_size:
         return tensor_decompressed
     # TODO: recved_size returned from the op might not be set when recv_split is given. Here we directly
@@ -253,6 +282,10 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
 
 def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None,
                       with_size=False, compression=Compression.none):
+    def is_group(tensor):
+        if isinstance(tensor, list): return True
+        if isinstance(tensor, tuple): return True
+        return False
     assert splits is not None
     # For now, `splits` is required.
     if name is None and not _executing_eagerly():
@@ -280,12 +313,31 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
     else:
         recv_split_unknown = False
 
-    # compress if needed
-    tensor_compressed, dtype = compression.compress(tensor)
-    recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
-                                                              name=name, input_name=full_name,
-                                                              recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
-    tensor_decompressed = compression.decompress(recved_data, dtype)
+    if is_group(tensor):
+        assert with_size, "alltoall with a list of tensors does not support with_size=True"
+        # For now, the returned received splits count is not supported.
+        tensors = []
+        for t in tensor:
+            # compress if needed
+            t_compressed, dtype = compression.compress(t)
+            tensors.append(t_compressed)
+        # TensorFlow requires the shape of input tensors to be identical.
+        # You should guarantee this before calling this op.
+        recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu_group(tensors, splits=splits, recv_splits=recv_splits,
+                                                  name=name, input_name=full_name,
+                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+        tensors_decompressed = []
+        for i in range(len(recved_data)):
+            tensors_decompressed.append(compression.decompress(recved_data[i], dtype))
+        return tensors_decompressed
+    else: # single tensor
+        # compress if needed
+        tensor_compressed, dtype = compression.compress(tensor)
+        recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
+                                                        name=name, input_name=full_name,
+                                                        recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+        tensor_decompressed = compression.decompress(recved_data, dtype)
+    
     if not with_size:
         return tensor_decompressed
     # TODO: recved_size returned from the op might not be set when recv_split is given. Here we directly
@@ -347,6 +399,25 @@ def _alltoall_cpu2gpu_grad(op, grad, recv_bytes):
     result = _alltoall_gpu2cpu(grad, splits=recv_splits, recv_splits=splits, name=name)
     return [result, None, None]
 
+@ops.RegisterGradient('BytepsAlltoallCputogpuGroup')
+def _alltoall_cpu2gpu_group_grad(op, *outputs):
+    """Gradients for alltoall_group op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradients with respect to the input of the op.
+    """
+    n = len(outputs)
+    grads = outputs[0:int(n/2)]
+    splits = op.inputs[-2]
+    recv_splits = op.inputs[-1]
+    name = op.get_attr('input_name').decode() + '_bwd_'
+    # FIXME: this might not work if recv_splits is not provided
+    results = _alltoall_gpu2cpu(grads, splits=recv_splits, recv_splits=splits, name=name)
+    return list(results) + [None, None] 
+
+
 @ops.RegisterGradient('BytepsAlltoallGputocpu')
 def _alltoall_gpu2cpu_grad(op, grad, recv_bytes):
     """Gradient for alltoall op.
@@ -364,6 +435,23 @@ def _alltoall_gpu2cpu_grad(op, grad, recv_bytes):
     result = _alltoall_cpu2gpu(grad, splits=recv_splits, recv_splits=splits, name=name)
     return [result, None, None]
 
+@ops.RegisterGradient('BytepsAlltoallGputocpuGroup')
+def _alltoall_gpu2cpu_group_grad(op, *outputs):
+    """Gradients for alltoall_group op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradients with respect to the input of the op.
+    """
+    n = len(outputs)
+    grads = outputs[0:int(n/2)]
+    splits = op.inputs[-2]
+    recv_splits = op.inputs[-1]
+    name = op.get_attr('input_name').decode() + '_bwd_'
+    # FIXME: this might not work if recv_splits is not provided
+    results = _alltoall_cpu2gpu(grads, splits=recv_splits, recv_splits=splits, name=name)
+    return list(results) + [None, None] 
 
 @ops.RegisterGradient('BytePSPushPull')
 def _push_pull_grad(op, grad):

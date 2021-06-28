@@ -1039,6 +1039,46 @@ Output
     output:    The collected tensor data from all workers.
 )doc");
 
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallCputogpuGroup").Device(::tensorflow::DEVICE_GPU)
+                                                  .HostMemory("tensors")
+                                                  .HostMemory("splits")
+                                                  .HostMemory("recv_splits")
+                                                  .HostMemory("recv_bytes"),
+                        BytepsAllToAllGroupOp<true>);
+
+REGISTER_OP("BytepsAlltoallCputogpuGroup")
+    .Attr(
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+    .Attr("input_name: string = 'default_tensor_name'") 
+    .Attr("N: int >=1")
+    .Input("tensors: N * T")
+    .Input("splits: int32")
+    .Input("recv_splits: int32")
+    .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
+    .Output("output: N * T")
+    .Output("recv_bytes: N * int32") // TODO: rename this output
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      int n = c->num_outputs() / 2;
+      for (int i = 0; i < n; ++i) {
+        ::tensorflow::shape_inference::ShapeHandle output;
+        TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(i), 0, c->UnknownDim(), &output));
+        c->set_output(i, output);
+        c->set_output(i + n, c->input(n));
+      }
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+
+Perform an MPI Alltoall on a group of tensors from CPU to GPU.
+Arguments
+    tensors:    A group of tensors to be distributed with all to all  // for send counts (dim0)
+    splits:     A list of integers in rank order describing how many elements
+                in `tensor` to send to each worker.  // for recv counts (dim0)
+    recv_split_unknown: A bool to indicate whether recv splits is unknown  
+Output
+    output:    The collected tensor data from all workers.
+)doc");
 
 REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpu").Device(::tensorflow::DEVICE_GPU)
                                                       .HostMemory("splits")
@@ -1070,6 +1110,47 @@ REGISTER_OP("BytepsAlltoallGputocpu")
 Perform an MPI Alltoall on a tensor from GPU to CPU.
 Arguments
     tensor:     A tensor to be distributed with all to all  // for send counts (dim0)
+    splits:     A list of integers in rank order describing how many elements
+                in `tensor` to send to each worker.  // for recv counts (dim0)
+    recv_split_unknown: A bool to indicate whether recv splits is unknown  
+Output
+    output:    The collected tensor data from all workers.
+)doc");
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpuGroup").Device(::tensorflow::DEVICE_GPU)
+                                                  .HostMemory("splits")
+                                                  .HostMemory("recv_splits")
+                                                  .HostMemory("recv_bytes")
+                                                  .HostMemory("output"),
+                        BytepsAllToAllGroupOp<true>);
+
+REGISTER_OP("BytepsAlltoallGputocpuGroup")
+    .Attr(
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+    .Attr("input_name: string = 'default_tensor_name'") 
+    .Attr("N: int >=1")
+    .Input("tensors: N * T")
+    .Input("splits: int32")
+    .Input("recv_splits: int32")
+    .Attr("recv_split_unknown: bool = False")
+    .Attr("tensor_key: list(int) >= 1")
+    .Output("output: N * T")
+    .Output("recv_bytes: N * int32") // TODO: rename this output
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      int n = c->num_outputs() / 2;
+      for (int i = 0; i < n; ++i) {
+        ::tensorflow::shape_inference::ShapeHandle output;
+        TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(i), 0, c->UnknownDim(), &output));
+        c->set_output(i, output);
+        c->set_output(i + n, c->input(n));
+      }
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+
+Perform an MPI Alltoall on a group of tensors from GPU to CPU.
+Arguments
+    tensors:    A group of tensors to be distributed with all to all  // for send counts (dim0)
     splits:     A list of integers in rank order describing how many elements
                 in `tensor` to send to each worker.  // for recv counts (dim0)
     recv_split_unknown: A bool to indicate whether recv splits is unknown  
