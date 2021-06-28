@@ -118,8 +118,8 @@ bool DoFinishOrProceed(T& task) {
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finish processing tensor: " << task->tensor_name;
 
-      if (PushPullSpeed::ShouldRecord()) {
-        // PushPullSpeed::RecordSpeed(task);
+      if (Telemetry::ShouldRecord()) {
+        // Telemetry::RecordSpeed(task);
       }
 
       task->callback(Status::OK());

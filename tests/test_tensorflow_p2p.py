@@ -41,6 +41,29 @@ class TensorFlowTests:
         self.rank = bps.rank()
         self.size = bps.size()
 
+    def test_telemtry(self):
+        telemetries = bps.get_telemetry()
+        for entry in telemetries:
+            name, mean, stdev, count = entry
+            assert 'telemetry' not in name
+        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
+
+        def check_telemetry(entries, max_size):
+            entries = filter(lambda x: 'telemetry' in str(x[0]), entries)
+            assert len(list(entries)) > 0
+            if max_size:
+                assert len(list(entries)) <= max_size
+            for entry in entries:
+                name, mean, stdev, count = entry
+                assert name
+                assert mean > 0
+                assert stdev > 0
+                assert count > 1
+        telemetries = bps.get_telemetry()
+        check_telemetry(telemetries, None)
+        # check with user-provided size
+        telemetries = bps.get_telemetry(size=10000)
+        check_telemetry(telemetries, 10000)
 
     def test_all2all_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
         dtype = tf.float32
@@ -82,7 +105,6 @@ class TensorFlowTests:
                 print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}\n')
                 niter += 1
 
-
     def test_all2all_invalid_splits(self):
         """Test alltoall with invalid splits/recv_splits."""
         print(f'test all2all invalid splits. You may see OP_REQUIRES errors from TF', flush=True)
@@ -117,9 +139,9 @@ class TensorFlowTests:
         check_invalid_alltoall(1, 0, splits_list, recv_splits_list)
         print(f'DONE testing all2all invalid splits', flush=True)
 
-    def test_all2all(self, total_niter=100, compression=bps.Compression.none,
-                     src_device='cpu', dst_device='cpu'):
-        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
+    def test_all2all(self, total_niter=args.iter, compression=bps.Compression.none,
+                     src_device='cpu', dst_device='cpu', prefix=""):
+        """Test that alltoall correctly send/recv tensors with given recv_splits."""
         print(f'test all2all {src_device}->{dst_device}', flush=True)
         rank = self.rank
         size = self.size
@@ -148,9 +170,9 @@ class TensorFlowTests:
                 with tf.device(f"/{src_device}:0"):
                     tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 with tf.device(f"/{dst_device}:0"):
+                    name = f'{prefix}test_{src_device}_{dst_device}_iter_{niter % 10}'
                     result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits,
-                                         name=f'test_{src_device}_{dst_device}_iter_{niter % 10}',
-                                         compression=compression)
+                                         name=name, compression=compression)
                     print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
                     index = 0
                     for i in range(size):
@@ -162,7 +184,7 @@ class TensorFlowTests:
                         index = end
                     niter += 1
 
-    def test_all2all_no_recv_splits(self, total_niter=500, compression=bps.Compression.none):
+    def test_all2all_no_recv_splits(self, total_niter=args.iter, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors without recv_splits."""
         print('test all2all_no_recv_splits', flush=True)
         dtype = tf.float32
@@ -316,7 +338,7 @@ class TensorFlowTests:
         print(f'Finish all2all_benchmark, srcdev={tensor.device}, dstdev={result.device}')
         self.validate_a2a(recv_splits_list, result, size, rank)
 
-    def test_all2all_group(self, total_niter=10, compression=bps.Compression.none,
+    def test_all2all_group(self, total_niter=args.iter, compression=bps.Compression.none,
                      src_device='gpu', dst_device='gpu'):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         print(f'test all2all group {src_device}->{dst_device}', flush=True)
@@ -538,7 +560,7 @@ tests = TensorFlowTests()
 
 # TODO: remove this when we fix direct response
 is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
-
+tests.test_telemtry()
 tests.test_allreduce()
 tests.test_all2all_invalid_splits()
 

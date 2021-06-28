@@ -33,6 +33,7 @@
 #include "cpu_reducer.h"
 #include "gpu_reducer.h"
 #include "logging.h"
+#include "profiler.h"
 #include "nccl_manager.h"
 #include "ps/ps.h"
 #include "ready_table.h"
@@ -189,11 +190,15 @@ class BytePSGlobal {
 
   // in some rare cases, the application may run multiple sessions in the same process,
   // with the same name used for alltoall. this may cause name conflict.
-  // in such a case, we use a counter to record each occurrance of the operation
+  // in such a case, we use a counter to record each occurrence of the operation
   static uint64_t GetSessionId(std::string name) {
+    // TODO(haibin.lin): we temporarily use these two APIs to get the end-to-end latency of
+    // alltoall operations: GetSessionId and MarkDone.
+    // The logic should be moved to core_loops.cc later, instead of doing it in ops.cc
     _alltoall_session_mu.lock();
     uint64_t ret = _alltoall_session_ids[name]++;
     _alltoall_session_mu.unlock();
+    Telemetry::RecordStart(name);
     return ret;
   }
 
@@ -203,12 +208,13 @@ class BytePSGlobal {
     _alltoall_session_mu.lock();
     _alltoall_completions[name]++;
     _alltoall_session_mu.unlock();
+    Telemetry::RecordEnd(name);
   }
 
   static uint32_t GetSessionSize() { return _alltoall_session_size; }
   static int GetP2PCopyGroupSize() { return _p2p_copy_group_size; }
   static bool IsP2PAckDisabled() { return _p2p_disable_pull_ack; }
-  
+
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;
@@ -234,6 +240,25 @@ class BytePSGlobal {
   // alltoall
   static std::unordered_map<std::string, uint64_t> _alltoall_session_ids;
   static std::unordered_map<std::string, uint64_t> _alltoall_completions;
+  // The alltoall operations in BytePS is asynchronous. A worker i regards its
+  // alltoall call to be complete as soon as:
+  // 1) all the data from rank i is sent out, and
+  // 2) all the data to rank i is received.
+  // This means that the completion of alltoall at rank i does not indicate the
+  // completion of alltoall at rank j, since rank j might not have received all its
+  // data from other ranks.
+  //
+  // Due to such asynchronous nature, it's possible that worker i launches the
+  // alltoall operation again before worker j completes the previous round of
+  // alltoall, and the data from worker i to worker j will lead to confusion.
+  //
+  // In order to distinguish alltoall operations, BytePS introduces a the
+  // `_alltoall_session_size` variable. An alltoall operation name is
+  // prefixed with a session id [0, 1, ... `_alltoall_session_size`)
+  // in a round-robin manner, such that workers can use to distinguish
+  // consecutive alltoall calls.
+  //
+  // In BytePS, we recommend setting _alltoall_session_size to 2.
   static uint32_t _alltoall_session_size;
   static std::mutex _alltoall_session_mu;
 
@@ -335,26 +360,6 @@ class BytePSGlobal {
   static uint64_t Hash_Mixed_Mode(uint64_t key);
 };
 
-struct SpeedEntry {
-  std::size_t ts;
-  float speed;
-};
-
-class PushPullSpeed {
- public:
-  static void RecordSpeed(std::shared_ptr<TensorTableEntry> task);
-  static std::shared_ptr<SpeedEntry> GetSpeed();
-  static bool ShouldRecord();
-
- private:
-  static std::mutex _mtx;
-  static std::queue<std::shared_ptr<SpeedEntry>> _data_points;
-  static std::size_t _acc_size;
-  static std::size_t _limit;
-  static std::chrono::time_point<std::chrono::system_clock> _last_ts;
-  static bool _initialized;
-  static bool _should_record;
-};
 
 }  // namespace common
 }  // namespace byteps

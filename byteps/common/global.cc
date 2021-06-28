@@ -100,7 +100,7 @@ ReadyTable* BytePSGlobal::_p2p_copy_table;
 bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 // for alltoall
-uint32_t BytePSGlobal::_alltoall_session_size = 1;
+uint32_t BytePSGlobal::_alltoall_session_size = 2;
 std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_session_ids;
 std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_completions;
 std::mutex BytePSGlobal::_alltoall_session_mu;
@@ -187,6 +187,7 @@ void BytePSGlobal::Init() {
                    ? std::string(getenv("BYTEPS_TRACE_DIR"))
                    : "./trace";
 
+  Telemetry::InitEnv();
   // Set p2p related variables
   _prof_all2all_latency = getenv("BYTEPS_PROFILE_ALL2ALL") ? atoi(getenv("BYTEPS_PROFILE_ALL2ALL")) : false;
   _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
@@ -195,7 +196,7 @@ void BytePSGlobal::Init() {
   _skip_d2h = getenv("BYTEPS_P2P_SKIP_D2H") ? atoi(getenv("BYTEPS_P2P_SKIP_D2H")) : false;
   _num_loop_parallel = getenv("BYTEPS_LOOP_PARALLEL") ? atoi(getenv("BYTEPS_LOOP_PARALLEL")) : 1;
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
-  _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 1;
+  _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
@@ -998,11 +999,6 @@ bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
   return (k == total_thread_num);
 };
 
-
-bool PushPullSpeed::ShouldRecord() {
-  return _should_record;
-}
-
 ReadyTable* BytePSGlobal::GetP2PCopyTable() {
   return server::BytePSServer::GetP2PCopyTable();
 }
@@ -1022,59 +1018,5 @@ ReadyTable* BytePSGlobal::GetP2PAckTable() {
 int BytePSGlobal::IsDirectResponse() {
   return server::BytePSServer::IsP2PDirectResponse();
 }
-
-std::mutex PushPullSpeed::_mtx;
-std::queue<std::shared_ptr<SpeedEntry>> PushPullSpeed::_data_points;
-std::size_t PushPullSpeed::_acc_size = 0;
-std::size_t PushPullSpeed::_limit = 1024;
-std::chrono::time_point<std::chrono::system_clock> PushPullSpeed::_last_ts;
-bool PushPullSpeed::_initialized = false;
-bool PushPullSpeed::_should_record =
-      getenv("BYTEPS_TELEMETRY_ON") ? atoi(getenv("BYTEPS_TELEMETRY_ON")) : true;
-
-void PushPullSpeed::RecordSpeed(std::shared_ptr<TensorTableEntry> task) {
-  std::lock_guard<std::mutex> lock(_mtx);
-  if (!_initialized) {
-    _initialized = true;
-    _acc_size = 0;
-    _last_ts = std::chrono::system_clock::now();
-  }
-  _acc_size += task->tensor->size();
-  auto now = std::chrono::system_clock::now();
-  bool should_append = std::chrono::seconds{10} < now - _last_ts;
-
-  if (should_append) {
-    std::shared_ptr<SpeedEntry> entry(new SpeedEntry);
-
-    auto duration = now.time_since_epoch();
-    auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-
-    entry->ts = msec.count();
-    entry->speed = _acc_size * 1.0 / 1.0e6 / 10; // MegaBytes per second
-
-    _data_points.push(entry);
-    _acc_size = 0;
-    _last_ts = std::chrono::system_clock::now();
-    if (_data_points.size() > _limit) {
-      _data_points.pop();
-    }
-  }
-}
-
-std::shared_ptr<SpeedEntry> PushPullSpeed::GetSpeed() {
-  std::shared_ptr<SpeedEntry> entry;
-  std::lock_guard<std::mutex> lock(_mtx);
-  if (_data_points.size() > 0) {
-    entry = _data_points.front();
-    _data_points.pop();
-  } else {
-    entry = std::make_shared<SpeedEntry>();
-    entry->ts = 0;
-    entry->speed =  -5.0;
-  }
-
-  return entry;
-}
-
 }  // namespace common
 }  // namespace byteps

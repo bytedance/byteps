@@ -29,6 +29,7 @@ from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_
 from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu, _alltoall_gpu2cpu
 from byteps.tensorflow.ops import send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
+from byteps.tensorflow.ops import get_telemetry
 from byteps.tensorflow.ops import handle_average_backwards_compatibility
 from byteps.tensorflow.ops import Average, Sum, Adasum
 from byteps.tensorflow.util import _executing_eagerly

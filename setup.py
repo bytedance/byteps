@@ -250,11 +250,11 @@ def use_nvtx():
     return byteps_with_nvtx
 
 def use_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '0'))
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     return byteps_with_ucx
 
 def build_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '0'))
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME')
     return byteps_with_ucx and not has_prebuilt_ucx
 
@@ -279,6 +279,7 @@ def get_common_options(build_ext):
                'byteps/common/operations.cc',
                'byteps/common/core_loops.cc',
                'byteps/common/global.cc',
+               'byteps/common/profiler.cc',
                'byteps/common/logging.cc',
                'byteps/common/communicator.cc',
                'byteps/common/scheduled_queue.cc',
@@ -355,6 +356,7 @@ def build_server(build_ext, options):
                         'byteps/common/operations.cc',
                         'byteps/common/core_loops.cc',
                         'byteps/common/global.cc',
+                        'byteps/common/profiler.cc',
                         'byteps/common/logging.cc',
                         'byteps/common/communicator.cc',
                         'byteps/common/scheduled_queue.cc',

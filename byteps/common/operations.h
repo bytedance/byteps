@@ -65,9 +65,12 @@ uint32_t byteps_session_size();
 
 void byteps_mark_done(const char* name);
 
-}
+void byteps_get_telemetry_size(int32_t* size);
 
-extern "C" PyObject* byteps_get_pushpull_speed();
+void byteps_get_telemetry_data(const char** names, float* mean, float* stdev,
+                               int* count, int* actual_size, int max_size);
+
+}
 
 // Below are all for Framework plugins
 Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,

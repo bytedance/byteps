@@ -55,6 +55,14 @@ class BytePSBasics(object):
     def __init__(self, pkg_path, *args):
         full_path = get_extension_full_path(pkg_path, *args)
         self.C_LIB_CTYPES = ctypes.CDLL(full_path, mode=ctypes.RTLD_GLOBAL)
+        # set C_API interfaces
+        self.C_LIB_CTYPES.byteps_get_telemetry_size.restype = None
+        self.C_LIB_CTYPES.byteps_get_telemetry_size.argtypes = (ctypes.POINTER(ctypes.c_int),)
+        c_float_p = ctypes.POINTER(ctypes.c_float)
+        c_int_p = ctypes.POINTER(ctypes.c_int32)
+        c_char_p_p = ctypes.POINTER(ctypes.c_char_p)
+        self.C_LIB_CTYPES.byteps_get_telemetry_data.restype = None
+        self.C_LIB_CTYPES.byteps_get_telemetry_data.argtypes = c_char_p_p, c_float_p, c_float_p, c_int_p, c_int_p, ctypes.c_int32
 
     def init(self, lazy=True):
         """A function that inits BytePS."""
@@ -138,7 +146,36 @@ class BytePSBasics(object):
           Returns:
             A tuple: (ms since epoch, speed in MegaBytes per second)
         """
-        pushpull_speed = self.C_LIB_CTYPES.byteps_get_pushpull_speed
-        pushpull_speed.restype = ctypes.py_object
-        entry = pushpull_speed()
-        return entry
+        raise NotImplementedError("get_pushpull_speed() is deprecated. Please use get_telemetry instead")
+
+    def get_telemetry(self, size=None):
+        """A function that returns the current telemetry statistics.
+
+          Args:
+            size:
+              Set the limit on the number of distinct byteps operations
+              whose telemetries are returned. If set to None, all byteps
+              operations' telemetries are returned.
+
+          Returns:
+            A list of tuples: (name, duration mean(us), duration stdev(us), occurrences)
+        """
+        if size is None:
+            size_ptr = (ctypes.c_int*1)()
+            self.C_LIB_CTYPES.byteps_get_telemetry_size(size_ptr)
+            size = list(size_ptr)[0]
+        assert size >= 0, size
+        if size == 0:
+            return []
+        name_ptr = (ctypes.c_char_p*size)()
+        mean_ptr = (ctypes.c_float*size)()
+        stdev_ptr = (ctypes.c_float*size)()
+        count_ptr = (ctypes.c_int32*size)()
+        actual_size_ptr = (ctypes.c_int*1)()
+        self.C_LIB_CTYPES.byteps_get_telemetry_data(name_ptr, mean_ptr, stdev_ptr,
+                                                    count_ptr, actual_size_ptr, size)
+        actual_size = list(actual_size_ptr)[0]
+        result = list(zip(name_ptr, mean_ptr, stdev_ptr, count_ptr))[:actual_size]
+        if result is None:
+            result = []
+        return result

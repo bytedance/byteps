@@ -64,6 +64,7 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 get_pushpull_speed = _basics.get_pushpull_speed
+get_telemetry = _basics.get_telemetry
 session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
 dll_path = os.path.join(os.path.dirname(__file__),

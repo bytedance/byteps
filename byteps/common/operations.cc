@@ -160,14 +160,16 @@ void byteps_mark_done(const char* name) { BytePSGlobal::MarkDone(std::string(nam
 
 uint32_t byteps_session_size() { return BytePSGlobal::GetSessionSize(); }
 
-}  // extern "C"
-
-extern "C" PyObject* byteps_get_pushpull_speed() {
-  auto entry = PushPullSpeed::GetSpeed();
-  PyObject* ret = Py_BuildValue("(Kf)", entry->ts, entry->speed);
-
-  return ret;
+void byteps_get_telemetry_size(int32_t* size) {
+  size[0] = Telemetry::size();
 }
+
+void byteps_get_telemetry_data(const char** names, float* mean, float* stdev,
+                               int* count, int* actual_size, int max_size) {
+  Telemetry::GetData(names, mean, stdev, count, actual_size, max_size);
+}
+
+}  // extern "C"
 
 Status CheckInitialized() { return BytePSGlobal::CheckInit(); }
 
@@ -318,6 +320,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
+
   // ========== COMMON INFO =========
   // send_begin always starts with a zero
   int num_ranks = send_begin.size() - 1;
