@@ -7,7 +7,6 @@ import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')
 parser.add_argument('--backend', type=str, default='byteps')
 parser.add_argument('--iter', type=int, default=250)
-parser.add_argument('--test_autograd', action='store_true', default=False)
 
 # no usage for now, temporarily add for compat
 parser.add_argument('--rank', type=int, default=-1) 
@@ -22,7 +21,7 @@ else:
 
 print(bps)
 
-args.iter = int(os.environ.get('NUM_ITER', args.iter))
+args.iter = int(os.environ.get('TEST_NUM_ITER', args.iter))
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -283,8 +282,6 @@ class TensorFlowTests:
     def test_all2all_benchmark(self, total_niter=args.iter, dst_gpu=False, src_gpu=False):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
         dtype, int_dtype = tf.float32, tf.int32
-        if args.backend == 'byteps':
-            int_dtype = tf.int32
         rank = self.rank
         size = self.size
         vector_dim = 1

@@ -246,7 +246,7 @@ def use_cuda():
     return byteps_with_gpu
 
 def use_nvtx():
-    byteps_with_nvtx = int(os.environ.get('BYTEPS_WITH_NVTX', 1))
+    byteps_with_nvtx = int(os.environ.get('BYTEPS_WITH_NVTX', use_cuda()))
     return byteps_with_nvtx
 
 def use_ucx():
