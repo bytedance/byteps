@@ -466,9 +466,9 @@ int CpuReducer::_div_float16(void* dst, size_t len, float alpha) {
   auto inout = reinterpret_cast<unsigned short*>(dst);
   len = len / (size_t)2;
 
+  auto inv_alpha = 1.0 / alpha;
 #if __AVX__ && __F16C__
   float mm256_alpha[8];
-  auto inv_alpha = 1.0 / alpha;
   for (int i = 0; i < 8; ++i) mm256_alpha[i] = inv_alpha;
 
   if (is_avx_and_f16c()) {

@@ -17,10 +17,8 @@
 #define BYTEPS_COMPRESSOR_COMMON_H
 
 #include <unordered_map>
-#if __F16C__
 #include "../half.h"
 using half_t = mshadow::half::half_t;
-#endif
 
 namespace byteps {
 namespace common {
