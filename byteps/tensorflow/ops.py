@@ -145,6 +145,7 @@ def _push_pull(tensor, scope='', name=None, op=Average):
 
 def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_size=False,
               compression=Compression.none):
+    # check tensor list/tuple
     def is_group(tensor):
         if isinstance(tensor, list): return True
         if isinstance(tensor, tuple): return True
@@ -167,12 +168,12 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         name = ''
     full_name = scope + name
     full_name = full_name.encode("ascii")
-
+    # special case for alltoall: we store the declared tensor keys and pass them as attributes to alltoall ops
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
-    p = (ctypes.c_int*session_size)()
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
-    tensor_key = list(p)
+    tensor_key_ptrs = (ctypes.c_int*session_size)()
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, tensor_key_ptrs, session_size)
+    tensor_key = list(tensor_key_ptrs)
     if recv_splits is None:
         recv_split_unknown = True
         recv_splits = splits    

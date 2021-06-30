@@ -523,7 +523,9 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         bool use_pull, bool use_nvtx) {
   // the counter for all send/recv tasks generated for alltoall
   int num_ranks = split_count.size();
-  // one recv per rank (including memcpy). one d2h_send
+  // two types of tasks: send, recv
+  // number of send tasks: 1.
+  // number of recv tasks: num_ranks
   int num_tasks = recv_split_unknown ? 2 : num_ranks + 1;
   std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(num_tasks));
 
@@ -560,7 +562,7 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   }
 
   common::Status enqueue_result;
-  // the begin index of tensor views for send/recv
+  // the begin index (prefix sum) of tensor indices for send/recv
   std::vector<int> send_begin;
   std::vector<int> recv_begin;
   send_begin.push_back(0);
@@ -601,11 +603,16 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
 template <bool cross_device>
 class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
  private:
+     // input tensor name: name for byteps operations
      std::string input_tensor_name;
      bool recv_split_unknown;
+     // the maximum recv buffer size for receiving data per pair
      int partition_bytes;
+     // the 32-bit declared `tensor_key`
      std::vector<int32_t> tensor_key;
+     // use ZPull instead ZPush to reduce memory consumption
      bool use_pull;
+     // use NVTX for nsys profiling
      bool use_nvtx;
 
  public:
@@ -676,13 +683,14 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     auto ready_event = std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
     auto bps_input = std::make_shared<TFTensor>(tensor, input_device);
 
-    // make a copy of split tensors, which are based on dimension 0 only
+    // make a copy of split tensors and store them in a vector
     std::vector<int32_t> split_list;
     std::vector<int32_t> recv_split_list;
     GetIntList(split_tensor, &split_list);
     GetIntList(recv_split_tensor, &recv_split_list);
     CHECK(split_tensor.shape().dim_size(0) == recv_split_tensor.shape().dim_size(0));
     // split/recv_split "indices" considers dimensions beyond dim 0
+    // split_indices/split_recv_indices are based on elements, not bytes
     std::vector<int32_t> split_indices_list;
     std::vector<int32_t> recv_split_indices_list;
     int dim0_out = 0;
