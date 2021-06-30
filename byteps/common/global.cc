@@ -78,9 +78,6 @@ std::string BytePSGlobal::_hash_knob;
 
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
-std::vector<BytePSScheduledQueue*> BytePSGlobal::_send_queues;
-std::vector<BytePSScheduledQueue*> BytePSGlobal::_p2p_d2h_queues;
-int BytePSGlobal::_num_loop_parallel = 1;
 bool BytePSGlobal::_lockless_queue = false;
 std::vector<std::thread*> BytePSGlobal::_threads;
 std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
@@ -117,10 +114,6 @@ bool BytePSGlobal::_is_alltoall_use_pull = false;
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
-cudaStream_t* BytePSGlobal::_p2p_copy_d2d_stream = NULL;
-cudaStream_t* BytePSGlobal::_p2p_copy_d2h_stream = NULL;
-cudaStream_t* BytePSGlobal::_p2p_copy_h2d_stream = NULL;
-
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
 std::string BytePSGlobal::_uuid;
@@ -138,29 +131,13 @@ uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 bool BytePSGlobal::_should_sample = false;
 std::atomic_int BytePSGlobal::joined_thread_cnt;
 int BytePSGlobal::_p2p_copy_group_size;
-
-BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType, int index) {
-  if (queueType == P2P_COPYD2H) {
-    CHECK(index < _p2p_d2h_queues.size()) << index << "," << _p2p_d2h_queues.size();
-    return (BytePSScheduledQueue*)_p2p_d2h_queues.at(index);
-  } else if (queueType == SEND) {
-    CHECK(index < _send_queues.size()) << index << "," << _send_queues.size();
-    return (BytePSScheduledQueue*)_send_queues.at(index);
-  }
+BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
   return (BytePSScheduledQueue*)_queues[queueType];
 }
 
 void BytePSGlobal::CreateScheduledQueue(QueueType queueType) {
   std::lock_guard<std::mutex> lock(_queues_mutex[queueType]);
-  if (queueType == P2P_COPYD2H && _p2p_d2h_queues.empty()) {
-    for (int i = 0; i < _num_loop_parallel; ++i) {
-      _p2p_d2h_queues.push_back(new BytePSScheduledQueue(P2P_COPYD2H, _lockless_queue));
-    }
-  } else if (queueType == SEND && _send_queues.empty()) {
-    for (int i = 0; i < _num_loop_parallel; ++i) {
-      _send_queues.push_back(new BytePSScheduledQueue(SEND, _lockless_queue));
-    }
-  } else if (!_queues[queueType]) {
+  if (!_queues[queueType]) {
     _queues[queueType] = new BytePSScheduledQueue(queueType);
   }
   return;
@@ -194,7 +171,6 @@ void BytePSGlobal::Init() {
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
   _skip_d2h = getenv("BYTEPS_P2P_SKIP_D2H") ? atoi(getenv("BYTEPS_P2P_SKIP_D2H")) : false;
-  _num_loop_parallel = getenv("BYTEPS_LOOP_PARALLEL") ? atoi(getenv("BYTEPS_LOOP_PARALLEL")) : 1;
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
@@ -395,24 +371,12 @@ void BytePSGlobal::Init() {
   // Create CUDA streams for GPU-CPU copies
   _copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   _copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  _p2p_copy_d2d_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  _p2p_copy_d2h_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
-  _p2p_copy_h2d_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_host2device_stream,
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamCreateWithFlags(_copy_device2host_stream,
                                       cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_d2d_stream,
-                                      cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_d2h_stream,
-                                      cudaStreamNonBlocking));
-  CUDA_CALL(cudaStreamCreateWithFlags(_p2p_copy_h2d_stream,
-                                      cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_d2d_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_d2h_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_p2p_copy_h2d_stream));
 #endif
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
@@ -474,17 +438,6 @@ void BytePSGlobal::Start(const std::vector<LoopFunction>& func) {
   }
   BPS_LOG(DEBUG) << "Started " << func.size()
                  << " background threads. local_rank=" << _local_rank;
-}
-
-void BytePSGlobal::StartMultiple(const std::vector<IndexedLoopFn>& func) {
-  // Start background threads
-  for (size_t i = 0; i < func.size(); i++) {
-    for (int j = 0; j < _num_loop_parallel; ++j) {
-      _threads.push_back(new std::thread(func[i], j));
-    }
-  }
-  BPS_LOG(DEBUG) << "Started " << func.size() << " background functions, "
-                 << _num_loop_parallel << " threads each";
 }
 
 const Status NOT_INITIALIZED_ERROR = Status::PreconditionError(
@@ -556,18 +509,6 @@ void BytePSGlobal::Shutdown() {
   if (_copy_host2device_stream) {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
     _copy_host2device_stream = NULL;
-  }
-  if (_p2p_copy_d2d_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_d2d_stream));
-    _p2p_copy_d2d_stream = NULL;
-  }
-  if (_p2p_copy_d2h_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_d2h_stream));
-    _p2p_copy_d2h_stream = NULL;
-  }
-  if (_p2p_copy_h2d_stream) {
-    CUDA_CALL(cudaStreamDestroy(*_p2p_copy_h2d_stream));
-    _p2p_copy_h2d_stream = NULL;
   }
 #endif
 

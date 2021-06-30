@@ -18,51 +18,83 @@
 namespace byteps {
 namespace common {
 
-int GpuReducer::copy_d2d(void* dst, const void* src, size_t len) {
+int GpuReducer::copy(void* dst, bool to_gpu, const void* src, bool from_gpu,
+                     size_t len, bool async) {
+  BPS_CHECK(to_gpu || from_gpu) << to_gpu << " " << from_gpu;
+  if (to_gpu && from_gpu) {
+    return copy_d2d(dst, src, len, async);
+  } else if (to_gpu) {
+    return copy_h2d(dst, src, len, async);
+  } else {
+    return copy_d2h(dst, src, len, async);
+  }
+}
+
+int GpuReducer::copy_d2d(void* dst, const void* src, size_t len, bool async) {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
     (cudaMemcpyKind) cudaMemcpyDeviceToDevice,
     (cudaStream_t)*_d2d_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
+  if (!async) {
+    CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
+  }
 #else
-  BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+  CUDA_BUILD_ERROR();
 #endif // BYTEPS_BUILDING_CUDA == 1
   return 0;
 }
 
-int GpuReducer::copy_h2d(void* dst, const void* src, size_t len) {
+int GpuReducer::copy_h2d(void* dst, const void* src, size_t len, bool async) {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
     (cudaMemcpyKind) cudaMemcpyHostToDevice,
     (cudaStream_t)*_h2d_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
+  if (!async) {
+    CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
+  }
 #else
-  BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+  CUDA_BUILD_ERROR();
 #endif // BYTEPS_BUILDING_CUDA == 1
   return 0;
 }
 
-int GpuReducer::copy_d2h(void* dst, const void* src, size_t len) {
+int GpuReducer::copy_d2h(void* dst, const void* src, size_t len, bool async) {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
     (cudaMemcpyKind) cudaMemcpyDeviceToHost,
     (cudaStream_t)*_d2h_stream));
-  CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
+  if (!async) {
+    CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
+  }
 #else
-  BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+  CUDA_BUILD_ERROR();
 #endif // BYTEPS_BUILDING_CUDA == 1
   return 0;
 }
 
+int GpuReducer::sync_h2d() {
 #if BYTEPS_BUILDING_CUDA == 1
-int GpuReducer::copy_async(void* dst, const void* src, size_t len, 
-                           cudaMemcpyKind cuda_memcpy_kind, cudaStream_t* stream) {
-  CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
-    (cudaMemcpyKind) cuda_memcpy_kind,
-    (cudaStream_t)*stream));
-  return 0;
-}
+  CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
+#else
+  CUDA_BUILD_ERROR();
 #endif // BYTEPS_BUILDING_CUDA == 1
+}
+
+int GpuReducer::sync_d2h() {
+#if BYTEPS_BUILDING_CUDA == 1
+  CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
+#else
+  CUDA_BUILD_ERROR();
+#endif // BYTEPS_BUILDING_CUDA == 1
+}
+
+int GpuReducer::sync_d2d() {
+#if BYTEPS_BUILDING_CUDA == 1
+  CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
+#else
+  CUDA_BUILD_ERROR();
+#endif // BYTEPS_BUILDING_CUDA == 1
+}
 
 }  // namespace common
 }  // namespace byteps

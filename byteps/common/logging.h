@@ -110,6 +110,7 @@ class LogMessageFatal : public LogMessage {
 
 #define GET_LOG(_1, _2, NAME, ...) NAME
 #define BPS_LOG(...) GET_LOG(__VA_ARGS__, _LOG_RANK, _LOG)(__VA_ARGS__)
+#define CUDA_BUILD_ERROR(...) BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1"
 
 LogLevel MinLogLevelFromEnv();
 bool LogTimeFromEnv();

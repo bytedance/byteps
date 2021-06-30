@@ -37,7 +37,7 @@ bool DoFinishOrProceed(T& task) {
   auto &queue_list = task->queue_list;
   BPS_CHECK_GE(queue_list.size(), 1);
   auto this_op = queue_list[0];
-  auto q = BytePSGlobal::GetScheduledQueue(this_op, task->queue_idx);
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
   q->reportFinish(task->len);
 
   if (BytePSGlobal::IsTensorSampled(task->key)) {
@@ -106,7 +106,7 @@ bool DoFinishOrProceed(T& task) {
     BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank() << " finishes "
                    << LogStrings[this_op] << ", tensor: " << task->tensor_name
                    << ", key=" << task->key << "; Passing to the next queue.";
-    BytePSGlobal::GetScheduledQueue(queue_list[0], task->queue_idx)->addTask(task);
+    BytePSGlobal::GetScheduledQueue(queue_list[0])->addTask(task);
   } else {
     // this is the last QueueType of this current sub-task.
     BPS_CHECK(task->counter_ptr) << task->tensor_name << " counter_ptr is null";
@@ -887,14 +887,9 @@ void PullLoop() {
 
 void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
   int my_rank = BytePSGlobal::GetRank();
-#if BYTEPS_BUILDING_CUDA == 1
-  cudaStream_t* p2p_d2d_stream = BytePSGlobal::GetP2PCopyD2DStream();
-  cudaStream_t* p2p_d2h_stream = BytePSGlobal::GetP2PCopyD2HStream();
-  cudaStream_t* p2p_h2d_stream = BytePSGlobal::GetP2PCopyH2DStream();
   bool has_d2d_copy = false;
   bool has_d2h_copy = false;
   bool has_h2d_copy = false;
-#endif
   for (auto& task : tasks) {
     int send_dev = task->tensor 
                  ? task->tensor->device() 
@@ -908,6 +903,9 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
     int sender = task->context->sender;
     bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
     bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
+    has_d2d_copy = has_d2d_copy || (!is_recv_cpu && !is_send_cpu);
+    has_d2h_copy = has_d2h_copy || (is_recv_cpu && !is_send_cpu);
+    has_h2d_copy = has_h2d_copy || (!is_recv_cpu && is_send_cpu);
     if (sender == my_rank) {
       // copy to myself
       BPS_LOG(TRACE) << "self H2D key=" << key << " offset=" << offset
@@ -918,33 +916,10 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
       auto dst_addr = task->output
                     ? (char*)task->output->data() + task->offset_list[my_rank]
                     : (char*)task->group_outputs[my_rank]->data();
-      if (is_recv_cpu) {
-        if (is_send_cpu) {
-          BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
-        } else {
-#if BYTEPS_BUILDING_CUDA == 1
-          BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToHost, p2p_d2h_stream);
-          has_d2h_copy = true;
-#else 
-          BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
-#endif
-        }
+      if (is_recv_cpu && is_send_cpu) {
+        BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, len);
       } else {
-#if BYTEPS_BUILDING_CUDA == 1
-        // it only happens with CPU-GPU alltoall.
-        if (is_send_cpu) {
-          BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyHostToDevice, p2p_h2d_stream);
-          has_h2d_copy = true;
-        } else {
-          BytePSGlobal::GetGpuReducer()
-              ->copy_async(dst_addr, src_addr, len, cudaMemcpyDeviceToDevice, p2p_d2d_stream);
-          has_d2d_copy = true;
-        }
-#else 
-        BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
-#endif
+        BytePSGlobal::GetGpuReducer()->copy(dst_addr, !is_recv_cpu, src_addr, !is_send_cpu, len, true);
       }
     } else { // not myself
       auto dst_addr = task->output
@@ -952,37 +927,29 @@ void P2PCopyGroup(std::vector<TensorTableEntry*>& tasks) {
                     : (char*)task->group_outputs[sender]->data();
       auto recv_arr = server::BytePSServer::GetRecvPartition(key);
       int recv_len = recv_arr.len;
-      void* recv_addr = recv_arr.val.data();
+      void* src_addr = recv_arr.val.data();
       BPS_CHECK(recv_len == len) << recv_len << ", " << len;
       // update the output (data)
-      BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) recv_addr 
+      BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) src_addr
           << " len=" << len << " recv_cpu=" << is_recv_cpu
           << " send_cpu=" << is_send_cpu;
-      CHECK(recv_addr) << key;
+      CHECK(src_addr) << key;
       if (is_recv_cpu) {
-        BytePSGlobal::GetCpuReducer()->copy(dst_addr, recv_addr, recv_len);
+        BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, recv_len);
       } else {
-#if BYTEPS_BUILDING_CUDA == 1
         // ps-lite buffer is already on GPU
-        BytePSGlobal::GetGpuReducer()
-            ->copy_async(dst_addr, recv_addr, recv_len, cudaMemcpyDeviceToDevice, p2p_d2d_stream);
-        has_d2d_copy = true;
-#else 
-        BPS_LOG(FATAL) << "Please build BytePS with BYTEPS_WITH_GPU=1";
-#endif
+        BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, len, true);
       }
     }
   }
-#if BYTEPS_BUILDING_CUDA == 1
-  if (has_d2d_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_d2d_stream));
-  if (has_d2h_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_d2h_stream));
-  if (has_h2d_copy) CUDA_CALL(cudaStreamSynchronize(*p2p_h2d_stream));
-#endif
+  if (has_d2d_copy) BytePSGlobal::GetGpuReducer()->sync_d2d();
+  if (has_d2h_copy) BytePSGlobal::GetGpuReducer()->sync_d2h();
+  if (has_h2d_copy) BytePSGlobal::GetGpuReducer()->sync_h2d();
   return;
 }
 
-bool RunP2PCopyHost2DeviceLoopOnce() {
-  QueueType this_op = P2P_COPYH2D;
+bool RunRecvLoopOnce() {
+  QueueType this_op = RECV;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   std::vector<TensorTableEntry*> tasks;
   for (int i = 0; i < BytePSGlobal::GetP2PCopyGroupSize(); ++i) {
@@ -1140,37 +1107,9 @@ void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
   }
 }
 
-bool RunP2PCopyDevice2HostLoopOnce(int index) {
-  QueueType this_op = P2P_COPYD2H;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
-  auto task = q->getTask();
-
-  if (task) {
-    if (BytePSGlobal::IsSkipD2H()) {
-      FinishOrProceed(task);
-      return true;
-    }
-    // note: task does not have `input` field.
-    auto tensor = task->tensor;
-    BPS_CHECK(tensor);
-    auto key = task->key;
-    auto len = task->len;
-    auto offset = task->offset;
-    auto p = (char *)(tensor->data()) + offset;
-    bool is_cpu = task->device == CPU_DEVICE_ID;
-    char *cpubuff = (char *)(task->cpubuff);
-    BPS_CHECK(cpubuff) << task->tensor_name << ": CPU buffer not initialized, size=" << len << ", key=" << key;
-    CopyD2H(cpubuff, p, len, is_cpu);
-    FinishOrProceed(task);
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-  }
-  return true;
-}
-
-bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
-  QueueType this_op = P2P_COPYD2H_SEND;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op, index);
+bool RunSendLoopOnce() {
+  QueueType this_op = SEND;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
   auto task = q->getTaskLite();
   if (task) {
     // shuffle the receiver rank
@@ -1213,7 +1152,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
           ps::SArray<char> vals(cpubuff, 1, false);
           auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
           // for empty send without known output_size, we never wait for response
-          BytePSGlobal::GetPS(index)->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
+          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
         }
         continue;
       } else {
@@ -1241,14 +1180,14 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
         // perform send. false means not to delete data when SArray is deleted
         ps::SArray<char> vals(tensor, len, false);
         if (BytePSGlobal::IsDirectResponse() == 2) {
-          BytePSGlobal::GetPS(index)
+          BytePSGlobal::GetPS()
             ->ZPush(pskv.keys, vals, pskv.lens, cmd);
         } else {
           if (BytePSGlobal::IsProfileAlltoall()) {
             auto now = std::chrono::system_clock::now();
             auto duration = now.time_since_epoch();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(duration);
-            BytePSGlobal::GetPS(index)
+            BytePSGlobal::GetPS()
               ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
                 int v = task->counter_a2a.get()->fetch_sub(1);
                 if (v == 1) {
@@ -1260,7 +1199,7 @@ bool RunP2PCopyDevice2HostSendLoopOnce(int index) {
             auto then_us = std::chrono::duration_cast<std::chrono::microseconds>(then_duration);
             total_zpush_time += (then_us.count() - us.count());
           } else {
-            BytePSGlobal::GetPS(index)
+            BytePSGlobal::GetPS()
               ->ZPush(pskv.keys, vals, pskv.lens, cmd, [task]() {
                 int v = task->counter_a2a.get()->fetch_sub(1);
                 if (v == 1) {
@@ -1352,7 +1291,7 @@ bool RunP2PPullResponseOnce() {
                     + (is_group ? task->offset : task->offset_list[my_rank]);
       auto dst_addr = (char*) task->output->data() + task->offset;
       // FIXME: add h2d / d2h
-      BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, task->len);
+      BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, task->len, false);
       if (!BytePSGlobal::IsP2PAckDisabled()) {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
       }
@@ -1410,9 +1349,9 @@ void P2PAckLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
-void P2PCopyHost2DeviceLoop() {
+void RecvLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
-  while (RunP2PCopyHost2DeviceLoopOnce() &&
+  while (RunRecvLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1426,18 +1365,9 @@ void P2PGroupCopyHost2DeviceLoop() {
   BytePSGlobal::ReportThreadFinish();
 }
 
-void P2PCopyDevice2HostLoop(int index) {
-  CHECK(index >= 0);
+void SendLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
-  while (RunP2PCopyDevice2HostLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
-  }
-  BytePSGlobal::ReportThreadFinish();
-}
-
-void P2PCopyDevice2HostSendLoop(int index) {
-  CHECK(index >= 0);
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
-  while (RunP2PCopyDevice2HostSendLoopOnce(index) && !BytePSGlobal::ShouldShutdown()) {
+  while (RunSendLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }

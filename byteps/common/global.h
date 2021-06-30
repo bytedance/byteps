@@ -57,7 +57,6 @@ class BytePSGlobal {
  public:
   static void Init();
   static void Start(const std::vector<LoopFunction>& func);
-  static void StartMultiple(const std::vector<IndexedLoopFn>& func);
 
   static Status CheckInit();
   static bool ShouldShutdown() { return _should_shutdown; }
@@ -96,10 +95,9 @@ class BytePSGlobal {
     return _shm_obj;
   }
 
-  static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType, int index=0);
+  static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
   static void CreateScheduledQueue(QueueType queueType);
   static bool IsQueueLockless() { return _lockless_queue; }
-  static int GetLoopParallel() { return _num_loop_parallel; }
   static ps::KVWorker<char>* GetPS(int index = 0) { CHECK(_ps.size()); return _ps.at(index % _ps.size()); }
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(int index = 0);
@@ -141,9 +139,6 @@ class BytePSGlobal {
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
   static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
-  static cudaStream_t* GetP2PCopyD2DStream() { return _p2p_copy_d2d_stream; }
-  static cudaStream_t* GetP2PCopyD2HStream() { return _p2p_copy_d2h_stream; }
-  static cudaStream_t* GetP2PCopyH2DStream() { return _p2p_copy_h2d_stream; }
 #endif
 
   // methods to access or modify the _ready_table
@@ -271,9 +266,6 @@ class BytePSGlobal {
   // scheduled queues
   static volatile BytePSScheduledQueue* _queues[QueueNum];
   static std::mutex _queues_mutex[QueueNum];
-  static std::vector<BytePSScheduledQueue*> _send_queues;
-  static std::vector<BytePSScheduledQueue*> _p2p_d2h_queues;
-  static int _num_loop_parallel;
 
   static std::vector<std::thread*> _threads;
   static std::unique_ptr<std::thread> _server_thread;
@@ -301,9 +293,6 @@ class BytePSGlobal {
 #if BYTEPS_BUILDING_CUDA == 1
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
-  static cudaStream_t* _p2p_copy_d2d_stream;
-  static cudaStream_t* _p2p_copy_h2d_stream;
-  static cudaStream_t* _p2p_copy_d2h_stream;
   static std::shared_ptr<NcclManager> _nccl_manager;
 #endif
 

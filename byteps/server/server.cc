@@ -486,8 +486,8 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
                                  ps::KVServer<char>* server) {
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   auto req_type = type.requestType;
-  if (req_type == RequestType::kDefaultSend 
-      || req_type == RequestType::kGroupSend 
+  if (req_type == RequestType::kDefaultSend
+      || req_type == RequestType::kGroupSend
       || req_type == RequestType::kEmptyGroupSend
       || req_type == RequestType::kDefaultPull
       || req_type == RequestType::kAckSignal) {
@@ -703,7 +703,7 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
 }
 
 void BytePSServer::InitP2PCopyTable() {
-  p2p_copy_table_ = new ReadyTable(1, "P2P_COPYH2D");
+  p2p_copy_table_ = new ReadyTable(1, "RECV");
   p2p_pull_response_table_ = new ReadyTable(1, "P2P_PULL_RESPONSE");
   p2p_ack_table_ = new ReadyTable(1, "P2P_WAIT_ACK");
   auto num_worker_str = getenv("DMLC_NUM_WORKER");

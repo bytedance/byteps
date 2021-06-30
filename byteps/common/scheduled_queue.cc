@@ -61,7 +61,7 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
       _rt = BytePSGlobal::GetP2PGroupCopyTable();
       break;
     }
-    case P2P_COPYH2D: {
+    case RECV: {
       _rt = BytePSGlobal::GetP2PCopyTable();
       break;
     }    

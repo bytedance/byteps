@@ -48,14 +48,11 @@ void byteps_lazy_init() {
 
   // The order of func does not matter
   std::vector<LoopFunction> func;
-  // functions with multiple threads
-  std::vector<IndexedLoopFn> multi_func;
 
   // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
-    func.push_back(P2PCopyHost2DeviceLoop);
-    multi_func.push_back(P2PCopyDevice2HostLoop);
-    multi_func.push_back(P2PCopyDevice2HostSendLoop);
+    func.push_back(RecvLoop);
+    func.push_back(SendLoop);
     func.push_back(P2PPullLoop);
     func.push_back(P2PPullResponseLoop);
     func.push_back(P2PGroupCopyHost2DeviceLoop);
@@ -111,7 +108,6 @@ void byteps_lazy_init() {
     func.push_back(CpuBcastLoop);
   }
   BytePSGlobal::Start(func);
-  BytePSGlobal::StartMultiple(multi_func);
   return;
 }
 
@@ -203,7 +199,6 @@ void PartitionTensor(
       } else {
         e->cpubuff = ctx->cpubuff_list.at(i);
       }
-      e->queue_idx = (ctx->sender + ctx->receiver) % BytePSGlobal::GetLoopParallel();
     } else {
       e->cpubuff = entry->cpubuff;
     }
@@ -218,7 +213,6 @@ void PartitionTensor(
 
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
-    CHECK(e->queue_idx >= 0 && e->queue_idx < BytePSGlobal::GetLoopParallel()) << e->queue_idx;
     e->reduce_op = entry->reduce_op;
     if (!entry->context->compressor_list.empty()) {
       e->compressor = entry->context->compressor_list[i];
@@ -394,11 +388,11 @@ Status EnqueueAlltoAllTensor(std::string& name,
     send_task->callback = callback;
     send_task->cpubuff = nullptr;
     send_task->gpu_ptr = nullptr;
-    send_task->queue_list = {P2P_COPYD2H_SEND};
+    send_task->queue_list = {SEND};
     // TODO: remove counter_ptr. It is not necessary.
     send_task->counter_ptr = std::make_shared<std::atomic_int>(0);
     send_task->total_partnum = 1;
-    BytePSGlobal::GetScheduledQueue(P2P_COPYD2H_SEND, 0)->addTask(send_task);
+    BytePSGlobal::GetScheduledQueue(SEND)->addTask(send_task);
   } else {
     // nothing to send
     --(*counter_ptr);
@@ -449,7 +443,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
         partition->context = &byteps_context;
         partition->key = byteps_context.key_list[0];
         partition->len = size;
-        partition->queue_list = {P2P_COPYH2D};
+        partition->queue_list = {RECV};
         partition->counter_ptr = std::make_shared<std::atomic_int>(0);
         recv_tasks.push_back(partition);
         if (i == my_rank) {
@@ -473,12 +467,12 @@ Status EnqueueAlltoAllTensor(std::string& name,
       recv_task->queue_list = {P2P_GROUP_COPYH2D};
       recv_task->key = tensor_key;
       recv_task->counter_ptr = std::make_shared<std::atomic_int>(0);
-      BytePSGlobal::GetScheduledQueue(P2P_GROUP_COPYH2D, 0)->addTask(recv_task);
+      BytePSGlobal::GetScheduledQueue(P2P_GROUP_COPYH2D)->addTask(recv_task);
     } else {
       for (auto partition : recv_tasks) {
         partition->total_partnum = 1;
         partition->offset_list = recv_task->offset_list;
-        BytePSGlobal::GetScheduledQueue(P2P_COPYH2D, 0)->addTask(partition);
+        BytePSGlobal::GetScheduledQueue(RECV)->addTask(partition);
       }
       delete recv_task;
     }
@@ -583,7 +577,7 @@ Status EnqueueAlltoAllTensorPullImpl(
     // TODO: remove counter_ptr. It is not necessary.
     request_task->counter_ptr = std::make_shared<std::atomic_int>(0);
     request_task->total_partnum = 1;
-    BytePSGlobal::GetScheduledQueue(P2P_PULL, 0)->addTask(request_task);
+    BytePSGlobal::GetScheduledQueue(P2P_PULL)->addTask(request_task);
   } else {
     // nothing to send
     --(*counter_ptr);
@@ -658,7 +652,7 @@ Status EnqueueAlltoAllTensorPullImpl(
     for (auto& partition : tasks) {
       partition->total_partnum = 1;
       partition->offset_list = response_task->offset_list;
-      BytePSGlobal::GetScheduledQueue(P2P_PULL_RESPONSE, 0)->addTask(partition);
+      BytePSGlobal::GetScheduledQueue(P2P_PULL_RESPONSE)->addTask(partition);
     }
   } 
   delete response_task;
@@ -767,7 +761,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                    << ", len=" << (task->len) << ", device=" << (task->device)
                    << ", local_rank=" << BytePSGlobal::GetLocalRank();
 
-    BytePSGlobal::GetScheduledQueue(e->queue_list[0], e->queue_idx)->addTask(task);
+    BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
     accumulated += task->len;
   }
 
@@ -1063,24 +1057,14 @@ int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver, i
 
 std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
-  // Copy from GPU to CPU
-  if (BytePSGlobal::IsDistributed() && !BytePSGlobal::IsSkipD2H()) {
-    queue_list->push_back(P2P_COPYD2H);
-  }
   queue_list->push_back(SEND);
-  return queue_list;
-}
-
-std::shared_ptr<std::vector<QueueType>> GetSendOneShotQueueList() {
-  auto queue_list = std::make_shared<std::vector<QueueType>>();
-  queue_list->push_back(P2P_COPYD2H_SEND);
   return queue_list;
 }
 
 std::shared_ptr<std::vector<QueueType>> GetRecvQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
   // Copy from CPU to GPU
-  queue_list->push_back(P2P_COPYH2D);
+  queue_list->push_back(RECV);
   return queue_list;
 }
 

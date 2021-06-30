@@ -103,17 +103,13 @@ enum QueueType {
   BROADCAST,
   // for peer-to-peer send
   SEND,
-  // for host-to-device copy used in peer-to-peer
-  P2P_COPYH2D,
-  // for device-to-host copy used in peer-to-peer
-  P2P_COPYD2H,
-  // for host-to-host/device-to-device copy used in peer-to-peer
-  P2P_COPYD2H_SEND,
+  // for peer-to-peer recv
+  RECV,
   // for alltoall recv when the recv split is unknown
   // it waits for the entire group of data before starting to copy
   P2P_GROUP_COPYH2D,
   // for alltoall pull 
-  P2P_PULL, 
+  P2P_PULL,
   // for alltoall pull response
   P2P_PULL_RESPONSE,
   // for alltoall notification that the pull response is received
@@ -157,9 +153,7 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "COORDINATE_BROADCAST",
                                              "BROADCAST",
                                              "SEND",
-                                             "P2P_COPYH2D",
-                                             "P2P_COPYD2H",
-                                             "P2P_COPYD2H_SEND",
+                                             "RECV",
                                              "P2P_GROUP_COPYH2D",
                                              "P2P_PULL",
                                              "P2P_PULL_RESPONSE",
@@ -334,8 +328,6 @@ struct TensorTableEntry {
   std::shared_ptr<compressor::Compressor> compressor;
   // Compressed
   std::shared_ptr<compressor::tensor_t> compressed;
-  // queue index. Used when there are multiple queues for the same task.
-  int queue_idx = 0;
   // list of offsets, used for alltoall only
   std::vector<int> offset_list;
   // list of involved keys, used for alltoall only

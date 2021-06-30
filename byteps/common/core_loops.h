@@ -49,11 +49,9 @@ void NonRootCopyListenLoop();
 
 void NonRootCopyHost2DeviceLoop();
 
-void P2PCopyHost2DeviceLoop();
+void RecvLoop();
 
-void P2PCopyDevice2HostLoop(int index);
-
-void P2PCopyDevice2HostSendLoop(int index);
+void SendLoop();
 
 void P2PGroupCopyHost2DeviceLoop();
 
