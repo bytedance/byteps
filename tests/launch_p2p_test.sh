@@ -6,17 +6,18 @@
 ## Rank-0: bash launch_p2p_test.sh 0 2 
 ## Rank-1: DMLC_PS_ROOT_URI=ip_of_machine0 bash launch_p2p_test.sh 1 2
 
+set -x
 path="`dirname $0`"
 rm -f /tmp/socket_*
 rm -f /dev/shm/BytePS_*
 
-export BYTEPS_SERVER_DIRECT_RESPONSE=0
+export BYTEPS_SERVER_DIRECT_RESPONSE=${BYTEPS_SERVER_DIRECT_RESPONSE:=0}
 export TOTAL_LEN=${TOTAL_LEN:-4096000}
 export BYTEPS_PARTITION_BYTES=40960000
-export BYTEPS_LOCAL_SIZE=8
+export BYTEPS_LOCAL_SIZE=${BYTEPS_LOCAL_SIZE:=8}
 
 if [ $# -eq 0 ]; then 
-    export DMLC_NUM_WORKER=8
+    export DMLC_NUM_WORKER=$BYTEPS_LOCAL_SIZE
     export OFFSET=0
     export RANK=0
 else 
@@ -32,17 +33,16 @@ pushd $path
 function getip() { echo $(ip a show $1 | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}'); }
 
 if [ "$RANK" == "0" ]; then
-    bash run_byteccl_test.sh scheduler &
+    DMLC_NODE_HOST=$(getip eth0) bash run_byteccl_test.sh scheduler &
 fi
 
-CUDA_VISIBLE_DEVICES=0 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteccl_test.sh joint $((OFFSET+0)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=1 UCX_NET_DEVICES=mlx5_0:1 DMLC_NODE_HOST=$(getip eth0) bash run_byteccl_test.sh joint $((OFFSET+1)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=2 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteccl_test.sh joint $((OFFSET+2)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=3 UCX_NET_DEVICES=mlx5_1:1 DMLC_NODE_HOST=$(getip eth1) bash run_byteccl_test.sh joint $((OFFSET+3)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=4 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteccl_test.sh joint $((OFFSET+4)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=5 UCX_NET_DEVICES=mlx5_2:1 DMLC_NODE_HOST=$(getip eth2) bash run_byteccl_test.sh joint $((OFFSET+5)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=6 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteccl_test.sh joint $((OFFSET+6)) test_tensorflow_p2p.py &
-CUDA_VISIBLE_DEVICES=7 UCX_NET_DEVICES=mlx5_3:1 DMLC_NODE_HOST=$(getip eth3) bash run_byteccl_test.sh joint $((OFFSET+7)) test_tensorflow_p2p.py &
+for i in $(seq $BYTEPS_LOCAL_SIZE)
+do
+    LOCAL_RANK=$(($i-1))
+    x=$(($LOCAL_RANK/2))
+    export UCX_NET_DEVICES=${UCX_NET_DEVICES:=mlx5_$x:1}
+    CUDA_VISIBLE_DEVICES=$i DMLC_NODE_HOST=$(getip eth$x) bash run_byteccl_test.sh joint $(($OFFSET+$LOCAL_RANK)) test_tensorflow_p2p.py &
+done
 
 popd 
 

@@ -772,8 +772,9 @@ void BytePSServer::init_global_env() {
     num_phy_node_ = atoi(num_worker_str);
     num_byteps_workers_ = atoi(num_worker_str) * atoi(local_size_str);
   }
-  LOG(INFO) << "Using num_phy_node " << num_phy_node_;
-  LOG(INFO) << "Using num_byteps_workers_ " << num_byteps_workers_;
+  if (is_server_) {
+    LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" << num_byteps_workers_;
+  }
 }
 
 
