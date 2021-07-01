@@ -35,9 +35,9 @@ class GpuReducer {
   int copy_d2h(void* dst, const void* src, size_t len, bool async);
   int copy_d2d(void* dst, const void* src, size_t len, bool async);
 
-  int sync_h2d();
-  int sync_d2h();
-  int sync_d2d();
+  void sync_h2d();
+  void sync_d2h();
+  void sync_d2d();
 
 #if BYTEPS_BUILDING_CUDA == 1
   ~GpuReducer() {

@@ -72,7 +72,7 @@ int GpuReducer::copy_d2h(void* dst, const void* src, size_t len, bool async) {
   return 0;
 }
 
-int GpuReducer::sync_h2d() {
+void GpuReducer::sync_h2d() {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaStreamSynchronize(*_h2d_stream));
 #else
@@ -80,7 +80,7 @@ int GpuReducer::sync_h2d() {
 #endif // BYTEPS_BUILDING_CUDA == 1
 }
 
-int GpuReducer::sync_d2h() {
+void GpuReducer::sync_d2h() {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaStreamSynchronize(*_d2h_stream));
 #else
@@ -88,7 +88,7 @@ int GpuReducer::sync_d2h() {
 #endif // BYTEPS_BUILDING_CUDA == 1
 }
 
-int GpuReducer::sync_d2d() {
+void GpuReducer::sync_d2d() {
 #if BYTEPS_BUILDING_CUDA == 1
   CUDA_CALL(cudaStreamSynchronize(*_d2d_stream));
 #else
