@@ -1291,9 +1291,7 @@ bool RunP2PPullResponseOnce() {
     int send_dev = task->tensor 
                  ? task->tensor->device() 
                  : task->group_tensors[0]->device();
-    int recv_dev = task->output 
-                 ? task->output->device()
-                 : task->group_outputs[0]->device();
+    int recv_dev = task->device;
     bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
     bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
     if (sender == my_rank) {

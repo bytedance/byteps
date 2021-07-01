@@ -589,7 +589,7 @@ Status EnqueueAlltoAllTensorPullImpl(
   // create the shared recv tasks
   TensorTableEntry* response_task = new TensorTableEntry;
   response_task->ready_event = ready_event;
-  response_task->device = device;
+  response_task->device = output_device;
   response_task->priority = priority;
   response_task->version = version;
   response_task->callback = callback;

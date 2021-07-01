@@ -10,7 +10,7 @@ parser.add_argument('--iter', type=int, default=250)
 
 # no usage for now, temporarily add for compat
 parser.add_argument('--rank', type=int, default=-1) 
-
+is_use_pull = int(os.environ.get('BYTEPS_ALL2ALL_USE_PULL', 0))
 args = parser.parse_args()
 if args.backend == 'byteps':
     import byteps.tensorflow as bps
@@ -565,8 +565,9 @@ tests.test_all2all_invalid_splits()
 if is_direct_resp == 2:
     tests.test_all2all()
     tests.test_all2all(compression=bps.Compression.fp16)
-    tests.test_all2all_no_recv_splits()
-    tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
+    if not is_use_pull:
+        tests.test_all2all_no_recv_splits()
+        tests.test_all2all_no_recv_splits(compression=bps.Compression.fp16)
 
 if is_direct_resp == 0:
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
@@ -577,7 +578,6 @@ if is_direct_resp == 0:
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=False)
     tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=False)
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=True)
-    tests.test_all2all_no_recv_splits()
     tests.test_all2all(src_device='cpu', dst_device='cpu')
     tests.test_all2all(src_device='gpu', dst_device='gpu')
     tests.test_all2all(src_device='cpu', dst_device='gpu')
@@ -591,5 +591,7 @@ if is_direct_resp == 0:
     tests.test_all2all_group(src_device='cpu', dst_device='gpu')
     tests.test_all2all_group(src_device='gpu', dst_device='gpu')
     tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
+    if not is_use_pull:
+        tests.test_all2all_no_recv_splits()
 
 time.sleep(1)
