@@ -1236,39 +1236,43 @@ bool RunP2PPullLoopOnce() {
       int i = (my_rank + r + 1) % num_ranks;
       if (i == my_rank) continue;
       auto len = task->offset_list[i+1] - task->offset_list[i];
-      auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, i);
-      const char* dest = is_group
-                  ? (const char*) task->group_outputs[i]->data()
-                  : (const char*) task->output->data();
-      auto offset = is_group 
-                  ? 0
-                  : task->offset_list[i];
-      const int dtype = is_group 
-                  ? task->group_outputs[i]->dtype()
-                  : task->output->dtype();
-      int cmd = server::GetCommandType(server::RequestType::kDefaultPull, 
-                                       dtype, output_device);
-      char* output = (char*) dest + offset;
-      auto vals = new ps::SArray<char>(output, len, false);
-      BytePSGlobal::GetPS()
-        ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, dtype, output_device]() {
-          if (!BytePSGlobal::IsP2PAckDisabled()) {
-            // notify the server that the response is received
-            // perform zpush with 1 byte data
-            char* cpubuff = (char*) task->pcie_cpubuff[i];
-            ps::SArray<char> ack_vals(cpubuff, 1, false);
-            auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
-            int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device);
-            // no need to wait for this zpush 
-            BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
-          }
-          // the rest of the callbacks are for zpull          
-          delete vals;
-          int v = task->counter_a2a.get()->fetch_sub(1);
-          if (v == 1) {
-            FinishOrProceedLite(task);
-          }
-        });
+      if (len == 0){
+        continue;
+      } else{
+        auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, i);
+        const char* dest = is_group
+                    ? (const char*) task->group_outputs[i]->data()
+                    : (const char*) task->output->data();
+        auto offset = is_group 
+                    ? 0
+                    : task->offset_list[i];
+        const int dtype = is_group 
+                    ? task->group_outputs[i]->dtype()
+                    : task->output->dtype();
+        int cmd = server::GetCommandType(server::RequestType::kDefaultPull, 
+                                        dtype, output_device);
+        char* output = (char*) dest + offset;
+        auto vals = new ps::SArray<char>(output, len, false);
+        BytePSGlobal::GetPS()
+          ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, dtype, output_device]() {
+            if (!BytePSGlobal::IsP2PAckDisabled()) {
+              // notify the server that the response is received
+              // perform zpush with 1 byte data
+              char* cpubuff = (char*) task->pcie_cpubuff[i];
+              ps::SArray<char> ack_vals(cpubuff, 1, false);
+              auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
+              int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device);
+              // no need to wait for this zpush 
+              BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
+            }
+            // the rest of the callbacks are for zpull          
+            delete vals;
+            int v = task->counter_a2a.get()->fetch_sub(1);
+            if (v == 1) {
+              FinishOrProceedLite(task);
+            }
+          });
+      }
     }
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -1284,14 +1288,25 @@ bool RunP2PPullResponseOnce() {
     BPS_CHECK(task->tensor);
     int sender = task->context->sender;
     int my_rank = BytePSGlobal::GetRank();
+    int send_dev = task->tensor 
+                 ? task->tensor->device() 
+                 : task->group_tensors[0]->device();
+    int recv_dev = task->output 
+                 ? task->output->device()
+                 : task->group_outputs[0]->device();
+    bool is_recv_cpu = (CPU_DEVICE_ID == recv_dev);
+    bool is_send_cpu = (CPU_DEVICE_ID == send_dev);
     if (sender == my_rank) {
       // copy to myself
       bool is_group = (task->group_tensors.size() > 0);
       auto src_addr = (char*) task->tensor->data() 
                     + (is_group ? task->offset : task->offset_list[my_rank]);
       auto dst_addr = (char*) task->output->data() + task->offset;
-      // FIXME: add h2d / d2h
-      BytePSGlobal::GetGpuReducer()->copy_d2d(dst_addr, src_addr, task->len, false);
+      if (is_recv_cpu && is_send_cpu) {
+        BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, task->len);
+      } else {
+        BytePSGlobal::GetGpuReducer()->copy(dst_addr, !is_recv_cpu, src_addr, !is_send_cpu, task->len, false);
+      }
       if (!BytePSGlobal::IsP2PAckDisabled()) {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
       }
