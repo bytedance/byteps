@@ -137,6 +137,37 @@ int getDataTypeLength(int dtype) {
   }
   return 4;
 }
+const char* P2PTensorTableEntry::tensor_data(int index) const {
+  if (group_tensors.size() > 0) {
+    return (const char*) group_tensors.at(index)->data();
+  } else {
+    return (const char*) tensor->data();
+  }
+}
+
+char* P2PTensorTableEntry::output_data(int index) const {
+  if (group_outputs.size() > 0) {
+    return (char*) group_outputs.at(index)->data();
+  } else {
+    return (char*) output->data();
+  }
+}
+
+DataType P2PTensorTableEntry::tensor_dtype() const {
+  if (group_tensors.size() > 0) {
+    return group_tensors.at(0)->dtype();
+  } else {
+    return tensor->dtype();
+  }
+}
+
+DataType P2PTensorTableEntry::output_dtype() const {
+  if (group_outputs.size() > 0) {
+    return group_outputs.at(0)->dtype();
+  } else {
+    return output->dtype();
+  }
+}
 
 }  // namespace common
 }  // namespace byteps

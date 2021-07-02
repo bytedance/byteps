@@ -180,16 +180,13 @@ void PartitionTensor(
   int i = 0;
 
   while (accumulated < size) {
-    std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
+    std::shared_ptr<TensorTableEntry> e(new TensorTableEntry(entry->priority, entry->version,
+                                                             entry->ready_event, entry->callback,
+                                                             entry->device, entry->queue_list));
     // will assign the key later, so don't do it now
     // e->key = entry->key;
-    e->tensor_name = entry->tensor_name + std::string("_") + std::to_string(i);
     e->context = entry->context;
-    e->ready_event = entry->ready_event;
-    e->device = entry->device;
-    e->priority = entry->priority;
-    e->version = entry->version;
-    e->callback = entry->callback;
+    e->tensor_name = entry->tensor_name + std::string("_") + std::to_string(i);
     e->len = ((size - accumulated) > bound) ? bound : (size - accumulated);
     // Short-cut for P2P ops
     if (entry->context->op_type != PUSH_PULL_OP) {
@@ -206,10 +203,8 @@ void PartitionTensor(
     e->gpu_ptr = entry->gpu_ptr;
     e->pcie_cpubuff = entry->pcie_cpubuff;
     e->numa_cpubuff = entry->numa_cpubuff;
-    e->queue_list = entry->queue_list;
     e->tensor = entry->tensor;
     e->output = entry->output;
-    e->aux_output = entry->aux_output;
 
     e->counter_ptr = entry->counter_ptr;
     e->total_partnum = entry->total_partnum;
@@ -304,7 +299,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              std::vector<std::shared_ptr<Tensor>>& group_outputs,
                              std::shared_ptr<Tensor> size_output,
                              std::shared_ptr<ReadyEvent> ready_event,
-                             const int device,
+                             const int input_device, const int output_device,
                              const int priority, const int version,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
@@ -337,13 +332,13 @@ Status EnqueueAlltoAllTensor(std::string& name,
   bool has_recv = output_size_unknown;
 
   // ========= SEND TASKS ==========
-  TensorTableEntry* send_task = new TensorTableEntry;
+  std::vector<QueueType> send_q = {SEND};
+  auto send_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                           input_device, send_q, output_device);
   // the accumulated offset list always starts with 0
+  send_task->offset = 0;
   send_task->offset_list.push_back(0);
   // send to all ranks
-  int output_device = output 
-                    ? output->device()
-                    : group_outputs[0]->device();
   bool recv_on_gpu = (output_device != CPU_DEVICE_ID);
   for (size_t i = 0; i < num_ranks; ++i) {
     // Note: shuffle is done inside core_loops
@@ -377,18 +372,6 @@ Status EnqueueAlltoAllTensor(std::string& name,
       send_task->output = output;
       send_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
     }
-    send_task->aux_output = nullptr;
-
-    send_task->ready_event = ready_event;
-    // the device of the send task denotes the remote device type
-    // data will be sent to (i.e. the output tensor device)
-    send_task->device = output_device;
-    send_task->priority = priority;
-    send_task->version = version;
-    send_task->callback = callback;
-    send_task->cpubuff = nullptr;
-    send_task->gpu_ptr = nullptr;
-    send_task->queue_list = {SEND};
     // TODO: remove counter_ptr. It is not necessary.
     send_task->counter_ptr = std::make_shared<std::atomic_int>(0);
     send_task->total_partnum = 1;
@@ -401,27 +384,25 @@ Status EnqueueAlltoAllTensor(std::string& name,
 
   // ========= RECV TASKS  ==========
   // reference tensor_key for group_recv
+  std::vector<QueueType> recv_q = {RECV};
+  if (output_size_unknown) {
+    recv_q = {P2P_GROUP_COPYH2D};
+  }
   uint64_t tensor_key;
   int total_partnum = 0;
   // create the shared recv tasks
-  TensorTableEntry* recv_task = new TensorTableEntry;
+  auto recv_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                           input_device, recv_q, output_device);
   recv_task->offset = 0;
   recv_task->tensor = input;
   recv_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
   recv_task->output = output;
   recv_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-  recv_task->ready_event = ready_event;
-  recv_task->device = device;
-  recv_task->priority = priority;
-  recv_task->version = version;
-  recv_task->callback = callback;
-  recv_task->cpubuff = nullptr;
-  recv_task->gpu_ptr = nullptr;
   recv_task->aux_output = size_output;
 
   // the accumulated offset list always starts with 0
   recv_task->offset_list.push_back(0);
-  std::vector<TensorTableEntry*> recv_tasks;
+  std::vector<P2PTensorTableEntry*> recv_tasks;
   for (size_t i = 0; i < num_ranks; ++i) {
     // check the case for send-recv with myself, or nothing to send
     int size = unit_size * (recv_begin[i + 1] - recv_begin[i]);
@@ -437,13 +418,13 @@ Status EnqueueAlltoAllTensor(std::string& name,
       if (size != 0) {
         total_partnum++;
         has_recv = true;
-        auto partition = new TensorTableEntry;
+        auto partition = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                                 input_device, recv_q, output_device);
         *partition = *recv_task;
         partition->tensor_name = name_i;
         partition->context = &byteps_context;
         partition->key = byteps_context.key_list[0];
         partition->len = size;
-        partition->queue_list = {RECV};
         partition->counter_ptr = std::make_shared<std::atomic_int>(0);
         recv_tasks.push_back(partition);
         if (i == my_rank) {
@@ -464,15 +445,14 @@ Status EnqueueAlltoAllTensor(std::string& name,
       auto& byteps_context = common::GetContextFromName(reference_recv_name);
       recv_task->tensor_name = reference_recv_name;
       recv_task->context = &byteps_context;
-      recv_task->queue_list = {P2P_GROUP_COPYH2D};
       recv_task->key = tensor_key;
       recv_task->counter_ptr = std::make_shared<std::atomic_int>(0);
-      BytePSGlobal::GetScheduledQueue(P2P_GROUP_COPYH2D)->addTask(recv_task);
+      BytePSGlobal::GetScheduledQueue(recv_q.at(0))->addTask(recv_task);
     } else {
       for (auto partition : recv_tasks) {
         partition->total_partnum = 1;
         partition->offset_list = recv_task->offset_list;
-        BytePSGlobal::GetScheduledQueue(RECV)->addTask(partition);
+        BytePSGlobal::GetScheduledQueue(recv_q.at(0))->addTask(partition);
       }
       delete recv_task;
     }
@@ -495,7 +475,7 @@ Status EnqueueAlltoAllTensorPullImpl(
                              std::vector<std::shared_ptr<Tensor>>& group_outputs,
                              std::shared_ptr<Tensor> size_output,
                              std::shared_ptr<ReadyEvent> ready_event,
-                             const int device,
+                             const int input_device, const int output_device,
                              const int priority, const int version,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
@@ -525,13 +505,12 @@ Status EnqueueAlltoAllTensorPullImpl(
   bool has_response = output_size_unknown;
 
   // ========= REQUEST TASKS ==========
-  TensorTableEntry* request_task = new TensorTableEntry;
+  std::vector<QueueType> request_q = {P2P_PULL};
+  auto request_task = new P2PTensorTableEntry(priority, version, ready_event,
+                                              callback, input_device, request_q, output_device);
   // the accumulated offset list always starts with 0
   request_task->offset_list.push_back(0);
   // send to all ranks
-  int output_device = output 
-                    ? output->device()
-                    : group_outputs[0]->device();
   bool recv_on_gpu = (output_device != CPU_DEVICE_ID);
   for (size_t i = 0; i < num_ranks; ++i) {
     // Note: shuffle is done inside core_loops
@@ -563,17 +542,6 @@ Status EnqueueAlltoAllTensorPullImpl(
     request_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
     request_task->output = output;
     request_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-    request_task->aux_output = nullptr;
-    request_task->ready_event = ready_event;
-    // the device of the send task denotes the remote device type
-    // data will be sent to (i.e. the output tensor device)
-    request_task->device = output_device;
-    request_task->priority = priority;
-    request_task->version = version;
-    request_task->callback = callback;
-    request_task->cpubuff = nullptr;
-    request_task->gpu_ptr = nullptr;
-    request_task->queue_list = {P2P_PULL};
     // TODO: remove counter_ptr. It is not necessary.
     request_task->counter_ptr = std::make_shared<std::atomic_int>(0);
     request_task->total_partnum = 1;
@@ -587,21 +555,19 @@ Status EnqueueAlltoAllTensorPullImpl(
   // ========= RESPONSE TASKS  ==========
   int total_partnum = 0;
   // create the shared recv tasks
-  TensorTableEntry* response_task = new TensorTableEntry;
-  response_task->ready_event = ready_event;
-  response_task->device = output_device;
-  response_task->priority = priority;
-  response_task->version = version;
-  response_task->callback = callback;
-  response_task->cpubuff = nullptr;
-  response_task->gpu_ptr = nullptr;
+  std::vector<QueueType> resp_q = {P2P_PULL_RESPONSE, P2P_WAIT_ACK};
+  if (BytePSGlobal::IsP2PAckDisabled()) {
+    resp_q = {P2P_PULL_RESPONSE};
+  }
+  auto response_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                               input_device, resp_q, output_device);
   response_task->aux_output = size_output;
   response_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
   response_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
 
   // the accumulated offset list always starts with 0
   response_task->offset_list.push_back(0);
-  std::vector<TensorTableEntry*> tasks;
+  std::vector<P2PTensorTableEntry*> tasks;
   bool is_group = (group_inputs.size() > 0);
   for (size_t i = 0; i < num_ranks; ++i) {
     // check the case for send-recv with myself, or nothing to send
@@ -613,9 +579,10 @@ Status EnqueueAlltoAllTensorPullImpl(
     if (size != 0) {
       total_partnum++;
       has_response = true;
-      auto partition = new TensorTableEntry;
+      auto partition = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                               input_device, resp_q, output_device);
       *partition = *response_task;
-      partition->tensor = is_group 
+      partition->tensor = is_group
                         ? group_inputs[i]
                         : input;
       partition->offset = is_group
@@ -625,11 +592,6 @@ Status EnqueueAlltoAllTensorPullImpl(
       partition->context = &byteps_context;
       partition->key = byteps_context.key_list[0];
       partition->len = size;
-      if (BytePSGlobal::IsP2PAckDisabled()) {
-        partition->queue_list = { P2P_PULL_RESPONSE };
-      } else {
-        partition->queue_list = { P2P_PULL_RESPONSE, P2P_WAIT_ACK };
-      }
       partition->counter_ptr = std::make_shared<std::atomic_int>(0);
       tasks.push_back(partition);
       if (i == my_rank) {
@@ -688,18 +650,14 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     queue_list->insert(it + 1, DECOMPRESS);  // after PULL
   }
 
-  std::shared_ptr<TensorTableEntry> e(new TensorTableEntry);
+  std::shared_ptr<TensorTableEntry> e(new TensorTableEntry(priority, version,
+                                                           ready_event, callback,
+                                                           device, *queue_list));
   e->tensor_name = name;
   e->context = &context;
   // Note: for the send-recv case, one may have null input or output
   e->tensor = input;
   e->output = output;
-  e->aux_output = nullptr;
-  e->ready_event = ready_event;
-  e->device = device;
-  e->priority = priority;
-  e->version = version;
-  e->callback = callback;
   e->reduce_op = op;
 
   // send/recv ops do not need gpu_ptr
@@ -722,7 +680,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->gpu_ptr = context.gpu_ptr;
   e->pcie_cpubuff = context.pcie_cpubuff;
   e->numa_cpubuff = context.numa_cpubuff;
-  e->queue_list = *queue_list;
   e->counter_ptr = std::make_shared<std::atomic_int>(0);
   e->total_partnum = context.key_list.size();
 

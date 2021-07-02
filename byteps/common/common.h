@@ -287,14 +287,8 @@ struct TensorTableEntry {
   BPSContext* context;
   // Input tensor.
   std::shared_ptr<Tensor> tensor;
-  // A group of input tensors
-  std::vector<std::shared_ptr<Tensor>> group_tensors;
   // Pre-allocated output tensor.
   std::shared_ptr<Tensor> output;
-  // A group of output tensors
-  std::vector<std::shared_ptr<Tensor>> group_outputs;
-  // Pre-allocated auxiliary output tensor.
-  std::shared_ptr<Tensor> aux_output;
   // Priroity
   int priority = 0;
   // The version of tensor
@@ -303,14 +297,15 @@ struct TensorTableEntry {
   int root_rank = 0;
   // Event indicating that data is ready.
   std::shared_ptr<ReadyEvent> ready_event;
+  // the input device id. For allreduce, it is the
   // GPU to do reduction on, or CPU_DEVICE_ID in case of CPU.
   int device = CPU_DEVICE_ID;
   // A callback to call with the status.
   StatusCallback callback;
   // CPU buffer address
-  void* cpubuff;
+  void* cpubuff = nullptr;
   // GPU ptr if the tensor is on CPU
-  void* gpu_ptr;
+  void* gpu_ptr = nullptr;
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   std::vector<void*> numa_cpubuff;
@@ -328,16 +323,49 @@ struct TensorTableEntry {
   std::shared_ptr<compressor::Compressor> compressor;
   // Compressed
   std::shared_ptr<compressor::tensor_t> compressed;
+  // Reduce Op
+  ReduceOp reduce_op;
+  explicit TensorTableEntry(int priority_, int version_, std::shared_ptr<ReadyEvent> ready_event_,
+                            const StatusCallback& callback_,
+                            int device_, std::vector<QueueType>& queue_list_)
+   : priority(priority_), version(version_), ready_event(ready_event_), callback(callback_),
+     device(device_), queue_list(queue_list_) {}
+};
+
+struct P2PTensorTableEntry : TensorTableEntry {
+  // Pre-allocated auxiliary output tensor.
+  std::shared_ptr<Tensor> aux_output = nullptr;
+  // A group of input tensors
+  std::vector<std::shared_ptr<Tensor>> group_tensors;
+  // A group of output tensors
+  std::vector<std::shared_ptr<Tensor>> group_outputs;
   // list of offsets, used for alltoall only
+  // for send, it's the offset of the input tensor
+  // for recv, it's the offset of the output tensor
   std::vector<int> offset_list;
   // list of involved keys, used for alltoall only
   std::vector<uint64_t> key_list;
   // counter of alltoall
   std::shared_ptr<std::atomic_int> counter_a2a;
-  // Reduce Op
-  ReduceOp reduce_op;
+  // the output device id. In some cases, it may be different
+  // from the input device id (e.g. cpu-gpu alltoall)
+  int output_device = CPU_DEVICE_ID;
+
+  // return the data pointer of i-th tensor
+  const char* tensor_data(int index) const;
+  char* output_data(int index) const;
+  DataType tensor_dtype() const;
+  DataType output_dtype() const;
+
+  explicit P2PTensorTableEntry(int priority_, int version_,
+                               std::shared_ptr<ReadyEvent> ready_event_, const StatusCallback& callback_,
+                               int device_, std::vector<QueueType>& queue_list_, // parent class arguments
+                               int output_device_)
+   : TensorTableEntry(priority_, version_, ready_event_, callback_, device_, queue_list_),
+     output_device(output_device_) {}
 };
-using TensorTable = std::unordered_map<std::string, TensorTableEntry>;
+
+
 
 #if BYTEPS_BUILDING_CUDA == 1
 ncclDataType_t getNcclDataType(DataType dtype);

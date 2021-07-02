@@ -520,7 +520,8 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                         std::shared_ptr<common::ReadyEvent> ready_event,
                         TaskType task, bool recv_split_unknown,
                         std::string name_wo_session, 
-                        bool use_pull, bool use_nvtx) {
+                        bool use_pull, bool use_nvtx,
+                        int input_device, int output_device) {
   // the counter for all send/recv tasks generated for alltoall
   int num_ranks = split_count.size();
   // two types of tasks: send, recv
@@ -530,7 +531,6 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(num_tasks));
 
   // common fields
-  auto device = GetDeviceID(context);
   int priority = 0;
 
   common::StatusCallback callback;
@@ -584,15 +584,15 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                                                  node_name, 
                                                  byteps_input, group_input,
                                                  byteps_output, group_output, byteps_aux_output,
-                                                 ready_event, device,
+                                                 ready_event, input_device, output_device,
                                                  priority, 0, callback,
                                                  send_begin, recv_begin,
                                                  counter_ptr.get(), recv_split_unknown)
                  : common::EnqueueAlltoAllTensor(
-                                                 node_name, 
+                                                 node_name,
                                                  byteps_input, group_input,
                                                  byteps_output, group_output, byteps_aux_output,
-                                                 ready_event, device,
+                                                 ready_event, input_device, output_device,
                                                  priority, 0, callback,
                                                  send_begin, recv_begin,
                                                  counter_ptr.get(), recv_split_unknown);
@@ -739,11 +739,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (initialized) {
       StartAlltoAllTask(context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                         recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx);
+                        kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                     recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx);
+                    kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx, input_device, output_device);
       t.detach();
     }
   }
@@ -918,11 +918,11 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false);
+                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false);
+                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false, input_device, output_device);
       t.detach();
     }
   }
