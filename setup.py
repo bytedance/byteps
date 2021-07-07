@@ -923,7 +923,8 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
-        pre_setup.setup()
+        if not int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)):
+            pre_setup.setup()
 
         ucx_home = get_ucx_home()
         ucx_prefix = get_ucx_prefix()
@@ -1003,9 +1004,10 @@ class custom_build_ext(build_ext):
 
                 if use_cuda():
                     cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
-                    make_option += f'USE_CUDA=1 CUDA_HOME={cuda_home}'
-
-            make_option += pre_setup.extra_make_option()
+                    make_option += f'USE_CUDA=1 CUDA_HOME={cuda_home} '
+        
+            if not int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)):
+                make_option += pre_setup.extra_make_option()
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',

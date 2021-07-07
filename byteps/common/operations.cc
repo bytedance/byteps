@@ -929,7 +929,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   } else {
     auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
     context.numa_cpubuff = shm_obj->openNumaSharedMemory(shm_prefix, key_list[0], aligned_size);
-    context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
+    if (cpubuff) {
+      context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
+    } else {
+      context.cpubuff = context.numa_cpubuff[0];
+    }
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;
 
@@ -941,6 +945,12 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (size < BytePSGlobal::GetMinCompressBound()) {
     context.kwargs.clear();
   }
+
+  if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsJoint()) {
+    // in joint mode every byteps worker instantiates PS.
+    auto ps = BytePSGlobal::GetOrInitPS();
+  }
+
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);

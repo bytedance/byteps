@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 from __future__ import print_function
 import os
@@ -37,7 +37,10 @@ class PropagatingThread(threading.Thread):
 
 COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
                         "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
-WORKER_REQUIRED_ENVS = ["BYTEPS_PHY_NODE_ID"]
+# TODO(yulu): temp solution. Using DMLC_WORKER_ID as the node id for now. Will
+# use PHY_NODE_ID later.
+# WORKER_REQUIRED_ENVS = ["PHY_NODE_ID"]
+WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
 NUMA_PATH = "/sys/devices/system/node"
 
 
@@ -143,6 +146,12 @@ def worker_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
+
+    # TODO(yulu): temp solution. We should really set DMLC_NUM_WORKER and
+    # DMLC_NUM_SERVER properly before running this script.
+    my_env["DMLC_NUM_WORKER"] = str(int(os.environ["DMLC_NUM_WORKER"]) * local_size)
+    my_env["DMLC_NUM_SERVER"] = my_env["DMLC_NUM_WORKER"]
+
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
             command = "python " + command
@@ -173,12 +182,22 @@ def worker_fn(local_rank, local_size, command, allocation=None):
             "BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
-    node_id = int(os.environ.get("BYTEPS_PHY_NODE_ID", "0"))
-    global_rank = node_id * local_size + local_rank
-    my_env["DMLC_WORKER_ID"] = str(node_id)
-    my_env["DMLC_RANK"] = str(node_id)
+    # node_id = int(os.environ.get("PHY_NODE_ID", "0"))
+    # for running on arnold
+    node_id = int(os.environ.get("DMLC_WORKER_ID", "0"))
+    global_rank = int(node_id * local_size + local_rank)
+    my_env["DMLC_WORKER_ID"] = str(global_rank)
+    my_env["DMLC_RANK"] = my_env["DMLC_WORKER_ID"]
+    log_file_name =os.getenv('BYTEPS_LOG_FILE', '')
+    if log_file_name:
+        my_file = open(f"{log_file_name}-g{global_rank}-l{local_rank}.log", "w+")
+        stdout_sink = stderr_sink = my_file
+    else:
+        stdout_sink = sys.stdout
+        stderr_sink = sys.stderr
+
     subprocess.check_call(command, env=my_env,
-                          stdout=sys.stdout, stderr=sys.stderr, shell=True)
+                          stdout=stdout_sink, stderr=stderr_sink, shell=True)
 
 def server_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
@@ -196,7 +215,10 @@ def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
     check_env()
+    os.environ["PYTHONUNBUFFERED"] = "1"
     if os.environ["DMLC_ROLE"] in ["worker", "joint"]:
+        if os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]:
+            os.environ["DMLC_ROLE"] = "joint"
         # launch workers
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
             local_size = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
@@ -220,8 +242,9 @@ def launch_bps():
 
         for i in range(local_size):
             t[i].join()
+        return
 
-    if os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "") != "1" or \
+    if os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "0") == "0" and \
        int(os.environ.get("DMLC_NUM_WORKER", "1")) == 1:
            # there's only one worker, and not forcing distributed mode
            return
@@ -229,9 +252,19 @@ def launch_bps():
     command = "python3 -c 'import byteps.server'"
     if os.environ["DMLC_ROLE"] == "scheduler":
         my_env = os.environ.copy()
+        # TODO(yulu): temp solution. We should really set DMLC_NUM_WORKER and
+        # DMLC_NUM_SERVER properly before running this script.
+        my_env["DMLC_NUM_WORKER"] = str(int(os.environ["DMLC_NUM_WORKER"]) *
+                                        int(os.environ["ARNOLD_WORKER_GPU"]))
+        my_env["DMLC_NUM_SERVER"] = my_env["DMLC_NUM_WORKER"]
         subprocess.check_call(command, env=my_env,
                               stdout=sys.stdout, stderr=sys.stderr, shell=True)
         return
+
+    if os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]:
+        # do nothing when DMLC_ROLE is "server".
+        return
+
     # now it's the servers in non-colocate mode
     local_size = 1
 

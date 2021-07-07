@@ -396,6 +396,7 @@ void BytePSGlobal::Init() {
   if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
     _should_sample = true;
     _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);
+    BPS_LOG(DEBUG) << "_sample_key " << _sample_key;
   }
   return;
 }

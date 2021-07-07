@@ -1,7 +1,8 @@
 include */* LICENSE byteps.lds byteps.exp
+recursive-include * *.cc *.h
 prune .git
 prune dist
-recursive-include * *.cc *.h
+prune ucx-github
 prune __pycache__
 prune 3rdparty
 graft 3rdparty/ps-lite

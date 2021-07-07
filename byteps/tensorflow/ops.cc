@@ -51,7 +51,7 @@ void GetIntList(const ::tensorflow::Tensor& tensor, std::vector<int32_t>* result
   if (tensor.dtype() == ::tensorflow::DT_INT32) {
     *results = AsInt32<int32_t>(&tensor, tensor.shape().num_elements());
   } else if (tensor.dtype() == ::tensorflow::DT_INT64) {
-    *results = AsInt32<int64_t>(&tensor, tensor.shape().num_elements());
+    *results = AsInt32<::tensorflow::int64>(&tensor, tensor.shape().num_elements());
   } else {
     CHECK(false) << "unexpected dtype";
   }

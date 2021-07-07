@@ -140,6 +140,7 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
   BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
                  << " device, local_rank=" << _local_rank
                  << ", rank=" << _rank
+                 << ", local_root=" << _root
                  << ", all sockets create successfully";
 }
 
