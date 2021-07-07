@@ -65,7 +65,6 @@ rank = _basics.rank
 local_rank = _basics.local_rank
 get_pushpull_speed = _basics.get_pushpull_speed
 get_telemetry = _basics.get_telemetry
-session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
@@ -168,6 +167,7 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         name = ''
     full_name = scope + name
     full_name = full_name.encode("ascii")
+    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
     # special case for alltoall: we store the declared tensor keys and pass them as attributes to alltoall ops
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
@@ -236,6 +236,7 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
         name = ''
     full_name = scope + name + "_cpu2gpu"
     full_name = full_name.encode("ascii")
+    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
@@ -303,6 +304,7 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
         name = ''
     full_name = scope + name + "_gpu2cpu"
     full_name = full_name.encode("ascii")
+    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
