@@ -210,6 +210,7 @@ extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int
   tensor_key = common::IsTensorDeclaredP2P(tensor_name, sender, receiver, -1);
 }
 
+// Declare tensors for alltoall
 extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key, uint32_t session_size) {
   const int my_rank = common::byteps_rank();
   const int size = common::byteps_size();
@@ -653,11 +654,9 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
 
     // naming
     auto node_name = name();
-    std::string tmp_name;
+    std::string tmp_name = input_tensor_name;
     if (input_tensor_name == "default_tensor_name") {
       tmp_name = node_name;
-    } else {
-      tmp_name = input_tensor_name;
     }
 
     // device context
@@ -675,7 +674,7 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     }
     auto tensor = context->input(0);
     const auto split_tensor = context->input(1);
-    // XXX: if `recv_is_approximate`=True, users don't pass in `recv_split_tensor`.
+    // XXX: if `recv_split_unknown`=True, users don't pass in `recv_split_tensor`.
     // in ops.py we simply REUSES `split_tensor` for `recv_split_tensor`.
     // (an alternative is to register another tensorflow operator with fewer input tensors,
     // which is not done as of now)
@@ -800,7 +799,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     }
     // calculate counts based on the stride
     const auto split_tensor = context->input(num_inputs - 2);
-    // Note: if recv_is_approximate=True, recv_split_tensor reuses split_tensor
+    // Note: if recv_split_unknown=True, recv_split_tensor reuses split_tensor
     const auto recv_split_tensor = context->input(num_inputs - 1);
     std::vector<int32_t> dim0_split_count;
     std::vector<int32_t> split_count;

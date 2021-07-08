@@ -40,7 +40,7 @@ extern "C" {
 void byteps_init() {
   byteps_lazy_init();
   BytePSGlobal::GetOrInitPS();
-  BPS_LOG(INFO) << "byteps_init() DONE " << BytePSGlobal::GetRank();
+  BPS_LOG(INFO) << "byteps_init() DONE. rank=" << BytePSGlobal::GetRank();
 }
 
 void byteps_lazy_init() {
@@ -735,7 +735,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu) {
-  auto bound = BytePSGlobal::GetP2PPartitionBound();
+  auto bound = BytePSGlobal::GetPartitionBound();
   std::lock_guard<std::mutex> lock(context.init_mutex);
   // XXX: in alltoall, the size might be 0 when first seen.
   // Nonetheless, we initialize the memory buff for it
@@ -757,7 +757,6 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   // Get metadata
   auto &name = context.tensor_name;
-  context.buff_len = size;
   context.sender = sender;
   context.receiver = receiver;
   size_t accumulated = 0;
@@ -860,7 +859,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // Get metadata
   auto bound = BytePSGlobal::GetPartitionBound();
   auto &name = context.tensor_name;
-  context.buff_len = size;
   size_t accumulated = 0;
 
   // Add for timeline
@@ -948,7 +946,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsJoint()) {
     // in joint mode every byteps worker instantiates PS.
-    auto ps = BytePSGlobal::GetOrInitPS();
+    BytePSGlobal::GetOrInitPS();
   }
 
   while (accumulated < size) {
@@ -1005,8 +1003,8 @@ BPSContext &GetContextFromName(const std::string &name) {
   return BytePSGlobal::GetContextFromName(name);
 }
 
-bool IsTensorDeclared(const std::string &name) {
-  return BytePSGlobal::IsTensorDeclared(name);
+int32_t IsTensorDeclared(const std::string &name) {
+  return BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP);
 }
 
 void RegisterCompressor(const std::string &name,

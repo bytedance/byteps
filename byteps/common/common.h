@@ -237,7 +237,6 @@ typedef struct BytePSContext {
   // CPU buffer for cross-PCIe-switch merging
   std::vector<void*> pcie_cpubuff;
   std::vector<void*> numa_cpubuff;
-  size_t buff_len;
   // Used for profiling communication events
   std::queue<BPSCommTime*> comm_time;
   bool profile_flag = false;

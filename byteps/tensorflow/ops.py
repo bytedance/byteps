@@ -69,6 +69,8 @@ get_telemetry = _basics.get_telemetry
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
+TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
+TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
 
 
 def get_average_backwards_compatibility_fun(reduce_ops):
@@ -169,8 +171,6 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
     full_name = full_name.encode("ascii")
     session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
     # special case for alltoall: we store the declared tensor keys and pass them as attributes to alltoall ops
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
     tensor_key_ptrs = (ctypes.c_int*session_size)()
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, tensor_key_ptrs, session_size)
     tensor_key = list(tensor_key_ptrs)
@@ -238,8 +238,6 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
     full_name = full_name.encode("ascii")
     session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
 
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
     p = (ctypes.c_int*session_size)()
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
     tensor_key = list(p)
@@ -305,9 +303,6 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
     full_name = scope + name + "_gpu2cpu"
     full_name = full_name.encode("ascii")
     session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
-
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
     p = (ctypes.c_int*session_size)()
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
     tensor_key = list(p)

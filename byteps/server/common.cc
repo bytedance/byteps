@@ -14,7 +14,6 @@
 // =============================================================================
 
 #include "common.h"
-#include "../common/logging.h"
 #include <cmath>
 
 namespace byteps {
@@ -38,6 +37,10 @@ DataHandleType DepairDataHandleType(int cmd) {
   type.dtype = (cmd << (16 + 6)) >> (32 - 6);
   type.device = (cmd << (16 + 6 + 6)) >> (32 - 4);
   return type;
+}
+
+uint32_t GetAlltoallTensorId(uint64_t key) {
+  return (key << 32) >> 48;
 }
 
 }  // namespace server

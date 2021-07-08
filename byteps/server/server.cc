@@ -459,7 +459,7 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   bool is_empty = type.requestType == RequestType::kEmptyGroupSend;
   if (type.requestType == RequestType::kGroupSend || is_empty) {
     // Note: the task is created using tensor_id as the key
-    uint64_t tensor_key = (key << 32) >> 48;
+    uint64_t tensor_key = GetAlltoallTensorId(key);
     // set recv len
     arr.len = is_empty ? 0 : len;
     if (debug_mode_) {

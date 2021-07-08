@@ -55,7 +55,7 @@ bool BytePSGlobal::_is_joint = false;
 bool BytePSGlobal::_skip_h2d = false;
 bool BytePSGlobal::_skip_d2h = false;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
-uint32_t BytePSGlobal::_p2p_partition_bytes = 4096000;
+uint32_t BytePSGlobal::_alltoall_buff_bytes = 4096000;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
 int BytePSGlobal::_is_trace = 0;
@@ -106,7 +106,7 @@ bool BytePSGlobal::_p2p_disable_pull_ack = false;
 std::vector<std::string> BytePSGlobal::_declared_tensors;
 bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
-unsigned int next_key_ = 0;
+std::unordered_map<OperationType, int32_t> BytePSGlobal::next_keys_;
 std::unordered_map<int, unsigned int> p2p_next_keys_;
 std::unordered_map<int, std::unordered_set<unsigned int>> p2p_used_keys_;
 bool BytePSGlobal::_is_alltoall_use_pull = false;
@@ -207,10 +207,11 @@ void BytePSGlobal::Init() {
   // should round up partition bytes in order to be page aligned
   if (getenv("BYTEPS_PARTITION_BYTES")) {
     _partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
-    _p2p_partition_bytes = _partition_bytes;
+    _alltoall_buff_bytes = _partition_bytes;
   }
+  // TODO(haibin.lin): rename it to BYTEPS_ALLTOALL_BUFF_BYTES
   if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
-    _p2p_partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
+    _alltoall_buff_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
   }
   if (getenv("BYTEPS_MIN_COMPRESS_BYTES")) {
     _min_compress_bytes = atoi(getenv("BYTEPS_MIN_COMPRESS_BYTES"));
@@ -555,7 +556,7 @@ void BytePSGlobal::Shutdown() {
   _server_accumulated_len.clear();
   _total_accumulated_len = 0;
   ps_kv_.clear();
-  next_key_ = 0;
+  next_keys_.clear();
   _initialized = false;
   _should_shutdown = false;
 
@@ -616,7 +617,7 @@ int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, i
 
 
 
-bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
+int32_t BytePSGlobal::IsTensorDeclared(const std::string& name, OperationType op_type) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
     if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) ==
@@ -625,21 +626,20 @@ bool BytePSGlobal::IsTensorDeclared(const std::string& name) {
     }
     _name_to_cxt[name].initialized = false;
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
-    _name_to_cxt[name].declared_key = (ps::Key)next_key_++;
-    _name_to_cxt[name].op_type = PUSH_PULL_OP;
+    _name_to_cxt[name].declared_key = (ps::Key)next_keys_[op_type]++;
+    _name_to_cxt[name].op_type = op_type;
     BPS_LOG(DEBUG) << "Declared tensor " << name
                    << ", declared key (not PS key): "
                    << _name_to_cxt[name].declared_key
-                   << " rank=" << BytePSGlobal::GetLocalRank();
-    return false;
+                   << " rank=" << BytePSGlobal::GetRank();
   }
-  return true;
+  return _name_to_cxt[name].declared_key;
 }
 
 void BytePSGlobal::ReDeclareTensor() {
   for (auto name : _declared_tensors) {
     BPS_LOG(DEBUG) << "Redeclare tensor " << name;
-    BytePSGlobal::IsTensorDeclared(name);
+    BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP);
   }
 }
 

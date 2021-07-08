@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-
 #ifndef BYTEPS_SERVER_COMMON_H
 #define BYTEPS_SERVER_COMMON_H
+#include "../common/logging.h"
 
 namespace byteps {
 namespace server {
@@ -48,6 +48,8 @@ struct DataHandleType {
 int GetCommandType(RequestType requestType, int dtype, int device);
 
 DataHandleType DepairDataHandleType(int cmd);
+
+uint32_t GetAlltoallTensorId(uint64_t key);
 
 }  // namespace server
 }  // namespace byteps

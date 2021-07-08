@@ -102,7 +102,7 @@ class BytePSGlobal {
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(int index = 0);
 
-  static bool IsTensorDeclared(const std::string& name);
+  static int32_t IsTensorDeclared(const std::string& name, OperationType op_type);
   static int32_t IsTensorDeclaredP2P(const std::string& name, int sender, int receiver, int32_t provided_key);
   static void ReDeclareTensor();
   static bool IsResuming() { return _is_resuming; }
@@ -124,7 +124,7 @@ class BytePSGlobal {
   static PSKV EncodeP2PKey(uint64_t key, size_t len, int receiver);
 
   static uint32_t GetPartitionBound() { return _partition_bytes; }
-  static uint32_t GetP2PPartitionBound() { return _p2p_partition_bytes; }
+  static uint32_t GetAlltoallBuffBound() { return _alltoall_buff_bytes; }
   static uint32_t GetMinCompressBound() { return _min_compress_bytes; }
 
   // cuda
@@ -229,6 +229,8 @@ class BytePSGlobal {
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_joint;
+  // keys
+  static std::unordered_map<OperationType, int32_t> next_keys_;
   // p2p
   static bool _skip_h2d;
   static bool _skip_d2h;
@@ -297,7 +299,7 @@ class BytePSGlobal {
 #endif
 
   static uint32_t _partition_bytes;
-  static uint32_t _p2p_partition_bytes;
+  static uint32_t _alltoall_buff_bytes;
   static uint32_t _min_compress_bytes;
 
   // (key, ready_signal_count) pair, only valid for root device

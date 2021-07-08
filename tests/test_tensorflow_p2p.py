@@ -64,7 +64,7 @@ class TensorFlowTests:
         telemetries = bps.get_telemetry(size=10000)
         check_telemetry(telemetries, 10000)
 
-    def test_all2all_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
+    def test_all2all_autograd(self, total_niter=args.iter, src_gpu=False, dst_gpu=False):
         dtype = tf.float32
         rank = self.rank
         size = self.size
@@ -85,23 +85,21 @@ class TensorFlowTests:
             alltoall_fn = bps.alltoall_gpu2cpu
             name = 'autograd_gpu2cpu'
 
+        print(f'start alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
         while niter < total_niter:
-            # FIXME: the test is limited to 2 workers only
             p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size, size) 
             splits_list = list(p2p_matrix[rank])
             recv_splits_list = list(p2p_matrix[:, rank])
-            if rank == 0: 
-                print(f'Start alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
             splits = tf.constant(splits_list, dtype=tf.int32)
             recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
             with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 w = tf.Variable(tensor)
                 with tf.GradientTape() as tape:
-                    loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter{niter}')
+                    loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter_{niter % 10}')
                 grad = tape.gradient(loss, w)
                 assert grad.shape == tensor.shape, "the shapes of tensor and grad are not identical."
-                print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}\n')
+                print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}')
                 niter += 1
 
     def test_all2all_invalid_splits(self):
@@ -404,7 +402,7 @@ class TensorFlowTests:
         with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
             tensors = [tf.ones([splits_list[i], vector_dim], dtype=dtype) * (rank + 1) 
                        for i in range(len(splits_list))]
-        if rank == 0: print('start group all2all test\n')
+        print('start group all2all test')
         t0 = time.time()
         interval = 10
         name = 'group_test_data_'
@@ -434,7 +432,7 @@ class TensorFlowTests:
         print(f'Finish all2all_group_benchmark, srcdev={tensors[0].device}, dstdev={results[0].device}')
         self.validate_a2a(recv_splits_list, results, size, rank)
 
-    def test_all2all_group_autograd(self, total_niter=1, src_gpu=False, dst_gpu=False):
+    def test_all2all_group_autograd(self, total_niter=args.iter, src_gpu=False, dst_gpu=False):
         dtype = tf.float32
         rank = self.rank
         size = self.size
@@ -454,13 +452,13 @@ class TensorFlowTests:
         else:
             alltoall_fn = bps.alltoall_gpu2cpu
             name = 'autograd_group_gpu2cpu'
+        print(f'start alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
         while niter < total_niter:
             # need to use fixed length for each rank, 
             # since tf op requires identical shapes for all inputs during BP
             p2p_matrix = np.array([1]*(size*size)).reshape(size, size)
             splits_list = list(p2p_matrix[rank])
             recv_splits_list = list(p2p_matrix[:, rank])
-            print(f'Start alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
             splits = tf.constant(splits_list, dtype=tf.int32)
             recv_splits = tf.constant(recv_splits_list, dtype=tf.int32)
             with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
@@ -468,60 +466,9 @@ class TensorFlowTests:
                           for _ in range(len(splits_list))]
                 group_w = [tf.Variable(tensor) for tensor in tensors] 
                 with tf.GradientTape() as tape:
-                    group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter{niter}')
+                    group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter_{niter % 10}')
                 grad = tape.gradient(group_loss, group_w)
-                print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}\n')
-                niter += 1
-
-    def test_all2all_fused_graph(self, total_niter=20, num_slots=20, num_groups=1):
-        """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
-        rank = self.rank
-        size = self.size
-        dtypes = [tf.float32, tf.int32, tf.int64]
-        dtypes = [tf.int32, tf.float32]
-        vector_dim = 2
-        idx_dtype = tf.int32
-        # every worker should have the same size
-        rng = np.random.default_rng(size)
-        tf.compat.v1.disable_eager_execution()
-        for dtype in dtypes:
-            niter = 0
-            while niter < total_niter:
-                outputs = []
-                recv_splits_lists = []
-                p2p_matrices = []
-                print(f'iter={niter}', flush=True)
-                for slot in range(num_slots):
-                    p2p_matrix = rng.integers(low=0, high=10, size=size*size).reshape(size,size) + 1
-                    splits_list = list(p2p_matrix[rank])
-                    recv_splits_list = list(p2p_matrix[:, rank])
-                    recv_splits_lists.append(recv_splits_list)
-                    p2p_matrices.append(p2p_matrix)
-                    print(f'rank={rank}/{size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
-                    with tf.device("/cpu:0"):
-                        splits = tf.constant(splits_list, dtype=idx_dtype)
-                        recv_splits = tf.constant(recv_splits_list, dtype=idx_dtype)
-                        tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                        name = f'fused_slot_{slot}'
-                        result = bps.alltoall_fused(tensor, splits=splits, recv_splits=recv_splits,
-                                                    name=name, group=niter % 2, limit=num_slots)
-                        outputs.append(result)
-
-                with tf.compat.v1.Session() as sess:
-                    results = sess.run(outputs)
-
-                # verify results
-                for slot in range(num_slots):
-                    index = 0
-                    result = results[slot]
-                    for i in range(size):
-                        begin = index
-                        end = index + recv_splits_lists[slot][i]
-                        subset = result[begin:end]
-                        val = i + 1
-                        assert np.sum(subset != val) == 0, (subset, val, p2p_matrices[slot][i], result)
-                        index = end
-                        print(f'slot {slot} rank {i} is correct, shape={subset.shape}, split={p2p_matrices[slot][i]}', flush=True)
+                print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}')
                 niter += 1
 
     def test_allreduce(self):

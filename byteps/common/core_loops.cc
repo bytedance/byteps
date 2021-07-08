@@ -1120,6 +1120,13 @@ bool RunSendLoopOnce() {
     if (output_size_unknown) {
       req_type = server::RequestType::kGroupSend;
     }
+    std::function<void()> cb = nullptr;
+    if (resp_mode != 2) {
+      cb = [task]() {
+        int v = task->counter_a2a.get()->fetch_sub(1);
+        if (v == 1) FinishOrProceedLite(task);
+      };
+    }
     int cmd = server::GetCommandType(req_type, dtype, output_device);
     // used for group send with split=0
     int empty_cmd = server::GetCommandType(server::RequestType::kEmptyGroupSend,
@@ -1156,13 +1163,6 @@ bool RunSendLoopOnce() {
         }
         // perform send. false means not to delete data when SArray is deleted
         ps::SArray<char> vals(tensor, len, false);
-        std::function<void()> cb = nullptr;
-        if (resp_mode != 2) {
-          cb = [task]() {
-            int v = task->counter_a2a.get()->fetch_sub(1);
-            if (v == 1) FinishOrProceedLite(task);
-          };
-        }
         BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd, cb);
       }
     }
@@ -1192,15 +1192,13 @@ bool RunP2PPullLoopOnce() {
       auto len = task->offset_list[i+1] - task->offset_list[i];
       if (len == 0){
         continue;
-      } else{
+      } else {
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, i);
         const char* dest = task->output_data(i);
-        auto offset = is_group 
-                    ? 0
-                    : task->offset_list[i];
+        auto offset = is_group ? 0 : task->offset_list[i];
         const int dtype = task->output_dtype();
         int cmd = server::GetCommandType(server::RequestType::kDefaultPull, 
-                                        dtype, output_device_type);
+                                         dtype, output_device_type);
         char* output = (char*) dest + offset;
         auto vals = new ps::SArray<char>(output, len, false);
         BytePSGlobal::GetPS()
@@ -1212,7 +1210,7 @@ bool RunP2PPullLoopOnce() {
               ps::SArray<char> ack_vals(cpubuff, 1, false);
               auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
               int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device_type);
-              // no need to wait for this zpush 
+              // no need to wait for this zpush
               BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
             }
             // the rest of the callbacks are for zpull          
@@ -1250,7 +1248,8 @@ bool RunP2PPullResponseOnce() {
       if (is_recv_cpu && is_send_cpu) {
         BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, task->len);
       } else {
-        BytePSGlobal::GetGpuReducer()->copy(dst_addr, !is_recv_cpu, src_addr, !is_send_cpu, task->len, false);
+        BytePSGlobal::GetGpuReducer()->copy(dst_addr, !is_recv_cpu, src_addr,
+                                            !is_send_cpu, task->len, false);
       }
       if (!BytePSGlobal::IsP2PAckDisabled()) {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
@@ -1265,7 +1264,7 @@ bool RunP2PPullResponseOnce() {
       } else {
         server::BytePSServer::SendPullResponse(task->key, tensor, task->len);
       }
-    } 
+    }
     FinishOrProceedLite(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));

@@ -99,6 +99,7 @@ void Telemetry::GetData(const char** names, float* mean, float* stdev,
 
 void Telemetry::RecordStart(const std::string& name) {
   std::lock_guard<std::mutex> lock(_mtx);
+  if (!_should_record) return;
   uint64_t occurrence = ++_occurrences[name];
   if (occurrence % _record_interval == 0) {
     if (_metrics.find(name) == _metrics.end()) {
@@ -114,6 +115,7 @@ void Telemetry::RecordStart(const std::string& name) {
 
 void Telemetry::RecordEnd(const std::string& name) {
   std::lock_guard<std::mutex> lock(_mtx);
+  if (!_should_record) return;
   uint64_t occurrence = _occurrences[name];
   if (occurrence % _record_interval == 0) {
     // update the end timestamp
