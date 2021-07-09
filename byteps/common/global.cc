@@ -235,8 +235,13 @@ void BytePSGlobal::Init() {
         << "error: launch distributed job, but env DMLC_NUM_SERVER not set";
 
     // set hash function
+    std::string default_hash_knob = std::string("djb2");
+    if (_is_joint) {
+      default_hash_knob = std::string("djb2-colocate");
+    }
     _hash_knob = std::string(
-        getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") : "djb2");
+        getenv("BYTEPS_KEY_HASH_FN") ? getenv("BYTEPS_KEY_HASH_FN") :
+        default_hash_knob);
     _mixed_mode = getenv("BYTEPS_ENABLE_MIXED_MODE")
                       ? atoi(getenv("BYTEPS_ENABLE_MIXED_MODE"))
                       : false;
