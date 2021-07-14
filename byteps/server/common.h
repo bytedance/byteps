@@ -49,7 +49,14 @@ int GetCommandType(RequestType requestType, int dtype, int device);
 
 DataHandleType DepairDataHandleType(int cmd);
 
+// parse the decoded alltoall key and get the sender bits
+int GetAlltoallSender(uint64_t key);
+
+// parse the decoded alltoall key and get the tensor id bits
 uint32_t GetAlltoallTensorId(uint64_t key);
+
+// compose the key for the alltoall operations, where request starts from `request_rank`
+uint64_t ComposeAlltoallKey(int32_t declared_key, int request_rank);
 
 }  // namespace server
 }  // namespace byteps

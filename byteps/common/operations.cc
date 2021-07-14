@@ -266,28 +266,20 @@ Status PrepareAlltoallTensor(TensorShape shape,
   }
 
   // naming and declarations
-  const int my_rank = common::byteps_rank();
-  // Add session_id prefix to node_name
-  std::string name_send = name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
-  int session_id = common::byteps_session_id(name_send.c_str());
+  // TODO(haibin.lin): handle mod logic inside byteps_session_id
+  auto session_id = common::byteps_session_id(name.c_str());
   int session_size = common::byteps_session_size();
-  std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
-  std::string session_name_send = session_prefix + name_send;
-  *session_name = session_prefix + name;
-
-  for (int j = 0; j < tensor_key.size(); ++j) {
-    int num_ranks = split_list.size();
-    std::string sess_prefix = "session_" + std::to_string(j) + "_";
-    for (size_t i = 0; i < num_ranks; ++i) {
-      std::string nsend = sess_prefix + name + "_alltoall_send_"
-                        + std::to_string(my_rank) + "_recv_" + std::to_string(i);
-      std::string nrecv = sess_prefix + name + "_alltoall_send_"
-                        + std::to_string(i) + "_recv_" + std::to_string(my_rank);
-      common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key.at(j));
-      common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key.at(j));
-    }
+  *session_name = "session_" + std::to_string(session_id % session_size) + "_" + name;
+  for (int i = 0; i < tensor_key.size(); ++i) {
+    std::string sess_prefix = "session_" + std::to_string(i) + "_";
+    common::IsTensorDeclaredAlltoall(sess_prefix + name, tensor_key[i]);
   }
-  auto& bps_context = common::GetContextFromName(session_name_send);
+  // Example names used for alltoall:
+  // - node_name: my_node
+  // - ctx->tensor_name: session_0_my_node
+  // - request_task->tensor_name: ssion_0_my_node_request
+  // - response_task->tensor_name: session_0_my_node_request_i_resp_j
+  auto& bps_context = common::GetContextFromName(*session_name);
   *initialized = bps_context.initialized;
   return Status::OK();
 }
@@ -304,324 +296,174 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
                              const std::vector<int>& recv_begin, // begin offsets for recv
-                             std::atomic_int* counter_ptr,
-                             bool output_size_unknown) {
+                             bool output_size_unknown, bool use_pull) {
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
-
-  // ========== COMMON INFO =========
+  // This function prepares the P2PTensorTableEntry for both pull-based and push-based
+  // alltoall operations. In general, we construct two types of tasks: request task
+  // and response task.
+  // For the request task, there will be at most 1 such a task enqueued. For push-based alltoall,
+  // it correspond to the "push request", where `my_rank` will push data to all other ranks
+  // if there's data (indicated by `send_begin` indices). For pull-based alltoall, it correspond
+  // to the "pull request", where `my_rank` will pull data from all other ranks if there's data
+  // (indicatd by `recv_begin` indices).
+  // For the response task, there will be at most `num_ranks` tasks overall. For push-based
+  // alltoall, it refers to the operation that copies from recv buffer to output buffers allocated
+  // by frameworks. For pull-based alltoall, it refers to the operation that responses to the
+  // requester with actual data.
+  BPS_CHECK(!use_pull || !output_size_unknown)
+    << "pull-based alltoall does not support unknown recv_spilt";
   // send_begin always starts with a zero
   int num_ranks = send_begin.size() - 1;
+  std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(0));
   auto dtype = input ? input->dtype() : group_inputs[0]->dtype();
   auto unit_size = getDataTypeLength(dtype);
   const int my_rank = common::byteps_rank();
-  int next_rank = (my_rank + 1) % num_ranks;
-  // naming
-  std::string name_prefix = name + "_alltoall_send_";
-  std::string my_rank_str = std::to_string(my_rank);
-  // format: xx_alltoall_send_yy_recv_me
-  std::string recv_name_suffix = "_recv_" + my_rank_str;
-  // format: xx_alltoall_send_me_recv_zz
-  std::string send_name_prefix = name_prefix + my_rank_str + "_recv_";
-  std::string reference_send_name = send_name_prefix + std::to_string(next_rank);
-  std::string reference_recv_name = name_prefix + std::to_string(next_rank) + recv_name_suffix;
-  // track the tasks and determine if we need to update counter_ptr
-  // if the output_size is unknown, there will definitely be ps-lite send/recv operations
-  bool has_send = output_size_unknown;
-  bool has_recv = output_size_unknown;
+  auto& byteps_context = common::GetContextFromName(name);
+  bool recv_on_gpu = output_device != CPU_DEVICE_ID;
 
-  // ========= SEND TASKS ==========
-  std::vector<QueueType> send_q = {SEND};
-  auto send_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                           input_device, send_q, output_device);
+  // ========= basic task info ==========
+  // if use_pull, request_task->offset_list is based on recv_begin
+  const std::vector<int>& request_begin = use_pull ? recv_begin : send_begin;
+  const std::vector<int>& resp_begin = use_pull ? send_begin : recv_begin;
+  std::vector<QueueType> request_q = GetAlltoallRequestQueueList(use_pull);
+  std::vector<QueueType> response_q = GetAlltoallResponseQueueList(use_pull, output_size_unknown);
+
+  auto request_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                              input_device, request_q, output_device, output_size_unknown,
+                                              group_inputs, group_outputs);
+  P2PTensorTableEntry base_resp_task(priority, version, ready_event, callback,
+                                    input_device, response_q, output_device, output_size_unknown,
+                                    group_inputs, group_outputs);
   // the accumulated offset list always starts with 0
-  send_task->offset = 0;
-  send_task->offset_list.push_back(0);
-  // send to all ranks
-  bool recv_on_gpu = (output_device != CPU_DEVICE_ID);
-  for (size_t i = 0; i < num_ranks; ++i) {
-    // Note: shuffle is done inside core_loops
-    int size = unit_size * (send_begin[i+1] - send_begin[i]);
-    send_task->offset_list.push_back(send_begin[i + 1] * unit_size);
-    std::string name_i = send_name_prefix + std::to_string(i);
-    auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, my_rank, i, recv_on_gpu);
-    // XXX: use pcie_cpubuff as container of the list of aligned memory buffs
-    send_task->pcie_cpubuff.push_back(byteps_context.cpubuff_list[0]);
-    send_task->key_list.push_back(byteps_context.key_list[0]);
-    // when output size is known, check if we need to update `has_send
-    // we check the case for send-recv with myself, or nothing to send
-    if (i != my_rank && size != 0) {
-      has_send = true;
-      // avoid init shared_ptr if has_send == false
-      if (!send_task->counter_a2a.get()) { 
-        send_task->counter_a2a = std::make_shared<std::atomic_int>(0);
-      }
-      send_task->counter_a2a.get()->fetch_add(1);
-    }
-  }
-  if (has_send) {
-    send_task->tensor_name = reference_send_name;
-    // use the reference send task's context
-    auto& byteps_context = common::GetContextFromName(reference_send_name);
-    send_task->context = &byteps_context;
-    send_task->tensor = input;
-    send_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
-    if (!output_size_unknown) {
-      send_task->output = output;
-      send_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-    }
-    // TODO: remove counter_ptr. It is not necessary.
-    send_task->counter_ptr = std::make_shared<std::atomic_int>(0);
-    send_task->total_partnum = 1;
-    BytePSGlobal::GetScheduledQueue(SEND)->addTask(send_task);
-  } else {
-    // nothing to send
-    --(*counter_ptr);
-    delete send_task;
-  }
-
-  // ========= RECV TASKS  ==========
-  // reference tensor_key for group_recv
-  std::vector<QueueType> recv_q = {RECV};
-  if (output_size_unknown) {
-    recv_q = {P2P_GROUP_COPYH2D};
-  }
-  uint64_t tensor_key;
-  int total_partnum = 0;
-  // create the shared recv tasks
-  auto recv_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                           input_device, recv_q, output_device);
-  recv_task->offset = 0;
-  recv_task->tensor = input;
-  recv_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
-  recv_task->output = output;
-  recv_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-  recv_task->aux_output = size_output;
-
-  // the accumulated offset list always starts with 0
-  recv_task->offset_list.push_back(0);
-  std::vector<P2PTensorTableEntry*> recv_tasks;
-  for (size_t i = 0; i < num_ranks; ++i) {
-    // check the case for send-recv with myself, or nothing to send
-    int size = unit_size * (recv_begin[i + 1] - recv_begin[i]);
-    std::string name_i = name_prefix + std::to_string(i) + recv_name_suffix;
-    auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank, recv_on_gpu);
-    tensor_key = (byteps_context.key_list[0] << 32) >> 48;
-    recv_task->offset_list.push_back(recv_begin[i + 1] * unit_size);
-    if (output_size_unknown) {
-      total_partnum = 1;
-      has_recv = true;
-    } else {
-      if (size != 0) {
-        total_partnum++;
-        has_recv = true;
-        auto partition = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                                 input_device, recv_q, output_device);
-        *partition = *recv_task;
-        partition->tensor_name = name_i;
-        partition->context = &byteps_context;
-        partition->key = byteps_context.key_list[0];
-        partition->len = size;
-        partition->counter_ptr = std::make_shared<std::atomic_int>(0);
-        recv_tasks.push_back(partition);
-        if (i == my_rank) {
-          // for the self send-recv case, we need to know the offset of the input tensor
-          partition->offset = send_begin[i] * unit_size;
-          BytePSGlobal::GetP2PCopyTable()->AddReadyCount(partition->key);
-        }
-      } else {
-        auto count = --(*counter_ptr);
-        if (count == 0) callback(Status::OK());
-      }
-    }
-  }
-  if (has_recv) {
-    recv_task->total_partnum = total_partnum;
-    if (output_size_unknown) {
-      // use the reference recv task's context
-      auto& byteps_context = common::GetContextFromName(reference_recv_name);
-      recv_task->tensor_name = reference_recv_name;
-      recv_task->context = &byteps_context;
-      recv_task->key = tensor_key;
-      recv_task->counter_ptr = std::make_shared<std::atomic_int>(0);
-      BytePSGlobal::GetScheduledQueue(recv_q.at(0))->addTask(recv_task);
-    } else {
-      for (auto partition : recv_tasks) {
-        partition->total_partnum = 1;
-        partition->offset_list = recv_task->offset_list;
-        BytePSGlobal::GetScheduledQueue(recv_q.at(0))->addTask(partition);
-      }
-      delete recv_task;
-    }
-  } else {
-    // nothing to recv
-    delete recv_task;
-  }
-  BPS_LOG(TRACE) << "EnqueueAlltoAllTensor finished: " << name
-                << ", rank=" << BytePSGlobal::GetRank()
-                << ", has_send=" << has_send
-                << ", has_recv=" << has_recv;
-  return Status::OK();
-}
-
-Status EnqueueAlltoAllTensorPullImpl(
-                             std::string& name,
-                             std::shared_ptr<Tensor> input,
-                             std::vector<std::shared_ptr<Tensor>>& group_inputs,
-                             std::shared_ptr<Tensor> output,
-                             std::vector<std::shared_ptr<Tensor>>& group_outputs,
-                             std::shared_ptr<Tensor> size_output,
-                             std::shared_ptr<ReadyEvent> ready_event,
-                             const int input_device, const int output_device,
-                             const int priority, const int version,
-                             StatusCallback callback,
-                             const std::vector<int>& send_begin, // begin offsets for send
-                             const std::vector<int>& recv_begin, // begin offsets for recv
-                             std::atomic_int* counter_ptr,
-                             bool output_size_unknown) {
-  if (BytePSGlobal::ShouldShutdown()) {
-    return Status::OK();
-  }
-  BPS_CHECK(!output_size_unknown);
-  // ========== COMMON INFO =========
-  // send_begin always starts with a zero
-  int num_ranks = send_begin.size() - 1;
-  auto dtype = input ? input->dtype() : group_inputs[0]->dtype();
-  auto unit_size = getDataTypeLength(dtype);
-  const int my_rank = common::byteps_rank();
-  int next_rank = (my_rank + 1) % num_ranks;
-  // naming
-  std::string name_prefix = name + "_alltoall_send_";
-  std::string my_rank_str = std::to_string(my_rank);
-  std::string recv_name_suffix = "_recv_" + my_rank_str; // xx_alltoall_send_yy_recv_me
-  std::string send_name_prefix = name_prefix + my_rank_str + "_recv_"; // xx_alltoall_send_me_recv_zz
-  std::string reference_send_name = send_name_prefix + std::to_string(next_rank);
-  // track the tasks and determine if we need to update counter_ptr
-  // if the output_size is unknown, there will definitely be ps-lite send/recv operations
-  bool has_request = output_size_unknown;
-  bool has_response = output_size_unknown;
-
-  // ========= REQUEST TASKS ==========
-  std::vector<QueueType> request_q = {P2P_PULL};
-  auto request_task = new P2PTensorTableEntry(priority, version, ready_event,
-                                              callback, input_device, request_q, output_device);
-  // the accumulated offset list always starts with 0
+  request_task->offset = 0;
   request_task->offset_list.push_back(0);
-  // send to all ranks
-  bool recv_on_gpu = (output_device != CPU_DEVICE_ID);
+  request_task->context = &byteps_context;
+  request_task->counter_ptr = counter_ptr;
+  request_task->tensor = input;
+  request_task->output = output;
+
+  base_resp_task.offset_list.push_back(0);
+  base_resp_task.context = &byteps_context;
+  base_resp_task.counter_ptr = counter_ptr;
+  base_resp_task.tensor = input;
+  base_resp_task.output = output;
+
+  // ========= Init tensor ==========
+  // the number of valid ps-lite send operations
+  int num_ps_requests = 0;
+  // the number of valid recv tasks (including local memcpy)
+  int resp_total_partnum = output_size_unknown ? 1 : 0;
+  // prepare size info for initialization / sanity checks
+  std::vector<int> request_size_list;
+  std::vector<int> resp_size_list;
   for (size_t i = 0; i < num_ranks; ++i) {
-    // Note: shuffle is done inside core_loops
-    int size = unit_size * (recv_begin[i+1] - recv_begin[i]);
-    request_task->offset_list.push_back(recv_begin[i+1] * unit_size);
-    std::string name_i = send_name_prefix + std::to_string(i);
-    auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, my_rank, i, recv_on_gpu);
-    // XXX: use pcie_cpubuff as container of the list of aligned memory buffs
-    request_task->pcie_cpubuff.push_back(byteps_context.cpubuff_list[0]);
-    request_task->key_list.push_back(byteps_context.key_list[0]);
-    // when output size is known, check if we need to update `has_request
-    // we check the case for send-recv with myself, or nothing to send
-    if (i != my_rank && size != 0) {
-      has_request = true;
-      // avoid init shared_ptr if has_request == false
-      if (!request_task->counter_a2a.get()) { 
-        request_task->counter_a2a = std::make_shared<std::atomic_int>(0);
-      }
-      request_task->counter_a2a.get()->fetch_add(1);
+    // send to rank i
+    int request_size = unit_size * (request_begin[i+1] - request_begin[i]);
+    request_size_list.emplace_back(request_size);
+    request_task->offset_list.push_back(request_begin[i + 1] * unit_size);
+    // we check the case for valid ps-lite send operations
+    if (output_size_unknown && i != my_rank) {
+      num_ps_requests += 1;
+    } else if (i != my_rank && request_size != 0) {
+      num_ps_requests += 1;
+    }
+    // recv from rank i
+    int resp_size = unit_size * (resp_begin[i + 1] - resp_begin[i]);
+    resp_size_list.emplace_back(resp_size);
+    base_resp_task.offset_list.push_back(resp_begin[i + 1] * unit_size);
+    // check the case for empty recv tasks
+    if (!output_size_unknown && resp_size != 0) {
+      resp_total_partnum += 1;
     }
   }
-  if (has_request) {
-    request_task->tensor_name = reference_send_name;
-    // use the reference send task's context
-    auto& byteps_context = common::GetContextFromName(reference_send_name);
-    request_task->context = &byteps_context;
-    request_task->tensor = input;
-    request_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
-    request_task->output = output;
-    request_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-    // TODO: remove counter_ptr. It is not necessary.
-    request_task->counter_ptr = std::make_shared<std::atomic_int>(0);
-    request_task->total_partnum = 1;
-    BytePSGlobal::GetScheduledQueue(P2P_PULL)->addTask(request_task);
+  // calculate the number of partitions
+  int request_total_partnum = 1;
+  if (!output_size_unknown && num_ps_requests == 0) {
+    request_total_partnum = 0;
+  }
+  int total_partnum = request_total_partnum + resp_total_partnum;
+  request_task->total_partnum = total_partnum;
+  base_resp_task.total_partnum = total_partnum;
+
+  // initialize the key list and buffer list
+  common::InitTensorAlltoall(byteps_context, request_size_list, resp_size_list,
+                             dtype, recv_on_gpu, use_pull);
+  BPS_CHECK(byteps_context.cpubuff_list.size() == num_ranks * 2);
+  BPS_CHECK(byteps_context.key_list.size() == num_ranks * 2);
+  // the first half of cpubuff_list/key_list is for the request task
+  request_task->pcie_cpubuff.insert(request_task->pcie_cpubuff.begin(),
+                                    byteps_context.cpubuff_list.begin(),
+                                    byteps_context.cpubuff_list.begin() + num_ranks);
+  request_task->key_list.insert(request_task->key_list.begin(),
+                             byteps_context.key_list.begin(),
+                             byteps_context.key_list.begin() + num_ranks);
+  // the second half of cpubuff_list/key_list is for the response task
+  base_resp_task.pcie_cpubuff.insert(base_resp_task.pcie_cpubuff.begin(),
+                                    byteps_context.cpubuff_list.begin() + num_ranks,
+                                    byteps_context.cpubuff_list.end());
+  base_resp_task.key_list.insert(base_resp_task.key_list.begin(),
+                                byteps_context.key_list.begin() + num_ranks,
+                                byteps_context.key_list.end());
+  BPS_CHECK(request_task->pcie_cpubuff.size() == num_ranks);
+  BPS_CHECK(request_task->key_list.size() == num_ranks);
+  BPS_CHECK(base_resp_task.pcie_cpubuff.size() == num_ranks);
+  BPS_CHECK(base_resp_task.key_list.size() == num_ranks);
+
+  request_task->request_counter = std::make_shared<std::atomic_int>(num_ps_requests);
+
+  // enqueue send tasks
+  if (request_total_partnum) {
+    request_task->offset = 0; // DO WE NEED THIS? use default value?
+    request_task->tensor_name = name + "_request";
+    BytePSGlobal::GetScheduledQueue(request_q.at(0))->addTask(request_task);
   } else {
-    // nothing to send
-    --(*counter_ptr);
+    // nothing to send.
     delete request_task;
   }
 
-  // ========= RESPONSE TASKS  ==========
-  int total_partnum = 0;
-  // create the shared recv tasks
-  std::vector<QueueType> resp_q = {P2P_PULL_RESPONSE, P2P_WAIT_ACK};
-  if (BytePSGlobal::IsP2PAckDisabled()) {
-    resp_q = {P2P_PULL_RESPONSE};
-  }
-  auto response_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                               input_device, resp_q, output_device);
-  response_task->aux_output = size_output;
-  response_task->group_tensors.assign(group_inputs.begin(), group_inputs.end());
-  response_task->group_outputs.assign(group_outputs.begin(), group_outputs.end());
-
-  // the accumulated offset list always starts with 0
-  response_task->offset_list.push_back(0);
-  std::vector<P2PTensorTableEntry*> tasks;
-  bool is_group = (group_inputs.size() > 0);
-  for (size_t i = 0; i < num_ranks; ++i) {
-    // check the case for send-recv with myself, or nothing to send
-    int size = unit_size * (send_begin[i+1] - send_begin[i]);
-    std::string name_i = name_prefix + std::to_string(i) + recv_name_suffix;
-    auto& byteps_context = common::GetContextFromName(name_i);
-    common::InitTensorP2P(byteps_context, size, dtype, nullptr, i, my_rank, recv_on_gpu);
-    response_task->offset_list.push_back(send_begin[i+1] * unit_size);
-    if (size != 0) {
-      total_partnum++;
-      has_response = true;
-      auto partition = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                               input_device, resp_q, output_device);
-      *partition = *response_task;
-      partition->tensor = is_group
-                        ? group_inputs[i]
-                        : input;
-      partition->offset = is_group
-                        ? 0
-                        : response_task->offset_list[i];
-      partition->tensor_name = name_i;
-      partition->context = &byteps_context;
-      partition->key = byteps_context.key_list[0];
-      partition->len = size;
-      partition->counter_ptr = std::make_shared<std::atomic_int>(0);
-      tasks.push_back(partition);
-      if (i == my_rank) {
-        partition->output = is_group
-                        ? group_outputs[i]
-                        : output;
-        // this offset is for output tensor, so use recv_begin instead of send_begin
-        partition->offset = is_group 
-                        ? 0
-                        : recv_begin[i] * unit_size;
-        BytePSGlobal::GetP2PPullResponseTable()->AddReadyCount(partition->key);
-      }
+  // enqueue recv tasks
+  if (total_partnum == 0) {
+    callback(Status::OK());
+  } else if (resp_total_partnum) {
+    base_resp_task.offset = 0;
+    base_resp_task.aux_output = size_output;
+    if (output_size_unknown) {
+      base_resp_task.tensor_name = name + "_resp";
+      base_resp_task.key = server::GetAlltoallTensorId(base_resp_task.key_list.at(0));
+      auto resp_task = new P2PTensorTableEntry(base_resp_task);
+      BytePSGlobal::GetScheduledQueue(response_q.at(0))->addTask(resp_task);
     } else {
-      auto count = --(*counter_ptr);
-      if (count == 0) callback(Status::OK());
+      // naming for sub-tasks
+      std::string recv_name_suffix = "_resp_" + std::to_string(my_rank);
+      std::string send_name_prefix = name + "_request_";
+      for (size_t i = 0; i < num_ranks; ++i) {
+        int resp_size = unit_size * (resp_begin[i + 1] - resp_begin[i]);
+        if (resp_size) {
+          auto resp_task = new P2PTensorTableEntry(base_resp_task);
+          resp_task->tensor_name = send_name_prefix + std::to_string(i) + recv_name_suffix;;
+          resp_task->key = base_resp_task.key_list.at(i);
+          resp_task->len = resp_size;
+          resp_task->offset = group_inputs.size() ? 0 : resp_task->offset_list[i];
+          if (i == my_rank) {
+            // for local send-recv, we need to know the offset of the input tensor
+            resp_task->offset = request_begin[i] * unit_size;
+            BytePSGlobal::GetScheduledQueue(response_q.at(0))->addTask(resp_task);
+            auto table = use_pull ? BytePSGlobal::GetP2PPullResponseTable() : BytePSGlobal::GetP2PCopyTable();
+            table->AddReadyCount(resp_task->key);
+          } else {
+            BytePSGlobal::GetScheduledQueue(response_q.at(0))->addTask(resp_task);
+          }
+        }
+      }
     }
   }
-  if (has_response) {
-    response_task->total_partnum = total_partnum;
-    for (auto& partition : tasks) {
-      partition->total_partnum = 1;
-      partition->offset_list = response_task->offset_list;
-      BytePSGlobal::GetScheduledQueue(P2P_PULL_RESPONSE)->addTask(partition);
-    }
-  } 
-  delete response_task;
-  BPS_LOG(TRACE) << "EnqueueAlltoAllTensorPullImpl finished: " << name
-                << ", rank=" << BytePSGlobal::GetRank()
-                << ", has_request=" << has_request
-                << ", has_response=" << has_response;
+  BPS_LOG(TRACE) << "EnqueueAlltoAllTensor finished: " << name
+                << " rank=" << BytePSGlobal::GetRank()
+                << " request_partnum=" << request_total_partnum
+                << " resp_partnum=" << resp_total_partnum
+                << " num_ps_requests=" << num_ps_requests;
   return Status::OK();
 }
 
@@ -733,6 +575,101 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   return Status::OK();
 }
 
+void GenerateAlltoallKeys(std::vector<uint64_t>* key_list, int32_t declared_key,
+                          size_t num_ranks) {
+  auto my_rank = BytePSGlobal::GetRank();
+  // Generate alltoall key_list for all request tasks (keys are the same)
+  ps::Key request_key = server::ComposeAlltoallKey(declared_key, my_rank);
+  for (size_t i = 0; i < num_ranks; ++i) {
+    key_list->push_back(request_key);
+  }
+  // Generate alltoall key_list for all response tasks
+  for (size_t i = 0; i < num_ranks; ++i) {
+    ps::Key resp_key = server::ComposeAlltoallKey(declared_key, i);
+    key_list->push_back(resp_key);
+  }
+}
+
+void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list,
+                        std::vector<int> &resp_size_list, int dtype,
+                        bool recv_on_gpu, bool use_pull) {
+  auto bound = BytePSGlobal::GetAlltoallBuffBound();
+  std::lock_guard<std::mutex> lock(context.init_mutex);
+  size_t total_request_size = 0;
+  size_t total_resp_size = 0;
+  // TODO(haibin.lin): we only support 1 partition per send/recv pair for alltoall
+  for (size_t i = 0; i < request_size_list.size(); ++i) {
+    BPS_CHECK(request_size_list[i] <= bound) << "Alltoall send size exceeds buffer size for rank="
+      << i << " name=" << context.tensor_name << " size=" << request_size_list[i];
+    BPS_CHECK(resp_size_list[i] <= bound) << "Alltoall recv size exceeds buffer size for rank="
+      << i << " name=" << context.tensor_name << " size=" << resp_size_list[i];
+    total_request_size += request_size_list[i];
+    total_resp_size += resp_size_list[i];
+  }
+  if (context.initialized) {
+    return;
+  }
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+
+  // Add for timeline
+  BytePSGlobal::SetProfileFlag(&context);
+  context.local_rank = BytePSGlobal::GetLocalRank();
+
+  // Generate alltoall key_list for recv tasks
+  size_t num_ranks = request_size_list.size();
+  GenerateAlltoallKeys(&context.key_list, context.declared_key, num_ranks);
+  BPS_LOG(DEBUG) << "InitTensorAlltoall: " << context.tensor_name << " request_size=" << total_request_size
+                 << " resp_size=" << total_resp_size << " rank=" << BytePSGlobal::GetRank();
+  auto& key_list = context.key_list;
+  BPS_CHECK(num_ranks * 2 == key_list.size()) << key_list.size();
+
+  // P2P operations do not need to register tensor with CUDA for NCCL
+  context.gpu_ptr = nullptr;
+
+  // We always allocate our own cpu buffer
+  // use the first key in key_list as the index
+  auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+  // use a different prefix for p2p tensors
+  std::string wid = "_" + std::to_string(BytePSGlobal::GetWorkerID()) + "_";
+  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetUUID() + wid;
+  context.cpubuff = nullptr;
+  auto my_rank = BytePSGlobal::GetRank();
+  CHECK(BytePSGlobal::IsDistributed());
+  auto ps = BytePSGlobal::GetOrInitPS();
+  // send buffs
+  for (size_t i = 0; i < num_ranks; ++i) {
+    if (use_pull) {
+      context.cpubuff_list.emplace_back(nullptr);
+    } else {
+      auto k = key_list[i];
+      auto sender = my_rank;
+      auto receiver = i;
+      auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
+      BPS_LOG(DEBUG) << "Init ps-lite key:" << k << " encoded:" << pskv.keys[0];
+      // the shared memory is always created at partition size
+      void* buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
+      context.cpubuff_list.emplace_back(buff);
+      // false means not to delete data when SArray is deleted
+      ps::SArray<char> vals((char*) buff, bound, false);
+      DeviceType device = recv_on_gpu ? GPU : CPU;
+      int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, device);
+      if (!BytePSGlobal::IsAlltoallUsePull() && sender != receiver) {
+        // blocking push, also as a global barrirer
+        ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      }
+    }
+  }
+  // recv buffs
+  for (size_t i = 0; i < num_ranks; ++i) {
+    // no need to create the cpubuff as a receiver
+    context.cpubuff_list.emplace_back(nullptr);
+  }
+
+  context.initialized = true;
+  BPS_LOG(TRACE) << "Finish Init " << context.tensor_name << " request_size=" << total_request_size
+                 << " resp_size=" << total_resp_size << " use_pull=" << use_pull;
+}
+
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu) {
   auto bound = BytePSGlobal::GetPartitionBound();
@@ -757,8 +694,6 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
   // Get metadata
   auto &name = context.tensor_name;
-  context.sender = sender;
-  context.receiver = receiver;
   size_t accumulated = 0;
 
   // Add for timeline
@@ -1004,7 +939,11 @@ BPSContext &GetContextFromName(const std::string &name) {
 }
 
 int32_t IsTensorDeclared(const std::string &name) {
-  return BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP);
+  return BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP, -1);
+}
+
+int32_t IsTensorDeclaredAlltoall(const std::string &name, int32_t provided_key) {
+  return BytePSGlobal::IsTensorDeclared(name, P2P_OP, provided_key);
 }
 
 void RegisterCompressor(const std::string &name,
@@ -1031,6 +970,28 @@ std::shared_ptr<std::vector<QueueType>> GetRecvQueueList() {
   // Copy from CPU to GPU
   queue_list->push_back(RECV);
   return queue_list;
+}
+
+std::vector<QueueType> GetAlltoallRequestQueueList(bool use_pull) {
+  std::vector<QueueType> queue_list;
+  queue_list.emplace_back(use_pull ? P2P_PULL : SEND);
+  return queue_list;
+}
+
+std::vector<QueueType> GetAlltoallResponseQueueList(bool use_pull, bool output_size_unknown) {
+  if (use_pull) {
+    if (BytePSGlobal::IsP2PAckDisabled()) {
+      return {P2P_PULL_RESPONSE};
+    } else {
+      return {P2P_PULL_RESPONSE, P2P_WAIT_ACK};
+    }
+  } else {
+    if (output_size_unknown) {
+      return {P2P_GROUP_COPYH2D};
+    } else {
+      return {RECV};
+    }
+  }
 }
 
 std::shared_ptr<std::vector<QueueType>> GetPushQueueListGPU(int device) {

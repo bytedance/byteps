@@ -247,11 +247,7 @@ typedef struct BytePSContext {
   std::vector<std::shared_ptr<compressor::Compressor>> compressor_list;
   // kwargs
   std::unordered_map<std::string, std::string> kwargs;
-  // the rank of the sender for p2p operations.
-  int sender = -1;
-  // the rank of the receiver for p2p operations.
-  int receiver = -1;
-  // Used for p2p multiple shm
+  // Used for p2p send operations
   std::vector<void*> cpubuff_list;
   // The type of the operation. this field is checked during tensor initialization
   OperationType op_type;
@@ -334,21 +330,21 @@ struct TensorTableEntry {
 struct P2PTensorTableEntry : TensorTableEntry {
   // Pre-allocated auxiliary output tensor.
   std::shared_ptr<Tensor> aux_output = nullptr;
+  // list of offsets, used for alltoall only. its usage depends on
+  // the specific loop
+  std::vector<int> offset_list;
+  // list of involved keys
+  std::vector<uint64_t> key_list;
+  // counter of alltoall send operations
+  std::shared_ptr<std::atomic_int> request_counter;
+  // the output device id. In some cases, it may be different
+  // from the input device id (e.g. cpu-gpu alltoall)
+  int output_device = CPU_DEVICE_ID;
+  bool output_size_unknown = false;
   // A group of input tensors
   std::vector<std::shared_ptr<Tensor>> group_tensors;
   // A group of output tensors
   std::vector<std::shared_ptr<Tensor>> group_outputs;
-  // list of offsets, used for alltoall only
-  // for send, it's the offset of the input tensor
-  // for recv, it's the offset of the output tensor
-  std::vector<int> offset_list;
-  // list of involved keys, used for alltoall only
-  std::vector<uint64_t> key_list;
-  // counter of alltoall
-  std::shared_ptr<std::atomic_int> counter_a2a;
-  // the output device id. In some cases, it may be different
-  // from the input device id (e.g. cpu-gpu alltoall)
-  int output_device = CPU_DEVICE_ID;
 
   // return the data pointer of i-th tensor
   const char* tensor_data(int index) const;
@@ -359,9 +355,12 @@ struct P2PTensorTableEntry : TensorTableEntry {
   explicit P2PTensorTableEntry(int priority_, int version_,
                                std::shared_ptr<ReadyEvent> ready_event_, const StatusCallback& callback_,
                                int device_, std::vector<QueueType>& queue_list_, // parent class arguments
-                               int output_device_)
+                               int output_device_, bool output_size_unknown_,
+                               std::vector<std::shared_ptr<Tensor>>& group_inputs_,
+                               std::vector<std::shared_ptr<Tensor>>& group_outputs_)
    : TensorTableEntry(priority_, version_, ready_event_, callback_, device_, queue_list_),
-     output_device(output_device_) {}
+     output_device(output_device_), output_size_unknown(output_size_unknown_),
+     group_tensors(group_inputs_), group_outputs(group_outputs_) {}
 };
 
 

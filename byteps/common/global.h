@@ -102,7 +102,11 @@ class BytePSGlobal {
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(int index = 0);
 
-  static int32_t IsTensorDeclared(const std::string& name, OperationType op_type);
+  // declare a tensor with the provided name, op_type, and key
+  // name: the operation name
+  // op_type: PUSH_PULL_OP, P2P_OP, etc
+  // provided_key: the tensor key for this operation. If provided_key is -1, a new key will be generated.
+  static int32_t IsTensorDeclared(const std::string& name, OperationType op_type, int32_t provided_key);
   static int32_t IsTensorDeclaredP2P(const std::string& name, int sender, int receiver, int32_t provided_key);
   static void ReDeclareTensor();
   static bool IsResuming() { return _is_resuming; }
@@ -229,8 +233,6 @@ class BytePSGlobal {
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_joint;
-  // keys
-  static std::unordered_map<OperationType, int32_t> next_keys_;
   // p2p
   static bool _skip_h2d;
   static bool _skip_d2h;
@@ -277,6 +279,11 @@ class BytePSGlobal {
   static bool _lockless_queue;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
+  // the next tensor key for declaration for given operation type
+  // (PUSH_PULL_OP, P2P_OP), starting from 0
+  static std::unordered_map<OperationType, int32_t> next_keys_;
+  // the set of used tensor keys for given operation type
+  static std::unordered_map<OperationType, std::unordered_set<int32_t>> used_keys_;
   static std::vector<std::string> _declared_tensors;
   static bool _is_resuming;
   // tracing

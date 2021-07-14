@@ -30,7 +30,6 @@
 namespace byteps {
 namespace common {
 
-
 // returns true if the last partition is done
 template <typename T>
 bool DoFinishOrProceed(T& task) {
@@ -116,14 +115,14 @@ bool DoFinishOrProceed(T& task) {
       // done
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
-                     << " finish processing tensor: " << task->tensor_name;
+                     << " finishes processing tensor: " << task->tensor_name;
 
       if (Telemetry::ShouldRecord()) {
         // Telemetry::RecordSpeed(task);
       }
 
       task->callback(Status::OK());
-      //* Add for profiling communication events
+      // Add for profiling communication events
       if (ctx->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)
             << " tensor: " << task->tensor_name
@@ -141,6 +140,9 @@ bool DoFinishOrProceed(T& task) {
       ctx->step_cnt += 1;
       BytePSGlobal::SetProfileFlag(task->context);
       return true;
+    } else {
+      BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank() << " finishes sub_task: "
+                     << task->tensor_name << " key=" << task->key << " count=" << v;
     }
   }
   return false;
@@ -894,7 +896,7 @@ void P2PCopyGroup(std::vector<P2PTensorTableEntry*>& tasks) {
     auto key = task->key;
     auto len = task->len;
     auto offset = task->offset;
-    int sender = task->context->sender;
+    int sender = server::GetAlltoallSender(key);
     bool is_recv_cpu = CPU_DEVICE_ID == task->output_device;
     bool is_send_cpu = CPU_DEVICE_ID == task->device;
     has_d2d_copy = has_d2d_copy || (!is_recv_cpu && !is_send_cpu);
@@ -921,9 +923,9 @@ void P2PCopyGroup(std::vector<P2PTensorTableEntry*>& tasks) {
       void* src_addr = recv_arr.val.data();
       BPS_CHECK(recv_len == len) << recv_len << ", " << len;
       // update the output (data)
-      BPS_LOG(TRACE) << "P2P_COPY key=" << key << (long long) src_addr
-          << " len=" << len << " recv_cpu=" << is_recv_cpu
-          << " send_cpu=" << is_send_cpu;
+      BPS_LOG(TRACE) << "P2P_COPY key=" << key << " addr="
+          << (long long) src_addr << " len=" << len 
+          << " recv_cpu=" << is_recv_cpu << " send_cpu=" << is_send_cpu;
       CHECK(src_addr) << key;
       if (is_recv_cpu) {
         BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, recv_len);
@@ -966,9 +968,10 @@ bool RunRecvLoopOnce() {
       }
     }
     for (auto& task : tasks) {
-      if (BytePSGlobal::IsDirectResponse() == 0 
-          && task->context->sender != BytePSGlobal::GetRank()) {
-        server::BytePSServer::SendPushResponse(task->key);
+      if (BytePSGlobal::IsDirectResponse() == 0) {
+        if (server::GetAlltoallSender(task->key) != BytePSGlobal::GetRank()) {
+          server::BytePSServer::SendPushResponse(task->key);
+        }
       }
       FinishOrProceedLite(task);
     }
@@ -1012,10 +1015,9 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
 
       std::vector<uint64_t> keys;
       // prepare all keys
-      uint32_t req_key = (uint32_t) P2P_OP << 10;
       for (uint64_t i = 0; i < num_ranks; ++i) {
-        uint64_t key = (i << 32) + (task->key << 16) + req_key;
         if (i != my_rank) {
+          uint64_t key = server::ComposeAlltoallKey(task->key, i);
           keys.push_back(key);
         }
       }
@@ -1111,19 +1113,19 @@ bool RunSendLoopOnce() {
     int num_ranks = task->pcie_cpubuff.size();
     bool is_group = (task->group_tensors.size() > 0);
     const int dtype = task->tensor_dtype();
-    bool output_size_unknown = is_group ? false : (task->output == nullptr);
+    bool output_size_unknown = task->output_size_unknown;
     int output_device = task->output_device == CPU_DEVICE_ID ? CPU : GPU;
-    auto req_type = server::RequestType::kDefaultSend;
     // the output tensor is not yet allocated. the receiver
     // must receive the entire group of tensors before copying
     // them to the output
+    auto req_type = server::RequestType::kDefaultSend;
     if (output_size_unknown) {
       req_type = server::RequestType::kGroupSend;
     }
     std::function<void()> cb = nullptr;
     if (resp_mode != 2) {
       cb = [task]() {
-        int v = task->counter_a2a.get()->fetch_sub(1);
+        int v = task->request_counter.get()->fetch_sub(1);
         if (v == 1) FinishOrProceedLite(task);
       };
     }
@@ -1144,8 +1146,7 @@ bool RunSendLoopOnce() {
           char* cpubuff = (char*) task->pcie_cpubuff[i];
           ps::SArray<char> vals(cpubuff, 1, false);
           auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
-          // for empty send without known output_size, we never wait for response
-          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, empty_cmd);
+          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, empty_cmd, cb);
         }
         continue;
       } else {
@@ -1166,7 +1167,7 @@ bool RunSendLoopOnce() {
         BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd, cb);
       }
     }
-    if (resp_mode == 2 || task->counter_a2a == nullptr) {
+    if (resp_mode == 2) {
       FinishOrProceedLite(task);
     }
     return true;
@@ -1205,8 +1206,9 @@ bool RunP2PPullLoopOnce() {
           ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, dtype, output_device_type]() {
             if (!BytePSGlobal::IsP2PAckDisabled()) {
               // notify the server that the response is received
-              // perform zpush with 1 byte data
-              char* cpubuff = (char*) task->pcie_cpubuff[i];
+              // HACK(haibin.lin) perform zpush with 1 byte data using tensor_name,
+              // which should persist before byteps is shutdown
+              char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
               ps::SArray<char> ack_vals(cpubuff, 1, false);
               auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
               int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device_type);
@@ -1215,7 +1217,7 @@ bool RunP2PPullLoopOnce() {
             }
             // the rest of the callbacks are for zpull          
             delete vals;
-            int v = task->counter_a2a.get()->fetch_sub(1);
+            int v = task->request_counter.get()->fetch_sub(1);
             if (v == 1) {
               FinishOrProceedLite(task);
             }
@@ -1234,17 +1236,19 @@ bool RunP2PPullResponseOnce() {
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
-    BPS_CHECK(task->tensor);
-    int sender = task->context->sender;
+    int sender = server::GetAlltoallSender(task->key);
     int my_rank = BytePSGlobal::GetRank();
     bool is_recv_cpu = (CPU_DEVICE_ID == task->output_device);
     bool is_send_cpu = (CPU_DEVICE_ID == task->device);
     if (sender == my_rank) {
       // copy to myself
       bool is_group = (task->group_tensors.size() > 0);
-      auto src_addr = (char*) task->tensor->data() 
-                    + (is_group ? task->offset : task->offset_list[my_rank]);
-      auto dst_addr = (char*) task->output->data() + task->offset;
+      auto src_addr = (char*) task->tensor_data(my_rank);
+      auto dst_addr = (char*) task->output_data(my_rank);
+      if (!is_group) {
+        src_addr += task->offset_list[my_rank];
+        dst_addr += task->offset;
+      }
       if (is_recv_cpu && is_send_cpu) {
         BytePSGlobal::GetCpuReducer()->copy(dst_addr, src_addr, task->len);
       } else {
@@ -1255,7 +1259,7 @@ bool RunP2PPullResponseOnce() {
         BytePSGlobal::GetP2PAckTable()->AddReadyCount(task->key);
       }
     } else {
-      char* tensor = (char*) task->tensor->data() + task->offset;
+      char* tensor = (char*) task->tensor_data(sender) + task->offset;
       if (BytePSGlobal::IsProfileAlltoall()) {
         auto ts = std::chrono::high_resolution_clock::now();
         server::BytePSServer::SendPullResponse(task->key, tensor, task->len);

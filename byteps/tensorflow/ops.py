@@ -237,7 +237,6 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
     full_name = scope + name + "_cpu2gpu"
     full_name = full_name.encode("ascii")
     session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
-
     p = (ctypes.c_int*session_size)()
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
     tensor_key = list(p)

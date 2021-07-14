@@ -82,12 +82,13 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
                      ReduceOp op = REDUCE_OP_SUM);
 
 // size_output: an auxiliary output tensor. In all-to-all, when recv_split is not provided,
-// we also store the value of recv_split in `size_output`. When recv_split is provided,
-// size_output is not used.
+//              we also store the value of recv_split in `size_output`. When recv_split is
+//              provided, size_output is not used.
 // send_begin: the begin index (number of elements) for each rank for `input` tensor. It's length
-// is (num_ranks + 1) and always starts with 0
+//             is (num_ranks + 1) and always starts with 0
 // recv_begin: the begin index (number of elements) for each rank for `output` tensor. It's length
-// is (num_ranks + 1) and always starts with 0
+//             is (num_ranks + 1) and always starts with 0
+// use_pull: whether the pull-based alltoall implementation will be used
 Status EnqueueAlltoAllTensor(std::string& name,
                              std::shared_ptr<Tensor> input,
                              std::vector<std::shared_ptr<Tensor>>& group_inputs,
@@ -101,24 +102,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
                              const std::vector<int>& recv_begin, // begin offsets for recv
-                             std::atomic_int* counter_ptr,
-                             bool output_size_unknown);
-
-Status EnqueueAlltoAllTensorPullImpl(std::string& name,
-                             std::shared_ptr<Tensor> input,
-                             std::vector<std::shared_ptr<Tensor>>& group_inputs,
-                             std::shared_ptr<Tensor> output,
-                             std::vector<std::shared_ptr<Tensor>>& group_outputs,
-                             std::shared_ptr<Tensor> size_output,
-                             std::shared_ptr<ReadyEvent> ready_event,
-                             const int input_device,
-                             const int output_device,
-                             const int priority, const int version,
-                             StatusCallback callback,
-                             const std::vector<int>& send_begin, // begin offsets for send
-                             const std::vector<int>& recv_begin, // begin offsets for recv
-                             std::atomic_int* counter_ptr,
-                             bool output_size_unknown);
+                             bool output_size_unknown, bool use_pull);
 
 // shape: input tensor shape
 // tensor_key: the 32-bit tensor_key returned from declare_alltoall_tensor
@@ -142,11 +126,20 @@ Status PrepareAlltoallTensor(TensorShape shape,
 
 void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 
+// initializes BPSContext with key list and buffer list for the request and response
+// tasks. It will fill context.key_list first with all request task keys, followed by
+// response task keys. It will also populate context.cpubuff_list with buffer addresses
+// for all request tasks, followed by all response tasks.
+void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list,
+                        std::vector<int> &resp_size_list, int dtype,
+                        bool recv_on_gpu, bool use_pull);
+
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);
 
 // Only call these in Framework plugins for the best performance
 int32_t IsTensorDeclared(const std::string &name);
+int32_t IsTensorDeclaredAlltoall(const std::string &name, int32_t provided_key);
 int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver, int32_t provided_key);
 
 void RegisterCompressor(const std::string &name,
@@ -165,6 +158,10 @@ std::shared_ptr<std::vector<QueueType>> GetRecvQueueList();
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device);
 
 std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
+
+std::vector<QueueType> GetAlltoallRequestQueueList(bool use_pull);
+
+std::vector<QueueType> GetAlltoallResponseQueueList(bool use_pull, bool output_size_unknown);
 
 void print_queue_list(std::shared_ptr<std::vector<QueueType>> queue_list,
                       std::string &name, bool is_dist_reduce_root_node);

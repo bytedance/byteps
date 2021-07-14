@@ -212,20 +212,10 @@ extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int
 
 // Declare tensors for alltoall
 extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key, uint32_t session_size) {
-  const int my_rank = common::byteps_rank();
-  const int size = common::byteps_size();
-  // Declare tensors for alltoall
   std::string name_prefix = std::string(name);
-  std::string my_rank_str = std::to_string(my_rank);
   for (uint32_t session_id = 0; session_id < session_size; session_id++) {
     std::string session_prefix = "session_" + std::to_string(session_id) + "_" + name_prefix;
-    for (size_t i = 0; i < size; ++i) {
-      std::string target_rank = std::to_string(i);
-      std::string name_send = session_prefix + "_alltoall_send_" + my_rank_str + "_recv_" + target_rank;
-      std::string name_recv = session_prefix + "_alltoall_send_" + target_rank + "_recv_" + my_rank_str;
-      tensor_key[session_id] = common::IsTensorDeclaredP2P(name_send, my_rank, i, -1);
-      tensor_key[session_id] = common::IsTensorDeclaredP2P(name_recv, i, my_rank, -1);
-    }
+    tensor_key[session_id] = common::IsTensorDeclaredAlltoall(session_prefix, -1);
   }
 }
 
@@ -509,59 +499,44 @@ REGISTER_KERNEL_BUILDER(Name("BytepsRecv").Device(::tensorflow::DEVICE_GPU),
 
 // ======================= ALL_TO_ALL OPERATIONS =====================
 void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
-                        ::tensorflow::AsyncOpKernel::DoneCallback done,
-                        std::string node_name,
-                        std::shared_ptr<TFTensor> byteps_input,
-                        std::vector<std::shared_ptr<TFTensor>> byteps_group_input,
-                        std::vector<int32_t> split_count,
-                        std::vector<int32_t> recv_split_count,
-                        std::shared_ptr<TFTensor> byteps_output,
-                        std::vector<std::shared_ptr<TFTensor>> byteps_group_output,
-                        std::shared_ptr<TFTensor> byteps_aux_output,
-                        std::shared_ptr<common::ReadyEvent> ready_event,
-                        TaskType task, bool recv_split_unknown,
-                        std::string name_wo_session, 
-                        bool use_pull, bool use_nvtx,
-                        int input_device, int output_device) {
-  // the counter for all send/recv tasks generated for alltoall
-  int num_ranks = split_count.size();
-  // two types of tasks: send, recv
-  // number of send tasks: 1.
-  // number of recv tasks: num_ranks
-  int num_tasks = recv_split_unknown ? 2 : num_ranks + 1;
-  std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(num_tasks));
-
+                       ::tensorflow::AsyncOpKernel::DoneCallback done,
+                       std::string node_name,
+                       std::shared_ptr<TFTensor> byteps_input,
+                       std::vector<std::shared_ptr<TFTensor>> byteps_group_input,
+                       std::vector<int32_t> split_count,
+                       std::vector<int32_t> recv_split_count,
+                       std::shared_ptr<TFTensor> byteps_output,
+                       std::vector<std::shared_ptr<TFTensor>> byteps_group_output,
+                       std::shared_ptr<TFTensor> byteps_aux_output,
+                       std::shared_ptr<common::ReadyEvent> ready_event,
+                       TaskType task, bool recv_split_unknown,
+                       std::string name_wo_session,
+                       bool use_pull, bool use_nvtx,
+                       int input_device, int output_device) {
   // common fields
   int priority = 0;
-
   common::StatusCallback callback;
+  // TODO(haibin.lin): move nvtx logics to BytePS core
 #if BYTEPS_BUILDING_NVTX == 1
   if (use_nvtx) {
     auto range_id = nvtxRangeStartA(name_wo_session.c_str());
-    callback = [context, done, counter_ptr, name_wo_session, range_id](const common::Status& status) {
-      // we use a counter to track each subtask
-      // the alltoall operator is completed after all subtasks are done
-      if (--(*counter_ptr) <= 0) {
-        nvtxRangeEnd(range_id);
-        common::byteps_mark_done(name_wo_session.c_str());
-        context->SetStatus(ConvertStatus(status));
-        done();
-      }
+    callback = [context, done, name_wo_session, range_id](const common::Status& status) {
+      nvtxRangeEnd(range_id);
+      common::byteps_mark_done(name_wo_session.c_str());
+      context->SetStatus(ConvertStatus(status));
+      done();
     };
   } else
 #endif
   {
-    callback = [context, done, counter_ptr, name_wo_session](const common::Status& status) {
-      // we use a counter to track each subtask
-      // the alltoall operator is completed after all subtasks are done
-      if (--(*counter_ptr) <= 0) {
-        common::byteps_mark_done(name_wo_session.c_str());
-        context->SetStatus(ConvertStatus(status));
-        done();
-      }
+    callback = [context, done, name_wo_session](const common::Status& status) {
+      common::byteps_mark_done(name_wo_session.c_str());
+      context->SetStatus(ConvertStatus(status));
+      done();
     };
   }
 
+  size_t num_ranks = split_count.size();
   common::Status enqueue_result;
   // the begin index (prefix sum) of tensor indices for send/recv
   std::vector<int> send_begin;
@@ -580,23 +555,12 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
   for (auto tensor : byteps_group_output) {
     group_output.push_back(tensor);
   }
-  enqueue_result = use_pull
-                 ? common::EnqueueAlltoAllTensorPullImpl(
-                                                 node_name, 
-                                                 byteps_input, group_input,
+  enqueue_result = common::EnqueueAlltoAllTensor(node_name, byteps_input, group_input,
                                                  byteps_output, group_output, byteps_aux_output,
                                                  ready_event, input_device, output_device,
                                                  priority, 0, callback,
                                                  send_begin, recv_begin,
-                                                 counter_ptr.get(), recv_split_unknown)
-                 : common::EnqueueAlltoAllTensor(
-                                                 node_name,
-                                                 byteps_input, group_input,
-                                                 byteps_output, group_output, byteps_aux_output,
-                                                 ready_event, input_device, output_device,
-                                                 priority, 0, callback,
-                                                 send_begin, recv_begin,
-                                                 counter_ptr.get(), recv_split_unknown);
+                                                 recv_split_unknown, use_pull);
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
 }
 
@@ -607,8 +571,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      // input tensor name: name for byteps operations
      std::string input_tensor_name;
      bool recv_split_unknown;
-     // the maximum recv buffer size for receiving data per pair
-     int partition_bytes;
      // the 32-bit declared `tensor_key`
      std::vector<int32_t> tensor_key;
      // use ZPull instead ZPush to reduce memory consumption
@@ -622,14 +584,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
       context->GetAttr("tensor_key", &tensor_key);
-      if (recv_split_unknown) {
-        CHECK(getenv("BYTEPS_PARTITION_BYTES"))
-          << "BYTEPS_PARTITION_BYTES is required if recv_split_unknown=True";
-        partition_bytes = atoi(getenv("BYTEPS_PARTITION_BYTES"));
-        if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
-          partition_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
-        }
-      }
       use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
                ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
                : false;
@@ -707,11 +661,12 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     ::tensorflow::Tensor* output_data;
     ::tensorflow::Tensor* output_sizes;
     ::tensorflow::TensorShape result_shape;
-    // Allocate output
+    // generate result shape
     result_shape.AddDim(dim0_out);
     for (int i = 1; i < tensor.shape().dims(); ++i) {
       result_shape.AddDim(tensor.shape().dim_size(i));
     }
+    // allocate output
     std::shared_ptr<TFTensor> bps_output;
     if (recv_split_unknown) {
       bps_output = std::make_shared<TFTensor>(context, done, 0, output_device);
@@ -731,18 +686,16 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       return;
     }
 
-    const int my_rank = common::byteps_rank();
-    std::string name_wo_session = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
     std::vector<std::shared_ptr<TFTensor>> empty_group_inputs;
     std::vector<std::shared_ptr<TFTensor>> empty_group_outputs;
     if (initialized) {
       StartAlltoAllTask(context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                         recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx, input_device, output_device);
+                        kAlltoAll, recv_split_unknown, tmp_name, use_pull, use_nvtx, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                     recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, name_wo_session, use_pull, use_nvtx, input_device, output_device);
+                    kAlltoAll, recv_split_unknown, tmp_name, use_pull, use_nvtx, input_device, output_device);
       t.detach();
     }
   }
@@ -848,7 +801,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
         result_shape[i].AddDim(tensors[i]->shape().dim_size(j));
       }
     }
-    // TODO: fix the shape 
+    // TODO: fix the shape
     auto device_id = GetDeviceID(context);
     int output_device = device_id;
     int input_device = device_id;
@@ -886,11 +839,9 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes[0], CPU_DEVICE_ID);
     const int my_rank = common::byteps_rank();
     // Add session_id prefix to node_name
-    std::string name_send = tmp_name + "_alltoall_send_" + std::to_string(my_rank) + "_recv_0";
-    int session_id = common::byteps_session_id(name_send.c_str());
+    int session_id = common::byteps_session_id(tmp_name.c_str());
     int session_size = common::byteps_session_size();
     std::string session_prefix = "session_" + std::to_string(session_id % session_size) + "_";
-    std::string session_name_send = session_prefix + name_send;
     std::string session_tmp_name = session_prefix + tmp_name;
     if (!recv_split_unknown && dim0 == 0 && dim0_aggregate == 0) {
       // TODO: fill in size tensor
@@ -898,30 +849,20 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
       return;
     }
 
-    int32_t declared_key;
-    std::string sess_prefix;
-    for (int j = 0; j < tensor_key.size(); ++j) {
-      int num_ranks = split_tensor.shape().dim_size(0);
-      sess_prefix = "session_" + std::to_string(j) + "_";
-      for (size_t i = 0; i < num_ranks; ++i) {
-        std::string nsend = sess_prefix + tmp_name + "_alltoall_send_" 
-                          + std::to_string(my_rank) + "_recv_" + std::to_string(i);
-        std::string nrecv = sess_prefix + tmp_name + "_alltoall_send_" 
-                          + std::to_string(i) + "_recv_" + std::to_string(my_rank);
-        declared_key = common::IsTensorDeclaredP2P(nsend, my_rank, i, tensor_key[j]);
-        declared_key = common::IsTensorDeclaredP2P(nrecv, i, my_rank, tensor_key[j]);
-      }
+    for (int i = 0; i < tensor_key.size(); ++i) {
+      std::string sess_prefix = "session_" + std::to_string(i) + "_";
+      common::IsTensorDeclaredAlltoall(sess_prefix + tmp_name, tensor_key[i]);
     }
 
-    auto& bps_context = common::GetContextFromName(session_name_send);
+    auto& bps_context = common::GetContextFromName(session_tmp_name);
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false, input_device, output_device);
+                        ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, false, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, name_send, use_pull, false, input_device, output_device);
+                    ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, false, input_device, output_device);
       t.detach();
     }
   }

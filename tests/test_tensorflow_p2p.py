@@ -96,7 +96,7 @@ class TensorFlowTests:
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 w = tf.Variable(tensor)
                 with tf.GradientTape() as tape:
-                    loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter_{niter % 10}')
+                    loss = alltoall_fn(w, splits=splits, recv_splits=recv_splits, name=f'{name}_iter_{niter % 5}')
                 grad = tape.gradient(loss, w)
                 assert grad.shape == tensor.shape, "the shapes of tensor and grad are not identical."
                 print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}')
@@ -167,7 +167,7 @@ class TensorFlowTests:
                 with tf.device(f"/{src_device}:0"):
                     tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 with tf.device(f"/{dst_device}:0"):
-                    name = f'{prefix}test_{src_device}_{dst_device}_iter_{niter % 10}'
+                    name = f'{prefix}test_{src_device}_{dst_device}_iter_{niter % 5}'
                     result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits,
                                          name=name, compression=compression)
                     print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
@@ -199,8 +199,8 @@ class TensorFlowTests:
             with tf.device("/cpu:0"):
                 splits = tf.constant(splits_list, dtype=tf.int32)
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
-                result, recv_split = bps.alltoall(tensor, splits=splits, name=f'no_recv_iter_{niter % 10}',
-                                                 with_size=True, compression=compression)
+                result, recv_split = bps.alltoall(tensor, splits=splits, name=f'no_recv_iter_{niter % 5}',
+                                                  with_size=True, compression=compression)
                 print(f'DONE iter={niter}, shape={result.shape}', flush=True)
                 index = 0
                 for i in range(2):
@@ -365,7 +365,7 @@ class TensorFlowTests:
                                for i in range(len(splits_list))]
                 with tf.device(f"/{dst_device}:0"):
                     results = alltoall_fn(tensors, splits=splits, recv_splits=recv_splits,
-                                         name=f'alltoall_group_test_{src_device}_{dst_device}_iter_{niter % 10}',
+                                         name=f'alltoall_group_test_{src_device}_{dst_device}_iter_{niter % 5}',
                                          compression=compression)
                     print(f'AlltoAll group tests: Done iter={niter}, shape={results[0].shape}')
                     # validate result
@@ -466,7 +466,7 @@ class TensorFlowTests:
                           for _ in range(len(splits_list))]
                 group_w = [tf.Variable(tensor) for tensor in tensors] 
                 with tf.GradientTape() as tape:
-                    group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter_{niter % 10}')
+                    group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter_{niter % 5}')
                 grad = tape.gradient(group_loss, group_w)
                 print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}')
                 niter += 1
@@ -489,7 +489,7 @@ class TensorFlowTests:
             tensor = tf.ones([tensor_size, 1], dtype=dtype) * (rank + 1)
             while niter < total_niter:
                 # forward
-                result = bps.push_pull(tensor, name=f'test_allreduce_iter_{niter % 10}')
+                result = bps.push_pull(tensor, name=f'test_allreduce_iter_{niter % 5}')
                 expected = (1 + size + 1) * size / 2.0
                 assert np.sum(result != expected), (result, expected)
                 niter += 1

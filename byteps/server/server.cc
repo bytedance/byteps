@@ -468,6 +468,9 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
     }
     SetRecvPartition(key, arr);
     GetP2PGroupCopyTable()->AddReadyCount(tensor_key);
+    if (p2p_direct_response_ == 1) {
+      BytePSServer::SendPushResponse(key);
+    }
   } else {
     if (debug_mode_) {
       LOG(INFO) << "set recv val addr = " << (long long) req_data.vals.data()

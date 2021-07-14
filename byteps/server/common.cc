@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include "common.h"
+#include "../common/common.h"
 #include <cmath>
 
 namespace byteps {
@@ -39,8 +40,27 @@ DataHandleType DepairDataHandleType(int cmd) {
   return type;
 }
 
+int GetAlltoallSender(uint64_t key) {
+  return (key << 16) >> 48;
+}
+
 uint32_t GetAlltoallTensorId(uint64_t key) {
   return (key << 32) >> 48;
+}
+
+uint64_t ComposeAlltoallKey(int32_t declared_key, int request_rank) {
+  // Total key space is [0, 2^64 - 1]
+  // It will be divided to N PS servers, for now we assume N <= 2^16
+  // Then we have 2^48 key space left.
+  // Top 16 bits out of the 48 bits encodes the sender rank
+  // Mid 16 bits out of the 48 bits encodes the tensor id
+  // The next 6 bits encodes request types (pushpull, send, etc)
+  // The last 10 bits encodes the partition id
+  // Therefore, we support up to 2^16 tensors, and up to 2^10 partitions per tensor
+  uint64_t request_key = ((uint64_t) request_rank) << 32;
+  request_key += ((uint64_t) declared_key) << 16;
+  request_key += ((uint64_t) common::P2P_OP) << 10;
+  return request_key;
 }
 
 }  // namespace server
