@@ -49,7 +49,7 @@ int GetCommandType(RequestType requestType, int dtype, int device);
 
 DataHandleType DepairDataHandleType(int cmd);
 
-// parse the decoded alltoall key and get the sender bits
+// parse the decoded alltoall/p2p key and get the sender bits
 int GetAlltoallSender(uint64_t key);
 
 // parse the decoded alltoall key and get the tensor id bits

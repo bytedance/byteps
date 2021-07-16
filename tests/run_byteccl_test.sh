@@ -61,17 +61,18 @@ if [ "$#" -ne 3 ]; then
   exit
 fi
 BIN="$3"
-# export GDB=" gdb -ex run --args "
+
+export GDB=" gdb -ex run --args "
 export GDB=" "
 
 if [ $1 == "worker" ] || [ $1 == "joint" ]; then
   export DMLC_ROLE=$1
   if [ "$TEST_TYPE" == "tensorflow" ]; then
     echo "TEST TENSORFLOW ..."
-    $GDB python3 $path/$BIN --rank $2
+    $GDB python3 $path/$BIN
   elif [ "$TEST_TYPE" == "torch" ]; then
     echo "TEST TORCH ..."
-    python3 $path/$BIN --rank $2
+    $GDB python3 $path/test_torch_p2p.py
   else
     echo "Error: unsupported $TEST_TYPE"
     exit 1

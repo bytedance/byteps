@@ -35,6 +35,19 @@ class BytePSScheduledQueue {
   BytePSScheduledQueue(QueueType type, bool lockless = false);
   QueueType getQueueType() { return _qt; }
 
+  // Currently ScheduledQueue provides two sets of interfaces:
+  // IF1. addTask and getTask with shared_ptr<TensorTableEntry>
+  // IF2. addTaskLite and getTaskLite with TensorTableEntry
+  //
+  // Note that IF1 uses inputs with shared_ptr, which means the
+  // task's life cycle is managed by std::shared_ptr. As of now,
+  // push/pull/send/recv tasks uses IF1 with shared_ptr.
+  //
+  // On the other hand, some operators uses IF2 to enqueue tensor.
+  // Not using shared_ptr means that bytePS manages the life cycle
+  // of the task. The task usually is allocated in `EnqueueTensorXX`
+  // in operations.cc, and freed in `FinishOrProceedLite` in
+  // core_loops.cc
   void addTask(std::shared_ptr<TensorTableEntry>);
   void addTask(TensorTableEntry*);
   std::shared_ptr<TensorTableEntry> getTask();

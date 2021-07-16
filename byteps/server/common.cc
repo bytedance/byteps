@@ -59,7 +59,7 @@ uint64_t ComposeAlltoallKey(int32_t declared_key, int request_rank) {
   // Therefore, we support up to 2^16 tensors, and up to 2^10 partitions per tensor
   uint64_t request_key = ((uint64_t) request_rank) << 32;
   request_key += ((uint64_t) declared_key) << 16;
-  request_key += ((uint64_t) common::P2P_OP) << 10;
+  request_key += ((uint64_t) common::ALLTOALL_OP) << 10;
   return request_key;
 }
 

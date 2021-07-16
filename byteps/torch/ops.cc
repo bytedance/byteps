@@ -228,7 +228,7 @@ void DeclareTensorP2P(const std::string& name, int sender, int receiver) {
   if (receiver == -1) receiver = byteps_rank();
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name.c_str(), 0);
-  common::IsTensorDeclaredP2P(tensor_name, sender, receiver, -1);
+  common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
 }
 
 void WaitAndClear(int handle, bool busy_waiting) {

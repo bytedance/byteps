@@ -4,18 +4,10 @@ import torch
 
 import argparse
 parser = argparse.ArgumentParser(description='PyTorch tests')
-parser.add_argument('--rank', type=int, default=-1)
-parser.add_argument('--backend', type=str, default='byteps')
-
 args = parser.parse_args()
-if args.backend == 'byteps':
-    import byteps.torch as bps
-    bps.init(lazy=False, preferred_rank=args.rank)
-else:
-    import horovod.torch as bps
-    bps.init()
 
-print(bps)
+import byteps.torch as bps
+bps.init()
 
 class TorchTests:
     """
@@ -26,33 +18,34 @@ class TorchTests:
         self.size = bps.size()
 
     def test_send_recv(self):
-        def receiver(rank):
+        def receiver(from_rank, to_rank, device):
             print('This is receiver with rank = {}'.format(self.rank), flush=True)
-            device = torch.device('cuda')
+            device = torch.device(device)
+            expected = torch.ones(self.size).numpy()
             tensor = torch.zeros(self.size, device=device)
-            handle = bps.recv_async(tensor, rank, name=str(rank))
+            handle = bps.recv_async(tensor, from_rank, name=f"test_{device}")
             bps.synchronize(handle)
-            print(tensor, flush=True)
+            assert np.sum(tensor != expected), (result, expected)
             print('Receiver is done', flush=True)
 
-        def sender(rank):
+        def sender(from_rank, to_rank, device):
             print('This is sender with rank = {}'.format(self.rank), flush=True)
-            device = torch.device('cuda')
+            device = torch.device(device)
             tensor = torch.ones(self.size, device=device)
-            handle = bps.send_async(tensor, rank, name=str(self.rank))
+            handle = bps.send_async(tensor, to_rank, name=f"test_{device}")
             bps.synchronize(handle)
             print('Sender is done')
 
         if self.rank == 0:
-            sender(1)
+            sender(0, 1, 'cuda')
+            sender(0, 1, 'cpu')
         elif self.rank == 1:
-            receiver(0)
+            receiver(0, 1, 'cuda')
+            receiver(0, 1, 'cpu')
         else:
             raise ValueError("unexpected rank")
         print('test_send_recv DONE', flush=True)
 
 tests = TorchTests()
-# TODO test send to myself
-# tests.test_self_send_recv()
 tests.test_send_recv()
 time.sleep(3)

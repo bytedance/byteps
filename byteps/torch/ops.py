@@ -43,7 +43,7 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 
-P2P_VERBOSE = bool(os.environ.get('P2P_VERBOSE', False))
+P2P_VERBOSE = bool(os.environ.get('BYTEPS_P2P_VERBOSE', False))
 
 # Schema: handle -> input, output
 # We keep input in order to make sure it does not get garbage collected

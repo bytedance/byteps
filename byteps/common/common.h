@@ -127,8 +127,10 @@ enum OperationType {
   UNKNOWN_OP,
   // push pull (a.k.a all-reduce)
   PUSH_PULL_OP,
-  // peer-to-peer operations (send/recv, alltoall)
+  // peer-to-peer operations (send/recv)
   P2P_OP,
+  // alltoall operations
+  ALLTOALL_OP,
 };
 
 enum ReduceOp {
@@ -249,6 +251,8 @@ typedef struct BytePSContext {
   std::unordered_map<std::string, std::string> kwargs;
   // Used for p2p send operations
   std::vector<void*> cpubuff_list;
+  int sender = -1;
+  int receiver = -1;
   // The type of the operation. this field is checked during tensor initialization
   OperationType op_type;
 } BPSContext;

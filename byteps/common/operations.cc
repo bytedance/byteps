@@ -674,9 +674,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu) {
   auto bound = BytePSGlobal::GetPartitionBound();
   std::lock_guard<std::mutex> lock(context.init_mutex);
-  // XXX: in alltoall, the size might be 0 when first seen.
-  // Nonetheless, we initialize the memory buff for it
-  size = size == 0 ? 1 : size;
+  BPS_CHECK(size > 0);
   if (context.initialized) {
     // XXX we assume the number of partitions do not change
     int num_partitions = (size + bound - 1) / bound;
@@ -718,29 +716,18 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   }
 
   BPS_LOG(DEBUG) << name << " partitioned to " << context.key_list.size()
-                 << " part(s)"
-                 << ", total_len=" << size << ", key_range=["
+                 << " part(s), total_len=" << size << ", key_range=["
                  << context.key_list.front() << ", " << context.key_list.back()
                  << "] worker_id=" << BytePSGlobal::GetWorkerID()
-		 << ", sender=" << sender << ", receiver=" << receiver;
+                 << ", sender=" << sender << ", receiver=" << receiver;
 
   auto key_list = context.key_list;
-
-  // For now, we do not implement partitioning for P2P operations
-  BPS_CHECK_EQ(key_list.size(), 1)
-      << name << ", size=" << size << ", buff_size=" << bound
-      << ", please consider increasing BYTEPS_P2P_PARTITION_BYTES";
-
-  BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
-                 << ", parts=" << key_list.size();
-
   // P2P operations do not need to register tensor with CUDA for NCCL
   context.gpu_ptr = nullptr;
 
   // We always allocate our own cpu buffer
   // use the first key in key_list as the index
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
-  CHECK(!BytePSGlobal::IsCrossPcieSwitch());
   // use a different prefix for p2p tensors
   std::string wid = "_" + std::to_string(BytePSGlobal::GetWorkerID()) + "_";
   std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetUUID() + wid;
@@ -751,12 +738,12 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   auto ps = BytePSGlobal::GetOrInitPS();
   for (auto k : key_list) {
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    // XXX: We assume the number of partitions do not change
+    // TODO(haibin.lin): We assume the number of partitions do not change
     // When encoding for the first time, declare len = bound
     auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
     // the shared memory is always created at partition size
     void* buff = nullptr;
-    if (sender == my_rank) {
+    if (sender == my_rank && sender != receiver) {
       buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
       context.cpubuff_list.emplace_back(buff);
       // false means not to delete data when SArray is deleted
@@ -774,11 +761,9 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
     accumulated += len;
   }
   BPS_CHECK_EQ(accumulated, size);
-
   BPS_LOG(TRACE) << name << ": open shared memory size " << size;
 
   context.initialized = true;
-
   BPS_LOG(TRACE) << "Finish Init " << name << ", size=" << size
                  << ", parts=" << key_list.size();
 }
@@ -943,7 +928,7 @@ int32_t IsTensorDeclared(const std::string &name) {
 }
 
 int32_t IsTensorDeclaredAlltoall(const std::string &name, int32_t provided_key) {
-  return BytePSGlobal::IsTensorDeclared(name, P2P_OP, provided_key);
+  return BytePSGlobal::IsTensorDeclared(name, ALLTOALL_OP, provided_key);
 }
 
 void RegisterCompressor(const std::string &name,
@@ -955,8 +940,8 @@ void PinMemory(void* ptr, int numa_node, size_t bytes) {
   return BytePSGlobal::PinMemory(ptr, numa_node, bytes);
 }
 
-int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver, int32_t provided_key) {
-  return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver, provided_key);
+int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver) {
+  return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {
@@ -967,7 +952,6 @@ std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {
 
 std::shared_ptr<std::vector<QueueType>> GetRecvQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
-  // Copy from CPU to GPU
   queue_list->push_back(RECV);
   return queue_list;
 }

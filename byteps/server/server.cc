@@ -725,7 +725,7 @@ void BytePSServer::init_global_env() {
   if (role_str != std::string("scheduler")) {
     is_server_ = true;
   }
-  LOG(INFO) << "This is a " << role_str << " is_server=" << is_server_;
+  LOG(INFO) << "This is a " << role_str << " node. is_server=" << is_server_;
 
   // enable engine block mode (default enabled)
   is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
@@ -842,8 +842,7 @@ void BytePSServer::Init(int rank) {
       server->set_request_handle(BytePSHandler);
       byteps_server_.push_back(server);
     }
-    LOG(INFO) << "BytePS Server with rank=" << preferred_rank_
-              << ". group_size=" << group_size;
+    LOG(INFO) << "BytePS server with rank=" << preferred_rank_;
   }
 
   // clean the server resource

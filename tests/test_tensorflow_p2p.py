@@ -8,8 +8,6 @@ parser = argparse.ArgumentParser(description='Tensorflow tests')
 parser.add_argument('--backend', type=str, default='byteps')
 parser.add_argument('--iter', type=int, default=250)
 
-# no usage for now, temporarily add for compat
-parser.add_argument('--rank', type=int, default=-1) 
 is_use_pull = int(os.environ.get('BYTEPS_ALL2ALL_USE_PULL', 0))
 args = parser.parse_args()
 if args.backend == 'byteps':

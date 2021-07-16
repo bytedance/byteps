@@ -102,13 +102,15 @@ std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_session_ids;
 std::unordered_map<std::string, uint64_t> BytePSGlobal::_alltoall_completions;
 std::mutex BytePSGlobal::_alltoall_session_mu;
 bool BytePSGlobal::_p2p_disable_pull_ack = false;
+bool BytePSGlobal::_is_alltoall_use_pull = false;
 
+// key/name declaration
 std::vector<std::string> BytePSGlobal::_declared_tensors;
 bool BytePSGlobal::_is_resuming = false;
 std::unordered_map<std::string, BPSContext> BytePSGlobal::_name_to_cxt;
 std::unordered_map<OperationType, int32_t> BytePSGlobal::next_keys_;
 std::unordered_map<OperationType, std::unordered_set<int32_t>> BytePSGlobal::used_keys_;
-bool BytePSGlobal::_is_alltoall_use_pull = false;
+std::unordered_map<int, unsigned int> BytePSGlobal::p2p_next_keys_;
 
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
@@ -576,9 +578,32 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
   return _name_to_cxt[name];
 }
 
-
-int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, int receiver, int32_t provided_key) {
-  BPS_CHECK(false);
+int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, int receiver) {
+  std::lock_guard<std::mutex> lock(_context_mutex);
+  auto _ctx = _name_to_cxt.find(name);
+  if (_ctx == _name_to_cxt.end()) {
+    if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) == _declared_tensors.end()) {
+      _declared_tensors.push_back(name);
+    }
+    _name_to_cxt[name].initialized = false;
+    _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
+    _name_to_cxt[name].op_type = P2P_OP;
+    // the next key starts from 0 per send/recv pair
+    int send_recv_pair = (sender << 16) + receiver;
+    _name_to_cxt[name].sender = sender;
+    _name_to_cxt[name].receiver = receiver;
+    // TODO(haibin.lin): self send/recv is not yet implemented
+    BPS_CHECK(sender != receiver);
+    _name_to_cxt[name].declared_key = p2p_next_keys_[send_recv_pair]++;;
+    BPS_LOG(DEBUG) << "Declared p2p tensor " << name
+                   << ", declared key (not PS key): "
+                   << _name_to_cxt[name].declared_key
+                   << ", worker_id=" << BytePSGlobal::GetWorkerID()
+                   << ", my_rank=" << BytePSGlobal::GetRank()
+                   << ", sender=" << sender
+                   << ", receiver=" << receiver;
+  }
+  return _name_to_cxt[name].declared_key;
 }
 
 int32_t BytePSGlobal::IsTensorDeclared(const std::string& name, OperationType op_type, int32_t provided_key) {

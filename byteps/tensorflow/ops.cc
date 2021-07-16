@@ -207,7 +207,7 @@ extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int
   if (receiver == -1) receiver = common::byteps_rank();
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name, 0);
-  tensor_key = common::IsTensorDeclaredP2P(tensor_name, sender, receiver, -1);
+  tensor_key = common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
 }
 
 // Declare tensors for alltoall
