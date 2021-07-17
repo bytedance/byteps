@@ -143,6 +143,7 @@ bool DoFinishOrProceed(T& task) {
     } else {
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank() << " finishes sub_task: "
                      << task->tensor_name << " key=" << task->key << " count=" << v;
+      return true;
     }
   }
   return false;

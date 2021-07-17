@@ -324,11 +324,22 @@ struct TensorTableEntry {
   std::shared_ptr<compressor::tensor_t> compressed;
   // Reduce Op
   ReduceOp reduce_op;
+
   explicit TensorTableEntry(int priority_, int version_, std::shared_ptr<ReadyEvent> ready_event_,
                             const StatusCallback& callback_,
                             int device_, std::vector<QueueType>& queue_list_)
    : priority(priority_), version(version_), ready_event(ready_event_), callback(callback_),
      device(device_), queue_list(queue_list_) {}
+
+  virtual ~TensorTableEntry() {
+    tensor.reset();
+    output.reset();
+    ready_event.reset();
+    callback = nullptr; 
+    counter_ptr.reset();
+    compressor.reset();
+    compressed.reset();
+  }
 };
 
 struct P2PTensorTableEntry : TensorTableEntry {
@@ -365,6 +376,13 @@ struct P2PTensorTableEntry : TensorTableEntry {
    : TensorTableEntry(priority_, version_, ready_event_, callback_, device_, queue_list_),
      output_device(output_device_), output_size_unknown(output_size_unknown_),
      group_tensors(group_inputs_), group_outputs(group_outputs_) {}
+
+  ~P2PTensorTableEntry() {
+    aux_output.reset();
+    request_counter.reset();
+    group_tensors.clear();
+    group_outputs.clear();
+  }
 };
 
 
