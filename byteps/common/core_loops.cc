@@ -305,7 +305,7 @@ bool RunRootNcclLoopOnce() {
   auto &tasks = nccl_entry->tasks;
   auto &queues = nccl_entry->queues;
 
-  NCCLCHECK(ncclGroupStart());
+  bool started = false;
   for (auto this_op : nccl_ops) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     for (int i = 0; i < BytePSGlobal::GetNccl()->GetGroupSize(); i++) {
@@ -315,6 +315,13 @@ bool RunRootNcclLoopOnce() {
       }
       tasks.push_back(task);
       queues.push_back(q);
+      // Only start nccl group at the first actual task.
+      // ncclGroupStart & ncclGroupEnd without any task will lead to
+      // nccl unhandled error in some cases
+      if (!started) {
+        NCCLCHECK(ncclGroupStart());
+        started = true;
+      }
 
       if (nccl_size > 1) {
         // notify non-root devices
@@ -333,7 +340,6 @@ bool RunRootNcclLoopOnce() {
     BPS_LOG(TRACE) << "NCCL Group size=" << tasks.size() << " rank=" << rank;
     BytePSGlobal::GetNccl()->EnqueueGroup(nccl_entry);
   } else {
-    NCCLCHECK(ncclGroupEnd());
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
 
