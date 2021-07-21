@@ -111,7 +111,7 @@ class BytePSComm {
   int _num_phy_node;
 
   std::vector<int> _members;
-  int _root;
+  int _root = -1;
 
   void* _comm;
 };

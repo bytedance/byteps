@@ -722,35 +722,35 @@ void CoordinatePushLoop() {
 }
 
 void PcieReduceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void RootNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void SyncNcclLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunSyncNcclOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void CopyDevice2HostLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -769,21 +769,21 @@ void DecompressLoop() {
 }
 
 void RootCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyListenLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootCopyListenLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1358,7 +1358,7 @@ bool RunP2PAckLoopOnce() {
 }
 
 void P2PPullLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1366,7 +1366,7 @@ void P2PPullLoop() {
 };
 
 void P2PPullResponseLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullResponseOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1374,7 +1374,7 @@ void P2PPullResponseLoop() {
 }
 
 void P2PAckLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PAckLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1382,14 +1382,14 @@ void P2PAckLoop() {
 }
 
 void RecvLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRecvLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void P2PGroupCopyHost2DeviceLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PGroupCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1397,7 +1397,7 @@ void P2PGroupCopyHost2DeviceLoop() {
 }
 
 void SendLoop() {
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunSendLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();

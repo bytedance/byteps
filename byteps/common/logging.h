@@ -66,10 +66,10 @@ enum class LogLevel { TRACE, DEBUG, INFO, WARNING, ERROR, FATAL };
 #if BYTEPS_BUILDING_CUDA == 0
   #define NCCLCHECK(cmd) {}
 #else
-  #define NCCLCHECK(cmd)                                                      \
-    {                                                                         \
-      ncclResult_t r = (cmd);                                                 \
-      BPS_CHECK(r == ncclSuccess) << "NCCL error: " << ncclGetErrorString(r); \
+  #define NCCLCHECK(cmd)                                                                   \
+    {                                                                                      \
+      ncclResult_t r = (cmd);                                                              \
+      BPS_CHECK(r == ncclSuccess) << "NCCL error(" << r << "): " << ncclGetErrorString(r); \
     }
 #endif
 

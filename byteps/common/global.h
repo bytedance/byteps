@@ -69,10 +69,10 @@ class BytePSGlobal {
   static int GetWorkerID() { return _worker_id; }
   static int GetPhyNodeID() { return _phy_node_id; }
   static int GetNumWorker() { return _num_worker; }
-  // number of visible devices. This is usually used to make sure
-  // the device ordinal of `cudaSetDevice` does not go out of bound.
-  // In the CPU-only case, it is set to local_size.
-  static int GetNumDevice() { return _num_devices; }
+  // the visible devices. Currently each rank only uses one
+  // visible device. By default it is set to local_rank.
+  // It can be overriden by BYTEPS_VISIBLE_DEVICE
+  static int GetVisibleDevice() { return _visible_device; }
   static bool IsRootDevice() { return _is_root_device; }
   static bool IsDistributed() { return _is_distributed_job; }
   static std::string GetUUID() { return _uuid; }
@@ -229,7 +229,7 @@ class BytePSGlobal {
   static int _local_root;
   static int _server_local_root;
   static int _num_worker;
-  static int _num_devices;
+  static int _visible_device;
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_joint;

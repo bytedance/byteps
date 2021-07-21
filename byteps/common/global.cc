@@ -45,7 +45,7 @@ int BytePSGlobal::_num_phy_node = 1;
 int BytePSGlobal::_local_root = -1;
 int BytePSGlobal::_server_local_root = -1;
 int BytePSGlobal::_num_worker = 1;
-int BytePSGlobal::_num_devices = -1;
+int BytePSGlobal::_visible_device = -1;
 BytePSRole BytePSGlobal::_my_role;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job = false;
@@ -268,12 +268,14 @@ void BytePSGlobal::Init() {
                  << (IsDistributed() ? "" : "non-") << "distributed job";
 
   _shm_obj = std::make_shared<BytePSSharedMemory>();  // share memory obj
-  _num_devices = _local_size;
 
   // Init NCCL
 #if BYTEPS_BUILDING_CUDA == 1
+  auto bps_visible_device = getenv("BYTEPS_VISIBLE_DEVICE");
   auto visible_device = getenv("CUDA_VISIBLE_DEVICES");
-  if (visible_device) {
+  if (bps_visible_device) {
+    _visible_device = atoi(bps_visible_device);
+  } else if (visible_device) {
     auto visible_device_str = std::string(visible_device);
     std::unordered_set<int> device_set;
     size_t pos_begin = 0;
@@ -285,7 +287,7 @@ void BytePSGlobal::Init() {
           auto curr_device = atoi(last_device.c_str());
           device_set.insert(curr_device);
         }
-	pos_begin = i + 1;
+        pos_begin = i + 1;
       }
     }
     auto last_device = visible_device_str.substr(pos_begin);
@@ -293,12 +295,13 @@ void BytePSGlobal::Init() {
       auto curr_device = atoi(last_device.c_str());
       device_set.insert(curr_device);
     }
-    _num_devices = device_set.size();
+    int num_devices = device_set.size();
+    BPS_CHECK(num_devices > 0) << num_devices;
+    _visible_device = _local_rank % num_devices;
   }
-  BPS_CHECK(_num_devices > 0) << _num_devices;
 
   // Set to associated GPU
-  CUDA_CALL(cudaSetDevice(_local_rank % _num_devices));
+  CUDA_CALL(cudaSetDevice(_visible_device));
 
   _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
   _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
@@ -396,9 +399,7 @@ void BytePSGlobal::Init() {
   _initialized = true;
   BPS_LOG(DEBUG) << "Inited rank=" << _rank << " local_rank=" << _local_rank
                  << " size=" << _size << " local_size=" << _local_size
-                 << " worker_id=" << _worker_id;
-
-  BPS_LOG(DEBUG) << "my_pid " << getpid();
+                 << " worker_id=" << _worker_id << " pid=" << getpid();
 
   if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
     _should_sample = true;

@@ -609,7 +609,7 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   if (context.initialized) {
     return;
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
 
   // Add for timeline
   BytePSGlobal::SetProfileFlag(&context);
@@ -689,7 +689,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   if (receiver == -1) {
     receiver = BytePSGlobal::GetRank();
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   // Get metadata
   auto &name = context.tensor_name;
   size_t accumulated = 0;
@@ -773,7 +773,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (context.initialized) {
     return;
   }
-  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetLocalRank() % BytePSGlobal::GetNumDevice()));
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
 
   BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
   // Get metadata
