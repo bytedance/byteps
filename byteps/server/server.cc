@@ -783,7 +783,6 @@ void BytePSServer::init_global_env() {
 
 void BytePSServer::Init(int rank) {
   LOG(INFO) << "byteps server is starting";
-  BytePSServer::init_global_env();
 
   // cpu reducer
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
@@ -881,6 +880,7 @@ extern "C" void byteps_server() {
   int preferred_rank =
     getenv("DMLC_RANK") ?  atoi(getenv("DMLC_RANK")) : -1;
   LOG(INFO) << "BytePS Server with preferred_rank=" << preferred_rank;
+  BytePSServer::init_global_env();
   BytePSServer::Init(preferred_rank);
 }
 

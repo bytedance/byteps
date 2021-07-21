@@ -427,6 +427,7 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
       _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
     if (ps_role == ps::Node::JOINT) {
+      server::BytePSServer::init_global_env();
       _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));
     }
     // TODO: support resume

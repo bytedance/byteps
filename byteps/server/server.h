@@ -90,6 +90,9 @@ class BytePSServer {
     // functions
     static void Init(int rank);
     static void SendPushResponse(uint64_t key);
+    // init_global_env should be called before `Init()`
+    // since it uses `getenv` under the hood, calling it from
+    // the main thread is recommended to avoid race conditions
     static void init_global_env();
 
     static void BytePSHandler(const ps::KVMeta& req_meta,

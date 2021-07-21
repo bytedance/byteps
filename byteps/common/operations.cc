@@ -336,6 +336,9 @@ Status EnqueueAlltoAllTensor(std::string& name,
   P2PTensorTableEntry base_resp_task(priority, version, ready_event, callback,
                                     input_device, response_q, output_device, output_size_unknown,
                                     group_inputs, group_outputs);
+  request_task->tensor_name = std::string("Base_Request_Task");
+  base_resp_task.tensor_name = std::string("Base_Response_Task");
+
   // the accumulated offset list always starts with 0
   request_task->offset = 0;
   request_task->offset_list.push_back(0);
