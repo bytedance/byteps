@@ -58,6 +58,12 @@ uint32_t GetAlltoallTensorId(uint64_t key);
 // compose the key for the alltoall operations, where request starts from `request_rank`
 uint64_t ComposeAlltoallKey(int32_t declared_key, int request_rank);
 
+inline int DivUp(int x, int y) { return (x + y - 1) / y; }
+inline int RoundUp(int x, int y) { return DivUp(x, y) * y; }
+
+// allocate a page aligned buffer
+void PageAlignedMalloc(void** ptr, size_t size);
+
 }  // namespace server
 }  // namespace byteps
 

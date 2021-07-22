@@ -753,10 +753,8 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
       ps::SArray<char> vals((char*) buff, bound, false);
       DeviceType device = recv_on_gpu ? GPU : CPU;
       int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, device);
-      if (!BytePSGlobal::IsAlltoallUsePull()) {
-        // blocking push, also as a global barrirer
-        ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
-      }
+      // blocking push, also as a global barrirer
+      ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
     } else {
       // no need to create the cpubuff as a receiver
       context.cpubuff_list.emplace_back(buff);

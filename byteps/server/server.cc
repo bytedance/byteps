@@ -108,9 +108,6 @@ ReadyTable* BytePSServer::p2p_group_copy_table_ = nullptr;
 // compression
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
 
-int DivUp(int x, int y) { return (x + y - 1) / y; }
-int RoundUp(int x, int y) { return DivUp(x, y) * y; }
-
 // TODO: remove Postoffice API calls
 uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
@@ -158,17 +155,6 @@ void* PageAlignedSharedMemory(const std::string& shm_name, size_t size) {
   void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   CHECK_NE(ptr, (void*)-1) << strerror(errno);
   return ptr;
-}
-
-void PageAlignedMalloc(void** ptr, size_t size) {
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  void* p;
-  int size_aligned = RoundUp(size, page_size);
-  int ret = posix_memalign(&p, page_size, size_aligned);
-  CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
-  CHECK(p);
-  memset(p, 0, size);
-  *ptr = p;
 }
 
 BytePSArray* BytePSServer::GetStore(uint64_t key) {
@@ -377,8 +363,8 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
   std::lock_guard<std::mutex> lock(handle_mu_); // push & pull may have racing
   DataHandleType type = DepairDataHandleType(req_meta.cmd);
   auto req_type = type.requestType;
-  CHECK(req_type == RequestType::kDefaultSend 
-        || req_type == RequestType::kGroupSend 
+  CHECK(req_type == RequestType::kDefaultSend
+        || req_type == RequestType::kGroupSend
         || req_type == RequestType::kEmptyGroupSend
         || req_type == RequestType::kDefaultPull
         || req_type == RequestType::kAckSignal);
@@ -430,10 +416,12 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
       // perform registration
       server->RegisterRecvBufferWithRank(worker_rank, keys, vals, lens);
     } else {
-      // init stored buffer, use page aligned memory
-      std::string prefix = p2p_shm_prefix_ + std::to_string(preferred_rank_);
-      std::string shm_name = prefix + "_" + std::to_string(req_data.keys[0]);
-      PageAlignedMalloc((void**)&stored->tensor, len);
+      // we directly use the data pointer allocated in ps-lite
+      // note that this pointer may change. we store the value
+      // here simply to indicate that this key was seen before
+      stored->tensor = req_data.vals.data();
+      // the tensor is managed by pslite, not us
+      stored->managed = false;
     }
     if (log_key_info_) {
       LOG(INFO) << "stored tensor for key=" << key << "\tcreated, rank="
@@ -865,7 +853,8 @@ void BytePSServer::Init(int rank) {
   for (auto& it : store_) {
     if (it.second.tensor) {
       if (it.second.device == common::CPU) {
-        free(it.second.tensor);
+        // only free the tensors managed by us
+        if (it.second.managed) free(it.second.tensor);
       } else {
         CUDA_CALL(cudaFree(it.second.tensor));
       }

@@ -16,6 +16,8 @@
 #include "common.h"
 #include "../common/common.h"
 #include <cmath>
+#include <cstring>
+#include <unistd.h>
 
 namespace byteps {
 namespace server {
@@ -61,6 +63,17 @@ uint64_t ComposeAlltoallKey(int32_t declared_key, int request_rank) {
   request_key += ((uint64_t) declared_key) << 16;
   request_key += ((uint64_t) common::ALLTOALL_OP) << 10;
   return request_key;
+}
+
+void PageAlignedMalloc(void** ptr, size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p;
+  int size_aligned = RoundUp(size, page_size);
+  int ret = posix_memalign(&p, page_size, size_aligned);
+  BPS_CHECK_EQ(ret, 0) << "posix_memalign error: " << strerror(ret);
+  BPS_CHECK(p);
+  memset(p, 0, size);
+  *ptr = p;
 }
 
 }  // namespace server

@@ -61,6 +61,8 @@ struct BytePSArray {
   int dtype;
   ps::KVPairs<char> tmp_sarray;
   common::DeviceType device = common::CPU;
+  // whether the tensor data is managed by the server
+  bool managed = true;
 };
 
 struct RecvArray {
