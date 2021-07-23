@@ -300,6 +300,10 @@ void BytePSGlobal::Init() {
     _visible_device = _local_rank % num_devices;
   }
 
+  // Set to associated GPU with a default value with local rank/size
+  if (_visible_device == -1) {
+    _visible_device = _local_rank % _local_size;
+  }
   // Set to associated GPU
   CUDA_CALL(cudaSetDevice(_visible_device));
 
