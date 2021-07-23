@@ -254,6 +254,7 @@ def launch_bps():
         my_env = os.environ.copy()
         # TODO(yulu): temp solution. We should really set DMLC_NUM_WORKER and
         # DMLC_NUM_SERVER properly before running this script.
+        my_env["PS_VERBOSE"] = os.environ.get("PS_VERBOSE", '1')
         my_env["DMLC_NUM_WORKER"] = str(int(os.environ["DMLC_NUM_WORKER"]) *
                                         int(os.environ["ARNOLD_WORKER_GPU"]))
         my_env["DMLC_NUM_SERVER"] = my_env["DMLC_NUM_WORKER"]
