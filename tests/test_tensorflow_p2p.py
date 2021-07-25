@@ -508,12 +508,12 @@ is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
 tests.test_telemtry()
 tests.test_allreduce()
 tests.test_all2all_invalid_splits()
+tests.test_all2all(src_device='cpu', dst_device='cpu')
 if test_sanity:
     exit()
 
 
 if is_direct_resp == 2:
-    tests.test_all2all()
     tests.test_all2all(compression=bps.Compression.fp16)
     if not is_use_pull:
         tests.test_all2all_no_recv_splits()
@@ -522,7 +522,6 @@ if is_direct_resp == 2:
 if is_direct_resp == 0:
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=False)
-    tests.test_all2all(src_device='cpu', dst_device='cpu')
     tests.test_all2all_benchmark()
     tests.test_all2all_group(src_device='cpu', dst_device='cpu')
     if not test_cpu_only:
