@@ -124,11 +124,11 @@ class TensorFlowTests:
                 splits = tf.constant(splits_list_copy, dtype=tf.int32)
                 recv_splits = tf.constant(recv_splits_list_copy, dtype=tf.int32)
                 tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype)
-            try:
-                alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=f'test_invalid_splits')
-                assert False
-            except tf.errors.InvalidArgumentError:
-                pass
+                try:
+                    alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=f'test_invalid_splits')
+                    assert False
+                except tf.errors.InvalidArgumentError:
+                    pass
         # check split with negative values
         check_invalid_alltoall(-100, 0, splits_list, recv_splits_list)
         # check recv_split with negative values
