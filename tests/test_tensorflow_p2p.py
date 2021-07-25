@@ -9,6 +9,8 @@ parser.add_argument('--backend', type=str, default='byteps')
 parser.add_argument('--iter', type=int, default=250)
 
 is_use_pull = int(os.environ.get('BYTEPS_ALL2ALL_USE_PULL', 0))
+test_cpu_only = int(os.environ.get('TEST_CPU_ONLY', 0))
+test_sanity = int(os.environ.get('TEST_SANITY', 0))
 args = parser.parse_args()
 if args.backend == 'byteps':
     import byteps.tensorflow as bps
@@ -118,9 +120,10 @@ class TensorFlowTests:
             recv_splits_list_copy = recv_splits_list.copy()
             splits_list_copy[0] += split_delta
             recv_splits_list_copy[0] += recv_split_delta
-            splits = tf.constant(splits_list_copy, dtype=tf.int32)
-            recv_splits = tf.constant(recv_splits_list_copy, dtype=tf.int32)
-            tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype)
+            with tf.device("/cpu:0"):
+                splits = tf.constant(splits_list_copy, dtype=tf.int32)
+                recv_splits = tf.constant(recv_splits_list_copy, dtype=tf.int32)
+                tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype)
             try:
                 alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=f'test_invalid_splits')
                 assert False
@@ -505,6 +508,8 @@ is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
 tests.test_telemtry()
 tests.test_allreduce()
 tests.test_all2all_invalid_splits()
+if test_sanity:
+    exit()
 
 
 if is_direct_resp == 2:
@@ -516,26 +521,27 @@ if is_direct_resp == 2:
 
 if is_direct_resp == 0:
     tests.test_all2all_autograd(src_gpu=False, dst_gpu=False)
-    tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
-    tests.test_all2all_autograd(src_gpu=True, dst_gpu=False)
-    tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
-    tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=True)
     tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=False)
-    tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=False)
-    tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=True)
     tests.test_all2all(src_device='cpu', dst_device='cpu')
-    tests.test_all2all(src_device='gpu', dst_device='gpu')
-    tests.test_all2all(src_device='cpu', dst_device='gpu')
-    tests.test_all2all(src_device='gpu', dst_device='cpu')
     tests.test_all2all_benchmark()
-    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
-    tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
-    tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
     tests.test_all2all_group(src_device='cpu', dst_device='cpu')
-    tests.test_all2all_group(src_device='gpu', dst_device='cpu')
-    tests.test_all2all_group(src_device='cpu', dst_device='gpu')
-    tests.test_all2all_group(src_device='gpu', dst_device='gpu')
-    tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
+    if not test_cpu_only:
+        tests.test_all2all_autograd(src_gpu=False, dst_gpu=True)
+        tests.test_all2all_autograd(src_gpu=True, dst_gpu=False)
+        tests.test_all2all_autograd(src_gpu=True, dst_gpu=True)
+        tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=True)
+        tests.test_all2all_group_autograd(src_gpu=True, dst_gpu=False)
+        tests.test_all2all_group_autograd(src_gpu=False, dst_gpu=True)
+        tests.test_all2all(src_device='gpu', dst_device='gpu')
+        tests.test_all2all(src_device='cpu', dst_device='gpu')
+        tests.test_all2all(src_device='gpu', dst_device='cpu')
+        tests.test_all2all_benchmark(dst_gpu=True, src_gpu=False)
+        tests.test_all2all_benchmark(dst_gpu=False, src_gpu=True)
+        tests.test_all2all_benchmark(dst_gpu=True, src_gpu=True)
+        tests.test_all2all_group(src_device='gpu', dst_device='cpu')
+        tests.test_all2all_group(src_device='cpu', dst_device='gpu')
+        tests.test_all2all_group(src_device='gpu', dst_device='gpu')
+        tests.test_all2all_group_benchmark(dst_gpu=True, src_gpu=True)
     if not is_use_pull:
         tests.test_all2all_no_recv_splits()
 
