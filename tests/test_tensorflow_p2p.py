@@ -513,7 +513,7 @@ if test_sanity:
     exit()
 
 
-if is_direct_resp == 2:
+if is_direct_resp > 0:
     tests.test_all2all(compression=bps.Compression.fp16)
     if not is_use_pull:
         tests.test_all2all_no_recv_splits()

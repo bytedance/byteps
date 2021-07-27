@@ -53,7 +53,7 @@ bool BytePSGlobal::_is_cross_pcie_switch = false;
 bool BytePSGlobal::_is_joint = false;
 // all-to-all
 bool BytePSGlobal::_skip_h2d = false;
-bool BytePSGlobal::_skip_d2h = false;
+bool BytePSGlobal::_skip_input_copy = false;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
 uint32_t BytePSGlobal::_alltoall_buff_bytes = 4096000;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
@@ -171,16 +171,15 @@ void BytePSGlobal::Init() {
   _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
-  _skip_d2h = getenv("BYTEPS_P2P_SKIP_D2H") ? atoi(getenv("BYTEPS_P2P_SKIP_D2H")) : false;
+  _skip_input_copy = getenv("BYTEPS_P2P_SKIP_INPUT_COPY") ? atoi(getenv("BYTEPS_P2P_SKIP_INPUT_COPY")) : false;
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
-                << ", skip_d2h=" << _skip_d2h << ", trace=" << _is_trace
+                << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N");
-
   if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
     _local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
   }
@@ -433,6 +432,8 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
     if (ps_role == ps::Node::JOINT) {
       server::BytePSServer::init_global_env();
       _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));
+      BPS_CHECK(!(IsDirectResponse() == 2 && ShouldSkipInputCopy()))
+        << "direct response should not be 2 when skipping input copies";
     }
     // TODO: support resume
     BPS_LOG(DEBUG) << "PS rank " << _worker_id << " initialized. num_server="

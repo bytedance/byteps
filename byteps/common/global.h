@@ -79,7 +79,7 @@ class BytePSGlobal {
   // BytePS is launched in joint mode
   static bool IsJoint() { return _is_joint; }
   static bool IsSkipH2D() { return _skip_h2d; }
-  static bool IsSkipD2H() { return _skip_d2h; }
+  static bool ShouldSkipInputCopy() { return _skip_input_copy; }
   // IsDirectResponse:
   // 0: receiver does not directly response. Receiver performs push response after H2D copy
   // 1: receiver directly response. Receiver performs push response inside the server handler and before H2D copy
@@ -235,7 +235,7 @@ class BytePSGlobal {
   static bool _is_joint;
   // p2p
   static bool _skip_h2d;
-  static bool _skip_d2h;
+  static bool _skip_input_copy;
   // alltoall
   static std::unordered_map<std::string, uint64_t> _alltoall_session_ids;
   static std::unordered_map<std::string, uint64_t> _alltoall_completions;

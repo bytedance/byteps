@@ -191,7 +191,7 @@ void PartitionTensor(
     // Short-cut for P2P ops
     if (entry->context->op_type != PUSH_PULL_OP) {
       auto ctx = entry->context;
-      if (BytePSGlobal::IsSkipD2H() && entry->tensor && entry->tensor->data()) {
+      if (BytePSGlobal::ShouldSkipInputCopy() && entry->tensor && entry->tensor->data()) {
         e->cpubuff = ((char*)entry->tensor->data()) + accumulated;
       } else {
         e->cpubuff = ctx->cpubuff_list.at(i);
@@ -642,24 +642,38 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   // send buffs
   for (size_t i = 0; i < num_ranks; ++i) {
     if (use_pull) {
+      // pull based
       context.cpubuff_list.emplace_back(nullptr);
     } else {
+      // push based
       auto k = key_list[i];
       auto sender = my_rank;
       auto receiver = i;
       auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
-      BPS_LOG(DEBUG) << "Init ps-lite key:" << k << " encoded:" << pskv.keys[0];
+      BPS_LOG(TRACE) << "Init ps-lite key:" << k << " encoded:" << pskv.keys[0];
       // the shared memory is always created at partition size
-      void* buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
-      context.cpubuff_list.emplace_back(buff);
+      // if the copy from input to aligned buffer is skipped, there
+      // is no need to create the aligned buffer
+      void* buff = nullptr;
+      // create a buffer for server initialization
+      // Note that we might still need to create shared memory
+      // for intra-node optimizations. But it's not implemented yet
+      server::PageAlignedMalloc(&buff, bound);
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals((char*) buff, bound, false);
       DeviceType device = recv_on_gpu ? GPU : CPU;
       int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, device);
-      if (!BytePSGlobal::IsAlltoallUsePull() && sender != receiver) {
+      if (sender != receiver) {
         // blocking push, also as a global barrirer
         ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
       }
+      if (BytePSGlobal::ShouldSkipInputCopy()) {
+        // if the core loops does not copy the input to the
+        // page aligned buff, we clean it up right after initialization
+        free(buff);
+        buff = nullptr;
+      }
+      context.cpubuff_list.emplace_back(buff);
     }
   }
   // recv buffs

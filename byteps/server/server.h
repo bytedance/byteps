@@ -135,8 +135,6 @@ class BytePSServer {
     static volatile bool debug_mode_;
     static volatile bool enable_schedule_;
     static volatile bool is_server_;
-    // p2p knobs
-    static std::string p2p_shm_prefix_;
     static ps::Node::Role role_;
 
     static size_t num_phy_node_;

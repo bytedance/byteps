@@ -43,8 +43,6 @@ volatile bool BytePSServer::sync_mode_ = true;
 volatile bool BytePSServer::debug_mode_ = false;
 volatile bool BytePSServer::enable_schedule_ = false;
 volatile bool BytePSServer::is_server_ = false;
-// p2p knobs
-std::string BytePSServer::p2p_shm_prefix_;
 // received tensors
 std::unordered_map<uint64_t, RecvArray> BytePSServer::recved_partitions_;
 std::mutex BytePSServer::recved_partitions_mu_;
@@ -743,12 +741,8 @@ void BytePSServer::init_global_env() {
   enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
   if (enable_schedule_) LOG(INFO) << "Enable engine scheduling for BytePS server";
 
-  p2p_shm_prefix_ = GetEnv("BYTEPS_P2P_SHM_PREFIX", "BytePS_P2P_ShM_");
-  LOG(INFO) << "Using p2p shm prefix " << p2p_shm_prefix_;
-
   auto direct_response_str = getenv("BYTEPS_SERVER_DIRECT_RESPONSE");
-  if (direct_response_str) p2p_direct_response_ = atoi(direct_response_str); 
-  LOG(INFO) << "BytePS server direct response = " << p2p_direct_response_;
+  if (direct_response_str) p2p_direct_response_ = atoi(direct_response_str);
 
   auto num_worker_str = getenv("DMLC_NUM_WORKER");
   CHECK(num_worker_str);
@@ -764,7 +758,8 @@ void BytePSServer::init_global_env() {
     num_byteps_workers_ = atoi(num_worker_str) * atoi(local_size_str);
   }
   if (is_server_) {
-    LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" << num_byteps_workers_;
+    LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" << num_byteps_workers_
+              << " direct response = " << p2p_direct_response_;
   }
 }
 

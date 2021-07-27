@@ -1173,9 +1173,10 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
       // split = 0, nothing to copy
       if (output_size_unknown) {
         // when output size is unknown and split=0
-        // we still perform send with 1 byte data
-        char* cpubuff = (char*) task->pcie_cpubuff[i];
-        ps::SArray<char> vals(cpubuff, 1, false);
+        // we still perform send with 1 byte data using
+        // the tensor name string, as it should be available during
+        // byteps's life time
+        ps::SArray<char> vals((char*)task->tensor_name.c_str(), 1, false);
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, receiver);
         BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, empty_cmd, cb);
       }
@@ -1187,7 +1188,8 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
       auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
       char* tensor = (char*) data + offset;
       int input_device = task->device;
-      if (input_device == CPU_DEVICE_ID && resp_mode == 2) {
+      if (input_device == CPU_DEVICE_ID && resp_mode == 2 &&
+          !BytePSGlobal::ShouldSkipInputCopy()) {
         char* cpubuff = (char*) task->pcie_cpubuff[i];
         CHECK(cpubuff != nullptr);
         CopyD2H(cpubuff, data + offset, len, true);
