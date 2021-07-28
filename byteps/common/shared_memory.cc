@@ -107,8 +107,7 @@ std::vector<void*> BytePSSharedMemory::openNumaSharedMemory(const std::string& p
   std::vector<void*> ret;
 
   for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
-    std::string prefix_i = prefix + std::to_string(BytePSGlobal::GetPhyNodeID())
-                         + std::string("_") + std::to_string(i) + "_ShM_";
+    std::string prefix_i = prefix + std::to_string(i) + "_ShM_";
     if (i <= numa_max_node()) {
       numa_set_preferred(i);
     } else {

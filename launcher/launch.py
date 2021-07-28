@@ -35,35 +35,37 @@ class PropagatingThread(threading.Thread):
         return self.exc
 
 
-COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
+COMMON_REQUIRED_ENVS = ["BYTEPS_NUM_NODES", "BYTEPS_LOCAL_SIZE", "DMLC_ROLE",
                         "DMLC_PS_ROOT_URI", "DMLC_PS_ROOT_PORT"]
-# TODO(yulu): temp solution. Using DMLC_WORKER_ID as the node id for now. Will
-# use PHY_NODE_ID later.
-# WORKER_REQUIRED_ENVS = ["PHY_NODE_ID"]
-WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
+WORKER_REQUIRED_ENVS = ["BYTEPS_NODE_ID"]
 NUMA_PATH = "/sys/devices/system/node"
 
-
-def get_numa_info():
-    ret = []
-    if os.path.exists(NUMA_PATH):
-        items = os.listdir(NUMA_PATH)
-        nodes = list(filter(lambda str: str.startswith("node"), items))
-        if nodes:
-            for node in nodes:
-                items = os.listdir(os.path.join(NUMA_PATH, node))
-                cpus = [re.findall("cpu\d+", cpu) for cpu in items]
-                cpus = list(filter(lambda x: x, cpus))
-                cpu_ids = [int(cpu[0].split('cpu')[1]) for cpu in cpus]
-                cpu_ids = sorted(cpu_ids)
-                ret.append(cpu_ids)
-    else:
-        print("NUMA PATH %s NOT FOUND" % NUMA_PATH)
-    return ret
-
-
 def allocate_cpu(local_size):
-    def _get_allocation(nodes, quota):
+    cpu_mt = os.getenv("BYTEPS_MULTITHREADED_CPU", "1").lower() in ["1", "true"]
+    def get_numa_info():
+        """
+        returns a list of list, each sub list is the cpu ids of a numa node. e.g
+        [[0,1,2,3], [4,5,6,7]]
+        """
+        ret = []
+        if os.path.exists(NUMA_PATH):
+            items = os.listdir(NUMA_PATH)
+            nodes = list(filter(lambda str: str.startswith("node"), items))
+            if nodes:
+                for node in nodes:
+                    items = os.listdir(os.path.join(NUMA_PATH, node))
+                    cpus = [re.findall("cpu\d+", cpu) for cpu in items]
+                    cpus = list(filter(lambda x: x, cpus))
+                    cpu_ids = [int(cpu[0].split('cpu')[1]) for cpu in cpus]
+                    cpu_ids = sorted(cpu_ids)
+                    if cpu_mt:
+                        cpu_ids = cpu_ids[:len(cpu_ids) // 2]
+                    ret.append(cpu_ids)
+        else:
+            print("NUMA PATH %s NOT FOUND" % NUMA_PATH)
+        return ret
+
+    def _get_allocation(nodes, quota, cpu_num, cpu_blacklist):
         if quota < 1:
             raise ValueError("quota should be no less than 1")
         ret = []
@@ -80,42 +82,50 @@ def allocate_cpu(local_size):
                 ret.append(node[last_idx:idx])
                 quota -= idx - last_idx
                 last_idx = idx
-            ret.append(node[last_idx:last_idx+quota])
+            curr_alloc = node[last_idx:last_idx+quota]
+            curr_alloc = [item for item in curr_alloc if item not in cpu_blacklist]
+            ret.append(curr_alloc)
+            if cpu_mt:
+                curr_alloc = [x + cpu_num for x in curr_alloc]
+                curr_alloc = [item for item in curr_alloc if item not in cpu_blacklist]
+                ret.append(curr_alloc)
             for idx in sorted(range(quota_bck), reverse=True):
                 del node[idx]
             return ret
         return ret
 
     def _get_quota(nodes, local_size):
-        if len(nodes) > 1:
-            cpu_nums = reduce(lambda x, y: (len(x) + len(y)), nodes)
-        else:
-            cpu_nums = len(nodes[0])
-        
-        # default quota is the number of cpus for non-root processess
-        default_quota = int(os.getenv("BYTEPS_NUMA_DEFAULT_QUOTA", 6))
-        while default_quota >= 1 and default_quota * local_size > cpu_nums:
-            default_quota -= 2
+
+        # default quota is the number of physical cores for non-root processess
+        default_quota = cpu_num // local_size
+        default_quota = int(os.getenv("BYTEPS_NUMA_DEFAULT_QUOTA", default_quota))
+        while default_quota >= 1 and default_quota * local_size > cpu_num:
+            default_quota -= 1
 
         # root quota is the number of cpus for root processess
         # root does more work, thus using more cpus
-        root_quota = cpu_nums - default_quota * (local_size - 1)
+        root_quota = cpu_num - default_quota * (local_size - 1)
         if int(os.getenv("BYTEPS_NUMA_ROOT_QUOTA", 0)):
             root_quota = int(os.getenv("BYTEPS_NUMA_ROOT_QUOTA", 0))
 
         node_size = len(nodes[0])
+        if cpu_mt:
+            node_size //= 2
         while root_quota >= 1 and root_quota > node_size:
-            root_quota -= 2
+            root_quota -= 1
         return [default_quota] * (local_size - 1) + [root_quota]
 
     nodes = get_numa_info()
     if not nodes:
         return None
+    cpu_num = reduce(lambda x, y: (x + len(y)), nodes, 0)
     quota_list = _get_quota(nodes, local_size)
+    cpu_blacklist = os.getenv("BYTEPS_CPU_BLACKLIST", "-1")
+    cpu_blacklist = [int(item) for item in cpu_blacklist.split(",")]
     ret = []
     for quota in quota_list:
         while quota > 0:
-            allocation = _get_allocation(nodes, quota)
+            allocation = _get_allocation(nodes, quota, cpu_num, cpu_blacklist)
             if allocation:
                 ret.append(allocation)
                 break
@@ -147,11 +157,6 @@ def worker_fn(local_rank, local_size, command, allocation=None):
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
 
-    # TODO(yulu): temp solution. We should really set DMLC_NUM_WORKER and
-    # DMLC_NUM_SERVER properly before running this script.
-    my_env["DMLC_NUM_WORKER"] = str(int(os.environ["DMLC_NUM_WORKER"]) * local_size)
-    my_env["DMLC_NUM_SERVER"] = my_env["DMLC_NUM_WORKER"]
-
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
             command = "python " + command
@@ -182,16 +187,14 @@ def worker_fn(local_rank, local_size, command, allocation=None):
             "BYTEPS_TRACE_DIR", "."), str(local_rank))
         if not os.path.exists(trace_path):
             os.makedirs(trace_path)
-    # node_id = int(os.environ.get("PHY_NODE_ID", "0"))
-    # for running on arnold
-    node_id = int(os.environ.get("DMLC_WORKER_ID", "0"))
+    node_id = int(os.environ.get("BYTEPS_NODE_ID", "0"))
     global_rank = int(node_id * local_size + local_rank)
     my_env["DMLC_WORKER_ID"] = str(global_rank)
     my_env["DMLC_RANK"] = my_env["DMLC_WORKER_ID"]
-    log_file_name =os.getenv('BYTEPS_LOG_FILE', '')
+    log_file_name = os.getenv('BYTEPS_LOG_FILE', '')
     if log_file_name:
-        my_file = open(f"{log_file_name}-g{global_rank}-l{local_rank}.log", "w+")
-        stdout_sink = stderr_sink = my_file
+        stdout_sink = open(f"{log_file_name}-g{global_rank}-l{local_rank}-stdout.log", "w+")
+        stderr_sink = open(f"{log_file_name}-g{global_rank}-l{local_rank}-stderr.log", "w+")
     else:
         stdout_sink = sys.stdout
         stderr_sink = sys.stderr
@@ -217,7 +220,7 @@ def launch_bps():
     check_env()
     os.environ["PYTHONUNBUFFERED"] = "1"
     if os.environ["DMLC_ROLE"] in ["worker", "joint"]:
-        if os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]:
+        if os.getenv("BYTEPS_FORCE_JOINT_MODE", "1").lower() in ["1", "true"]:
             os.environ["DMLC_ROLE"] = "joint"
         # launch workers
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
@@ -226,12 +229,13 @@ def launch_bps():
             local_size = 1
         t = [None] * local_size
 
-        if os.environ.get("BYTEPS_NUMA_ON", "") == "1":
+        bind_to_cores = os.getenv("BYTEPS_NUMA_ON", "1") == "1"
+        if bind_to_cores:
             allocations = allocate_cpu(local_size)
 
         for i in range(local_size):
             command = ' '.join(sys.argv[1:])
-            if os.environ.get("BYTEPS_NUMA_ON", "") == "1":
+            if bind_to_cores:
                 t[i] = PropagatingThread(target=worker_fn, args=[
                     i, local_size, command, allocations[i]])
             else:
@@ -252,12 +256,6 @@ def launch_bps():
     command = "python3 -c 'import byteps.server'"
     if os.environ["DMLC_ROLE"] == "scheduler":
         my_env = os.environ.copy()
-        # TODO(yulu): temp solution. We should really set DMLC_NUM_WORKER and
-        # DMLC_NUM_SERVER properly before running this script.
-        my_env["PS_VERBOSE"] = os.environ.get("PS_VERBOSE", '1')
-        my_env["DMLC_NUM_WORKER"] = str(int(os.environ["DMLC_NUM_WORKER"]) *
-                                        int(os.environ["ARNOLD_WORKER_GPU"]))
-        my_env["DMLC_NUM_SERVER"] = my_env["DMLC_NUM_WORKER"]
         subprocess.check_call(command, env=my_env,
                               stdout=sys.stdout, stderr=sys.stderr, shell=True)
         return
@@ -279,4 +277,7 @@ def launch_bps():
         t[i].join()
 
 if __name__ == "__main__":
+    os.environ["DMLC_NUM_WORKER"] = str(int(os.environ["BYTEPS_NUM_NODES"]) *
+                                        int(os.environ["BYTEPS_LOCAL_SIZE"]))
+    os.environ["DMLC_NUM_SERVER"] = os.environ["DMLC_NUM_WORKER"]
     launch_bps()

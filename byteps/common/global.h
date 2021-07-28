@@ -69,6 +69,8 @@ class BytePSGlobal {
   static int GetWorkerID() { return _worker_id; }
   static int GetPhyNodeID() { return _phy_node_id; }
   static int GetNumWorker() { return _num_worker; }
+  static int GetWorkerLocalRoot() { return _worker_local_root; }
+  static int GetServerLocalRoot() { return _server_local_root; }
   // the visible devices. Currently each rank only uses one
   // visible device. By default it is set to local_rank.
   // It can be overriden by BYTEPS_VISIBLE_DEVICE
@@ -226,7 +228,7 @@ class BytePSGlobal {
   static int _worker_id;
   static int _phy_node_id;
   static int _num_phy_node;
-  static int _local_root;
+  static int _worker_local_root;
   static int _server_local_root;
   static int _num_worker;
   static int _visible_device;

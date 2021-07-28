@@ -42,7 +42,7 @@ int BytePSGlobal::_local_size = 1;
 int BytePSGlobal::_worker_id = 0;
 int BytePSGlobal::_phy_node_id = 0;
 int BytePSGlobal::_num_phy_node = 1;
-int BytePSGlobal::_local_root = -1;
+int BytePSGlobal::_worker_local_root = -1;
 int BytePSGlobal::_server_local_root = -1;
 int BytePSGlobal::_num_worker = 1;
 int BytePSGlobal::_visible_device = -1;
@@ -181,10 +181,10 @@ void BytePSGlobal::Init() {
                 << ", session_size=" << _alltoall_session_size
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N");
   if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
-    _local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
+    _worker_local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
   }
-  if (_local_root == -1) {
-    _local_root = _local_size - 1;
+  if (_worker_local_root == -1) {
+    _worker_local_root = _local_size - 1;
   }
 
   if (getenv("BYTEPS_SERVER_LOCAL_ROOT")) {
