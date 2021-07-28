@@ -23,6 +23,8 @@
 #include <memory>
 #include <thread>
 #include <numa.h>
+#include <numeric>
+#include <algorithm>
 
 #include "compressor/compressor.h"
 #include "compressor/compressor_registry.h"
@@ -392,7 +394,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
 
   // initialize the key list and buffer list
   common::InitTensorAlltoall(byteps_context, request_size_list, resp_size_list,
-                             dtype, recv_on_gpu, use_pull);
+                             dtype, recv_on_gpu, output_size_unknown, use_pull);
   BPS_CHECK(byteps_context.cpubuff_list.size() == num_ranks * 2);
   BPS_CHECK(byteps_context.key_list.size() == num_ranks * 2);
   // the first half of cpubuff_list/key_list is for the request task
@@ -595,19 +597,48 @@ void GenerateAlltoallKeys(std::vector<uint64_t>* key_list, int32_t declared_key,
 
 void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list,
                         std::vector<int> &resp_size_list, int dtype,
-                        bool recv_on_gpu, bool use_pull) {
-  auto bound = BytePSGlobal::GetAlltoallBuffBound();
+                        bool recv_on_gpu, bool output_size_unknown, bool use_pull) {
+  // Determine bound (the push buffer allocation size) in two ways:
+  // 1. If output size unknown, get bound from env var and each rank will allocate the same size;
+  // 2. If output size known, get factor from env var and multiply with the 1st time's tensor size,
+  //    also we set a min size at GetAlltoallBuffBound to prevent cases where the first minibatch
+  //    of data is too small.
+  uint32_t bound = BytePSGlobal::GetAlltoallBuffBound();
+  std::vector<uint32_t> bounds_for_ranks(request_size_list.size(), bound);
   std::lock_guard<std::mutex> lock(context.init_mutex);
   size_t total_request_size = 0;
   size_t total_resp_size = 0;
+
+  // Calculate bounds size
+  if (! context.initialized) {
+    if (! output_size_unknown) {
+      for (size_t i = 0; i < request_size_list.size(); ++i){
+        uint32_t needed_size = static_cast<uint32_t>(std::max(request_size_list[i], resp_size_list[i])
+                                                    * BytePSGlobal::GetAlltoallBuffFactor());
+        bounds_for_ranks[i] = std::max(needed_size, bound);
+        BPS_LOG(DEBUG) << "Setting AllToAll buffer size bound for name = " << context.tensor_name << ", "
+                       << "rank = " << i << ", " 
+                       << "first minibatch size = " << needed_size << ", " 
+                       << "minimum bound limit = " << bound << ", "
+                       << "final bound calculated = " << bounds_for_ranks[i];
+      }
+    }
+    context.bounds_for_ranks = bounds_for_ranks;
+  }
   // TODO(haibin.lin): we only support 1 partition per send/recv pair for alltoall
+  // If inited, we check size against bounds (send / recv have the same bound size for the same rank).
+  // If not inited, we assign bounds to the context's bounds.
   for (size_t i = 0; i < request_size_list.size(); ++i) {
-    BPS_CHECK(request_size_list[i] <= bound) << "Alltoall send size exceeds buffer size for rank="
-      << i << " name=" << context.tensor_name << " size=" << request_size_list[i];
-    BPS_CHECK(resp_size_list[i] <= bound) << "Alltoall recv size exceeds buffer size for rank="
-      << i << " name=" << context.tensor_name << " size=" << resp_size_list[i];
     total_request_size += request_size_list[i];
     total_resp_size += resp_size_list[i];
+    BPS_CHECK(request_size_list[i] <= context.bounds_for_ranks[i]) 
+        << "Alltoall send size exceeds buffer size for rank="
+        << i << " name=" << context.tensor_name << " size=" << request_size_list[i]
+        << " buffer_size=" << context.bounds_for_ranks[i];
+    BPS_CHECK(resp_size_list[i] <= context.bounds_for_ranks[i])
+        << "Alltoall recv size exceeds buffer size for rank="
+        << i << " name=" << context.tensor_name << " size=" << resp_size_list[i]
+        << " buffer_size=" << context.bounds_for_ranks[i];
   }
   if (context.initialized) {
     return;
@@ -658,9 +689,9 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
       // create a buffer for server initialization
       // Note that we might still need to create shared memory
       // for intra-node optimizations. But it's not implemented yet
-      server::PageAlignedMalloc(&buff, bound);
+      server::PageAlignedMalloc(&buff, bounds_for_ranks[i]);
       // false means not to delete data when SArray is deleted
-      ps::SArray<char> vals((char*) buff, bound, false);
+      ps::SArray<char> vals((char*) buff, bounds_for_ranks[i], false);
       DeviceType device = recv_on_gpu ? GPU : CPU;
       int cmd = server::GetCommandType(server::RequestType::kDefaultSend, dtype, device);
       if (sender != receiver) {

@@ -56,6 +56,7 @@ bool BytePSGlobal::_skip_h2d = false;
 bool BytePSGlobal::_skip_input_copy = false;
 uint32_t BytePSGlobal::_partition_bytes = 4096000;
 uint32_t BytePSGlobal::_alltoall_buff_bytes = 4096000;
+double BytePSGlobal::_alltoall_buff_factor = 1.5;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
 
 int BytePSGlobal::_is_trace = 0;
@@ -212,6 +213,12 @@ void BytePSGlobal::Init() {
   // TODO(haibin.lin): rename it to BYTEPS_ALLTOALL_BUFF_BYTES
   if (getenv("BYTEPS_P2P_PARTITION_BYTES")) {
     _alltoall_buff_bytes = atoi(getenv("BYTEPS_P2P_PARTITION_BYTES"));
+  }
+  if (getenv("BYTEPS_ALLTOALL_MEM_FACTOR")) {
+    _alltoall_buff_factor = atof(getenv("BYTEPS_ALLTOALL_MEM_FACTOR"));
+    BPS_CHECK_GT(_alltoall_buff_factor, 0) << _alltoall_buff_factor;
+  } else {
+    _alltoall_buff_factor = 1.5;
   }
   if (getenv("BYTEPS_MIN_COMPRESS_BYTES")) {
     _min_compress_bytes = atoi(getenv("BYTEPS_MIN_COMPRESS_BYTES"));

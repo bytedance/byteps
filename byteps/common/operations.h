@@ -132,7 +132,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff);
 // for all request tasks, followed by all response tasks.
 void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list,
                         std::vector<int> &resp_size_list, int dtype,
-                        bool recv_on_gpu, bool use_pull);
+                        bool recv_on_gpu, bool output_size_unknown, bool use_pull);
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);

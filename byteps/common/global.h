@@ -131,6 +131,7 @@ class BytePSGlobal {
 
   static uint32_t GetPartitionBound() { return _partition_bytes; }
   static uint32_t GetAlltoallBuffBound() { return _alltoall_buff_bytes; }
+  static double GetAlltoallBuffFactor() { return _alltoall_buff_factor; }
   static uint32_t GetMinCompressBound() { return _min_compress_bytes; }
 
   // cuda
@@ -312,8 +313,16 @@ class BytePSGlobal {
 #endif
 
   static uint32_t _partition_bytes;
-  static uint32_t _alltoall_buff_bytes;
   static uint32_t _min_compress_bytes;
+  // How A2A Determine bound (the push buffer allocation size) in two ways:
+  // 1. If output size unknown, get bound from env var `BYTEPS_P2P_PARTITION_BYTES`
+  //    save to `_alltoall_buff_bytes` and each rank will allocate the same size;
+  // 2. If output size known, get factor from env var `BYTEPS_ALLTOALL_MEM_FACTOR`
+  //    save to `_alltoall_buff_factor` and multiply with the 1st time's tensor size,
+  //    also we set a min size at GetAlltoallBuffBound to prevent cases where the first
+  //    minibatch of data is too small.
+  static uint32_t _alltoall_buff_bytes;
+  static double _alltoall_buff_factor;
 
   // (key, ready_signal_count) pair, only valid for root device
   static ReadyTable* _reduce_table;
