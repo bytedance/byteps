@@ -40,27 +40,32 @@ COMMON_REQUIRED_ENVS = ["DMLC_ROLE", "DMLC_NUM_WORKER", "DMLC_NUM_SERVER",
 WORKER_REQUIRED_ENVS = ["DMLC_WORKER_ID"]
 NUMA_PATH = "/sys/devices/system/node"
 
-
-def get_numa_info():
-    ret = []
-    if os.path.exists(NUMA_PATH):
-        items = os.listdir(NUMA_PATH)
-        nodes = list(filter(lambda str: str.startswith("node"), items))
-        if nodes:
-            for node in nodes:
-                items = os.listdir(os.path.join(NUMA_PATH, node))
-                cpus = [re.findall("cpu\d+", cpu) for cpu in items]
-                cpus = list(filter(lambda x: x, cpus))
-                cpu_ids = [int(cpu[0].split('cpu')[1]) for cpu in cpus]
-                cpu_ids = sorted(cpu_ids)
-                ret.append(cpu_ids)
-    else:
-        print("NUMA PATH %s NOT FOUND" % NUMA_PATH)
-    return ret
-
-
 def allocate_cpu(local_size):
-    def _get_allocation(nodes, quota):
+    cpu_mt = os.getenv("BYTEPS_MULTITHREADED_CPU", "1").lower() in ["1", "true"]
+    def get_numa_info():
+        """
+        returns a list of list, each sub list is the cpu ids of a numa node. e.g
+        [[0,1,2,3], [4,5,6,7]]
+        """
+        ret = []
+        if os.path.exists(NUMA_PATH):
+            items = os.listdir(NUMA_PATH)
+            nodes = list(filter(lambda str: str.startswith("node"), items))
+            if nodes:
+                for node in nodes:
+                    items = os.listdir(os.path.join(NUMA_PATH, node))
+                    cpus = [re.findall("cpu\d+", cpu) for cpu in items]
+                    cpus = list(filter(lambda x: x, cpus))
+                    cpu_ids = [int(cpu[0].split('cpu')[1]) for cpu in cpus]
+                    cpu_ids = sorted(cpu_ids)
+                    if cpu_mt:
+                        cpu_ids = cpu_ids[:len(cpu_ids) // 2]
+                    ret.append(cpu_ids)
+        else:
+            print("NUMA PATH %s NOT FOUND" % NUMA_PATH)
+        return ret
+
+    def _get_allocation(nodes, quota, cpu_num, cpu_blacklist):
         if quota < 1:
             raise ValueError("quota should be no less than 1")
         ret = []
@@ -77,47 +82,55 @@ def allocate_cpu(local_size):
                 ret.append(node[last_idx:idx])
                 quota -= idx - last_idx
                 last_idx = idx
-            ret.append(node[last_idx:last_idx+quota])
+            curr_alloc = node[last_idx:last_idx+quota]
+            curr_alloc = [item for item in curr_alloc if item not in cpu_blacklist]
+            ret.append(curr_alloc)
+            if cpu_mt:
+                curr_alloc = [x + cpu_num for x in curr_alloc]
+                curr_alloc = [item for item in curr_alloc if item not in cpu_blacklist]
+                ret.append(curr_alloc)
             for idx in sorted(range(quota_bck), reverse=True):
                 del node[idx]
             return ret
         return ret
 
     def _get_quota(nodes, local_size):
-        if len(nodes) > 1:
-            cpu_nums = reduce(lambda x, y: (len(x) + len(y)), nodes)
-        else:
-            cpu_nums = len(nodes[0])
-        
-        # default quota is the number of cpus for non-root processess
-        default_quota = int(os.getenv("BYTEPS_NUMA_DEFAULT_QUOTA", 6))
-        while default_quota >= 1 and default_quota * local_size > cpu_nums:
-            default_quota -= 2
+
+        # default quota is the number of physical cores for non-root processess
+        default_quota = cpu_num // local_size
+        default_quota = int(os.getenv("BYTEPS_NUMA_DEFAULT_QUOTA", default_quota))
+        while default_quota >= 1 and default_quota * local_size > cpu_num:
+            default_quota -= 1
 
         # root quota is the number of cpus for root processess
         # root does more work, thus using more cpus
-        root_quota = cpu_nums - default_quota * (local_size - 1)
+        root_quota = cpu_num - default_quota * (local_size - 1)
         if int(os.getenv("BYTEPS_NUMA_ROOT_QUOTA", 0)):
             root_quota = int(os.getenv("BYTEPS_NUMA_ROOT_QUOTA", 0))
 
         node_size = len(nodes[0])
+        if cpu_mt:
+            node_size //= 2
         while root_quota >= 1 and root_quota > node_size:
-            root_quota -= 2
+            root_quota -= 1
         return [default_quota] * (local_size - 1) + [root_quota]
 
     nodes = get_numa_info()
     if not nodes:
         return None
+    cpu_num = reduce(lambda x, y: (x + len(y)), nodes, 0)
     quota_list = _get_quota(nodes, local_size)
+    cpu_blacklist = os.getenv("BYTEPS_CPU_BLACKLIST", "-1")
+    cpu_blacklist = [int(item) for item in cpu_blacklist.split(",")]
     ret = []
     for quota in quota_list:
         while quota > 0:
-            allocation = _get_allocation(nodes, quota)
+            allocation = _get_allocation(nodes, quota, cpu_num, cpu_blacklist)
             if allocation:
                 ret.append(allocation)
                 break
             else:
-                quota -= 2
+                quota -= 1
 
     return ret
 
@@ -155,7 +168,10 @@ def worker(local_rank, local_size, command, allocation=None):
         if retval == 0:
             numa = "numactl --physcpubind "
             for cpu_set in allocation:
-                numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
+                if len(cpu_set) == 1:
+                    numa += "{},".format(cpu_set[0])
+                else:
+                    numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
             numa = numa.strip(',') + ' '
             command = numa + command
             print("Command: %s\n" % command)
@@ -176,11 +192,23 @@ def worker(local_rank, local_size, command, allocation=None):
     subprocess.check_call(command, env=my_env,
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
+def parse_num_range(core_list):
+    # core_list is a semicolon seperated string. each section is the physical
+    # core assignment for the corresponding byteps worker.
+    # example input: 1,4-5,7-11,12;20-25
+    # example output: [[[1], [4, 5], [7, 8, 9, 10, 11], [12]], [[20, 21, 22, 23, 24, 25]]]
+    core_list = core_list.split(':')
+    ret = []
+    for item in core_list:
+        temp = [(lambda sub: range(sub[0], sub[-1] + 1))(list(map(int, elem.split('-')))) for elem in item.split(',')]
+        ret.append([list(a) for a in temp])
+    return ret
 
 def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
     check_env()
+    os.environ["PYTHONUNBUFFERED"] = "1"
     if os.environ["DMLC_ROLE"] == "worker":
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
             local_size = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
@@ -188,12 +216,17 @@ def launch_bps():
             local_size = 1
         t = [None] * local_size
 
-        if os.environ.get("BYTEPS_NUMA_ON", "") == "1":
-            allocations = allocate_cpu(local_size)
+        bind_to_cores = os.getenv("BYTEPS_NUMA_ON", "1") == "1"
+        if bind_to_cores:
+            user_override = os.getenv("BYTEPS_VISIBLE_CPU_CORES", "").strip()
+            if user_override:
+                allocations = parse_num_range(user_override)
+            else:
+                allocations = allocate_cpu(local_size)
 
         for i in range(local_size):
             command = ' '.join(sys.argv[1:])
-            if os.environ.get("BYTEPS_NUMA_ON", "") == "1":
+            if bind_to_cores:
                 t[i] = PropagatingThread(target=worker, args=[
                     i, local_size, command, allocations[i]])
             else:
