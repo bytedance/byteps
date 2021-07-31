@@ -193,9 +193,9 @@ def worker(local_rank, local_size, command, allocation=None):
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
 def parse_num_range(core_list):
-    # core_list is a semicolon seperated string. each section is the physical
+    # core_list is a colon-seperated string. each section is the physical
     # core assignment for the corresponding byteps worker.
-    # example input: 1,4-5,7-11,12;20-25
+    # example input: 1,4-5,7-11,12:20-25
     # example output: [[[1], [4, 5], [7, 8, 9, 10, 11], [12]], [[20, 21, 22, 23, 24, 25]]]
     core_list = core_list.split(':')
     ret = []
