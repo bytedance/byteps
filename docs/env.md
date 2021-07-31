@@ -138,8 +138,8 @@ export BYTEPS_ENABLE_ASYNC=1
 `BYTEPS_CPU_BLACKLIST` a string of comma-separated logical CPU core ids to avoid using. Only has effect in the automatic core assignment mode.
 
 `BYTEPS_VISIBLE_CPU_CORES`: if this envar is set, it overrides the automatic core assignment. It's a colon-separated string of logical core ids, each section is a list of cores for a byteps worker. The number of sections should match the number of byteps workers launched.
-    For example, there are 2 byteps workers on a node, rank 0 is tied to GPU 3, rank 1 is tied to GPU 7. And we know cores 1,4-5,7-11,12 are one the same numa node as GPU 3, and cores 20-25 are on the same numa node as GPU 7. Then we could use:
-    `export BYTEPS_VISIBLE_CPU_CORES=1,4-5,7-11,12;20-25`
+    For example, there are 2 byteps workers on a node, rank 0 is tied to GPU 3, rank 1 is tied to GPU 7. And we know cores 1,4-5,7-11,12 are one the same numa node as GPU 3, and cores 20-25 are on the same numa node as GPU 7. Then we could use:  
+    `export BYTEPS_VISIBLE_CPU_CORES=1,4-5,7-11,12:20-25`  
     to assign cores 1,4-5,7-11,12 to rank 0, cores 20-25 to rank 1.
 
 `BYTEPS_MULTITHREADED_CPU`: 0 means hyperthreading is disabled. 1 means hyperthreading is enabled. The default value is 1. If its enabled both logical cores on a physical core will be used. Assumption: if there are `n` physical cores, the two logical cores on physical core `i` are logical core `i` and `i + n`.
