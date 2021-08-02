@@ -130,7 +130,7 @@ def allocate_cpu(local_size):
                 ret.append(allocation)
                 break
             else:
-                quota -= 2
+                quota -= 1
 
     return ret
 
@@ -169,7 +169,10 @@ def worker_fn(local_rank, local_size, command, allocation=None):
         if retval == 0:
             numa = "numactl --physcpubind "
             for cpu_set in allocation:
-                numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
+                if len(cpu_set) == 1:
+                    numa += "{},".format(cpu_set[0])
+                else:
+                    numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
             numa = numa.strip(',') + ' '
             command = numa + command
             print("Command: %s\n" % command)
@@ -214,6 +217,18 @@ def server_fn(local_rank, local_size, command, allocation=None):
     subprocess.check_call(command, env=my_env,
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
+def parse_num_range(core_list):
+    # core_list is a colon-seperated string. each section is the physical
+    # core assignment for the corresponding byteps worker.
+    # example input: 1,4-5,7-11,12:20-25
+    # example output: [[[1], [4, 5], [7, 8, 9, 10, 11], [12]], [[20, 21, 22, 23, 24, 25]]]
+    core_list = core_list.split(':')
+    ret = []
+    for item in core_list:
+        temp = [(lambda sub: range(sub[0], sub[-1] + 1))(list(map(int, elem.split('-')))) for elem in item.split(',')]
+        ret.append([list(a) for a in temp])
+    return ret
+
 def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
@@ -231,7 +246,11 @@ def launch_bps():
 
         bind_to_cores = os.getenv("BYTEPS_NUMA_ON", "1") == "1"
         if bind_to_cores:
-            allocations = allocate_cpu(local_size)
+            user_override = os.getenv("BYTEPS_VISIBLE_CPU_CORES", "").strip()
+            if user_override:
+                allocations = parse_num_range(user_override)
+            else:
+                allocations = allocate_cpu(local_size)
 
         for i in range(local_size):
             command = ' '.join(sys.argv[1:])

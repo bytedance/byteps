@@ -127,3 +127,24 @@ Enable asynchronous training with (on all workers and servers)
 export BYTEPS_ENABLE_ASYNC=1
 ```
 
+## Core affinity
+
+`BYTEPS_NUMA_ON`: Enable or disable core affinity. Valid values 0 or 1, default value is 1.
+
+`BYTEPS_NUMA_DEFAULT_QUOTA`: The number of physical cores to assign to a worker. It's default value is calculated:
+
+        `total number of physical cores / number of byteps workers`
+
+`BYTEPS_CPU_BLACKLIST` a string of comma-separated logical CPU core ids to avoid using. Only has effect in the automatic core assignment mode.
+
+`BYTEPS_VISIBLE_CPU_CORES`: if this envar is set, it overrides the automatic core assignment. It's a colon-separated string of logical core ids, each section is a list of cores for a byteps worker. The number of sections should match the number of byteps workers launched.
+    For example, there are 2 byteps workers on a node, rank 0 is tied to GPU 3, rank 1 is tied to GPU 7. And we know cores 1,4-5,7-11,12 are one the same numa node as GPU 3, and cores 20-25 are on the same numa node as GPU 7. Then we could use:  
+    `export BYTEPS_VISIBLE_CPU_CORES=1,4-5,7-11,12:20-25`  
+    to assign cores 1,4-5,7-11,12 to rank 0, cores 20-25 to rank 1.
+
+`BYTEPS_MULTITHREADED_CPU`: 0 means hyperthreading is disabled. 1 means hyperthreading is enabled. The default value is 1. If its enabled both logical cores on a physical core will be used. Assumption: if there are `n` physical cores, the two logical cores on physical core `i` are logical core `i` and `i + n`.
+
+The automatic core assignment assigns physical cores to byteps workers such that:
+  1) one worker's cores are on the same numa node with its GPU
+  2) one worker's cores don't overlap with another worker's cores
+  3) if hyperthreading is enabled, assign logical cores to the worker as well.
