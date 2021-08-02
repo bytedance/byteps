@@ -247,10 +247,6 @@ def use_cuda():
     byteps_with_gpu = int(os.environ.get('BYTEPS_WITH_GPU', 1))
     return byteps_with_gpu
 
-def use_nvtx():
-    byteps_with_nvtx = int(os.environ.get('BYTEPS_WITH_NVTX', use_cuda()))
-    return byteps_with_nvtx
-
 def use_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     return byteps_with_ucx
@@ -400,7 +396,7 @@ def build_server(build_ext, options):
                 server_lib.define_macros += [('HAVE_CUDA', '1')]
                 server_lib.include_dirs += cuda_include_dirs
                 server_lib.library_dirs += cuda_lib_dirs
-                server_lib.libraries += ['cudart']
+                server_lib.libraries += ['cudart', 'nvToolsExt']
 
     server_lib.libraries += ['numa']
     build_ext.build_extension(server_lib)
@@ -530,11 +526,7 @@ def build_tf_extension(build_ext, options):
         options['MACROS'] += [('HAVE_CUDA', '1')]
         options['INCLUDES'] += cuda_include_dirs
         options['LIBRARY_DIRS'] += cuda_lib_dirs
-        options['LIBRARIES'] += ['cudart']
-        # XXX: link TF op to nvtx temporarily. Later we shall move the code
-        # to core for cross-platform support
-        if use_nvtx():
-          options['LIBRARIES'] += ['nvToolsExt']
+        options['LIBRARIES'] += ['cudart', 'nvToolsExt']
 
     tensorflow_lib.define_macros = options['MACROS']
     tensorflow_lib.include_dirs = options['INCLUDES']
@@ -775,7 +767,7 @@ def build_mx_extension(build_ext, options):
         options['MACROS'] += [('HAVE_CUDA', '1')]
         options['INCLUDES'] += cuda_include_dirs
         options['LIBRARY_DIRS'] += cuda_lib_dirs
-        options['LIBRARIES'] += ['cudart']
+        options['LIBRARIES'] += ['cudart', 'nvToolsExt']
 
     mxnet_lib.define_macros = options['MACROS']
     if check_macro(options['MACROS'], 'HAVE_CUDA'):
@@ -1033,8 +1025,7 @@ class custom_build_ext(build_ext):
         # servers are always built without GPU
         if use_cuda():
             options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_CUDA=1']
-        if use_nvtx():
-            options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_NVTX=1']
+            options['LIBRARIES'] += ['nvToolsExt']
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS

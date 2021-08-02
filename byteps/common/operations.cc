@@ -269,12 +269,11 @@ Status PrepareAlltoallTensor(TensorShape shape,
 
   // naming and declarations
   // TODO(haibin.lin): handle mod logic inside byteps_session_id
-  auto session_id = common::byteps_session_id(name.c_str());
   int session_size = common::byteps_session_size();
-  *session_name = "session_" + std::to_string(session_id % session_size) + "_" + name;
+  auto session_id = common::byteps_session_id(name.c_str()) % session_size;
+  *session_name = "session_" + std::to_string(session_id) + "_" + name;
   for (int i = 0; i < tensor_key.size(); ++i) {
-    std::string sess_prefix = "session_" + std::to_string(i) + "_";
-    common::IsTensorDeclaredAlltoall(sess_prefix + name, tensor_key[i]);
+    common::DeclareAlltoallTensor(name, tensor_key[i], i);
   }
   // Example names used for alltoall:
   // - node_name: my_node
@@ -324,7 +323,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   const int my_rank = common::byteps_rank();
   auto& byteps_context = common::GetContextFromName(name);
   bool recv_on_gpu = output_device != CPU_DEVICE_ID;
-
+  Telemetry::RecordStart(byteps_context.base_tensor_name);
   // ========= basic task info ==========
   // if use_pull, request_task->offset_list is based on recv_begin
   const std::vector<int>& request_begin = use_pull ? recv_begin : send_begin;
@@ -554,6 +553,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     ret->start_t = (long long)(us.count());
     context.comm_time.push(ret);
   }
+  Telemetry::RecordStart(context.base_tensor_name);
 
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
@@ -969,12 +969,12 @@ BPSContext &GetContextFromName(const std::string &name) {
   return BytePSGlobal::GetContextFromName(name);
 }
 
-int32_t IsTensorDeclared(const std::string &name) {
-  return BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP, -1);
+int32_t DeclareTensor(const std::string &name) {
+  return BytePSGlobal::DeclareTensor(name, PUSH_PULL_OP, -1, -1);
 }
 
-int32_t IsTensorDeclaredAlltoall(const std::string &name, int32_t provided_key) {
-  return BytePSGlobal::IsTensorDeclared(name, ALLTOALL_OP, provided_key);
+int32_t DeclareAlltoallTensor(const std::string &name, int32_t provided_key, int32_t session) {
+  return BytePSGlobal::DeclareTensor(name, ALLTOALL_OP, provided_key, session);
 }
 
 void RegisterCompressor(const std::string &name,
@@ -986,8 +986,8 @@ void PinMemory(void* ptr, int numa_node, size_t bytes) {
   return BytePSGlobal::PinMemory(ptr, numa_node, bytes);
 }
 
-int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver) {
-  return BytePSGlobal::IsTensorDeclaredP2P(name, sender, receiver);
+int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver) {
+  return BytePSGlobal::DeclareP2PTensor(name, sender, receiver);
 }
 
 std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {

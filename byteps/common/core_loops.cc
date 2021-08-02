@@ -116,10 +116,7 @@ bool DoFinishOrProceed(T& task) {
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << "Rank=" << BytePSGlobal::GetRank()
                      << " finishes processing tensor: " << task->tensor_name;
-
-      if (Telemetry::ShouldRecord()) {
-        // Telemetry::RecordSpeed(task);
-      }
+      Telemetry::RecordEnd(task->context->base_tensor_name);
 
       task->callback(Status::OK());
       // Add for profiling communication events

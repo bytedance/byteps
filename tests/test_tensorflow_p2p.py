@@ -45,22 +45,24 @@ class TensorFlowTests:
         for entry in telemetries:
             name, mean, stdev, count = entry
             assert 'telemetry' not in name
-        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
 
         def check_telemetry(entries, max_size):
-            entries = filter(lambda x: 'telemetry' in str(x[0]), entries)
+            entries = list(filter(lambda x: 'telemetry' in str(x[0]), entries))
             assert len(list(entries)) > 0
             if max_size:
                 assert len(list(entries)) <= max_size
             for entry in entries:
                 name, mean, stdev, count = entry
                 assert name
-                assert mean > 0
-                assert stdev > 0
-                assert count > 1
+                assert mean > 0, mean
+                assert stdev > 0, stdev
+                assert count > 1, count
+
+        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
         telemetries = bps.get_telemetry()
         check_telemetry(telemetries, None)
-        # check with user-provided size
+
+        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
         telemetries = bps.get_telemetry(size=10000)
         check_telemetry(telemetries, 10000)
 

@@ -108,8 +108,10 @@ class BytePSGlobal {
   // name: the operation name
   // op_type: PUSH_PULL_OP, P2P_OP, etc
   // provided_key: the tensor key for this operation. If provided_key is -1, a new key will be generated.
-  static int32_t IsTensorDeclared(const std::string& name, OperationType op_type, int32_t provided_key);
-  static int32_t IsTensorDeclaredP2P(const std::string& name, int sender, int receiver);
+  // session: the session id. -1 means no session is provided
+  static int32_t DeclareTensor(const std::string& name, OperationType op_type,
+                               int32_t provided_key, int session);
+  static int32_t DeclareP2PTensor(const std::string& name, int sender, int receiver);
   static void ReDeclareTensor();
   static bool IsResuming() { return _is_resuming; }
   static void SetResumingFlag(bool flag) {_is_resuming = flag; }
@@ -200,7 +202,6 @@ class BytePSGlobal {
     _alltoall_session_mu.lock();
     uint64_t ret = _alltoall_session_ids[name]++;
     _alltoall_session_mu.unlock();
-    Telemetry::RecordStart(name);
     return ret;
   }
 
@@ -210,7 +211,6 @@ class BytePSGlobal {
     _alltoall_session_mu.lock();
     _alltoall_completions[name]++;
     _alltoall_session_mu.unlock();
-    Telemetry::RecordEnd(name);
   }
 
   static uint32_t GetSessionSize() { return _alltoall_session_size; }

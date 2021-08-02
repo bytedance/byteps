@@ -19,6 +19,9 @@
 #include "common.h"
 #include "logging.h"
 #include <cmath>
+#if BYTEPS_BUILDING_CUDA == 1
+#include "nvToolsExt.h"
+#endif
 
 namespace byteps {
 namespace common {
@@ -73,9 +76,11 @@ class Telemetry {
                       int* count, int* actual_size, int max_size);
 
  private:
+
   static std::mutex _mtx;
   static bool _should_record;
-
+  // whether to enable nvtx tracing
+  static bool _enable_nvtx;
   // an operation is recorded every `_record_interval` occurrences
   static int _record_interval;
   // the summary of an operation is calculated for the most
@@ -89,6 +94,10 @@ class Telemetry {
   static std::unordered_map<std::string, MetricSummary> _summaries;
   // collection of all names
   static std::vector<std::unique_ptr<std::string>> _names;
+#if BYTEPS_BUILDING_CUDA == 1
+  // nvtx range ids
+  static std::unordered_map<std::string, nvtxRangeId_t> _nvtx_ranges;
+#endif
 };
 
 }  // namespace common

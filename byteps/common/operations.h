@@ -138,9 +138,12 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);
 
 // Only call these in Framework plugins for the best performance
-int32_t IsTensorDeclared(const std::string &name);
-int32_t IsTensorDeclaredAlltoall(const std::string &name, int32_t provided_key);
-int32_t IsTensorDeclaredP2P(const std::string &name, int sender, int receiver);
+int32_t DeclareTensor(const std::string &name);
+// declare the operation name with a provided key and session id.
+// provided_key = -1 means no key is provided
+// session = -1 means no session is provided
+int32_t DeclareAlltoallTensor(const std::string &name, int32_t provided_key, int32_t session);
+int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver);
 
 void RegisterCompressor(const std::string &name,
                         std::unordered_map<std::string, std::string> &kwargs);

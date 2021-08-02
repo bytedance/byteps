@@ -226,6 +226,8 @@ typedef struct BytePSContext {
   std::mutex init_mutex;
   // tensor name
   std::string tensor_name;
+  // tensor name without the session prefix
+  std::string base_tensor_name;
   // using ps::Key = uint64_t
   int32_t declared_key;
   // the actual keys being used

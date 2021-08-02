@@ -592,7 +592,7 @@ BPSContext& BytePSGlobal::GetContextFromName(const std::string& name) {
   return _name_to_cxt[name];
 }
 
-int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, int receiver) {
+int32_t BytePSGlobal::DeclareP2PTensor(const std::string& name, int sender, int receiver) {
   std::lock_guard<std::mutex> lock(_context_mutex);
   auto _ctx = _name_to_cxt.find(name);
   if (_ctx == _name_to_cxt.end()) {
@@ -601,6 +601,7 @@ int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, i
     }
     _name_to_cxt[name].initialized = false;
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
+    _name_to_cxt[name].base_tensor_name = name.c_str();
     _name_to_cxt[name].op_type = P2P_OP;
     // the next key starts from 0 per send/recv pair
     int send_recv_pair = (sender << 16) + receiver;
@@ -620,15 +621,21 @@ int32_t BytePSGlobal::IsTensorDeclaredP2P(const std::string& name, int sender, i
   return _name_to_cxt[name].declared_key;
 }
 
-int32_t BytePSGlobal::IsTensorDeclared(const std::string& name, OperationType op_type, int32_t provided_key) {
+int32_t BytePSGlobal::DeclareTensor(const std::string& name, OperationType op_type,
+                                    int32_t provided_key, int32_t session) {
   std::lock_guard<std::mutex> lock(_context_mutex);
-  if (_name_to_cxt.find(name) == _name_to_cxt.end()) {
+  std::string tensor_name = name.c_str();
+  if (session != -1) {
+    tensor_name = "session_" + std::to_string(session) + "_" + tensor_name;
+  }
+  if (_name_to_cxt.find(tensor_name) == _name_to_cxt.end()) {
     if (std::find(_declared_tensors.begin(), _declared_tensors.end(), name) ==
         _declared_tensors.end()) {
-      _declared_tensors.push_back(name);
+      _declared_tensors.push_back(tensor_name);
     }
-    _name_to_cxt[name].initialized = false;
-    _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
+    _name_to_cxt[tensor_name].initialized = false;
+    _name_to_cxt[tensor_name].tensor_name = tensor_name;
+    _name_to_cxt[tensor_name].base_tensor_name = name.c_str();  // disable copy-on-write
     auto& used_key_set = used_keys_[op_type];
     if (provided_key == -1) {
       // generate a new key
@@ -639,22 +646,25 @@ int32_t BytePSGlobal::IsTensorDeclared(const std::string& name, OperationType op
     } else {
       BPS_CHECK(used_key_set.find(provided_key) == used_key_set.end()) << provided_key;
     }
-    _name_to_cxt[name].declared_key = (ps::Key) provided_key;
+    _name_to_cxt[tensor_name].declared_key = (ps::Key) provided_key;
     // mark the current key as used
     used_key_set.insert(provided_key);
-    _name_to_cxt[name].op_type = op_type;
+    _name_to_cxt[tensor_name].op_type = op_type;
     BPS_LOG(DEBUG) << "Declared tensor " << name
-                   << ", declared key (not PS key): "
-                   << _name_to_cxt[name].declared_key
+                   << " declared key (not PS key): "
+                   << _name_to_cxt[tensor_name].declared_key
+                   << " session=" << session
                    << " rank=" << BytePSGlobal::GetRank();
   }
-  return _name_to_cxt[name].declared_key;
+  return _name_to_cxt[tensor_name].declared_key;
 }
 
 void BytePSGlobal::ReDeclareTensor() {
+  int32_t session = -1;
+  int32_t provided_key = -1;
   for (auto name : _declared_tensors) {
     BPS_LOG(DEBUG) << "Redeclare tensor " << name;
-    BytePSGlobal::IsTensorDeclared(name, PUSH_PULL_OP, -1);
+    BytePSGlobal::DeclareTensor(name, PUSH_PULL_OP, provided_key, session);
   }
 }
 

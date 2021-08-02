@@ -23,9 +23,6 @@
 
 #include "ops.h"
 #include "../common/logging.h"
-#if BYTEPS_BUILDING_NVTX == 1
-#include "nvToolsExt.h"
-#endif
 
 using namespace byteps;
 
@@ -196,7 +193,7 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
 
 extern "C" void byteps_tensorflow_declare_tensor(char* name) {
   std::string tensor_name(name);
-  common::IsTensorDeclared(tensor_name);
+  common::DeclareTensor(tensor_name);
   return;
 }
 
@@ -207,15 +204,15 @@ extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int
   if (receiver == -1) receiver = common::byteps_rank();
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name, 0);
-  tensor_key = common::IsTensorDeclaredP2P(tensor_name, sender, receiver);
+  tensor_key = common::DeclareP2PTensor(tensor_name, sender, receiver);
 }
 
 // Declare tensors for alltoall
-extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key, uint32_t session_size) {
-  std::string name_prefix = std::string(name);
+extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key,
+                                                          uint32_t session_size) {
+  std::string name_str = name;
   for (uint32_t session_id = 0; session_id < session_size; session_id++) {
-    std::string session_prefix = "session_" + std::to_string(session_id) + "_" + name_prefix;
-    tensor_key[session_id] = common::IsTensorDeclaredAlltoall(session_prefix, -1);
+    tensor_key[session_id] = common::DeclareAlltoallTensor(name_str, -1, session_id);
   }
 }
 
@@ -510,31 +507,16 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                        std::shared_ptr<TFTensor> byteps_aux_output,
                        std::shared_ptr<common::ReadyEvent> ready_event,
                        TaskType task, bool recv_split_unknown,
-                       std::string name_wo_session,
-                       bool use_pull, bool use_nvtx,
+                       std::string name_wo_session, bool use_pull,
                        int input_device, int output_device) {
   // common fields
   int priority = 0;
   common::StatusCallback callback;
-  // TODO(haibin.lin): move nvtx logics to BytePS core
-#if BYTEPS_BUILDING_NVTX == 1
-  if (use_nvtx) {
-    auto range_id = nvtxRangeStartA(name_wo_session.c_str());
-    callback = [context, done, name_wo_session, range_id](const common::Status& status) {
-      nvtxRangeEnd(range_id);
-      common::byteps_mark_done(name_wo_session.c_str());
-      context->SetStatus(ConvertStatus(status));
-      done();
-    };
-  } else
-#endif
-  {
-    callback = [context, done, name_wo_session](const common::Status& status) {
-      common::byteps_mark_done(name_wo_session.c_str());
-      context->SetStatus(ConvertStatus(status));
-      done();
-    };
-  }
+  callback = [context, done, name_wo_session](const common::Status& status) {
+    common::byteps_mark_done(name_wo_session.c_str());
+    context->SetStatus(ConvertStatus(status));
+    done();
+  };
 
   size_t num_ranks = split_count.size();
   common::Status enqueue_result;
@@ -575,8 +557,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      std::vector<int32_t> tensor_key;
      // use ZPull instead ZPush to reduce memory consumption
      bool use_pull;
-     // use NVTX for nsys profiling
-     bool use_nvtx;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
@@ -587,13 +567,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
                ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
                : false;
-      use_nvtx = false;
-#if BYTEPS_BUILDING_NVTX == 1
-      if (getenv("BYTEPS_USE_NVTX") && atoi(getenv("BYTEPS_USE_NVTX"))) {
-        use_nvtx = true;
-      }
-#endif
-      std::cout << "BYTEPS_USE_NVTX=" << use_nvtx << std::endl;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -691,11 +664,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (initialized) {
       StartAlltoAllTask(context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                         recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, tmp_name, use_pull, use_nvtx, input_device, output_device);
+                        kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                     recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, tmp_name, use_pull, use_nvtx, input_device, output_device);
+                    kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
       t.detach();
     }
   }
@@ -850,19 +823,17 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     }
 
     for (int i = 0; i < tensor_key.size(); ++i) {
-      std::string sess_prefix = "session_" + std::to_string(i) + "_";
-      common::IsTensorDeclaredAlltoall(sess_prefix + tmp_name, tensor_key[i]);
+      common::DeclareAlltoallTensor(tmp_name, tensor_key[i], i);
     }
-
     auto& bps_context = common::GetContextFromName(session_tmp_name);
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, false, input_device, output_device);
+                        ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, false, input_device, output_device);
+                    ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
       t.detach();
     }
   }

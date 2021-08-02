@@ -6,7 +6,7 @@ ip=$(ip a show eth0 | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}')
 RANK=$2
 export PATH=~/.local/bin:$PATH
 export BYTEPS_OMP_THREAD_PER_GPU=0
-export LD_LIBRARY_PATH=$CUDA_HOME/lib:$UCX_HOME/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib:$UCX_HOME/lib:$CUDA_HOME/extras/CUPTI/lib64:$CUDA_HOME/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:=1}
 export DMLC_NUM_WORKER=${DMLC_NUM_WORKER:-2}
 export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
@@ -62,7 +62,12 @@ if [ "$#" -ne 3 ]; then
 fi
 BIN="$3"
 
-export GDB=" gdb -ex run --args "
+
+if [ "$RANK" == "0" ]; then
+    export NSYS="nsys profile -t cuda,nvtx,cublas --stats=true -o ./trace.%p.prof --export sqlite --kill none -d 30"
+fi
+export NSYS=" "
+export GDB="gdb -ex run --args"
 export GDB=" "
 
 if [ $1 == "worker" ] || [ $1 == "joint" ]; then
@@ -78,3 +83,4 @@ if [ $1 == "worker" ] || [ $1 == "joint" ]; then
     exit 1
   fi
 fi
+echo "Done $TEST_TYPE test"

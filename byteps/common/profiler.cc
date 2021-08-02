@@ -21,12 +21,16 @@ namespace common {
 
 std::mutex Telemetry::_mtx;
 bool Telemetry::_should_record;
+bool Telemetry::_enable_nvtx = false;
 int Telemetry::_record_interval;
 int Telemetry::_record_capacity;
 std::unordered_map<std::string, uint64_t> Telemetry::_occurrences;
 std::unordered_map<std::string, Metric> Telemetry::_metrics;
 std::unordered_map<std::string, MetricSummary> Telemetry::_summaries;
 std::vector<std::unique_ptr<std::string>> Telemetry::_names;
+#if BYTEPS_BUILDING_CUDA == 1
+std::unordered_map<std::string, nvtxRangeId_t> Telemetry::_nvtx_ranges;
+#endif
 
 void MetricSummary::update(float current) {
   if (data_.size() > capacity_) {
@@ -72,6 +76,8 @@ void Telemetry::InitEnv() {
     getenv("BYTEPS_TELEMETRY_INTERVAL") ? atoi(getenv("BYTEPS_TELEMETRY_INTERVAL")) : 1;
   _record_capacity =
     getenv("BYTEPS_TELEMETRY_CAPACITY") ? atoi(getenv("BYTEPS_TELEMETRY_CAPACITY")) : 128;
+  _enable_nvtx =
+    getenv("BYTEPS_USE_NVTX") ? atoi(getenv("BYTEPS_USE_NVTX")) : false;
 }
 
 void Telemetry::GetData(const char** names, float* mean, float* stdev,
@@ -99,6 +105,11 @@ void Telemetry::GetData(const char** names, float* mean, float* stdev,
 
 void Telemetry::RecordStart(const std::string& name) {
   std::lock_guard<std::mutex> lock(_mtx);
+#if BYTEPS_BUILDING_CUDA == 1
+  if (_enable_nvtx) {
+    _nvtx_ranges[name] = nvtxRangeStartA(name.c_str());
+  }
+#endif
   if (!_should_record) return;
   uint64_t occurrence = ++_occurrences[name];
   if (occurrence % _record_interval == 0) {
@@ -115,6 +126,11 @@ void Telemetry::RecordStart(const std::string& name) {
 
 void Telemetry::RecordEnd(const std::string& name) {
   std::lock_guard<std::mutex> lock(_mtx);
+#if BYTEPS_BUILDING_CUDA == 1
+  if (_enable_nvtx) {
+    nvtxRangeEnd(_nvtx_ranges[name]);
+  }
+#endif
   if (!_should_record) return;
   uint64_t occurrence = _occurrences[name];
   if (occurrence % _record_interval == 0) {

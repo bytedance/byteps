@@ -48,20 +48,19 @@ class TorchTest:
         dtypes = self.filter_supported_types([torch.float32])
         dims = [1]
         ctx = self._current_context()
-        count = 100
-        shapes = [(1), (17)]
+
         for dtype, dim in itertools.product(dtypes, dims):
             tensor = torch.ones((100, 100), device=ctx, dtype=dtype)
-
-            print("tensor before push_pull:", tensor)
-            bps.byteps_push_pull(tensor, name="tensor_"+str(count), average=False)
-            print("tensor after push_pull:", tensor)
+            for count in range(100):
+                print("tensor before push_pull:", tensor)
+                bps.byteps_push_pull(tensor, name="tensor_"+str(count % 10), average=False)
+                print("tensor after push_pull:", tensor)
 
         print('test_byteps_push_pull done')
 
 
 if __name__ == '__main__':
     test = TorchTest()
-    bps.init()
+    bps.init(lazy=False)
     test.test_byteps_push_pull()
-    time.sleep(5)
+    time.sleep(1)
