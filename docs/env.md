@@ -148,3 +148,14 @@ The automatic core assignment assigns physical cores to byteps workers such that
   1) one worker's cores are on the same numa node with its GPU
   2) one worker's cores don't overlap with another worker's cores
   3) if hyperthreading is enabled, assign logical cores to the worker as well.
+
+## intra-node reduce strategy
+  `BYTEPS_REDUCE_ROOTS`: the root ranks to use with ncclReduce() when performing reduction among GPUs within a node. It's a comma-separated string. If it's not set, set to null or -1, the ncclReduceScatter()/ncclAllGather() pair will be used for intra-node reduction. Otherwise ncclReduce() will be used for intra-node reduction. Example settings:  
+```
+export BYTEPS_REDUCE_ROOTS=0  # use ncclReduce()
+export BYTEPS_REDUCE_ROOTS=0,4  # use ncclReduce()
+export BYTEPS_REDUCE_ROOTS=  # use ncclReduceScatter()/ncclAllGather()  
+export BYTEPS_REDUCE_ROOTS=""  # use ncclReduceScatter()/ncclAllGather()  
+```
+
+

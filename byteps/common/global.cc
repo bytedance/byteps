@@ -373,10 +373,14 @@ void BytePSGlobal::Init() {
   }
 
   // Configure the reduce strategy
-  if (getenv("BYTEPS_REDUCE_ROOTS")) {
+  const char *roots_cstr = getenv("BYTEPS_REDUCE_ROOTS");
+  if (roots_cstr) {
+    auto roots_str = std::string(roots_cstr);
+    _is_using_reduce = !roots_str.empty();
+  }
+  if (_is_using_reduce) {
     BPS_CHECK(!_is_cross_pcie_switch)
         << "BYTEPS_REDUCE_ROOTS cannot be used with BYTEPS_PCIE_SWITCH_SIZE.";
-    _is_using_reduce = true;
     auto roots_str = std::string(getenv("BYTEPS_REDUCE_ROOTS"));
     BPS_LOG(DEBUG) << "Setting roots for reduce:" << roots_str;
     std::stringstream roots_ss(roots_str);
