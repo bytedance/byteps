@@ -251,6 +251,21 @@ def use_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     return byteps_with_ucx
 
+def without_pre_setup():
+    return int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0))
+    
+def with_tensorflow():
+    return int(os.environ.get('BYTEPS_WITH_TENSORFLOW', 0))
+
+def without_tensorflow():
+    return int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0))
+
+def with_pytorch():
+    return int(os.environ.get('BYTEPS_WITH_PYTORCH', 0))
+
+def without_pytorch():
+    return int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0))
+
 def build_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME')
@@ -915,7 +930,7 @@ def build_torch_extension(build_ext, options, torch_version):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
-        if not int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)):
+        if not without_pre_setup():
             pre_setup.setup()
 
         ucx_home = get_ucx_home()
@@ -924,7 +939,7 @@ class custom_build_ext(build_ext):
         # To resolve tf-gcc incompatibility
         has_cxx_flag = False
         glibcxx_flag = False
-        if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+        if not without_tensorflow():
             try:
                 import tensorflow as tf
                 make_option += 'ADD_CFLAGS="'
@@ -939,7 +954,7 @@ class custom_build_ext(build_ext):
                 pass
 
         # To resolve torch-gcc incompatibility
-        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+        if not without_pytorch():
             try:
                 import torch
                 torch_flag = torch.compiled_with_cxx11_abi()
@@ -998,7 +1013,7 @@ class custom_build_ext(build_ext):
                     cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
                     make_option += f'USE_CUDA=1 CUDA_HOME={cuda_home} '
         
-            if not int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)):
+            if not without_pre_setup():
                 make_option += pre_setup.extra_make_option()
 
             make_process = subprocess.Popen('make ' + make_option,
@@ -1029,29 +1044,29 @@ class custom_build_ext(build_ext):
 
         # If PyTorch is installed, it must be imported before others, otherwise
         # we may get an error: dlopen: cannot load any more object with static TLS
-        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+        if not without_pytorch():
             dummy_import_torch()
 
-        if not int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+        if not without_tensorflow():
             try:
                 build_tf_extension(self, options)
                 built_plugins.append(True)
                 print('INFO: Tensorflow extension is built successfully.')
             except:
-                if not int(os.environ.get('BYTEPS_WITH_TENSORFLOW', 0)):
+                if not with_tensorflow():
                     print('INFO: Unable to build TensorFlow plugin, will skip it.\n\n'
                           '%s' % traceback.format_exc())
                     built_plugins.append(False)
                 else:
                     raise
-        if not int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+        if not without_pytorch():
             try:
                 torch_version = check_torch_version()
                 build_torch_extension(self, options, torch_version)
                 built_plugins.append(True)
                 print('INFO: PyTorch extension is built successfully.')
             except:
-                if not int(os.environ.get('BYTEPS_WITH_PYTORCH', 0)):
+                if not with_pytorch():
                     print('INFO: Unable to build PyTorch plugin, will skip it.\n\n'
                           '%s' % traceback.format_exc())
                     built_plugins.append(False)
@@ -1100,10 +1115,10 @@ extensions_to_build = [server_lib, tensorflow_lib, mxnet_lib, pytorch_lib]
 if int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
     extensions_to_build.remove(mxnet_lib)
 
-if int(os.environ.get('BYTEPS_WITHOUT_TENSORFLOW', 0)):
+if without_tensorflow():
     extensions_to_build.remove(tensorflow_lib)
 
-if int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0)):
+if without_pytorch():
     extensions_to_build.remove(pytorch_lib)
 
 setup(
