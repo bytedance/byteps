@@ -20,6 +20,7 @@ from distutils.errors import CompileError, DistutilsError, DistutilsPlatformErro
 from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
+import sysconfig
 
 import pre_setup as pre_setup
 
@@ -290,6 +291,7 @@ def get_common_options(build_ext):
     INCLUDES = ['3rdparty/ps-lite/include']
     SOURCES = ['byteps/common/common.cc',
                'byteps/common/operations.cc',
+               'byteps/common/local_operations.cc',
                'byteps/common/core_loops.cc',
                'byteps/common/global.cc',
                'byteps/common/profiler.cc',
@@ -367,6 +369,7 @@ def build_server(build_ext, options):
     server_lib.include_dirs = options['INCLUDES']
     server_lib.sources = ['byteps/common/common.cc',
                         'byteps/common/operations.cc',
+                        'byteps/common/local_operations.cc',
                         'byteps/common/core_loops.cc',
                         'byteps/common/global.cc',
                         'byteps/common/profiler.cc',
@@ -927,6 +930,42 @@ def build_torch_extension(build_ext, options, torch_version):
     build_ext.build_extension(pytorch_lib)
 
 
+def build_gpu_ops(options):
+    sm_version = os.getenv('BYTEPS_BUILD_SM_VERSION', '70') # default for v100
+    print('\nBuilding GPU ops, SM_VERSION=' + sm_version)
+
+    # get the output path by finding the path of server obj
+    output_path_prefix = subprocess.check_output(
+        'spath=$(find . -name server.o -exec dirname {} \;); echo $spath/../common/cuda/', shell=True).strip().decode()
+    output_path = output_path_prefix + 'cuda_kernels.o'
+
+    cmd = 'mkdir ' + output_path_prefix + '; nvcc -gencode arch=compute_' + sm_version + ',code=sm_' + sm_version + ' -Xcompiler="-fPIC" ' \
+                                        '-c byteps/common/cuda/cuda_kernels.cu ' \
+                                        '-o ' + output_path
+    for flag in options['COMPILE_FLAGS']:
+        if flag.startswith('-std=') or flag.startswith('-D'):
+            cmd += ' ' + flag + ' '
+
+    nccl_include_dirs, _, _ = get_nccl_vals()
+    for path in nccl_include_dirs:
+        cmd += ' -I' + path.strip() + ' '
+
+    cmd += '-I' + sysconfig.get_path('include')
+
+    print(cmd)
+
+    make_cu_process = subprocess.Popen(cmd,
+                                       cwd='.',
+                                       stdout=sys.stdout,
+                                       stderr=sys.stderr,
+                                       shell=True)
+    make_cu_process.communicate()
+    if make_cu_process.returncode:
+        raise DistutilsSetupError('An ERROR occured while building GPU ops '
+                                    'Exit code: {0}'.format(make_cu_process.returncode))
+
+    options['EXTRA_OBJECTS'] += [output_path]
+
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
@@ -1046,6 +1085,9 @@ class custom_build_ext(build_ext):
         # we may get an error: dlopen: cannot load any more object with static TLS
         if not without_pytorch():
             dummy_import_torch()
+
+        if int(os.environ.get('BYTEPS_WITH_GPU', '1')):
+            build_gpu_ops(options)
 
         if not without_tensorflow():
             try:

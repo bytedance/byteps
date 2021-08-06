@@ -23,6 +23,8 @@ from contextlib import contextmanager
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
 from byteps.torch.ops import push_pull
+from byteps.torch.ops import batched_fuse_, batched_unfuse_, batched_zero_
+from byteps.torch.ops import byteps_torch_set_num_grads
 from byteps.torch.ops import poll, synchronize, declare
 from byteps.torch.ops import init, shutdown, suspend, resume
 from byteps.torch.ops import size, local_size, rank, local_rank
@@ -159,6 +161,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
     def synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
+            if type(p.grad) == type(None):
+                continue
             handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
 

@@ -21,12 +21,19 @@
 #include <thread>
 
 #include "../common/operations.h"
+#include "../common/local_operations.h"
 #include "../common/logging.h"
 #include "adapter.h"
 #include "ops.h"
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
+
+#if TORCH_VERSION < 1005000000
+#if HAVE_CUDA
+extern THCState* state;
+#endif
+#endif
 
 namespace byteps {
 namespace torch {
@@ -272,6 +279,89 @@ pybind11::tuple DoPushPullGroupSync(::torch::Tensor tensor,
   return pybind11::make_tuple(handle, curr_count);
 }
 
+#if HAVE_CUDA
+int BatchedFuse(const std::vector<::torch::Tensor> input_tensors,
+  ::torch::Tensor fused_output_tensor) {
+  // check len(src) <= len(dst)
+  std::vector<std::shared_ptr<Tensor>> src;
+  size_t total_len = 0;
+  char *dst;
+
+  for (int i = 0; i < input_tensors.size(); i++) {
+    auto bps_src = std::make_shared<TorchTensor>(input_tensors[i]);
+    total_len += bps_src->size();
+    src.push_back(std::move(bps_src));
+  }
+
+  auto bps_dst = std::make_shared<TorchTensor>(fused_output_tensor);
+  dst = (char *) bps_dst->data();
+  size_t dst_len = bps_dst->size();
+  if (total_len > dst_len) {
+    std::cerr << "!!!!! total_len " << total_len << " dst_len " << dst_len << std::endl;
+    raise(SIGSEGV);
+  }
+#if TORCH_VERSION >= 1005000000
+  auto curr_stream = c10::cuda::getCurrentCUDAStream();
+#else
+  auto curr_stream = THCState_getCurrentStream(state);
+#endif
+  MemcpyInFusionBuffer(src, dst, curr_stream);
+  return 0;
+}
+
+int BatchedUnfuse(const ::torch::Tensor fused_input_tensor,
+  std::vector<::torch::Tensor> output_tensors) {
+  // check len(src) <= len(dst)
+  std::vector<std::shared_ptr<Tensor>> dst;
+  size_t total_len = 0;
+  char *src;
+
+  for (int i = 0; i < output_tensors.size(); i++) {
+    auto bps_dst = std::make_shared<TorchTensor>(output_tensors[i]);
+    total_len += bps_dst->size();
+    dst.push_back(std::move(bps_dst));
+  }
+
+  auto bps_src = std::make_shared<TorchTensor>(fused_input_tensor);
+  size_t src_len = bps_src->size();
+  src = (char *) bps_src->data();
+  if ((int) total_len < (int) src_len) {
+    std::cerr << "!!!!! total_len " << total_len << " src_len " << src_len << std::endl;
+    raise(SIGSEGV);
+  }
+#if TORCH_VERSION >= 1005000000
+  auto curr_stream = c10::cuda::getCurrentCUDAStream();
+  cudaStream_t curr_stream_t = curr_stream.stream();
+#else
+  auto curr_stream_t = THCState_getCurrentStream(state);
+#endif
+  MemcpyOutFusionBuffer(src, dst, curr_stream_t);
+  return 0;
+}
+
+
+int BatchedZeroOut(std::vector<::torch::Tensor> output_tensors) {
+  // check len(src) <= len(dst)
+  std::vector<std::shared_ptr<Tensor>> dst;
+  size_t total_len = 0;
+
+  for (int i = 0; i < output_tensors.size(); i++) {
+    auto bps_dst = std::make_shared<TorchTensor>(output_tensors[i]);
+    total_len += bps_dst->size();
+    dst.push_back(std::move(bps_dst));
+  }
+
+#if TORCH_VERSION >= 1005000000
+  auto curr_stream = c10::cuda::getCurrentCUDAStream();
+  cudaStream_t curr_stream_t = curr_stream.stream();
+#else
+  auto curr_stream_t = THCState_getCurrentStream(state);
+#endif
+  ZeroOutTensors(dst, curr_stream_t);
+  return 0;
+}
+#endif
+
 PYBIND11_MODULE(c_lib, m) {
   // push_pull
   m.def("byteps_torch_push_pull_async_torch_ByteTensor", &DoPushPull);
@@ -330,6 +420,27 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_HalfTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_FloatTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_cuda_DoubleTensor", &DoPushPullGroupSync);
+
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_ByteTensor", &BatchedFuse);
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_IntTensor", &BatchedFuse);
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_LongTensor", &BatchedFuse);
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_HalfTensor", &BatchedFuse);
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_FloatTensor", &BatchedFuse);
+  m.def("byteps_torch_batched_fuse_async_torch_cuda_DoubleTensor", &BatchedFuse);
+
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_ByteTensor", &BatchedUnfuse);
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_IntTensor", &BatchedUnfuse);
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_LongTensor", &BatchedUnfuse);
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_HalfTensor", &BatchedUnfuse);
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_FloatTensor", &BatchedUnfuse);
+  m.def("byteps_torch_batched_unfuse_async_torch_cuda_DoubleTensor", &BatchedUnfuse);
+
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_ByteTensor", &BatchedZeroOut);
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_IntTensor", &BatchedZeroOut);
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_LongTensor", &BatchedZeroOut);
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_HalfTensor", &BatchedZeroOut);
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_FloatTensor", &BatchedZeroOut);
+  m.def("byteps_torch_batched_zero_out_async_torch_cuda_DoubleTensor", &BatchedZeroOut);
 #endif
 
   // basics

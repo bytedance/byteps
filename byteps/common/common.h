@@ -74,6 +74,8 @@ enum DataType {
   // BYTEPS_BYTE = 10,
 };
 
+const std::string& DataType_Name(DataType value);
+
 // List of supported frameworks.
 enum Framework { TENSORFLOW, PYTORCH, MXNET };
 

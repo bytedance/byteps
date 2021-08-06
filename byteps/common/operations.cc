@@ -33,6 +33,9 @@
 #include "global.h"
 #include "logging.h"
 #include "operations.h"
+#if BYTEPS_BUILDING_CUDA == 1
+#include "cuda/cuda_kernels.h"
+#endif
 
 namespace byteps {
 namespace common {

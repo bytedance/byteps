@@ -73,6 +73,15 @@ def _recv_function_factory(tensor):
 def _push_pull_group_function_factory(tensor):
     return 'byteps_torch_push_pull_group_sync_' + tensor.type().replace('.', '_')
 
+def _batched_fuse_function_factory(tensor):
+    return 'byteps_torch_batched_fuse_async_' + tensor.type().replace('.', '_')
+
+def _batched_unfuse_function_factory(tensor):
+    return 'byteps_torch_batched_unfuse_async_' + tensor.type().replace('.', '_')
+
+def _batched_zero_out_function_factory(tensor):
+    return 'byteps_torch_batched_zero_out_async_' + tensor.type().replace('.', '_')
+
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0):
     from byteps.torch import c_lib
     c_lib.byteps_torch_declare_tensor(name.encode() if name is not None else _NULL)
@@ -271,6 +280,82 @@ def poll(handle):
     """
     from byteps.torch import c_lib
     return c_lib.byteps_torch_poll(handle) != 0
+
+def batched_fuse_(src_tensors, dst_tensor):
+    """
+    Use batched cuda kernels to copy entries from dst_tensors to src_tensor. The
+    dtype of src_tensors and dst_tensor must be the same. The input and output
+    must be on the same device. The total number of elements in src_tensors must
+    be less or equal than the number of elements of dst_tensor.
+
+    Arguments:
+        src_tensors: A list of tensors. Use batched cuda operation for GPU
+                     tensors.
+        dst_tensor: A tensor. On exit the entries from src_tensors
+                    will be copied to dst_tensor.
+    Returns:
+        0
+    """
+    from byteps.torch import c_lib
+    if dst_tensor.is_cuda:
+        function = _check_function(_batched_fuse_function_factory, dst_tensor)
+        getattr(c_lib, function)(src_tensors, dst_tensor)
+        return 0
+    else:
+        idx = 0
+        dst_tensor_flat = dst_tensor.view(-1)
+        for item in src_tensors:
+            tmp = dst_tensor_flat[idx:idx + item.numel()]
+            tmp.copy_(item.view(-1))
+            idx += item.numel()
+        return 0
+
+def batched_unfuse_(src_tensor, dst_tensors):
+    """
+    Use batched cuda kernels to copy entries from src_tensor to dst_tensors. The
+    dtype of src_tensor and dst_tensors must be the same. The input and output
+    must be on the same device. The number of elements in src_tensor must be
+    less or equal than the total number of elements of dst_tensors.
+
+    Arguments:
+        src_tensor: A tensor. Use batched cuda operation for GPU tensors.
+        dst_tensors: A list of tensors. On exit the entries from src_tensor
+                     will be copied to dst_tensors.
+    Returns:
+        0
+    """
+    from byteps.torch import c_lib
+    if src_tensor.is_cuda:
+        function = _check_function(_batched_unfuse_function_factory, src_tensor)
+        getattr(c_lib, function)(src_tensor, dst_tensors)
+        return 0
+    else:
+        src_tensor_flat = src_tensor.view(-1)
+        idx = 0
+        for item in dst_tensors:
+            tmp = src_tensor_flat[idx:idx + item.numel()].view(item.size())
+            item.copy_(tmp)
+            idx += item.numel()
+        return 0
+
+def batched_zero_(tensors):
+    """
+    Use batched cuda kernels to set entries of GPU tensors to 0.
+    Arguments:
+        tensors: A list of tensors. Use batched cuda calls only for GPU tensors.
+    Returns:
+        0
+    """
+    from byteps.torch import c_lib
+    assert isinstance(tensors, list), type(tensors)
+    if tensors[0].is_cuda:
+        function = _check_function(_batched_zero_out_function_factory, tensors[0])
+        getattr(c_lib, function)(tensors)
+        return 0
+    else:
+        for item in tensors:
+            item.zero_()
+        return 0
 
 
 def declare(name):
