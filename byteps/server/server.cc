@@ -59,8 +59,7 @@ byteps::common::CpuReducer* BytePSServer::bps_reducer_ = nullptr;
 
 // ========= for p2p ==========
 volatile bool BytePSServer::should_stop_ = false;
-int BytePSServer::preferred_rank_ = -1;
-bool BytePSServer::enable_preferred_rank_ = false;
+int BytePSServer::rank_ = -1;
 ps::Node::Role BytePSServer::role_;
 int BytePSServer::p2p_direct_response_ = 0;
 std::unordered_map<uint64_t, ps::KVMeta> BytePSServer::p2p_pull_reqmetas_;
@@ -423,9 +422,8 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
     }
     if (log_key_info_) {
       LOG(INFO) << "stored tensor for key=" << key << "\tcreated, rank="
-                << preferred_rank_ << " len=" << len << " device=" << stored->device;
+                << rank_ << " len=" << len << " device=" << stored->device;
     }
-    // TODO: actually there's no need to store this tensor
     // the max length
     stored->len = len;
     stored->dtype = type.dtype;
@@ -702,7 +700,7 @@ void BytePSServer::InitP2PCopyTable() {
   LOG(INFO) << "init p2p_group_copy_table_ with count = " << num_workers - 1;
 }
 
-void BytePSServer::init_global_env() {
+void BytePSServer::InitEnv() {
   // enable to print key profile
   log_key_info_ = GetEnv("BYTEPS_PS_KEY_LOG", false);
   std::string role_str = GetEnv("DMLC_ROLE", "unk");
@@ -711,7 +709,6 @@ void BytePSServer::init_global_env() {
   if (role_str != std::string("scheduler")) {
     is_server_ = true;
   }
-  LOG(INFO) << "This is a " << role_str << " node. is_server=" << is_server_;
 
   // enable engine block mode (default enabled)
   is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
@@ -732,9 +729,6 @@ void BytePSServer::init_global_env() {
   // number of engine thread
   // invalid if is_engine_blocking = true
   engine_thread_num_ = GetEnv("BYTEPS_SERVER_ENGINE_THREAD", 4);
-  LOG(INFO) << "BytePS server engine uses " << engine_thread_num_ << " threads"
-            << ", consider increasing BYTEPS_SERVER_ENGINE_THREAD for higher "
-               "performance";
   CHECK_GE(engine_thread_num_, 1);
 
   // enable scheduling for server engine
@@ -759,13 +753,16 @@ void BytePSServer::init_global_env() {
   }
   if (is_server_) {
     LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" << num_byteps_workers_
-              << " direct response = " << p2p_direct_response_;
+              << " direct response = " << p2p_direct_response_ << ". server engine uses "
+              << engine_thread_num_ << " threads, consider increasing BYTEPS_SERVER_ENGINE_THREAD"
+              << " for higher performance";
+  } else {
+    LOG(INFO) << "This is a scheduler.";
   }
 }
 
-
 void BytePSServer::Init(int rank) {
-  LOG(INFO) << "byteps server is starting";
+  LOG(INFO) << "byteps server is starting. rank=" << rank;
 
   // cpu reducer
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
@@ -805,14 +802,14 @@ void BytePSServer::Init(int rank) {
       engine_threads_.push_back(t);
     }
   }
-  preferred_rank_ = rank;
+  rank_ = rank;
   auto role = is_server_ ? ps::Node::SERVER : ps::Node::SCHEDULER;
   if (!is_server_) {
-    preferred_rank_ = 0;
+    rank_ = 0;
   }
   // When set to joint, the worker has already started the PS
   if (role_ != ps::Node::JOINT) {
-    ps::StartPS(0, role, preferred_rank_, true, "byteps\0");
+    ps::StartPS(0, role, rank_, false, "byteps\0");
   }
 
   // init server instance
@@ -824,12 +821,12 @@ void BytePSServer::Init(int rank) {
       server->set_request_handle(BytePSHandler);
       byteps_server_.push_back(server);
     }
-    LOG(INFO) << "BytePS server with rank=" << preferred_rank_;
   }
+  int barrier_group = ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup;
+  ps::Postoffice::GetServer()->Barrier(0, barrier_group);
 
   // clean the server resource
-  LOG(INFO) << "Waiting for all ranks to finalize.";
-  Finalize(0, role, true);
+  ps::Finalize(0, role, true);
   LOG(INFO) << "BytePS server is stopping ...";
   should_stop_ = true;
   for (auto server : byteps_server_) {
@@ -861,11 +858,9 @@ void BytePSServer::Init(int rank) {
 }
 
 extern "C" void byteps_server() {
-  int preferred_rank =
-    getenv("DMLC_RANK") ?  atoi(getenv("DMLC_RANK")) : -1;
-  LOG(INFO) << "BytePS Server with preferred_rank=" << preferred_rank;
-  BytePSServer::init_global_env();
-  BytePSServer::Init(preferred_rank);
+  int rank = getenv("DMLC_RANK") ? atoi(getenv("DMLC_RANK")) : -1;
+  BytePSServer::InitEnv();
+  BytePSServer::Init(rank);
 }
 
 }  // namespace server

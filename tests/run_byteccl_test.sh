@@ -17,7 +17,6 @@ export BYTEPS_LOCAL_SIZE=${BYTEPS_LOCAL_SIZE:-2}
 export BYTEPS_LOCAL_RANK=$((RANK % BYTEPS_LOCAL_SIZE))
 export UCX_RDMA_CM_SOURCE_ADDRESS=$DMLC_NODE_HOST
 export UCX_TLS=${UCX_TLS:=rc_x,cuda_copy,cuda_ipc,tcp}
-export BYTEPS_NUMA_ID=$(($2 / 4))
 export BYTEPS_PIN_MEMORY=${BYTEPS_PIN_MEMORY:-1}
 
 export UCX_RNDV_THRESH=8k
@@ -49,6 +48,7 @@ if [ $1 == "scheduler" ]; then
   exit
 fi
 
+export BYTEPS_NUMA_ID=$(($2 / 4))
 export DMLC_WORKER_ID=$2
 if [ $1 == "server" ]; then
   echo "Launch server"

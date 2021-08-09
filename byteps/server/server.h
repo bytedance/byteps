@@ -89,13 +89,13 @@ struct BytePSEngineMessage {
 
 class BytePSServer {
   public: 
-    // functions
+    // Init should be called before Init(), since it
+    // uses `getenv` under the hood, calling it from the
+    // main thread is recommended to avoid race conditions
+    static void InitEnv();
+    // initialize the byteps server
     static void Init(int rank);
     static void SendPushResponse(uint64_t key);
-    // init_global_env should be called before `Init()`
-    // since it uses `getenv` under the hood, calling it from
-    // the main thread is recommended to avoid race conditions
-    static void init_global_env();
 
     static void BytePSHandler(const ps::KVMeta& req_meta,
                               const ps::KVPairs<char> &req_data,
@@ -125,7 +125,33 @@ class BytePSServer {
       recved_partitions_[key] = arr;
     }
 
-    // TODO: move to private?
+    static ReadyTable* GetP2PCopyTable() { return p2p_copy_table_; }
+    static ReadyTable* GetP2PGroupCopyTable() { return p2p_group_copy_table_; }
+    static ReadyTable* GetP2PPullResponseTable() { return p2p_pull_response_table_; }
+    static ReadyTable* GetP2PAckTable() { return p2p_ack_table_; }
+
+    static void InitP2PCopyTable();
+    static int IsP2PDirectResponse() { return p2p_direct_response_; }
+    static void SendPullResponse(uint64_t key, char* data, int len);
+
+  private:
+    // functions
+    static void P2PHandler(const ps::KVMeta& req_meta,
+                           const ps::KVPairs<char> &req_data,
+                           ps::KVServer<char>* server);
+    static size_t GetThreadID(uint64_t key, size_t len);
+    static BytePSArray* GetStore(uint64_t key);
+
+
+    // routines
+    static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
+                                 ps::KVServer<char>* server);
+    static void SendPullResponse(const DataHandleType type,
+                                const uint64_t key,
+                                const ps::KVMeta& req_meta,
+                                ps::KVServer<char>* server);
+    static void BytePSServerEngineThread(int i);
+
     // knobs
     static uint64_t timestamp_;
     static size_t engine_thread_num_;
@@ -135,8 +161,10 @@ class BytePSServer {
     static volatile bool debug_mode_;
     static volatile bool enable_schedule_;
     static volatile bool is_server_;
-    static ps::Node::Role role_;
 
+    // cluster info
+    static ps::Node::Role role_;
+    static int rank_;
     static size_t num_phy_node_;
     static size_t num_expected_workers_;
     static size_t num_byteps_workers_;
@@ -154,8 +182,6 @@ class BytePSServer {
 
     // ==== p2p related ====
     static volatile bool should_stop_;
-    static int preferred_rank_;
-    static bool enable_preferred_rank_;
     static int p2p_direct_response_;
     static bool alltoall_batch_recv_;
     // ==== p2p related ====
@@ -191,33 +217,7 @@ class BytePSServer {
     // accumulated tensor size for an engine thread
     static std::vector<uint64_t> acc_load_;
 
-    static ReadyTable* GetP2PCopyTable() { return p2p_copy_table_; }
-    static ReadyTable* GetP2PGroupCopyTable() { return p2p_group_copy_table_; }
-    static ReadyTable* GetP2PPullResponseTable() { return p2p_pull_response_table_; }
-    static ReadyTable* GetP2PAckTable() { return p2p_ack_table_; }
-    
-    static void InitP2PCopyTable();
-    static int IsP2PDirectResponse() { return p2p_direct_response_; }
-    static void SendPullResponse(uint64_t key, char* data, int len);
-
-  private:
-    // functions
-    static void P2PHandler(const ps::KVMeta& req_meta,
-                           const ps::KVPairs<char> &req_data, 
-                           ps::KVServer<char>* server);
-    static size_t GetThreadID(uint64_t key, size_t len);
-    static BytePSArray* GetStore(uint64_t key);
-
-    // routines
-    static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
-                                 ps::KVServer<char>* server);
-    static void SendPullResponse(const DataHandleType type,
-                                const uint64_t key,
-                                const ps::KVMeta& req_meta,
-                                ps::KVServer<char>* server);
-    static void BytePSServerEngineThread(int i);
-
-
+    // ready tables
     static ReadyTable* p2p_copy_table_;
     static ReadyTable* p2p_group_copy_table_;
     static ReadyTable* p2p_pull_response_table_;
@@ -225,6 +225,7 @@ class BytePSServer {
     static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
     
     static std::unordered_map<uint64_t, ps::KVMeta> p2p_pull_reqmetas_;
+
 };
 
 extern "C" void byteps_server();

@@ -435,21 +435,21 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
     auto val = getenv("DMLC_GROUP_SIZE");
     int group_size = val ? atoi(val) : 1;
     BPS_LOG(DEBUG) << "Initializing PS worker. rank=" << _worker_id
-                    << " role=" << ps_role << " group_size=" << group_size;
-    ps::StartPS(0, ps_role, _worker_id, true, "byteps\0");
+                   << " role=" << ps_role;
+    ps::StartPS(0, ps_role, _worker_id, false, "byteps\0");
     for (int i = 0; i < group_size; ++i) {
       _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
     if (ps_role == ps::Node::JOINT) {
-      server::BytePSServer::init_global_env();
+      server::BytePSServer::InitEnv();
+      // start a separate thread to init kv server, and the server-side barrier
       _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));
       BPS_CHECK(!(IsDirectResponse() == 2 && ShouldSkipInputCopy()))
         << "direct response should not be 2 when skipping input copies";
     }
-    // TODO: support resume
+    ps::Postoffice::Get()->Barrier(0, ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup);
     BPS_LOG(DEBUG) << "PS rank " << _worker_id << " initialized. num_server="
-                    << ps::NumServers() << ". num_worker=" << ps::NumWorkers()
-                    << ". group_size=" << group_size;
+                    << ps::NumServers() << ". num_worker=" << ps::NumWorkers();
   }
   if (_ps.size() > index) {
     return _ps.at(index);
