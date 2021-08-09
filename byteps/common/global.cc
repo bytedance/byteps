@@ -181,6 +181,13 @@ void BytePSGlobal::Init() {
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N");
+
+  _basic_comm = std::make_shared<BytePSCommSocket>();
+  _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
+                    &_my_role, &_num_phy_node, &_phy_node_id);
+
+  _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+
   if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
     _worker_local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
   }
@@ -194,12 +201,6 @@ void BytePSGlobal::Init() {
   if (_server_local_root == -1) {
     _server_local_root = _local_size - 1;
   }
-
-  _basic_comm = std::make_shared<BytePSCommSocket>();
-  _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
-                    &_my_role, &_num_phy_node, &_phy_node_id);
-
-  _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
 
   if (getenv("BYTEPS_DISABLE_P2P_ACK")) {
     _p2p_disable_pull_ack = atoi(getenv("BYTEPS_DISABLE_P2P_ACK"));
@@ -235,7 +236,12 @@ void BytePSGlobal::Init() {
   if (getenv("BYTEPS_FORCE_DISTRIBUTED")) {
     _is_distributed_job = atoi(getenv("BYTEPS_FORCE_DISTRIBUTED"));
   }
-  _is_distributed_job = (_num_worker > 1) ? true : _is_distributed_job;
+
+  if (_is_joint) {
+    _is_distributed_job = (_num_worker > _local_size) ? true : _is_distributed_job;
+  } else {
+    _is_distributed_job = (_num_worker > 1) ? true : _is_distributed_job;
+  }
 
   if (_is_distributed_job) {
     BPS_CHECK(getenv("DMLC_NUM_SERVER"))
