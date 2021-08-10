@@ -151,6 +151,8 @@ def check_env():
             print("The env " + env + " is missing")
             os._exit(0)
 
+def is_joint_mode():
+    return os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]
 
 def worker_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
@@ -178,7 +180,6 @@ def worker_fn(local_rank, local_size, command, allocation=None):
             print("Command: %s\n" % command)
         else:
             print("Warning: numactl not found. try `sudo apt-get install numactl`.")
-
     if os.environ.get("BYTEPS_TRACE_ON", "") == "1":
         print("\n!!!Enable profiling for WORKER_ID: %s and local_rank: %d!!!" %
               (os.environ.get("DMLC_WORKER_ID"), local_rank))
@@ -192,7 +193,11 @@ def worker_fn(local_rank, local_size, command, allocation=None):
             os.makedirs(trace_path)
     node_id = int(os.environ.get("BYTEPS_NODE_ID", "0"))
     global_rank = int(node_id * local_size + local_rank)
-    my_env["DMLC_WORKER_ID"] = str(global_rank)
+    if os.environ.get("DMLC_ROLE") == "joint":
+        dmlc_worker_id = int(node_id * local_size + local_rank)
+    else:
+        dmlc_worker_id = int(node_id)
+    my_env["DMLC_WORKER_ID"] = str(dmlc_worker_id)
     my_env["DMLC_RANK"] = my_env["DMLC_WORKER_ID"]
     log_file_name = os.getenv('BYTEPS_LOG_FILE', '')
     if log_file_name:
@@ -211,9 +216,7 @@ def server_fn(local_rank, local_size, command, allocation=None):
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
-    node_id = int(os.environ.get("BYTEPS_PHY_NODE_ID", "0"))
-    global_rank = node_id * local_size + local_rank
-    my_env["DMLC_RANK"] = str(node_id)
+    my_env["DMLC_RANK"] = "-1"
     subprocess.check_call(command, env=my_env,
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
@@ -235,7 +238,7 @@ def launch_bps():
     check_env()
     os.environ["PYTHONUNBUFFERED"] = "1"
     if os.environ["DMLC_ROLE"] in ["worker", "joint"]:
-        if os.getenv("BYTEPS_FORCE_JOINT_MODE", "1").lower() in ["1", "true"]:
+        if is_joint_mode():
             os.environ["DMLC_ROLE"] = "joint"
         # launch workers
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
@@ -275,12 +278,13 @@ def launch_bps():
     command = "python3 -c 'import byteps.server'"
     if os.environ["DMLC_ROLE"] == "scheduler":
         my_env = os.environ.copy()
+        my_env['PS_VERBOSE'] = my_env.get('PS_VERBOSE', '1')
         subprocess.check_call(command, env=my_env,
                               stdout=sys.stdout, stderr=sys.stderr, shell=True)
         return
 
-    if os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]:
-        # do nothing when DMLC_ROLE is "server".
+    if is_joint_mode():
+        # do nothing when DMLC_ROLE is "server" in joint mode.
         return
 
     # now it's the servers in non-colocate mode
@@ -296,7 +300,8 @@ def launch_bps():
         t[i].join()
 
 if __name__ == "__main__":
-    os.environ["DMLC_NUM_WORKER"] = str(int(os.environ["BYTEPS_NUM_NODES"]) *
-                                        int(os.environ["BYTEPS_LOCAL_SIZE"]))
-    os.environ["DMLC_NUM_SERVER"] = os.environ["DMLC_NUM_WORKER"]
+    if is_joint_mode():
+        os.environ["DMLC_NUM_WORKER"] = str(int(os.environ["BYTEPS_NUM_NODES"]) *
+                                            int(os.environ["BYTEPS_LOCAL_SIZE"]))
+        os.environ["DMLC_NUM_SERVER"] = os.environ["DMLC_NUM_WORKER"]
     launch_bps()

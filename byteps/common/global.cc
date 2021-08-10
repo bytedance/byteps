@@ -436,18 +436,20 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
     int group_size = val ? atoi(val) : 1;
     BPS_LOG(DEBUG) << "Initializing PS worker. rank=" << _worker_id
                    << " role=" << ps_role;
-    ps::StartPS(0, ps_role, _worker_id, false, "byteps\0");
+    bool is_joint = ps_role == ps::Node::JOINT;
+    ps::StartPS(0, ps_role, is_joint ? _worker_id : -1, false, "byteps\0");
     for (int i = 0; i < group_size; ++i) {
       _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
-    if (ps_role == ps::Node::JOINT) {
+    if (is_joint) {
       server::BytePSServer::InitEnv();
       // start a separate thread to init kv server, and the server-side barrier
       _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));
       BPS_CHECK(!(IsDirectResponse() == 2 && ShouldSkipInputCopy()))
         << "direct response should not be 2 when skipping input copies";
     }
-    ps::Postoffice::Get()->Barrier(0, ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup);
+    int barrier_group = ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup;
+    ps::Postoffice::GetWorker()->Barrier(0, barrier_group);
     BPS_LOG(DEBUG) << "PS rank " << _worker_id << " initialized. num_server="
                     << ps::NumServers() << ". num_worker=" << ps::NumWorkers();
   }
