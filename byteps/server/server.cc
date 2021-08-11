@@ -408,6 +408,18 @@ void init_global_env() {
   // enable to print key profile
   log_key_info_ = GetEnv("PS_KEY_LOG", 0);
 
+  std::string role_str = GetEnv("DMLC_ROLE", "server");
+  role_ = ps::GetRole(role_str);
+  if (role_str == std::string("server")) {
+    is_server_ = true;
+    preferred_rank = -1;
+  } else {
+    is_server_ = false;
+    preferred_rank = 0;
+  }
+
+  LOG(INFO) << "This is a " << role_str << " is_server=" << is_server_;
+
   // enable engine block mode (default disabled)
   is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", 0);
   if (is_engine_blocking_)
@@ -480,16 +492,16 @@ extern "C" void byteps_server() {
   }
 
   // init server instance
-  byteps_server_ = new KVServer<SERVER_DATA_TYPE>(0);
+  ps::StartPS(0, role_, preferred_rank, true, "byteps\0");
+  byteps_server_ = new KVServer<SERVER_DATA_TYPE>(0, false, 0);
   byteps_server_->set_request_handle(BytePSHandler);
-  StartAsync(0, "byteps_server\0");
   if (!Postoffice::Get()->is_recovery()) {
     Postoffice::Get()->Barrier(
         0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
   }
 
   // clean the server resource
-  Finalize(0, true);
+  Finalize(0, role_, true);
   if (byteps_server_) {
     delete byteps_server_;
     byteps_server_ = nullptr;

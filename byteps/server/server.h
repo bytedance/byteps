@@ -129,6 +129,10 @@ volatile bool sync_mode_ = true;
 volatile bool debug_mode_ = false;
 volatile bool enable_schedule_ = false;
 
+ps::Node::Role role_;
+int preferred_rank = -1;
+volatile bool is_server_ = true;
+
 // debug
 uint64_t debug_key_;
 std::mutex debug_mu_;
