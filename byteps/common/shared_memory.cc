@@ -31,7 +31,7 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
   std::string shm_name(prefix);
   shm_name += std::to_string(key);
   int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
-  BPS_CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name;
+  BPS_CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name << " " << strerror(errno);
 
   BPS_CHECK_GE(ftruncate(shm_fd, size), 0) << strerror(errno);
 

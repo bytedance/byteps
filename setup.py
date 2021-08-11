@@ -642,7 +642,7 @@ def get_nccl_vals():
         nccl_include_dirs += ['%s/include' % nccl_home]
         nccl_lib_dirs += ['%s/lib' % nccl_home, '%s/lib64' % nccl_home]
 
-    nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'STATIC')
+    nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'SHARED')
     if nccl_link_mode.upper() == 'SHARED':
         nccl_libs += ['nccl']
     else:
@@ -892,7 +892,7 @@ class custom_build_ext(build_ext):
         if build_ucx():
             ucx_path = pre_setup.ucx_path.strip()
             if not ucx_path:
-                ucx_path = "https://codeload.github.com/openucx/ucx/zip/824c9f03"
+                ucx_path = "https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.zip"
             print("ucx_path is", ucx_path)
             cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
             "rm -rf ucx*;" +\

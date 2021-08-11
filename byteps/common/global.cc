@@ -286,8 +286,8 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS() {
   if (!_ps && IsDistributed() &&
       _my_role == BytePSRole::LOCAL_ROOT) {  // only the root needs networking
     // init low-level ps implementation
-    _ps = new ps::KVWorker<char>(0, 0);
-    ps::StartAsync(0, "byteps\0");
+    ps::StartPS(0, ps::Node::WORKER, -1, true, "byteps\0");
+    _ps = new ps::KVWorker<char>(0, 0, 0);
     if (BytePSGlobal::IsResuming() || !ps::Postoffice::Get()->is_recovery()) {
       ps::Postoffice::Get()->Barrier(
           0, ps::kWorkerGroup + ps::kServerGroup + ps::kScheduler);
@@ -344,7 +344,7 @@ void BytePSGlobal::Shutdown() {
 
   if (_ps) {
     // shutdown _ps and wait for the completion acks of other workers/servers
-    ps::Finalize(0, true);
+    ps::Finalize(0, ps::Node::WORKER, true);
     delete _ps;
     _ps = NULL;
   }
