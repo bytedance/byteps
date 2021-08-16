@@ -149,7 +149,7 @@ def check_env():
     for env in required_envs:
         if env not in os.environ:
             print("The env " + env + " is missing")
-            os._exit(0)
+            os._exit(-1)
 
 def is_joint_mode():
     return os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]
