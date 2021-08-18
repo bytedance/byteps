@@ -56,13 +56,15 @@ void byteps_lazy_init() {
 
   // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
-    func.push_back(RecvLoop);
-    func.push_back(SendLoop);
-    func.push_back(P2PPullLoop);
-    func.push_back(P2PPullResponseLoop);
-    func.push_back(P2PGroupCopyHost2DeviceLoop);
-    func.push_back(P2PAckLoop);
-
+    // p2p operations are only available in joint mode
+    if (BytePSGlobal::IsJoint()) {
+      func.push_back(RecvLoop);
+      func.push_back(SendLoop);
+      func.push_back(P2PPullLoop);
+      func.push_back(P2PPullResponseLoop);
+      func.push_back(P2PGroupCopyHost2DeviceLoop);
+      func.push_back(P2PAckLoop);
+    }
     if (BytePSGlobal::IsRootDevice()) {
       func.push_back(PullLoop);
       func.push_back(DecompressLoop);
@@ -304,6 +306,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
+  BPS_CHECK(BytePSGlobal::IsJoint()) << "alltoall is not supported in non-joint mode";
   // This function prepares the P2PTensorTableEntry for both pull-based and push-based
   // alltoall operations. In general, we construct two types of tasks: request task
   // and response task.
@@ -717,12 +720,14 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   }
 
   context.initialized = true;
-  BPS_LOG(TRACE) << "Finish Init " << context.tensor_name << " request_size=" << total_request_size
+  BPS_LOG(TRACE) << "Finish Init " << context.tensor_name
+                 << " request_size=" << total_request_size
                  << " resp_size=" << total_resp_size << " use_pull=" << use_pull;
 }
 
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu) {
+  BPS_CHECK(BytePSGlobal::IsJoint()) << "send/recv is not supported in non-joint mode";
   auto bound = BytePSGlobal::GetPartitionBound();
   std::lock_guard<std::mutex> lock(context.init_mutex);
   BPS_CHECK(size > 0);

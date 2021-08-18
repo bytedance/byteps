@@ -40,7 +40,7 @@ class TensorFlowTests:
         self.rank = bps.rank()
         self.size = bps.size()
 
-    def test_telemtry(self):
+    def test_telemetry(self):
         telemetries = bps.get_telemetry()
         for entry in telemetries:
             name, mean, stdev, count = entry
@@ -507,7 +507,7 @@ tests = TensorFlowTests()
 
 # TODO: remove this when we fix direct response
 is_direct_resp = int(os.environ.get('BYTEPS_SERVER_DIRECT_RESPONSE', 0))
-tests.test_telemtry()
+tests.test_telemetry()
 tests.test_allreduce()
 tests.test_all2all_invalid_splits()
 tests.test_all2all(src_device='cpu', dst_device='cpu')

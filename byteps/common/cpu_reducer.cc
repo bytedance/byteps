@@ -524,54 +524,5 @@ int CpuReducer::copy(void* dst, const void* src, size_t len) {
   return 0;
 }
 
-// ========= THESE FUNCTIONS ARE NOT TESTED YET =============
-// TODO: need to handle alignment
-// void _avx_cpy_unroll(void *d, const void *s, size_t n) {
-//   auto *dVec = reinterpret_cast<__m256i *>(d);
-//   const auto *sVec = reinterpret_cast<const __m256i *>(s);
-//   size_t nVec = n / sizeof(__m256i);
-//   for (; nVec > 0; nVec -= 4, sVec += 4, dVec += 4) {
-//     _mm256_store_si256(dVec, _mm256_load_si256(sVec));
-//     _mm256_store_si256(dVec + 1, _mm256_load_si256(sVec + 1));
-//     _mm256_store_si256(dVec + 2, _mm256_load_si256(sVec + 2));
-//     _mm256_store_si256(dVec + 3, _mm256_load_si256(sVec + 3));
-//   }
-// }
-
-// void _avx_cpy_unroll_512(void *d, const void *s, size_t n) {
-//   auto *dVec = reinterpret_cast<__m512i *>(d);
-//   const auto *sVec = reinterpret_cast<const __m512i *>(s);
-//   size_t nVec = n / sizeof(__m512i);
-//   for (; nVec > 0; nVec -= 4, sVec += 4, dVec += 4) {
-//     _mm512_store_si512(dVec, _mm512_load_si512(sVec));
-//     _mm512_store_si512(dVec + 1, _mm512_load_si512(sVec + 1));
-//     _mm512_store_si512(dVec + 2, _mm512_load_si512(sVec + 2));
-//     _mm512_store_si512(dVec + 3, _mm512_load_si512(sVec + 3));
-//   }
-// }
-
-// void _avx_async_cpy_512(void *d,  void *s, size_t n, int t) {
-//   auto *dVec = reinterpret_cast<__m512i *>(d);
-//   auto *sVec = reinterpret_cast< __m512i *>(s);
-//   size_t nVec = n / sizeof(__m512i);
-// #pragma omp parallel for simd num_threads(t)
-//   for (size_t i = 0; i < nVec; ++i) {
-//     const __m512i temp = _mm512_stream_load_si512(sVec + i);
-//     _mm512_stream_si512(dVec + i, temp);
-//   }
-//   _mm_sfence();
-// }
-
-// void _avx_cpy_512(void *d,  void *s, size_t n, int t) {
-//   auto *dVec = reinterpret_cast<__m512i *>(d);
-//   auto *sVec = reinterpret_cast< __m512i *>(s);
-//   size_t nVec = n / sizeof(__m512i);
-//   #pragma omp parallel for simd num_threads(t)
-//   for (size_t i = 0; i < nVec; ++i) {
-//     _mm512_store_si512(dVec + i, _mm512_load_si512(sVec + i));
-//   }
-// }
-// ========= THESE FUNCTIONS ARE NOT TESTED YET =============
-
 }  // namespace common
 }  // namespace byteps

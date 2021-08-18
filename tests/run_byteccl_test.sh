@@ -25,7 +25,6 @@ export UCX_IB_TRAFFIC_CLASS=236
 
 export DMLC_NUM_CPU_DEV=${DMLC_NUM_CPU_DEV:=0}
 export DMLC_NUM_GPU_DEV=${DMLC_NUM_GPU_DEV:=1}
-export CUDA_VISIBLE_DEVICES=$(($BYTEPS_LOCAL_RANK))
 
 export BYTEPS_SERVER_DIRECT_RESPONSE=${BYTEPS_SERVER_DIRECT_RESPONSE:-0}
 export BYTEPS_WORKER_LOCAL_ROOT=0
@@ -74,10 +73,11 @@ if [ $1 == "worker" ] || [ $1 == "joint" ]; then
   export DMLC_ROLE=$1
   if [ "$TEST_TYPE" == "tensorflow" ]; then
     echo "TEST TENSORFLOW ..."
+    export CUDA_VISIBLE_DEVICES=$BYTEPS_LOCAL_RANK
     $GDB python3 $path/$BIN
   elif [ "$TEST_TYPE" == "torch" ]; then
     echo "TEST TORCH ..."
-    $GDB python3 $path/test_torch_p2p.py
+    $GDB python3 $path/$BIN
   else
     echo "Error: unsupported $TEST_TYPE"
     exit 1
