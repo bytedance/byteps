@@ -34,12 +34,14 @@ import os
 import torch
 import collections
 
-
 class _DistributedOptimizer(torch.optim.Optimizer):
     def __init__(self, params, named_parameters, compression,
-                 backward_passes_per_step=1):
+                 backward_passes_per_step=1, staleness=0):
         super(self.__class__, self).__init__(params)
         self._compression = compression
+        self._niter = 0
+        self._staleness = staleness
+        assert staleness == 0 or staleness == 1, staleness
 
         if named_parameters is not None:
             named_parameters = list(named_parameters)
@@ -90,12 +92,30 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._grad_accs = []
         self._requires_update = set()
         self._should_sync = True
+
+        # for pipesgd
+        self._stale_handles = collections.defaultdict(dict)
+        self._stale_push_pull_delay = collections.defaultdict(dict)
+        self._stale_push_pull_delay = {self._get_param_name(v): self.backward_passes_per_step
+                                       for _, v in sorted(named_parameters)}
+        # whether it is the initial optimizer.step()
+        self.state['byteps_skipped_init_step'] = False
+        # a reference of self._niter stored in states
+        self.state['byteps_niter'] = 0
+        # store the scale factor from amp if fp16 dynamic scaling is present
+        self.state['byteps_stale_scale'] = 1
+        # checkpoint the materialized gradient before torch.save() is called.
+        # the ckpt grad will be used in three cases: the iteration after checkpoint,
+        # the 1-st iteration after resuming training from ckpt, and the first iteration
+        # that pipesgd takes effect.
+        self.state['byteps_stale_grad'] = {}
+
         if size() > 1:
             self._register_hooks()
 
         # declare tensors
         for name in sorted(self._parameter_names.values()):
-            declare("Gradient."+name)
+            declare("Gradient."+name, staleness=staleness)
         # We use two loops for load-balancing
         for name in sorted(self._parameter_names.values()):
             declare("Parameter."+name)
@@ -114,6 +134,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self.backward_passes_per_step = passes
         for p in self._push_pull_delay:
             self._push_pull_delay[p] = self.backward_passes_per_step
+        for p in self._stale_push_pull_delay:
+            self._stale_push_pull_delay[p] = self.backward_passes_per_step
 
     def _register_hooks(self):
         for param_group in self.param_groups:
@@ -126,19 +148,29 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                     grad_acc.register_hook(self._make_hook(p))
                     self._grad_accs.append(grad_acc)
 
-    def _push_pull_grad_async(self, p):
+    def _get_param_name(self, p):
+        """Get the name of a parameter."""
         if self._is_tensor_instance:
             name = self._parameter_names.get(p.__hash__())
         else:
             name = self._parameter_names.get(p)
+        return name
+
+    def _push_pull_grad_async(self, p):
+        name = self._get_param_name(p)
         if self._enable_async:
             # the real handle will be created in step()
             handle, ctx = None, None
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
-            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-        return handle, ctx
+            # pipe-sgd: need to clone the gradient to avoid race condition
+            if self._staleness:
+                tensor_compressed = tensor_compressed.clone()
+            niter = self.state['byteps_niter']
+            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name,
+                                      version=niter, staleness=self._staleness)
+        return handle, ctx, name
 
     def _make_hook(self, p):
         def hook(*ignore):
@@ -154,29 +186,143 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             handle, ctx = None, None
             self._push_pull_delay[p] -= 1
             if self._push_pull_delay[p] == 0:
-                handle, ctx = self._push_pull_grad_async(p)
-            self._handles[p] = (handle, ctx)
-        return hook
+                handle, ctx, name = self._push_pull_grad_async(p)
+            # FIXME: ``name`` may be undefined
+            self._handles[p] = (handle, ctx, name)
+
+        def stale_hook(*ignore):
+            name = self._get_param_name(p)
+            niter = self.state['byteps_niter']
+            if name in self._stale_handles[niter] and self._stale_handles[niter][name][0] is not None:
+                if self._stale_push_pull_delay[name] <= 0:
+                    raise AssertionError(
+                        "Gradients were computed more than "
+                        "backward_passes_per_step times before call "
+                        "to step(). Increase backward_passes_per_step to "
+                        "accumulate gradients locally.")
+            handle, ctx = None, None
+            self._stale_push_pull_delay[name] -= 1
+            if self._stale_push_pull_delay[name] == 0:
+                handle, ctx, name = self._push_pull_grad_async(p)
+                self._stale_handles[niter][name] = (p, handle, ctx)
+
+        return hook if self._staleness == 0 else stale_hook
 
     def synchronize(self):
+        """Synchronizes the asynchronous pushpull(allreduce) operations for all
+        gradients until they are completed.
+        """
+        if self._staleness:
+            self._stale_synchronize()
+        else:
+            self._synchronize()
+
+
+    def _synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
             if type(p.grad) == type(None):
                 continue
-            handle, ctx = self._push_pull_grad_async(p)
-            self._handles[p] = (handle, ctx)
+            handle, ctx, name = self._push_pull_grad_async(p)
+            self._handles[p] = (handle, ctx, name)
 
         for p, value in self._handles.items():
-            handle, ctx = value
+            handle, ctx, name = value
             if handle is None:
-                handle, ctx = self._push_pull_grad_async(p)
-                self._handles[p] = (handle, ctx)
-        for p, (handle, _) in self._handles.items():
+                handle, ctx, _ = self._push_pull_grad_async(p)
+                self._handles[p] = (handle, ctx, name)
+        for p, (handle, _, name) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
-                p.grad.set_(self._compression.decompress(output, ctx))
+                tmp = self._compression.decompress(output, ctx)
+                if self._compression == Compression.none:
+                    p.grad.set_(tmp)
+                else:
+                    p.grad.copy_(tmp)
         self._handles.clear()
+
+    def _stale_synchronize(self):
+        has_amp = hasattr(self, "_amp_stash")
+        niter = self.state['byteps_niter']
+        assert niter >= 0, niter
+        loss_scale = 1
+
+        if has_amp:
+            import apex
+            loss_scalers = apex.amp._amp_state.loss_scalers
+            assert len(loss_scalers) == 1, f'Multiple amp loss is not supported: {loss_scalers}'
+            loss_scale = loss_scalers[0].loss_scale()
+        # if the loss scale increases at the current iteration
+        # amp will rescale it back after synchronize(). so we need
+        # to adjust the gradient from the previous step accordingly
+        prev_loss_scale = self.state['byteps_stale_scale'] if niter > 0 else loss_scale
+        grad_ratio = loss_scale / prev_loss_scale
+
+        # materialzed grad tensors are not available. obtain them from handles
+        stale_grad_state = self.state['byteps_stale_grad']
+        if not stale_grad_state:
+            if niter == 0:
+                for name, (p, handle, ctx) in self._stale_handles[niter].items():
+                    assert handle is not None, name
+                    assert not p.grad.is_sparse, "sparse gradient is not supported"
+                    output = synchronize(handle)
+                    tmp = self._compression.decompress(output, ctx)
+                    stale_grad_state[name] = tmp
+                    p.grad.copy_(tmp)
+            else:
+                for name, (p, handle, ctx) in self._stale_handles[niter-1].items():
+                    assert handle is not None
+                    assert not p.grad.is_sparse, "sparse gradient is not supported"
+                    output = synchronize(handle)
+                    prev_grad = self._compression.decompress(output, ctx)
+                    with torch.no_grad():
+                        # if the loss scale increases at the current iteration
+                        # amp will rescale it back after synchronize(). so we need
+                        # to adjust the gradient from the previous step accordingly
+                        if grad_ratio != 1.0:
+                            prev_grad.mul_(grad_ratio)
+                        p.grad.copy_(prev_grad)
+            if niter > 0:
+                del self._stale_handles[niter - 1]
+        else:
+            # grad tensors alread materialized
+            for p in self._requires_update:
+                assert not p.grad.is_sparse, "sparse gradient is not supported"
+                name = self._get_param_name(p)
+                if name in stale_grad_state:
+                    prev_grad = stale_grad_state[name]
+                    with torch.no_grad():
+                        if grad_ratio != 1.0:
+                            prev_grad.mul_(grad_ratio)
+                        p.grad.copy_(prev_grad)
+            self.state['byteps_stale_grad'] = {}
+
+        # update states
+        for name in self._stale_push_pull_delay:
+            self._stale_push_pull_delay[name] = self.backward_passes_per_step
+        self.state['byteps_stale_scale'] = loss_scale
+        self.state['byteps_niter'] += 1
+
+    def prepare_stale_states(self):
+        """
+        This API is used to save _stale_grad and _stale_scale when both checkpointing
+        and PipeSGD are enabled. The ckpt _stale_grad and _stale_scale will be used for
+        update when resuming training from ckpt. Please Note: User must call this API intentionally
+        before torch.save().
+        """
+        stale_grad_states = {}
+        niter = self.state['byteps_niter']
+        for name, (p, handle, ctx) in self._stale_handles[niter-1].items():
+            assert handle is not None
+            assert not p.grad.is_sparse, p
+            output = synchronize(handle)
+            prev_grad = self._compression.decompress(output, ctx)
+            stale_grad_states[name] = prev_grad
+        self.state['byteps_stale_grad'] = stale_grad_states
+        del self._stale_handles[niter-1]
+        for name in self._stale_push_pull_delay:
+            self._stale_push_pull_delay[name] = self.backward_passes_per_step
 
     @contextmanager
     def skip_synchronize(self):
@@ -216,12 +362,18 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # skip sync if calling skip_synchronize
             if self._should_sync:
                 self.synchronize()
-            return super(self.__class__, self).step(closure)
+            if self._staleness == 0:
+                return super(self.__class__, self).step(closure)
+            else:
+                if not self.state['byteps_skipped_init_step']:
+                    self.state['byteps_skipped_init_step'] = True
+                else:
+                    return super(self.__class__, self).step(closure)
 
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
-                         backward_passes_per_step=1):
+                         backward_passes_per_step=1, staleness=0):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
@@ -231,7 +383,9 @@ def DistributedOptimizer(optimizer, named_parameters=None,
     DistributedOptimizer exposes the `synchronize()` method, which forces push_pull operations
     to finish before continuing the execution. It's useful in conjunction with gradient
     clipping, or other operations that modify gradients in place before `step()` is executed.
+
     Example of gradient clipping:
+
     ```
     output = model(data)
     loss = F.nll_loss(output, target)
@@ -240,6 +394,7 @@ def DistributedOptimizer(optimizer, named_parameters=None,
     torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
     optimizer.step()
     ```
+
     Arguments:
         optimizer: Optimizer to use for computing gradients and applying updates.
         named_parameters: A mapping between parameter names and values. Used for naming of
@@ -252,13 +407,17 @@ def DistributedOptimizer(optimizer, named_parameters=None,
                                   allows accumulating gradients over multiple
                                   mini-batches before executing averaging and
                                   applying them.
+        staleness: Number of controlled gradients staleness if pipelined SGD is enabled. 
+                   This allows optimizer using stale gradients to update parameters. Defaults 
+                   to not using pipelined SGD, i.e., staleness=0. If set to 1, the parameter
+                   update is delayed by 1 step. Reference: https://arxiv.org/abs/1811.03619
     """
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override the `step()` method with an push_pull implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DistributedOptimizer.__dict__))
     return cls(optimizer.param_groups, named_parameters,
-               compression, backward_passes_per_step)
+               compression, backward_passes_per_step, staleness)
 
 
 def broadcast_parameters(params, root_rank, prefix="Parameter."):
@@ -387,7 +546,11 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
             params.append((key, option_tensor))
 
         # The params list here is ordered by the layers in the model
+        
         for pid in group['params']:
+            if pid not in state_dict['state']:
+                # The param has not set requires_grad, so skip broadcast
+                continue
             param_state = state_dict['state'][pid]
             for name, p in param_state.items():
                 # Some parameter names may appear more than once, in which
