@@ -293,39 +293,34 @@ class TensorFlowTests:
         p2p_matrix = np.array([len_per_worker]*(size*size)).reshape(size, size)
         splits_list = list(p2p_matrix[rank])
         recv_splits_list = list(p2p_matrix[:, rank])
-        print(f'rank={rank}, size={size}, split={splits_list}, recv_split={recv_splits_list}, matrix={p2p_matrix.tolist()}', flush=True)
-        splits = tf.constant(splits_list, dtype=int_dtype)
-        recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
+        print(f'rank={rank}/{size} split={splits_list} recv_split={recv_splits_list} matrix={p2p_matrix.tolist()} src_gpu={src_gpu} dst_gpu={dst_gpu}', flush=True)
+        with tf.device("/cpu:0"):
+            splits = tf.constant(splits_list, dtype=int_dtype)
+            recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
         with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
             tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
         t0 = time.time()
         interval = 10
+        name = 'data_'
+        alltoall_fn = bps.alltoall
         if dst_gpu:
             if src_gpu:
-                alltoall_fn = bps.alltoall
+                name += 'g2g'
             else:
                 alltoall_fn = bps.alltoall_cpu2gpu
+                name += 'c2g'
         else:
             if src_gpu:
                 alltoall_fn = bps.alltoall_gpu2cpu
+                name += 'g2c'
             else:
-                alltoall_fn = bps.alltoall
+                name += 'c2c'
         while niter < total_niter:
-            if args.backend == 'byteps':
-                name = 'data_'
-                if src_gpu:
-                    if dst_gpu:
-                        name += 'g2g'
-                    else:
-                        name += 'g2c'
-                else:
-                    if dst_gpu:
-                        name += 'c2g'
-                    else:
-                        name += 'c2c'
-                result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=name)
-            else:
-                result = bps.alltoall(tensor, splits=splits)
+            with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
+               if args.backend == 'byteps':
+                   result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits, name=name)
+               else:
+                   result = bps.alltoall(tensor, splits=splits)
             niter += 1
             if niter % interval == 0:
                 t1 = time.time()
@@ -333,7 +328,7 @@ class TensorFlowTests:
                 goodput = total_len*32*interval/(t1-t0)/1000000000
                 print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
                 t0 = time.time()
-        print(f'Finish all2all_benchmark, srcdev={tensor.device}, dstdev={result.device}')
+        print(f'Finish all2all_benchmark, src_dev={tensor.device}, dst_dev={result.device}')
         self.validate_a2a(recv_splits_list, result, size, rank)
 
     def test_all2all_group(self, total_niter=args.iter, compression=bps.Compression.none,
