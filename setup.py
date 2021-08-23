@@ -681,7 +681,7 @@ def get_cuda_dirs(build_ext, cpp_flags):
     if cuda_home:
         cuda_include_dirs += ['%s/include' % cuda_home]
         cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
-    # /opt/tiger/cuda/lib64
+
     cuda_include = os.environ.get('BYTEPS_CUDA_INCLUDE')
     if cuda_include:
         cuda_include_dirs += [cuda_include]
