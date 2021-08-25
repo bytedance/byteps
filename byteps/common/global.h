@@ -229,6 +229,7 @@ class BytePSGlobal {
   static int _worker_id;
   static int _phy_node_id;
   static int _num_phy_node;
+  static size_t _ps_instance_size;
   static int _worker_local_root;
   static int _server_local_root;
   static int _num_worker;
@@ -264,6 +265,7 @@ class BytePSGlobal {
   static uint32_t _alltoall_session_size;
   static std::mutex _alltoall_session_mu;
 
+  // whether the pull-based alltoall implementation will be used
   static bool _is_alltoall_use_pull;
 
   static bool _is_cross_pcie_switch;

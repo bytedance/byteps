@@ -47,6 +47,7 @@ int BytePSGlobal::_server_local_root = -1;
 int BytePSGlobal::_num_worker = 1;
 int BytePSGlobal::_visible_device = -1;
 BytePSRole BytePSGlobal::_my_role;
+size_t BytePSGlobal::_ps_instance_size = 1;
 bool BytePSGlobal::_is_root_device;
 bool BytePSGlobal::_is_distributed_job = false;
 bool BytePSGlobal::_is_cross_pcie_switch = false;
@@ -176,6 +177,7 @@ void BytePSGlobal::Init() {
   _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
+  _ps_instance_size = getenv("DMLC_GROUP_SIZE") ? atoi(getenv("DMLC_GROUP_SIZE")) : 1;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
@@ -435,19 +437,13 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
   std::lock_guard<std::mutex> lock(_init_mutex);
   // init low-level ps implementation
   if (_ps.empty() && need_ps) {
-    const char* role_val = getenv("DMLC_ROLE");
-    CHECK(role_val) << "DMLC_ROLE is not set";
-    ps::Node::Role ps_role = ps::GetRole(std::string(role_val));
-    auto val = getenv("DMLC_GROUP_SIZE");
-    int group_size = val ? atoi(val) : 1;
-    BPS_LOG(DEBUG) << "Initializing PS worker. rank=" << _worker_id
-                   << " role=" << ps_role;
-    bool is_joint = ps_role == ps::Node::JOINT;
-    ps::StartPS(0, ps_role, is_joint ? _worker_id : -1, false, "byteps\0");
-    for (int i = 0; i < group_size; ++i) {
+    BPS_LOG(DEBUG) << "Init PS worker. rank=" << _worker_id;
+    ps::Node::Role ps_role = _is_joint ? ps::Node::JOINT : ps::Node::WORKER;
+    ps::StartPS(0, ps_role, _is_joint ? _worker_id : -1, false, "byteps\0");
+    for (int i = 0; i < _ps_instance_size; ++i) {
       _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
-    if (is_joint) {
+    if (_is_joint) {
       server::BytePSServer::InitEnv();
       // start a separate thread to init kv server, and the server-side barrier
       _server_thread = std::unique_ptr<std::thread>(new std::thread(server::BytePSServer::Init, _worker_id));

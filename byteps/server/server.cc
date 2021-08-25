@@ -50,6 +50,8 @@ std::mutex BytePSServer::recved_partitions_mu_;
 size_t BytePSServer::num_phy_node_;
 size_t BytePSServer::num_expected_workers_;
 size_t BytePSServer::num_byteps_workers_;
+// number of ps-lite instances. typically 1.
+size_t BytePSServer::ps_instance_size_;
 
 // debug
 uint64_t BytePSServer::debug_key_;
@@ -710,7 +712,11 @@ void BytePSServer::InitEnv() {
     is_server_ = true;
   }
 
-  // enable engine block mode (default enabled)
+  // Group size
+  auto ps_instance_size_str = getenv("DMLC_GROUP_SIZE");
+  ps_instance_size_ = ps_instance_size_str ? atoi(ps_instance_size_str) : 1;
+
+  // enable engine block mode (default: non-blocking)
   is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
   if (is_engine_blocking_)
     LOG(INFO) << "Enable blocking mode of the server engine";
@@ -741,11 +747,14 @@ void BytePSServer::InitEnv() {
   auto num_worker_str = getenv("DMLC_NUM_WORKER");
   CHECK(num_worker_str);
   if (role_str == "joint") {
+    // In joint mode, each worker process will also contain its own server thread.
     auto local_size_str = getenv("BYTEPS_LOCAL_SIZE");
     CHECK(local_size_str);
     num_phy_node_ = atoi(num_worker_str) / atoi(local_size_str);
     num_byteps_workers_ = atoi(num_worker_str);
   } else if (role_str != "scheduler") {
+    // In non-joint mode, each physical node will only contain one server process shared by
+    // all workers on the same node.
     auto local_size_str = getenv("BYTEPS_LOCAL_SIZE");
     CHECK(local_size_str);
     num_phy_node_ = atoi(num_worker_str);
@@ -814,9 +823,7 @@ void BytePSServer::Init(int rank) {
 
   // init server instance
   if (is_server_) {
-    auto val = getenv("DMLC_GROUP_SIZE");
-    int group_size = val ? atoi(val) : 1;
-    for (int instance_idx = 0; instance_idx < group_size; instance_idx++) {
+    for (int instance_idx = 0; instance_idx < ps_instance_size_; instance_idx++) {
       auto server = new KVServer<char>(0, false, instance_idx);
       server->set_request_handle(BytePSHandler);
       byteps_server_.push_back(server);

@@ -507,7 +507,7 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                        std::shared_ptr<TFTensor> byteps_aux_output,
                        std::shared_ptr<common::ReadyEvent> ready_event,
                        TaskType task, bool recv_split_unknown,
-                       std::string name_wo_session, bool use_pull,
+                       std::string name_wo_session,
                        int input_device, int output_device) {
   // common fields
   int priority = 0;
@@ -542,7 +542,7 @@ void StartAlltoAllTask(::tensorflow::OpKernelContext* context,
                                                  ready_event, input_device, output_device,
                                                  priority, 0, callback,
                                                  send_begin, recv_begin,
-                                                 recv_split_unknown, use_pull);
+                                                 recv_split_unknown);
   OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
 }
 
@@ -555,8 +555,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
      bool recv_split_unknown;
      // the 32-bit declared `tensor_key`
      std::vector<int32_t> tensor_key;
-     // use ZPull instead ZPush to reduce memory consumption
-     bool use_pull;
 
  public:
   explicit BytepsAllToAllOp(::tensorflow::OpKernelConstruction* context)
@@ -564,9 +562,6 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
       context->GetAttr("tensor_key", &tensor_key);
-      use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
-               ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
-               : false;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -664,11 +659,11 @@ class BytepsAllToAllOp : public ::tensorflow::AsyncOpKernel {
     if (initialized) {
       StartAlltoAllTask(context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                         recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                        kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
+                        kAlltoAll, recv_split_unknown, tmp_name, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_name, bps_input, empty_group_inputs, split_indices_list,
                     recv_split_indices_list, bps_output, empty_group_outputs, bps_aux_output, ready_event,
-                    kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
+                    kAlltoAll, recv_split_unknown, tmp_name, input_device, output_device);
       t.detach();
     }
   }
@@ -680,7 +675,6 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
  private:
      std::string input_tensor_name;
      bool recv_split_unknown;
-     bool use_pull;
      std::vector<int32_t> tensor_key;
 
  public:
@@ -689,9 +683,6 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
       context->GetAttr("input_name", &input_tensor_name);
       context->GetAttr("recv_split_unknown", &recv_split_unknown);
       context->GetAttr("tensor_key", &tensor_key);
-      use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") 
-               ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL"))
-               : false;
     }
 
   void ComputeAsync(::tensorflow::OpKernelContext* context,
@@ -829,11 +820,11 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     if (bps_context.initialized) {
       StartAlltoAllTask(context, done, session_tmp_name, nullptr, bps_group_input, 
                         split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                        ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
+                        ready_event, kAlltoAll, recv_split_unknown, tmp_name, input_device, output_device);
     } else {
       std::thread t(StartAlltoAllTask, context, done, session_tmp_name, nullptr, bps_group_input, 
                     split_count, recv_split_count, nullptr, bps_group_output, bps_aux_output, 
-                    ready_event, kAlltoAll, recv_split_unknown, tmp_name, use_pull, input_device, output_device);
+                    ready_event, kAlltoAll, recv_split_unknown, tmp_name, input_device, output_device);
       t.detach();
     }
   }

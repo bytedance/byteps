@@ -302,7 +302,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
                              const std::vector<int>& recv_begin, // begin offsets for recv
-                             bool output_size_unknown, bool use_pull) {
+                             bool output_size_unknown) {
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
@@ -319,6 +319,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // alltoall, it refers to the operation that copies from recv buffer to output buffers allocated
   // by frameworks. For pull-based alltoall, it refers to the operation that responses to the
   // requester with actual data.
+  bool use_pull = BytePSGlobal::IsAlltoallUsePull();
   BPS_CHECK(!use_pull || !output_size_unknown)
     << "pull-based alltoall does not support unknown recv_spilt";
   // send_begin always starts with a zero

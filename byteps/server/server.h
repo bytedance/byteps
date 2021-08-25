@@ -161,6 +161,7 @@ class BytePSServer {
     static volatile bool debug_mode_;
     static volatile bool enable_schedule_;
     static volatile bool is_server_;
+    static size_t ps_instance_size_;
 
     // cluster info
     static ps::Node::Role role_;

@@ -88,7 +88,6 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 //             is (num_ranks + 1) and always starts with 0
 // recv_begin: the begin index (number of elements) for each rank for `output` tensor. It's length
 //             is (num_ranks + 1) and always starts with 0
-// use_pull: whether the pull-based alltoall implementation will be used
 Status EnqueueAlltoAllTensor(std::string& name,
                              std::shared_ptr<Tensor> input,
                              std::vector<std::shared_ptr<Tensor>>& group_inputs,
@@ -102,7 +101,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              StatusCallback callback,
                              const std::vector<int>& send_begin, // begin offsets for send
                              const std::vector<int>& recv_begin, // begin offsets for recv
-                             bool output_size_unknown, bool use_pull);
+                             bool output_size_unknown);
 
 // shape: input tensor shape
 // tensor_key: the 32-bit tensor_key returned from declare_alltoall_tensor
