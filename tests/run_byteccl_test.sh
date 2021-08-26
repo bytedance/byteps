@@ -20,14 +20,13 @@ export UCX_TLS=${UCX_TLS:=rc_x,cuda_copy,cuda_ipc,tcp}
 export BYTEPS_PIN_MEMORY=${BYTEPS_PIN_MEMORY:-1}
 
 export UCX_RNDV_THRESH=8k
-export UCX_MAX_RNDV_RAILS=${UCX_MAX_RNDV_RAILS:-2}
 export UCX_IB_TRAFFIC_CLASS=236
 
 export DMLC_NUM_CPU_DEV=${DMLC_NUM_CPU_DEV:=0}
 export DMLC_NUM_GPU_DEV=${DMLC_NUM_GPU_DEV:=1}
 
 export BYTEPS_SERVER_DIRECT_RESPONSE=${BYTEPS_SERVER_DIRECT_RESPONSE:-0}
-export BYTEPS_WORKER_LOCAL_ROOT=0
+export BYTEPS_WORKER_LOCAL_ROOT=-1
 export BYTEPS_FORCE_DISTRIBUTED=1
 export BYTEPS_PARTITION_BYTES=${BYTEPS_PARTITION_BYTES:-4096000}
 export BYTEPS_LOG_LEVEL=${BYTEPS_LOG_LEVEL:-info}
@@ -48,7 +47,8 @@ if [ $1 == "scheduler" ]; then
 fi
 
 export BYTEPS_NUMA_ID=$(($2 / 4))
-export DMLC_WORKER_ID=$2
+export DMLC_WORKER_ID=$BYTEPS_PHY_NODE_ID
+
 if [ $1 == "server" ]; then
   echo "Launch server"
   DMLC_ROLE=server python3 -c 'import byteps.server'
@@ -68,6 +68,10 @@ fi
 export NSYS=" "
 export GDB="gdb -ex run --args"
 export GDB=" "
+
+if [ $1 == "joint" ]; then
+  export DMLC_WORKER_ID=$2
+fi
 
 if [ $1 == "worker" ] || [ $1 == "joint" ]; then
   export DMLC_ROLE=$1
