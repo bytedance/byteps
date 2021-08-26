@@ -474,8 +474,9 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
       from root rank.
     """
     # Broadcast is implemented as push + pull after zero-ing non-root tensors
-    if name is None and not _executing_eagerly():
-        name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
+    if name is None:
+        if not _executing_eagerly() or is_variable:
+            name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -491,20 +492,21 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     full_name_ascii = full_name.encode("ascii")
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    op = Sum.value.lower()
     if root_rank != rank():
         if is_variable:
             if hasattr(tf, 'assign_sub'):
                 with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name)
+                    return C_LIB.byteps_push_pull(tensor, name=name, op=op)
             else:
                 with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name, op=op)
         else:
             with tf.device(tensor.device):
                 input_tensor = tf.zeros_like(tensor)
-            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name)
+            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name, op=op)
     else:
-        return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+        return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name, op=op)
 
 
 @ops.RegisterGradient('BytePSBroadcast')
