@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,10 +21,9 @@ import itertools
 import torch
 import os
 import numpy as np
-import unittest
 import time
 
-has_gpu = True
+has_gpu = os.environ.get('TEST_GPU', '1') == '1'
 
 class TorchTest:
     """
@@ -43,7 +41,7 @@ class TorchTest:
         return types
 
     def test_byteps_push_pull(self):
-        """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
+        """Test that the push_pull correctly sums 1D, 2D, 3D tensors."""
         size = bps.size()
         dtypes = self.filter_supported_types([torch.float32])
         dims = [1]
@@ -51,12 +49,12 @@ class TorchTest:
 
         for dtype, dim in itertools.product(dtypes, dims):
             tensor = torch.ones((100, 100), device=ctx, dtype=dtype)
-            for count in range(100):
-                print("tensor before push_pull:", tensor)
-                bps.byteps_push_pull(tensor, name="tensor_"+str(count % 10), average=False)
-                print("tensor after push_pull:", tensor)
-
-        print('test_byteps_push_pull done')
+            for count in range(20):
+                result = bps.push_pull(tensor, name=f"tensor_{count % 10}", average=False)
+                result_np = result.cpu().numpy()
+                assert np.sum(result_np != size) == 0, result_np
+                print(f'test_byteps_push_pull done iter {count}', flush=True)
+        print(f'DONE test_byteps_push_pull gpu={has_gpu}', flush=True)
 
 
 if __name__ == '__main__':

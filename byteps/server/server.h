@@ -141,7 +141,7 @@ class BytePSServer {
                            ps::KVServer<char>* server);
     static size_t GetThreadID(uint64_t key, size_t len);
     static BytePSArray* GetStore(uint64_t key);
-
+    static UpdateBuf* GetUpdateBuf(uint64_t key);
 
     // routines
     static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
@@ -203,6 +203,7 @@ class BytePSServer {
     // byteps handler
     static std::mutex handle_mu_;
     static std::unordered_map<uint64_t, UpdateBuf> update_buf_;
+    static std::mutex update_buf_mu_;
 
     // address map
     static std::mutex store_mu_;
