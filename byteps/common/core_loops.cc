@@ -1559,8 +1559,9 @@ bool RunCpuBcastLoopOnce() {
     int my_lrank = BytePSGlobal::GetLocalRank();
     auto basic_comm = BytePSGlobal::GetBasicComm();
     int local_root = basic_comm->getRoot();
-
-    BPS_LOG(DEBUG) << "Sampled key=" << task->key << "local_root " << local_root;
+    if (BytePSGlobal::IsTensorSampled(task->key)) {
+      BPS_LOG(DEBUG) << "Sampled key=" << task->key << " local_root=" << local_root;
+    }
     BPS_LOG(TRACE) << "dst " << (void *) ((char *)(task->cpubuff) + offset)
       << " src " << (void *) ((task->numa_cpubuff[local_root]) + offset) ;
     reducer->copy((void *)((char *)(task->output->data()) + offset),

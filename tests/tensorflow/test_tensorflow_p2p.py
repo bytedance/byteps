@@ -87,7 +87,7 @@ class TensorFlowTests:
             alltoall_fn = bps.alltoall_gpu2cpu
             name = 'autograd_gpu2cpu'
 
-        print(f'start alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
+        print(f'===== start alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu} =====', flush=True)
         while niter < total_niter:
             p2p_matrix = rng.integers(low=0, high=10, size=size * size).reshape(size, size) 
             splits_list = list(p2p_matrix[rank])
@@ -103,10 +103,11 @@ class TensorFlowTests:
                 assert grad.shape == tensor.shape, "the shapes of tensor and grad are not identical."
                 print(f'DONE iter={niter}, loss={loss.shape}, device={loss.device}')
                 niter += 1
+        print(f'===== end alltoall autograd tests, src_gpu={src_gpu}, dst_gpu={dst_gpu} =====', flush=True)
 
     def test_all2all_invalid_splits(self):
         """Test alltoall with invalid splits/recv_splits."""
-        print(f'test all2all invalid splits. You may see OP_REQUIRES errors from TF', flush=True)
+        print(f'===== start test all2all invalid splits. =====\nYou may see OP_REQUIRES errors from TF', flush=True)
         rank = self.rank
         size = self.size
         dtype = tf.float32
@@ -137,12 +138,12 @@ class TensorFlowTests:
         check_invalid_alltoall(0, -100, splits_list, recv_splits_list)
         # check split inconsistent with shape[0]
         check_invalid_alltoall(1, 0, splits_list, recv_splits_list)
-        print(f'DONE testing all2all invalid splits', flush=True)
+        print(f'===== end testing all2all invalid splits =====', flush=True)
 
     def test_all2all(self, total_niter=args.iter, compression=bps.Compression.none,
                      src_device='cpu', dst_device='cpu', prefix=""):
         """Test that alltoall correctly send/recv tensors with given recv_splits."""
-        print(f'test all2all {src_device}->{dst_device}', flush=True)
+        print(f'===== start test all2all {src_device}->{dst_device} =====', flush=True)
         rank = self.rank
         size = self.size
         # TODO: record type info in declare_tensor
@@ -170,7 +171,7 @@ class TensorFlowTests:
                 with tf.device(f"/{src_device}:0"):
                     tensor = tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                 with tf.device(f"/{dst_device}:0"):
-                    name = f'{prefix}test_{src_device}_{dst_device}_iter_{niter % 5}'
+                    name = f'{prefix}test_{src_device}_{dst_device}_iter_{niter % 5}_{dtype.__repr__()}'
                     result = alltoall_fn(tensor, splits=splits, recv_splits=recv_splits,
                                          name=name, compression=compression)
                     print(f'DONE iter={niter}, shape={result.shape}, {result.device}')
@@ -183,10 +184,11 @@ class TensorFlowTests:
                         assert np.sum(subset != val) == 0, (subset, val, result)
                         index = end
                     niter += 1
+        print(f'===== end test all2all {src_device}->{dst_device} =====', flush=True)
 
     def test_all2all_no_recv_splits(self, total_niter=args.iter, compression=bps.Compression.none):
         """Test on CPU that the alltoall correctly send/recv tensors without recv_splits."""
-        print('test all2all_no_recv_splits', flush=True)
+        print('===== start all2all_no_recv_splits =====', flush=True)
         dtype = tf.float32
         rank = self.rank
         size = self.size
@@ -216,6 +218,7 @@ class TensorFlowTests:
                 recv_split = recv_split.numpy()
                 assert np.sum(recv_split != p2p_matrix[:, rank]) == 0, (recv_splits_list, recv_split)
                 niter += 1
+        print('===== end all2all_no_recv_splits =====', flush=True)
 
     def test_self_send_recv(self):
         # same worker
@@ -293,7 +296,7 @@ class TensorFlowTests:
         p2p_matrix = np.array([len_per_worker]*(size*size)).reshape(size, size)
         splits_list = list(p2p_matrix[rank])
         recv_splits_list = list(p2p_matrix[:, rank])
-        print(f'rank={rank}/{size} split={splits_list} recv_split={recv_splits_list} matrix={p2p_matrix.tolist()} src_gpu={src_gpu} dst_gpu={dst_gpu}', flush=True)
+        print(f'===== start test_all2all_benchmark rank={rank}/{size} split={splits_list} recv_split={recv_splits_list} matrix={p2p_matrix.tolist()} src_gpu={src_gpu} dst_gpu={dst_gpu} =====', flush=True)
         with tf.device("/cpu:0"):
             splits = tf.constant(splits_list, dtype=int_dtype)
             recv_splits = tf.constant(recv_splits_list, dtype=int_dtype)
@@ -328,13 +331,13 @@ class TensorFlowTests:
                 goodput = total_len*32*interval/(t1-t0)/1000000000
                 print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
                 t0 = time.time()
-        print(f'Finish all2all_benchmark, src_dev={tensor.device}, dst_dev={result.device}')
+        print(f'===== end all2all_benchmark, src_dev={tensor.device}, dst_dev={result.device} =====')
         self.validate_a2a(recv_splits_list, result, size, rank)
 
     def test_all2all_group(self, total_niter=args.iter, compression=bps.Compression.none,
                      src_device='gpu', dst_device='gpu'):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
-        print(f'test all2all group {src_device}->{dst_device}', flush=True)
+        print(f'===== start all2all group test {src_device}->{dst_device}  =====', flush=True)
         rank = self.rank
         size = self.size
         # TODO: record type info in declare_tensor
@@ -362,9 +365,9 @@ class TensorFlowTests:
                     tensors = [tf.ones([sum(splits_list), vector_dim], dtype=dtype) * (rank + 1)
                                for i in range(len(splits_list))]
                 with tf.device(f"/{dst_device}:0"):
+                    name=f'alltoall_group_test_{src_device}_{dst_device}_iter_{niter % 5}_{{dtype.__repr__()}}'
                     results = alltoall_fn(tensors, splits=splits, recv_splits=recv_splits,
-                                         name=f'alltoall_group_test_{src_device}_{dst_device}_iter_{niter % 5}',
-                                         compression=compression)
+                                          name=name, compression=compression)
                     print(f'AlltoAll group tests: Done iter={niter}, shape={results[0].shape}')
                     # validate result
                     index = 0
@@ -376,6 +379,7 @@ class TensorFlowTests:
                         assert np.sum(subset != val) == 0, (subset, val, results[i])
                         index = end
                     niter += 1
+        print(f'===== end all2all group test {src_device}->{dst_device}  =====', flush=True)
 
     def test_all2all_group_benchmark(self, total_niter=args.iter, dst_gpu=False, src_gpu=False):
         """Test on CPU that the alltoall correctly send/recv tensors with given recv_splits."""
@@ -400,7 +404,7 @@ class TensorFlowTests:
         with tf.device("/gpu:0" if src_gpu else "/cpu:0"):
             tensors = [tf.ones([splits_list[i], vector_dim], dtype=dtype) * (rank + 1) 
                        for i in range(len(splits_list))]
-        print('start group all2all test')
+        print('===== start group all2all test =====')
         t0 = time.time()
         interval = 10
         name = 'group_test_data_'
@@ -427,7 +431,7 @@ class TensorFlowTests:
                 goodput = total_len*32*interval/(t1-t0)/1000000000
                 print(f'DONE iter={niter}, latency={latency:.3} ms, Goodput={goodput:.4} Gb/s', flush=True)
                 t0 = time.time()
-        print(f'Finish all2all_group_benchmark, srcdev={tensors[0].device}, dstdev={results[0].device}')
+        print(f'===== end all2all_group_benchmark, srcdev={tensors[0].device}, dstdev={results[0].device} =====')
         self.validate_a2a(recv_splits_list, results, size, rank)
 
     def test_all2all_group_autograd(self, total_niter=args.iter, src_gpu=False, dst_gpu=False):
@@ -450,7 +454,7 @@ class TensorFlowTests:
         else:
             alltoall_fn = bps.alltoall_gpu2cpu
             name = 'autograd_group_gpu2cpu'
-        print(f'start alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu}', flush=True)
+        print(f'======= start alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu} =======', flush=True)
         while niter < total_niter:
             # need to use fixed length for each rank, 
             # since tf op requires identical shapes for all inputs during BP
@@ -468,6 +472,7 @@ class TensorFlowTests:
                 grad = tape.gradient(group_loss, group_w)
                 print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}')
                 niter += 1
+        print(f'======= end alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu} =======', flush=True)
 
     def test_allreduce(self):
         print('test_allreduce', flush=True)

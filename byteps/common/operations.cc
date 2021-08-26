@@ -623,11 +623,11 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
         uint32_t needed_size = static_cast<uint32_t>(std::max(request_size_list[i], resp_size_list[i])
                                                     * BytePSGlobal::GetAlltoallBuffFactor());
         bounds_for_ranks[i] = std::max(needed_size, bound);
-        BPS_LOG(DEBUG) << "Setting AllToAll buffer size bound for name = " << context.tensor_name << ", "
-                       << "rank = " << i << ", " 
-                       << "first minibatch size = " << needed_size << ", " 
-                       << "minimum bound limit = " << bound << ", "
-                       << "final bound calculated = " << bounds_for_ranks[i];
+        BPS_LOG(DEBUG) << "Set alltoall buffer size bound for " << context.tensor_name
+                       << " rank = " << i
+                       << " first minibatch size = " << needed_size
+                       << " min bound = " << bound
+                       << " final bound = " << bounds_for_ranks[i];
       }
     }
     context.bounds_for_ranks = bounds_for_ranks;
