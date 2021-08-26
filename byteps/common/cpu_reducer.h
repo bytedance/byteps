@@ -200,8 +200,8 @@ class CpuReducer {
   uint16_t _convert_full_to_half_precision(float f);
 
   std::shared_ptr<BytePSComm> _comm;
-  int _num_threads;
-  size_t _single_thread_threshold; 
+  int _num_threads = 0;
+  size_t _single_thread_threshold;
 };
 
 }  // namespace common

@@ -518,19 +518,9 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   e->reduce_op = op;
 
   // send/recv ops do not need gpu_ptr
+  // cpu tensors do not need gpu_ptr either
   if (device == CPU_DEVICE_ID && context.op_type == PUSH_PULL_OP) {
-#if BYTEPS_BUILDING_CUDA == 1
-    cudaError_t err = cudaHostRegister(const_cast<void *>(input->data()),
-                                       input->size(), cudaHostRegisterMapped);
-    if (err == cudaSuccess) {
-      BPS_LOG(DEBUG) << name
-                     << " cpu address has changed, so it is pinned again.";
-    }
-    BPS_CHECK(input->data() != nullptr);
-    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), const_cast<void*>(input->data()), 0));
-#else
-    context.gpu_ptr = const_cast<void*>(input->data());
-#endif
+    context.gpu_ptr = nullptr;
   }
 
   e->cpubuff = context.cpubuff;
@@ -805,7 +795,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
     // the shared memory is always created at partition size
     void* buff = nullptr;
     if (sender == my_rank && sender != receiver) {
-      buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound);
+      buff = shm_obj->openSharedMemory(shm_name, pskv.keys[0], bound, true);
       context.cpubuff_list.emplace_back(buff);
       // false means not to delete data when SArray is deleted
       ps::SArray<char> vals((char*) buff, bound, false);
@@ -878,20 +868,9 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
                  << ", parts=" << key_list.size();
 
   // If cpubuff is not nullptr, the tensor itself is on CPU
-  // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
     BPS_CHECK(!BytePSGlobal::IsCpuAllreduceDisabled());
-#if BYTEPS_BUILDING_CUDA == 1
-    BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
-    cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
-    if (e != cudaSuccess) {
-      BPS_LOG(INFO) << cudaGetErrorString(e)
-                    << " (You may ignore this if your program continues)";
-    }
-    CUDA_CALL(cudaHostGetDevicePointer(&(context.gpu_ptr), cpubuff, 0));
-#else
-    context.gpu_ptr = cpubuff;
-#endif
+    context.gpu_ptr = nullptr;
   } else {
     BPS_CHECK(!BytePSGlobal::IsGpuAllreduceDisabled());
   }
@@ -911,12 +890,12 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
       for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
         std::string prefix_i = shm_prefix + std::to_string(i) + "_ShM_";
-        context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size));
+        context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size, false));
       }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
     } else {
       auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
-      context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size);
+      context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size, true);
     }
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;

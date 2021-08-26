@@ -342,7 +342,7 @@ void BytePSGlobal::Init() {
   // Init CPU Reducer
   if (_is_cross_pcie_switch) {
     _cpu_reducer = std::make_shared<CpuReducer>(_basic_comm);
-  } else if (_is_joint) {
+  } else {
     // cpu reducer is used for CPU allreduce and alltoall
     _cpu_reducer = std::make_shared<CpuReducer>(nullptr);
   }

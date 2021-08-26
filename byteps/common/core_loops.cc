@@ -47,8 +47,8 @@ bool DoFinishOrProceed(T& task) {
     if (task->device == CPU_DEVICE_ID) {
       BPS_LOG(DEBUG) << "Sampled key=" << task->key
                      << " rank=" << BytePSGlobal::GetLocalRank()
-                     << " input[0]=" << *((float *)(task->tensor->data()) + i)
-                     << "\tinput[-1]=" << *((float *)(task->tensor->data()) + j)
+                     << " input[0]=" << *((float *)(task->cpubuff) + i)
+                     << "\tinput[-1]=" << *((float *)(task->cpubuff) + j)
                      << "\toutput[0]=" << *((float *)(task->output->data()) + i)
                      << "\toutput[-1]="
                      << *((float *)(task->output->data()) + j)
@@ -1449,11 +1449,8 @@ bool RunCpuReduceLoopOnce() {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     return true;
   }
-  BPS_CHECK(BytePSGlobal::IsJoint()) << "CPU allreduce requires joint mode";
   auto reducer = BytePSGlobal::GetCpuReducer();
 
-  // task->gpu_ptr is the ptr given to us by the DL framework, which is a cpu
-  // pointer in this case
   auto tensor = task->tensor;
   auto key = task->key;
   auto len = task->len;

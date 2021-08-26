@@ -39,7 +39,9 @@ class BytePSSharedMemory {
 
   ~BytePSSharedMemory() {
     for (auto &it : _key_shm_addr) {
-      CUDA_CALL(cudaHostUnregister(it.second));
+      if (_key_shm_cuda[it.first]) {
+        CUDA_CALL(cudaHostUnregister(it.second));
+      }
       munmap(it.second, _key_shm_size[it.first]);
       shm_unlink(it.first.c_str());
     }
@@ -48,12 +50,14 @@ class BytePSSharedMemory {
                       "released/unregistered.";
   }
 
-  void *openSharedMemory(const std::string &prefix, uint64_t key, size_t size);
+  void *openSharedMemory(const std::string &prefix, uint64_t key, size_t size,
+                         bool reg_for_cuda);
   std::vector<void *> openPcieSharedMemory(const std::string &prefix, uint64_t key, size_t size);
 
  private:
   std::unordered_map<std::string, void *> _key_shm_addr;
   std::unordered_map<std::string, size_t> _key_shm_size;
+  std::unordered_map<std::string, bool> _key_shm_cuda;
 
   std::mutex _shm_mu;
 };

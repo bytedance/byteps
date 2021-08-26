@@ -136,7 +136,7 @@ def _push_pull(tensor, scope='', name=None, op=Average):
             scope += '/'
     if not name:
         name = ''
-    full_name = scope + name
+    full_name = scope + _normalize_name(name)
     if not full_name:
         full_name = "empty_name_" + randomString()
     full_name_ascii = full_name.encode("ascii")

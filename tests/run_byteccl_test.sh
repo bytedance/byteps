@@ -37,6 +37,7 @@ export BYTEPS_UCX_SHORT_THRESH=0
 # Note: updated BYTEPS_SOCKET_PATH for cpu allreduce
 export BYTEPS_PHY_NODE_ID=$((RANK / BYTEPS_LOCAL_SIZE))
 export BYTEPS_SOCKET_PATH=/tmp/node-${BYTEPS_PHY_NODE_ID}
+export BYTEPS_UUID=${BYTEPS_UUID+$BYTEPS_PHY_NODE_ID}
 mkdir -p $BYTEPS_SOCKET_PATH
 
 if [ $1 == "scheduler" ]; then
@@ -65,7 +66,7 @@ if [ "$RANK" == "0" ]; then
     export NSYS="nsys profile -t cuda,nvtx,cublas --stats=true -o ./trace.%p.prof --export sqlite --kill none -d 30"
 fi
 export NSYS=" "
-export GDB="gdb -ex run --args"
+export GDB="gdb -ex run  -ex bt -batch --args"
 export GDB=" "
 
 if [ $1 == "joint" ]; then

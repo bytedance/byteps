@@ -26,7 +26,8 @@ namespace byteps {
 namespace common {
 
 void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
-                                           uint64_t key, size_t len) {
+                                           uint64_t key, size_t len,
+                                           bool reg_for_cuda) {
   std::string shm_name(prefix);
   shm_name += std::to_string(key);
   auto size = BytePSGlobal::RoundUpToPageSize(len);
@@ -41,7 +42,7 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
     << ", key = " << key << ", size = " << size;
 
 #if BYTEPS_BUILDING_CUDA == 1
-  {
+  if (reg_for_cuda) {
     cudaError_t e = cudaHostRegister(ptr, size, cudaHostRegisterDefault);
     BPS_CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading)
       << "CUDA: " << cudaGetErrorString(e)
@@ -55,11 +56,12 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
 
   BPS_CHECK_NE(ptr, (void*)-1) << strerror(errno);
   BPS_LOG(DEBUG) << "initialized share memory size " << size << ", name=" << shm_name
-                 << ", len=" << len;
+                 << ", len=" << len << " reg_for_cuda: " << reg_for_cuda;
 
   std::lock_guard<std::mutex> lock(_shm_mu);
   _key_shm_addr[shm_name] = ptr;
   _key_shm_size[shm_name] = size;
+  _key_shm_cuda[shm_name] = reg_for_cuda;
 
   return ptr;
 }
@@ -75,23 +77,23 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(const std::string& p
       if (BytePSGlobal::IsCrossPcieSwitch()) {
         if (i <= numa_max_node()) {
           numa_set_preferred(i);
-          r.push_back(openSharedMemory(prefix_i, key, size));
+          r.push_back(openSharedMemory(prefix_i, key, size, false));
           numa_set_preferred(-1);
         } else {
           numa_set_preferred(numa_max_node());
-          r.push_back(openSharedMemory(prefix_i, key, size));
+          r.push_back(openSharedMemory(prefix_i, key, size, false));
           numa_set_preferred(-1);
         }
       } else {
-        r.push_back(openSharedMemory(prefix_i, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size, false));
       }
     } else {
       if (BytePSGlobal::IsCrossPcieSwitch()) {
         numa_set_interleave_mask(numa_all_nodes_ptr);
-        r.push_back(openSharedMemory(prefix_i, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size, false));
         numa_set_interleave_mask(numa_no_nodes_ptr);
       } else {
-        r.push_back(openSharedMemory(prefix_i, key, size));
+        r.push_back(openSharedMemory(prefix_i, key, size, false));
       }
     }
   }
