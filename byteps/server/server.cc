@@ -770,10 +770,12 @@ void BytePSServer::InitEnv() {
     num_byteps_workers_ = atoi(num_worker_str) * atoi(local_size_str);
   }
   if (is_server_) {
-    LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" << num_byteps_workers_
-              << " direct_response=" << p2p_direct_response_ << ". server engine uses "
-              << engine_thread_num_ << " threads, consider increasing BYTEPS_SERVER_ENGINE_THREAD"
-              << " for higher performance";
+    std::string msg = " with " + std::to_string(engine_thread_num_) + " engine threads.";
+    if (engine_thread_num_ < 4) {
+      msg += " Consider increasing BYTEPS_SERVER_ENGINE_THREAD for better performance";
+    }
+    LOG(INFO) << "Using num_phy_node=" << num_phy_node_ << " num_byteps_workers_=" <<
+              num_byteps_workers_ << " direct_response = " << p2p_direct_response_ << msg;
   } else {
     LOG(INFO) << "This is a scheduler.";
   }
