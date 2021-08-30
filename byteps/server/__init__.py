@@ -27,6 +27,8 @@ def run():
     os.environ['BYTEPS_UCX_SHORT_THRESH'] = os.environ.get('BYTEPS_UCX_SHORT_THRESH', '0')
     os.environ['PSLITE_UCX_SOCKADDR_CM_ENABLE'] = os.environ.get('PSLITE_UCX_SOCKADDR_CM_ENABLE', 'y')
     os.environ['PSLITE_UCX_USE_MT_MUTEX'] = os.environ.get('PSLITE_UCX_USE_MT_MUTEX', 'y')
+    os.environ['PSLITE_UCX_RNDV_THRESH'] = os.environ.get('PSLITE_UCX_RNDV_THRESH', '8k')
+    os.environ['BYTEPS_UCX_SHORT_THRESH'] = os.environ.get('BYTEPS_UCX_SHORT_THRESH', '0')
     SERVER_LIB_CTYPES.byteps_server()
 
 run()

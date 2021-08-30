@@ -895,17 +895,21 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    // TODO: add BytePS UUID for openPcieSharedMemory and update the corresponding name in RDMAVan
+    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetUUID() + "_";
     context.pcie_cpubuff =
-        shm_obj->openPcieSharedMemory(std::string("BytePS_Pcie"), key_list[0], aligned_size);
+        shm_obj->openPcieSharedMemory(shm_prefix, key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
-    auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
-    context.numa_cpubuff = shm_obj->openNumaSharedMemory(shm_prefix, key_list[0], aligned_size);
     if (cpubuff) {
+      auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
+      for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
+        std::string prefix_i = shm_prefix + std::to_string(i) + "_ShM_";
+        context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size));
+      }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
     } else {
-      context.cpubuff = context.numa_cpubuff[0];
+      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
+      context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size);
     }
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;

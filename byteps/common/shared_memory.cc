@@ -101,26 +101,5 @@ std::vector<void*> BytePSSharedMemory::openPcieSharedMemory(const std::string& p
   return r;
 }
 
-std::vector<void*> BytePSSharedMemory::openNumaSharedMemory(const std::string& prefix,
-                                                            uint64_t key,
-                                                            size_t size) {
-  std::vector<void*> ret;
-
-  for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
-    std::string prefix_i = prefix + std::to_string(i) + "_ShM_";
-    if (i <= numa_max_node()) {
-      numa_set_preferred(i);
-    } else {
-      numa_set_preferred(numa_max_node());
-    }
-    ret.push_back(openSharedMemory(prefix_i, key, size));
-    numa_set_preferred(-1);
-  }
-
-  return ret;
-}
-
-
 }  // namespace common
-
 }  // namespace byteps

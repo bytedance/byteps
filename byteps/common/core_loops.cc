@@ -1452,7 +1452,7 @@ bool RunCpuReduceLoopOnce() {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     return true;
   }
-
+  BPS_CHECK(BytePSGlobal::IsJoint()) << "CPU allreduce requires joint mode";
   auto reducer = BytePSGlobal::GetCpuReducer();
 
   // task->gpu_ptr is the ptr given to us by the DL framework, which is a cpu
