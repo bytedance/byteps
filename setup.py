@@ -16,7 +16,8 @@ import subprocess
 
 from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.build_ext import build_ext
-from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError, DistutilsSetupError
+from setuptools.command.sdist import sdist as sdist_orig
+from distutils.errors import CompileError, DistutilsError, DistutilsPlatformError, LinkError, DistutilsSetupError, DistutilsExecError
 from distutils import log as distutils_logger
 from distutils.version import LooseVersion
 import traceback
@@ -1163,6 +1164,17 @@ if without_tensorflow():
 if without_pytorch():
     extensions_to_build.remove(pytorch_lib)
 
+class sdist(sdist_orig):
+    def run(self):
+        try:
+            if not os.path.isfile("./ucx.zip"):
+                self.spawn(['curl', '-kL', 'https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.zip', '-o', 'ucx.zip'])
+            if not os.path.isfile("./zeromq-4.1.4.tar.gz"):
+                self.spawn(['curl', '-kL', '-O', 'https://github.com/zeromq/zeromq4-1/releases/download/v4.1.4/zeromq-4.1.4.tar.gz'])
+        except DistutilsExecError:
+            self.warn('failed to download required tarballs')
+        super().run()
+
 setup(
     name=NAME,
     version=about['__version__'],
@@ -1193,7 +1205,8 @@ setup(
     # $ setup.py publish support.
     cmdclass={
         'upload': UploadCommand,
-        'build_ext': custom_build_ext
+        'build_ext': custom_build_ext,
+        'sdist': sdist
     },
     # cffi is required for PyTorch
     # If cffi is specified in setup_requires, it will need libffi to be installed on the machine,
