@@ -10,7 +10,6 @@ parser.add_argument('--iter', type=int, default=250)
 
 is_use_pull = int(os.environ.get('BYTEPS_ALL2ALL_USE_PULL', 0))
 test_cpu_only = int(os.environ.get('TEST_CPU_ONLY', 0))
-test_sanity = int(os.environ.get('TEST_SANITY', 0))
 args = parser.parse_args()
 if args.backend == 'byteps':
     import byteps.tensorflow as bps
@@ -55,14 +54,14 @@ class TensorFlowTests:
                 name, mean, stdev, count = entry
                 assert name
                 assert mean > 0, mean
-                assert stdev > 0, stdev
+                assert stdev >= 0, stdev
                 assert count > 1, count
 
-        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
+        self.test_all2all(total_niter=10, src_device='cpu', dst_device='cpu', prefix="telemetry_")
         telemetries = bps.get_telemetry()
         check_telemetry(telemetries, None)
 
-        self.test_all2all(total_niter=2, src_device='cpu', dst_device='cpu', prefix="telemetry_")
+        self.test_all2all(total_niter=10, src_device='cpu', dst_device='cpu', prefix="telemetry_")
         telemetries = bps.get_telemetry(size=10000)
         check_telemetry(telemetries, 10000)
 
@@ -511,8 +510,6 @@ tests.test_telemetry()
 tests.test_allreduce()
 tests.test_all2all_invalid_splits()
 tests.test_all2all(src_device='cpu', dst_device='cpu')
-if test_sanity:
-    exit()
 
 
 if is_direct_resp > 0:
