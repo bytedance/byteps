@@ -617,19 +617,19 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   size_t total_resp_size = 0;
 
   // Calculate bounds size
-  if (! context.initialized) {
-    if (! output_size_unknown) {
-      for (size_t i = 0; i < request_size_list.size(); ++i){
-        uint32_t needed_size = static_cast<uint32_t>(std::max(request_size_list[i], resp_size_list[i])
-                                                    * BytePSGlobal::GetAlltoallBuffFactor());
-        bounds_for_ranks[i] = std::max(needed_size, bound);
-        BPS_LOG(DEBUG) << "Set alltoall buffer size bound for " << context.tensor_name
-                       << " rank = " << i
-                       << " first minibatch size = " << needed_size
-                       << " min bound = " << bound
-                       << " final bound = " << bounds_for_ranks[i];
-      }
+  if (!context.initialized) {
+    std::string first_size = " first minibatch size: [";
+    std::string final_size = " final buff size: [";
+    for (size_t i = 0; i < request_size_list.size(); ++i){
+      uint32_t req_size = std::max(request_size_list[i], resp_size_list[i]);
+      uint32_t needed_size = static_cast<uint32_t>(req_size * BytePSGlobal::GetAlltoallBuffFactor());
+      bounds_for_ranks[i] = std::max(needed_size, bound);
+      first_size += std::to_string(needed_size) + ",";
+      final_size += std::to_string(bounds_for_ranks[i]) + ",";
     }
+    BPS_LOG(DEBUG) << "set alltoall buffer size for " << context.base_tensor_name
+                   << " min_size=" << bound
+                   << first_size << "]" << final_size << "]";
     context.bounds_for_ranks = bounds_for_ranks;
   }
   // TODO(haibin.lin): we only support 1 partition per send/recv pair for alltoall
@@ -687,7 +687,7 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
       auto k = key_list[i];
       auto sender = my_rank;
       auto receiver = i;
-      auto pskv = BytePSGlobal::EncodeP2PKey(k, bound, receiver);
+      auto pskv = BytePSGlobal::EncodeP2PKey(k, bounds_for_ranks[i], receiver);
       BPS_LOG(TRACE) << "Init ps-lite key:" << k << " encoded:" << pskv.keys[0];
       // the shared memory is always created at partition size
       // if the copy from input to aligned buffer is skipped, there
