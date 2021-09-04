@@ -469,7 +469,7 @@ class TensorFlowTests:
                 with tf.GradientTape() as tape:
                     group_loss = alltoall_fn(group_w, splits=splits, recv_splits=recv_splits, name=f'{name}_autograd_group_iter_{niter % 5}')
                 grad = tape.gradient(group_loss, group_w)
-                print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}')
+                print(f'DONE iter={niter}, loss={group_loss[0].shape}, device={group_loss[0].device}, matrix={p2p_matrix}')
                 niter += 1
         print(f'======= end alltoall autograd group tests, src_gpu={src_gpu}, dst_gpu={dst_gpu} =======', flush=True)
 

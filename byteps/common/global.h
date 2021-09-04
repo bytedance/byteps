@@ -35,6 +35,7 @@
 #include "logging.h"
 #include "profiler.h"
 #include "nccl_manager.h"
+#include "utils.h"
 #include "ps/ps.h"
 #include "ready_table.h"
 #include "scheduled_queue.h"
@@ -217,6 +218,10 @@ class BytePSGlobal {
   static int GetP2PCopyGroupSize() { return _p2p_copy_group_size; }
   static bool IsP2PAckDisabled() { return _p2p_disable_pull_ack; }
 
+  // feature
+  static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
+  static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
+
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;
@@ -237,6 +242,9 @@ class BytePSGlobal {
   static bool _is_root_device;
   static bool _is_distributed_job;
   static bool _is_joint;
+  // features
+  static bool _disable_cpu_allreduce;
+  static bool _disable_gpu_allreduce;
   // p2p
   static bool _skip_h2d;
   static bool _skip_input_copy;

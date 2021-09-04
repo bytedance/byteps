@@ -59,7 +59,7 @@ uint32_t BytePSGlobal::_partition_bytes = 4096000;
 uint32_t BytePSGlobal::_alltoall_buff_bytes = 4096000;
 double BytePSGlobal::_alltoall_buff_factor = 1.5;
 uint32_t BytePSGlobal::_min_compress_bytes = (1 << 16);
-
+// trace
 int BytePSGlobal::_is_trace = 0;
 int BytePSGlobal::_start_step = 10;
 int BytePSGlobal::_end_step = 20;
@@ -77,13 +77,16 @@ std::unordered_map<uint64_t, int64_t> BytePSGlobal::ps_kv_max_size_;
 std::vector<unsigned long> BytePSGlobal::_server_accumulated_len;
 unsigned long BytePSGlobal::_total_accumulated_len = 0;
 std::string BytePSGlobal::_hash_knob;
-
+// loops
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
 bool BytePSGlobal::_lockless_queue = false;
 std::vector<std::thread*> BytePSGlobal::_threads;
 std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
-
+// features
+bool BytePSGlobal::_disable_cpu_allreduce = false;
+bool BytePSGlobal::_disable_gpu_allreduce = false;
+// tables
 std::mutex BytePSGlobal::_context_mutex;
 std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
 std::mutex BytePSGlobal::_encode_mutex;
@@ -179,10 +182,14 @@ void BytePSGlobal::Init() {
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   _ps_instance_size = getenv("DMLC_GROUP_SIZE") ? atoi(getenv("DMLC_GROUP_SIZE")) : 1;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
+  _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
+  _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
   BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
-                << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N");
+                << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
+                << ", disable_cpu_allreduce=" << _disable_cpu_allreduce
+                << ", disable_gpu_allreduce=" << _disable_gpu_allreduce;
 
   _basic_comm = std::make_shared<BytePSCommSocket>();
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,

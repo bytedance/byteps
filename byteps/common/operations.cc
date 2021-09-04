@@ -72,7 +72,7 @@ void byteps_lazy_init() {
   }
 
   // Cross-PCIe-switch reduce
-  if (BytePSGlobal::IsCrossPcieSwitch()) {
+  if (BytePSGlobal::IsCrossPcieSwitch() && !BytePSGlobal::IsGpuAllreduceDisabled()) {
     func.push_back(PcieReduceLoop);
   }
 
@@ -95,24 +95,28 @@ void byteps_lazy_init() {
 
   // Per-PCIe-switch NCCL calls
 #if BYTEPS_BUILDING_CUDA == 1
-  func.push_back(SyncNcclLoop);
-  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-    func.push_back(RootNcclLoop);
-  } else {
-    func.push_back(CoordinateReduceLoop);
-    func.push_back(CoordinateBroadcastLoop);
-    func.push_back(NonRootNcclLoop);
+  if (!BytePSGlobal::IsGpuAllreduceDisabled()) {
+    func.push_back(SyncNcclLoop);
+    if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+      func.push_back(RootNcclLoop);
+    } else {
+      func.push_back(CoordinateReduceLoop);
+      func.push_back(CoordinateBroadcastLoop);
+      func.push_back(NonRootNcclLoop);
+    }
   }
 #endif
-  if (BytePSGlobal::IsRootDevice()) {
-    func.push_back(CpuCopyLoop);
-    func.push_back(CpuReduceLoop);
-    func.push_back(CpuBcastLoop);
-    func.push_back(CpuBcastFinishLoop);
-  } else {
-    func.push_back(CpuCopyLoop);
-    func.push_back(CpuReduceLoop);
-    func.push_back(CpuBcastLoop);
+  if (!BytePSGlobal::IsCpuAllreduceDisabled()) {
+    if (BytePSGlobal::IsRootDevice()) {
+      func.push_back(CpuCopyLoop);
+      func.push_back(CpuReduceLoop);
+      func.push_back(CpuBcastLoop);
+      func.push_back(CpuBcastFinishLoop);
+    } else {
+      func.push_back(CpuCopyLoop);
+      func.push_back(CpuReduceLoop);
+      func.push_back(CpuBcastLoop);
+    }
   }
   BytePSGlobal::Start(func);
   return;
@@ -876,6 +880,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // If cpubuff is not nullptr, the tensor itself is on CPU
   // We need to register with CUDA so that NCCL can work on it
   if (cpubuff) {
+    BPS_CHECK(!BytePSGlobal::IsCpuAllreduceDisabled());
 #if BYTEPS_BUILDING_CUDA == 1
     BPS_LOG(DEBUG) << name << " is already on cpu, len=" << size;
     cudaError_t e = cudaHostRegister(cpubuff, size, cudaHostRegisterMapped);
@@ -887,6 +892,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 #else
     context.gpu_ptr = cpubuff;
 #endif
+  } else {
+    BPS_CHECK(!BytePSGlobal::IsGpuAllreduceDisabled());
   }
 
   // We always allocate our own cpu buffer
