@@ -51,7 +51,7 @@ size_t BytePSServer::num_phy_node_;
 size_t BytePSServer::num_expected_workers_;
 size_t BytePSServer::num_byteps_workers_;
 // number of ps-lite instances. typically 1.
-size_t BytePSServer::ps_instance_size_;
+int BytePSServer::ps_instance_size_;
 
 // debug
 uint64_t BytePSServer::debug_key_;
@@ -144,7 +144,7 @@ size_t BytePSServer::GetThreadID(uint64_t key, size_t len) {
     }
   }
   CHECK_GE(min_index, 0);
-  CHECK_LT(min_index, engine_thread_num_);
+  CHECK_LT(min_index, (int) engine_thread_num_);
   acc_load_[min_index] += len;
   hash_cache_[key] = min_index;
   return hash_cache_[key];

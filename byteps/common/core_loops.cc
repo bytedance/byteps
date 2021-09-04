@@ -305,6 +305,7 @@ bool RunRootNcclLoopOnce() {
   bool started = false;
   for (auto this_op : nccl_ops) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
+
     for (int i = 0; i < BytePSGlobal::GetNccl()->GetGroupSize(); i++) {
       auto task = q->getTask();
       if (!task) {
@@ -900,10 +901,8 @@ void P2PCopyGroup(std::vector<std::shared_ptr<TensorTableEntry>>& tasks) {
   for (auto& task : tasks) {
     auto key = task->key;
     auto len = task->len;
-    auto offset = task->offset;
     bool is_gpu = CPU_DEVICE_ID != task->device;
     has_gpu = has_gpu || is_gpu;
-    int sender = server::GetAlltoallSender(key);
     auto dst_addr = (char*)(task->output->data()) + task->offset;
     auto recv_arr = server::BytePSServer::GetRecvPartition(key);
     int recv_len = recv_arr.len;
@@ -1204,7 +1203,6 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
 
 void ExecuteP2PSend(std::shared_ptr<TensorTableEntry> task) {
   const int dtype = task->tensor->dtype();
-  int device = task->device == CPU_DEVICE_ID ? CPU : GPU;
   auto req_type = server::RequestType::kDefaultSend;
   int cmd = server::GetCommandType(req_type, dtype, CPU);
   char* data = (char*) task->tensor->data();

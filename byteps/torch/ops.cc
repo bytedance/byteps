@@ -308,7 +308,7 @@ int BatchedFuse(const std::vector<::torch::Tensor> input_tensors,
   size_t total_len = 0;
   char *dst;
 
-  for (int i = 0; i < input_tensors.size(); i++) {
+  for (size_t i = 0; i < input_tensors.size(); i++) {
     auto bps_src = std::make_shared<TorchTensor>(input_tensors[i]);
     total_len += bps_src->size();
     src.push_back(std::move(bps_src));

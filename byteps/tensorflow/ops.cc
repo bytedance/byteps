@@ -746,7 +746,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     GetIntList(recv_split_tensor, &recv_split_count);
     // translate the split value (for dim0) with stride (considering all dimensions)
     int dim0 = 0;
-    for (int i = 0; i < recv_split_count.size(); ++i) {
+    for (size_t i = 0; i < recv_split_count.size(); ++i) {
       if (recv_split_count[i] < 0) {
         std::string err_msg = "invalid recv_split for " + tmp_name + " at index " 
                             + std::to_string(i) + ": " + std::to_string(recv_split_count[i]);

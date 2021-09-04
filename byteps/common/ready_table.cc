@@ -33,7 +33,7 @@ int ReadyTable::AddReadyCount(uint64_t key) {
   return ++_ready_table[key];
 }
 
-int ReadyTable::SetReadyCount(uint64_t key, int cnt) {
+void ReadyTable::SetReadyCount(uint64_t key, int cnt) {
   std::lock_guard<std::mutex> lock(_table_mutex);
   _ready_table[key] = cnt;
 }
