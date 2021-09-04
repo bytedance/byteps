@@ -42,7 +42,7 @@ mkdir -p $BYTEPS_SOCKET_PATH
 if [ $1 == "scheduler" ]; then
   echo "Launch scheduler"
   CUDA_VISIBLE_DEVICES=0 DMLC_ROLE=scheduler python3 -c 'import byteps.server'
-  exit
+  exit $?
 fi
 
 export BYTEPS_NUMA_ID=$(($2 / 4))
@@ -51,7 +51,7 @@ export DMLC_WORKER_ID=$BYTEPS_PHY_NODE_ID
 if [ $1 == "server" ]; then
   echo "Launch server"
   DMLC_ROLE=server python3 -c 'import byteps.server'
-  exit
+  exit $?
 fi
 
 if [ "$#" -ne 3 ]; then
@@ -78,12 +78,15 @@ if [ $1 == "worker" ] || [ $1 == "joint" ]; then
     echo "TEST TENSORFLOW ..."
     export CUDA_VISIBLE_DEVICES=$BYTEPS_LOCAL_RANK
     $GDB python3 $path/$BIN
+    ret_code=$?
   elif [ "$TEST_TYPE" == "torch" ]; then
     echo "TEST TORCH ..."
     $GDB python3 $path/$BIN
+    ret_code=$?
   else
     echo "Error: unsupported $TEST_TYPE"
     exit 1
   fi
 fi
 echo "Done $TEST_TYPE test"
+exit $ret_code
