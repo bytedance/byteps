@@ -249,7 +249,7 @@ void BytePSServer::BytePSServerEngineThread(int i) {
         updates->merged.len = compressed.size;
       } else {  // decompress
         auto compressed_len = msg.sarray.lens[0];
-        CHECK_LE(compressed_len, msg.len);
+        CHECK_LE(compressed_len, (int)msg.len);
         common::compressor::tensor_t compressed(
             reinterpret_cast<char*>(msg.src), compressed_len, msg.type.dtype);
         auto decompressed = iter->second->Decompress(compressed);

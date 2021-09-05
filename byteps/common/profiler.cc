@@ -33,7 +33,7 @@ std::unordered_map<std::string, nvtxRangeId_t> Telemetry::_nvtx_ranges;
 #endif
 
 void MetricSummary::update(float current) {
-  if (data_.size() > capacity_) {
+  if (data_.size() > (size_t) capacity_) {
     auto front = data_.front();
     sum_ -= front;
     sum_square_ -= front * front;
@@ -84,7 +84,7 @@ void Telemetry::GetData(const char** names, float* mean, float* stdev,
                         int* count, int* actual_size, int max_size) {
   std::lock_guard<std::mutex> lock(_mtx);
   size_t i = 0;
-  for (; i < _names.size() && i < max_size; ++i) {
+  for (; i < _names.size() && i < (size_t) max_size; ++i) {
     // note: we update names[i] with the pointer to the name c_string
     // such a pointer is valid during the lifecycle of BytePS
     names[i] = _names[i]->c_str();

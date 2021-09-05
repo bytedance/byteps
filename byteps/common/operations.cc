@@ -281,7 +281,7 @@ Status PrepareAlltoallTensor(TensorShape shape,
   int session_size = common::byteps_session_size();
   auto session_id = common::byteps_session_id(name.c_str()) % session_size;
   *session_name = "session_" + std::to_string(session_id) + "_" + name;
-  for (int i = 0; i < tensor_key.size(); ++i) {
+  for (size_t i = 0; i < tensor_key.size(); ++i) {
     common::DeclareAlltoallTensor(name, tensor_key[i], i);
   }
   // Example names used for alltoall:
@@ -327,7 +327,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   BPS_CHECK(!use_pull || !output_size_unknown)
     << "pull-based alltoall does not support unknown recv_spilt";
   // send_begin always starts with a zero
-  int num_ranks = send_begin.size() - 1;
+  size_t num_ranks = send_begin.size() - 1;
   std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(0));
   auto dtype = input ? input->dtype() : group_inputs[0]->dtype();
   auto unit_size = getDataTypeLength(dtype);
@@ -373,7 +373,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // prepare size info for initialization / sanity checks
   std::vector<int> request_size_list;
   std::vector<int> resp_size_list;
-  for (size_t i = 0; i < num_ranks; ++i) {
+  for (int i = 0; i < (int) num_ranks; ++i) {
     // send to rank i
     int request_size = unit_size * (request_begin[i+1] - request_begin[i]);
     request_size_list.emplace_back(request_size);
@@ -453,7 +453,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
       // naming for sub-tasks
       std::string recv_name_suffix = "_resp_" + std::to_string(my_rank);
       std::string send_name_prefix = name + "_request_";
-      for (size_t i = 0; i < num_ranks; ++i) {
+      for (int i = 0; i < (int) num_ranks; ++i) {
         int resp_size = unit_size * (resp_begin[i + 1] - resp_begin[i]);
         if (resp_size) {
           auto resp_task = new P2PTensorTableEntry(base_resp_task);
@@ -642,11 +642,11 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   for (size_t i = 0; i < request_size_list.size(); ++i) {
     total_request_size += request_size_list[i];
     total_resp_size += resp_size_list[i];
-    BPS_CHECK(request_size_list[i] <= context.bounds_for_ranks[i]) 
+    BPS_CHECK(request_size_list[i] <= (int) context.bounds_for_ranks[i])
         << "Alltoall send size exceeds buffer size for rank="
         << i << " name=" << context.tensor_name << " size=" << request_size_list[i]
         << " buffer_size=" << context.bounds_for_ranks[i];
-    BPS_CHECK(resp_size_list[i] <= context.bounds_for_ranks[i])
+    BPS_CHECK(resp_size_list[i] <= (int) context.bounds_for_ranks[i])
         << "Alltoall recv size exceeds buffer size for rank="
         << i << " name=" << context.tensor_name << " size=" << resp_size_list[i]
         << " buffer_size=" << context.bounds_for_ranks[i];
@@ -682,7 +682,7 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   CHECK(BytePSGlobal::IsDistributed());
   auto ps = BytePSGlobal::GetOrInitPS();
   // send buffs
-  for (size_t i = 0; i < num_ranks; ++i) {
+  for (int i = 0; i < (int) num_ranks; ++i) {
     if (use_pull) {
       // pull based
       context.cpubuff_list.emplace_back(nullptr);
@@ -739,7 +739,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   if (context.initialized) {
     // XXX we assume the number of partitions do not change
     int num_partitions = (size + bound - 1) / bound;
-    BPS_CHECK_EQ(context.key_list.size(), num_partitions)
+    BPS_CHECK_EQ(context.key_list.size(), (size_t) num_partitions)
       << "Unexpected tensor partition count: "
       << num_partitions << " v.s. " << context.key_list.size();
     return;

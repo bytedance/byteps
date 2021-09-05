@@ -337,7 +337,7 @@ int BatchedUnfuse(const ::torch::Tensor fused_input_tensor,
   size_t total_len = 0;
   char *src;
 
-  for (int i = 0; i < output_tensors.size(); i++) {
+  for (size_t i = 0; i < output_tensors.size(); i++) {
     auto bps_dst = std::make_shared<TorchTensor>(output_tensors[i]);
     total_len += bps_dst->size();
     dst.push_back(std::move(bps_dst));
@@ -366,7 +366,7 @@ int BatchedZeroOut(std::vector<::torch::Tensor> output_tensors) {
   std::vector<std::shared_ptr<Tensor>> dst;
   size_t total_len = 0;
 
-  for (int i = 0; i < output_tensors.size(); i++) {
+  for (size_t i = 0; i < output_tensors.size(); i++) {
     auto bps_dst = std::make_shared<TorchTensor>(output_tensors[i]);
     total_len += bps_dst->size();
     dst.push_back(std::move(bps_dst));

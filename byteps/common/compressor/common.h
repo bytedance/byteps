@@ -54,6 +54,8 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
                   size / sizeof(double));                                     \
     default:                                                                  \
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                      \
+      return func(reinterpret_cast<uint32_t*>(dst),                           \
+                  reinterpret_cast<const float*>(src), size / sizeof(float)); \
   }
 
 #define DECOMPRESS_IMPL_SWITCH(dtype, func, dst, src, compressed_size)      \
@@ -69,6 +71,8 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
                   reinterpret_cast<const uint64_t*>(src), compressed_size); \
     default:                                                                \
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                    \
+      return func(reinterpret_cast<float*>(dst),                            \
+                  reinterpret_cast<const uint32_t*>(src), compressed_size); \
   }
 
 #define FAST_UPDATE_ERROR_IMPL_SWITCH(dtype, func, dst, src1, src2,          \
@@ -88,6 +92,9 @@ using kwargs_t = std::unordered_map<std::string, std::string>;
                   reinterpret_cast<const uint64_t*>(src2), compressed_size); \
     default:                                                                 \
       BPS_CHECK(0) << "Unsupported data type:" << dtype;                     \
+      return func(reinterpret_cast<float*>(dst),                             \
+                  reinterpret_cast<float*>(src1),                            \
+                  reinterpret_cast<const uint32_t*>(src2), compressed_size); \
   }
 
 }  // namespace compressor

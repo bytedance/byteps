@@ -176,6 +176,8 @@ def get_cpp_flags(build_ext):
     use_x8664 = int(os.environ.get('BYTEPS_CPPFLAGS_MARCH_X8664', '0'))
     march = 'x86-64' if use_x8664 else 'native'
     default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-march=' + march]
+    if int(os.environ.get('BYTEPS_WERROR', '0')):
+        default_flags += ['-Werror', '-Wno-ignored-attributes', '-Wno-aligned-new', '-Wno-class-memaccess', '-Wno-deprecated-declarations']
     if use_openmp():
         default_flags.append('-fopenmp')
     flags_to_try = []

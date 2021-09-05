@@ -101,9 +101,9 @@ class BytePSGlobal {
   static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
   static void CreateScheduledQueue(QueueType queueType);
   static bool IsQueueLockless() { return _lockless_queue; }
-  static ps::KVWorker<char>* GetPS(int index = 0) { CHECK(_ps.size()); return _ps.at(index % _ps.size()); }
+  static ps::KVWorker<char>* GetPS(size_t index = 0) { CHECK(_ps.size()); return _ps.at(index % _ps.size()); }
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
-  static ps::KVWorker<char>* GetOrInitPS(int index = 0);
+  static ps::KVWorker<char>* GetOrInitPS(size_t index = 0);
 
   // declare a tensor with the provided name, op_type, and key
   // name: the operation name

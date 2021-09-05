@@ -30,7 +30,7 @@ using namespace byteps::common;
 class TorchTensor : public Tensor {
  public:
   TorchTensor(::torch::Tensor tensor);
-  virtual const DataType dtype() const override;
+  virtual DataType dtype() const override;
   virtual const TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;

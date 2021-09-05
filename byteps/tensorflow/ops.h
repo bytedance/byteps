@@ -48,7 +48,7 @@ class TFTensor : public common::Tensor {
   TFTensor(::tensorflow::OpKernelContext* context,
            ::tensorflow::AsyncOpKernel::DoneCallback done, int output_idx,
            int device);
-  virtual const common::DataType dtype() const override;
+  virtual common::DataType dtype() const override;
   virtual const common::TensorShape shape() const override;
   virtual const void* data() const override;
   virtual int64_t size() const override;

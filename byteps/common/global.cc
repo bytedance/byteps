@@ -438,7 +438,7 @@ void BytePSGlobal::Init() {
   return;
 }
 
-ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
+ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(size_t index) {
   // we reuse _init_mutex, because BytePS should have been inited
   bool need_ps = IsDistributed() && (_my_role == BytePSRole::LOCAL_ROOT || _is_joint);
   std::lock_guard<std::mutex> lock(_init_mutex);
@@ -447,7 +447,7 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(int index) {
     BPS_LOG(DEBUG) << "Init PS worker. rank=" << _worker_id;
     ps::Node::Role ps_role = _is_joint ? ps::Node::JOINT : ps::Node::WORKER;
     ps::StartPS(0, ps_role, _is_joint ? _worker_id : -1, false, "byteps\0");
-    for (int i = 0; i < _ps_instance_size; ++i) {
+    for (int i = 0; i < (int) _ps_instance_size; ++i) {
       _ps.push_back(new ps::KVWorker<char>(0, 0, i));
     }
     if (_is_joint) {
@@ -693,7 +693,7 @@ void BytePSGlobal::RegisterCompressor(
 }
 
 void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
-  auto worker = GetOrInitPS(0);
+  GetOrInitPS(0);
   CHECK(_ps.size() == 1);
   bool gpu = true;
   if (BytePSGlobal::IsAlltoallUsePull()) {
@@ -911,7 +911,7 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
   std::lock_guard<std::mutex> lock(_encode_mutex);
   PSKV& pskv = ps_kv_[key];
   if (!pskv.keys.empty()) {
-    if (len > 0 && pskv.size != len) {
+    if (len > 0 && (size_t) pskv.size != len) {
       pskv.size = len;
       pskv.lens[0] = len;
     }

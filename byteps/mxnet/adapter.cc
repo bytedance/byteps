@@ -30,7 +30,7 @@ template <class T>
 MXTensor<T>::MXTensor(T* tensor) : tensor_(tensor) {}
 
 template <class T>
-const DataType MXTensor<T>::dtype() const {
+DataType MXTensor<T>::dtype() const {
   return TensorUtil::GetDType(tensor_);
 }
 

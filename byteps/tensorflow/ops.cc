@@ -154,7 +154,7 @@ void TFTensor::resize(const common::TensorShape& shape) {
   tensor_ = *tf_tensor;
 }
 
-const common::DataType TFTensor::dtype() const {
+common::DataType TFTensor::dtype() const {
   CHECK(allocated_);
   return ConvertDType(tensor_.dtype());
 }
@@ -199,12 +199,11 @@ extern "C" void byteps_tensorflow_declare_tensor(char* name) {
 
 extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int receiver) {
   std::string prefix = "byteps_p2p_send_";
-  int32_t tensor_key;
   if (sender == -1) sender = common::byteps_rank();
   if (receiver == -1) receiver = common::byteps_rank();
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name, 0);
-  tensor_key = common::DeclareP2PTensor(tensor_name, sender, receiver);
+  common::DeclareP2PTensor(tensor_name, sender, receiver);
 }
 
 // Declare tensors for alltoall
@@ -725,7 +724,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     GetIntList(split_tensor, &dim0_split_count);
     int dim0_aggregate = 0;
     // the split tensor is based on axis 0, hence scale it by stride
-    for (int i = 0; i < dim0_split_count.size(); ++i) {
+    for (size_t i = 0; i < dim0_split_count.size(); ++i) {
       dim0_aggregate += dim0_split_count[i];
       split_count.push_back(dim0_split_count[i] * stride);
       if (dim0_split_count[i] < 0) {
@@ -759,7 +758,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     // Allocate output
     CHECK(recv_split_count.size() == result_shape.size());
     CHECK(recv_split_count.size() == tensors.size());
-    for (int i = 0; i < recv_split_count.size(); ++i) {
+    for (size_t i = 0; i < recv_split_count.size(); ++i) {
       result_shape[i].AddDim(recv_split_count[i]);
       for (int j = 1; j < tensors[i]->shape().dims(); ++j) { 
         result_shape[i].AddDim(tensors[i]->shape().dim_size(j));
@@ -801,7 +800,6 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
     }
     // TODO: pass the correct aux_output device id
     auto bps_aux_output = std::make_shared<TFTensor>(*output_sizes[0], CPU_DEVICE_ID);
-    const int my_rank = common::byteps_rank();
     // Add session_id prefix to node_name
     int session_id = common::byteps_session_id(tmp_name.c_str());
     int session_size = common::byteps_session_size();
@@ -813,7 +811,7 @@ class BytepsAllToAllGroupOp : public ::tensorflow::AsyncOpKernel {
       return;
     }
 
-    for (int i = 0; i < tensor_key.size(); ++i) {
+    for (size_t i = 0; i < tensor_key.size(); ++i) {
       common::DeclareAlltoallTensor(tmp_name, tensor_key[i], i);
     }
     auto& bps_context = common::GetContextFromName(session_tmp_name);

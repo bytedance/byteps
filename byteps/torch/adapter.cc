@@ -22,7 +22,7 @@ namespace torch {
 
 TorchTensor::TorchTensor(::torch::Tensor tensor) : tensor_(tensor) {}
 
-const DataType TorchTensor::dtype() const {
+DataType TorchTensor::dtype() const {
   switch (tensor_.scalar_type()) {
     case ::torch::kByte:
       return DataType::BYTEPS_UINT8;

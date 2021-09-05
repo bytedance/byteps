@@ -108,8 +108,8 @@ class CpuReducer {
         f = (0xff << 23) | (sign << 31);  //  inf
       }
     }
-
-    *res = *reinterpret_cast<float const*>(&f);
+    float const* fptr = reinterpret_cast<float const*>(&f);
+    *res = *fptr;
   }
 
   inline void Float2HalfBits(const float* src, unsigned short* dest) {

@@ -265,7 +265,7 @@ typedef struct BytePSContext {
 
 class Tensor {
  public:
-  virtual const DataType dtype() const = 0;
+  virtual DataType dtype() const = 0;
   virtual const TensorShape shape() const = 0;
   virtual const void* data() const = 0;
   virtual int64_t size() const = 0;
@@ -334,8 +334,8 @@ struct TensorTableEntry {
   explicit TensorTableEntry(int priority_, int version_, std::shared_ptr<ReadyEvent> ready_event_,
                             const StatusCallback& callback_,
                             int device_, std::vector<QueueType>& queue_list_)
-   : priority(priority_), version(version_), ready_event(ready_event_), callback(callback_),
-     device(device_), queue_list(queue_list_) {}
+   : priority(priority_), version(version_), ready_event(ready_event_),
+     device(device_), callback(callback_), queue_list(queue_list_) {}
 
   virtual ~TensorTableEntry() {
     tensor.reset();

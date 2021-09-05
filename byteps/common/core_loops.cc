@@ -542,7 +542,7 @@ bool RunCompressLoopOnce() {
       int dtype = task->tensor->dtype();
       compressor::tensor_t grad(data, len, dtype);
       auto compressed = task->compressor->Compress(grad);
-      BPS_CHECK_LE(compressed.size, len)
+      BPS_CHECK_LE(compressed.size, (size_t) len)
           << "Compressor Implementation Error "
           << ", key=" << task->key << ", src_len=" << len
           << ", compressed_len=" << compressed.size;
@@ -581,7 +581,7 @@ bool RunDecompressLoopOnce() {
       auto len = pskv.lens[0];
       int dtype = task->tensor->dtype();
       compressor::tensor_t compressed(data, len, dtype);
-      auto decompressed = task->compressor->Decompress(compressed);
+      task->compressor->Decompress(compressed);
       BPS_LOG(DEBUG) << "PULL with gradient compression. key=" << task->key;
 
       FinishOrProceed(task);
@@ -896,7 +896,6 @@ void PullLoop() {
 
 // copy from comm buffer to output tensor (send/recv)
 void P2PCopyGroup(std::vector<std::shared_ptr<TensorTableEntry>>& tasks) {
-  int my_rank = BytePSGlobal::GetRank();
   bool has_gpu = false;
   for (auto& task : tasks) {
     auto key = task->key;
@@ -908,7 +907,7 @@ void P2PCopyGroup(std::vector<std::shared_ptr<TensorTableEntry>>& tasks) {
     int recv_len = recv_arr.len;
     char* src_addr = (char*) recv_arr.val.data();
     // TODO(haibin.lin): support local send-recv
-    BPS_CHECK(recv_len == len) << recv_len << ", " << len;
+    BPS_CHECK((size_t) recv_len == len) << recv_len << ", " << len;
     BPS_LOG(TRACE) << "P2P_COPY key=" << key << " addr="
         << (long long) src_addr << " len=" << len;
     if (is_gpu) {
@@ -956,7 +955,7 @@ void P2PCopyGroup(std::vector<P2PTensorTableEntry*>& tasks) {
       auto recv_arr = server::BytePSServer::GetRecvPartition(key);
       int recv_len = recv_arr.len;
       void* src_addr = recv_arr.val.data();
-      BPS_CHECK(recv_len == len) << recv_len << ", " << len;
+      BPS_CHECK((size_t) recv_len == len) << recv_len << ", " << len;
       // update the output (data)
       BPS_LOG(TRACE) << "ALLTOALL_COPY key=" << key << " addr="
           << (long long) src_addr << " len=" << len 
@@ -1048,8 +1047,8 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
 
       std::vector<uint64_t> keys;
       // prepare all keys
-      for (uint64_t i = 0; i < num_ranks; ++i) {
-        if (i != my_rank) {
+      for (uint64_t i = 0; i < (uint64_t) num_ranks; ++i) {
+        if (i != (uint64_t) my_rank) {
           uint64_t key = server::ComposeAlltoallKey(task->key, i);
           keys.push_back(key);
         }
@@ -1057,14 +1056,14 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
       // recv_arrs does not include the one for self send-recv
       std::vector<server::RecvArray> recv_arrs = server::BytePSServer::GetRecvPartitions(keys);
       // get the length of all ranks
-      for (uint64_t i = 0; i < num_ranks; ++i) {
+      for (uint64_t i = 0; i < (uint64_t) num_ranks; ++i) {
         int64_t recv_len;
-        if (i == my_rank) {
+        if (i == (uint64_t) my_rank) {
           // self send-recv does not go through ps-lite
           recv_len = task->offset_list[my_rank + 1] - task->offset_list[my_rank];
           total_recv_len += recv_len;
         } else {
-          int idx = i < my_rank ? i : i - 1;
+          int idx = i < (uint64_t) my_rank ? i : i - 1;
           recv_len = recv_arrs[idx].len;
           total_recv_len += recv_len;
         }
@@ -1080,7 +1079,7 @@ bool RunP2PGroupCopyHost2DeviceLoopOnce() {
         << recv_num_elements << "," << remaining_dims;
       common::TensorShape output_shape;
       output_shape.AddDim(recv_dim0);
-      for (int i = 1; i < in_shape.shape_.size(); ++i) {
+      for (size_t i = 1; i < in_shape.shape_.size(); ++i) {
         output_shape.AddDim(in_shape.shape_[i]);
       }
       task->output->resize(output_shape);
@@ -1162,6 +1161,7 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
                                           dtype, output_device);
   for (int rank_offset = 0; rank_offset < num_ranks; ++rank_offset) {
     int i = (my_rank + rank_offset + 1) % num_ranks;
+    BPS_CHECK(task->offset_list.size() > (size_t) i + 1) << i << " " << task->offset_list.size();
     auto len = task->offset_list[i + 1] - task->offset_list[i];
     if (i == BytePSGlobal::GetRank()) continue;
     int receiver = i;
@@ -1209,7 +1209,6 @@ void ExecuteP2PSend(std::shared_ptr<TensorTableEntry> task) {
   auto offset = task->offset;
   int len = task->len;
   auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, task->context->receiver);
-  char* tensor = (char*) data + offset;
   char* cpubuff = (char*) task->cpubuff;
   CHECK(cpubuff != nullptr);
   bool from_cpu = task->device == CPU_DEVICE_ID;
@@ -1549,7 +1548,7 @@ bool RunCpuBcastLoopOnce() {
     auto comm = BytePSGlobal::GetBasicComm();
     comm->broadcastSignal(&msg, sizeof(BytePSCommMsg));
     reducer->copy((void *)((char *)(task->output->data()) + offset),
-                  (char *)((task->cpubuff) + offset), len);
+                  ((char *)(task->cpubuff) + offset), len);
   } else {
     auto tensor = task->tensor;
 
@@ -1561,7 +1560,7 @@ bool RunCpuBcastLoopOnce() {
       BPS_LOG(DEBUG) << "Sampled key=" << task->key << " local_root=" << local_root;
     }
     BPS_LOG(TRACE) << "dst " << (void *) ((char *)(task->cpubuff) + offset)
-      << " src " << (void *) ((task->numa_cpubuff[local_root]) + offset) ;
+      << " src " << (void *) ((char*)(task->numa_cpubuff[local_root]) + offset) ;
     reducer->copy((void *)((char *)(task->output->data()) + offset),
                   (char *)(task->numa_cpubuff[local_root]) + offset, len);
     BytePSCommSignal sig = CPU_BCAST_DONE;

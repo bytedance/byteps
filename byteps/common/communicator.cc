@@ -198,7 +198,8 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
     }
     if (BytePSGlobal::ShouldShutdown()) break;
 
-    auto message = *(BytePSCommMsg*)buffer;
+    BytePSCommMsg* message_ptr = (BytePSCommMsg*)buffer;
+    BytePSCommMsg message = *message_ptr;
 
     switch (message.signal) {
       case REDUCE_READY:

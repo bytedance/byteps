@@ -27,7 +27,6 @@ CompressorRegistry::Register reg(
     "dithering_compressor",
     [](const kwargs_t& kwargs, size_t size,
        DataType dtype) -> std::unique_ptr<Compressor> {
-      std::tuple<> params;
       auto k = HyperParamFinder<unsigned>(kwargs, "compressor_k");
 
       auto seed = HyperParamFinder<unsigned>(kwargs, "seed", true,
