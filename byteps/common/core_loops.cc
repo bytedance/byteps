@@ -1132,7 +1132,8 @@ void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
   }
 }
 
-void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
+void RunAlltoallSend(std::shared_ptr<TensorTableEntry>& t) {
+  P2PTensorTableEntry* task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
   // shuffle the receiver rank
   auto resp_mode = BytePSGlobal::IsDirectResponse();
   int my_rank =  BytePSGlobal::GetRank();
@@ -1150,20 +1151,23 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
   }
   std::function<void()> cb = nullptr;
   if (resp_mode != 2) {
-    cb = [task]() {
+    cb = [task, t]() {
       int v = task->request_counter.get()->fetch_sub(1);
-      if (v == 1) FinishOrProceedLite(task);
+      if (v == 1) FinishOrProceed(t);
     };
   }
   int cmd = server::GetCommandType(req_type, dtype, output_device);
   // used for group send with split=0
   int empty_cmd = server::GetCommandType(server::RequestType::kEmptyGroupSend,
-                                          dtype, output_device);
-  for (int rank_offset = 0; rank_offset < num_ranks; ++rank_offset) {
-    int i = (my_rank + rank_offset + 1) % num_ranks;
+                                         dtype, output_device);
+  for (int r_offset = 0; r_offset < num_ranks; ++r_offset) {
+    // start send with the next rank
+    // TODO(haibin.lin): in the future, maybe we can start with the
+    // slowest rank detected dynamically
+    int i = (my_rank + r_offset + 1) % num_ranks;
+    if (i == BytePSGlobal::GetRank()) continue;
     BPS_CHECK(task->offset_list.size() > (size_t) i + 1) << i << " " << task->offset_list.size();
     auto len = task->offset_list[i + 1] - task->offset_list[i];
-    if (i == BytePSGlobal::GetRank()) continue;
     int receiver = i;
     if (len == 0) {
       // split = 0, nothing to copy
@@ -1178,12 +1182,13 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
       }
       continue;
     } else {
-      // split != 0. Do a copy followed by send
+      // split != 0
       const char* data = task->tensor_data(i);
       auto offset = is_group ? 0 : task->offset_list[i];
       auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], len, receiver);
       char* tensor = (char*) data + offset;
       int input_device = task->device;
+      // do a copy (optional) followed by send
       if (input_device == CPU_DEVICE_ID && resp_mode == 2 &&
           !BytePSGlobal::ShouldSkipInputCopy()) {
         char* cpubuff = (char*) task->pcie_cpubuff[i];
@@ -1197,11 +1202,11 @@ void ExecuteAlltoallSend(P2PTensorTableEntry* task) {
     }
   }
   if (resp_mode == 2) {
-    FinishOrProceedLite(task);
+    FinishOrProceed(t);
   }
 }
 
-void ExecuteP2PSend(std::shared_ptr<TensorTableEntry> task) {
+void RunP2PSend(std::shared_ptr<TensorTableEntry> task) {
   const int dtype = task->tensor->dtype();
   auto req_type = server::RequestType::kDefaultSend;
   int cmd = server::GetCommandType(req_type, dtype, CPU);
@@ -1221,19 +1226,17 @@ void ExecuteP2PSend(std::shared_ptr<TensorTableEntry> task) {
 }
 
 bool RunSendLoopOnce() {
+  // this loop is shared with alltoall and send/recv op
   QueueType this_op = SEND;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  // get the alltoall task
-  auto t1 = q->getTaskLite();
-  // get the send/recv task
-  auto t2 = q->getTask();
-  if (t1 || t2) {
-    if (t1) {
-      auto task = reinterpret_cast<P2PTensorTableEntry*>(t1);
-      ExecuteAlltoallSend(task);
-    }
-    if (t2) {
-      ExecuteP2PSend(t2);
+  // get the send/recv or alltoall task
+  auto task = q->getTask();
+  if (task) {
+    if (task->context->op_type == ALLTOALL_OP) {
+      RunAlltoallSend(task);
+    } else {
+      BPS_CHECK(task->context->op_type == P2P_OP);
+      RunP2PSend(task);
     }
     return true;
   } else {
@@ -1245,9 +1248,9 @@ bool RunSendLoopOnce() {
 bool RunP2PPullLoopOnce() {
   QueueType this_op = P2P_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto t = q->getTaskLite();
+  auto t = q->getTask();
   if (t) {
-    auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
+    auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
     int my_rank = BytePSGlobal::GetRank();
     int num_ranks = task->pcie_cpubuff.size();
     int output_device_type = (task->output_device == CPU_DEVICE_ID) ? CPU : GPU;
@@ -1265,26 +1268,27 @@ bool RunP2PPullLoopOnce() {
         const int dtype = task->output_dtype();
         int cmd = server::GetCommandType(server::RequestType::kDefaultPull, 
                                          dtype, output_device_type);
+        int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal,
+                                             dtype, output_device_type);
         char* output = (char*) dest + offset;
         auto vals = new ps::SArray<char>(output, len, false);
         BytePSGlobal::GetPS()
-          ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, dtype, output_device_type]() {
+          ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [i, vals, task, t, ack_cmd]() {
             if (!BytePSGlobal::IsP2PAckDisabled()) {
               // notify the server that the response is received
-              // HACK(haibin.lin) perform zpush with 1 byte data using tensor_name,
-              // which should persist before byteps is shutdown
+              // We perform zpush with 1 byte data using tensor_name,
+              // which should persist until byteps is shutdown
               char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
               ps::SArray<char> ack_vals(cpubuff, 1, false);
               auto pskv = BytePSGlobal::EncodeP2PKey(task->key_list[i], 1, i);
-              int ack_cmd = server::GetCommandType(server::RequestType::kAckSignal, dtype, output_device_type);
               // no need to wait for this zpush
               BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
             }
-            // the rest of the callbacks are for zpull          
+            // the rest of the callbacks are for zpull
             delete vals;
             int v = task->request_counter.get()->fetch_sub(1);
             if (v == 1) {
-              FinishOrProceedLite(task);
+              FinishOrProceed(t);
             }
           });
       }

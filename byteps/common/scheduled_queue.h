@@ -47,7 +47,8 @@ class BytePSScheduledQueue {
   // Not using shared_ptr means that bytePS manages the life cycle
   // of the task. The task usually is allocated in `EnqueueTensorXX`
   // in operations.cc, and freed in `FinishOrProceedLite` in
-  // core_loops.cc
+  // core_loops.cc. For now, this interface is used for alltoall
+  // recv tasks (RECV, P2P_GROUP_COPYH2D, etc)
   void addTask(std::shared_ptr<TensorTableEntry>);
   void addTask(TensorTableEntry*);
   std::shared_ptr<TensorTableEntry> getTask();

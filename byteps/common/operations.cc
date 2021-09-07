@@ -60,10 +60,12 @@ void byteps_lazy_init() {
     if (BytePSGlobal::IsJoint()) {
       func.push_back(RecvLoop);
       func.push_back(SendLoop);
-      func.push_back(P2PPullLoop);
-      func.push_back(P2PPullResponseLoop);
+      if (BytePSGlobal::IsAlltoallUsePull()) {
+        func.push_back(P2PPullLoop);
+        func.push_back(P2PPullResponseLoop);
+        func.push_back(P2PAckLoop);
+      }
       func.push_back(P2PGroupCopyHost2DeviceLoop);
-      func.push_back(P2PAckLoop);
     }
     if (BytePSGlobal::IsRootDevice()) {
       func.push_back(PullLoop);
@@ -342,22 +344,28 @@ Status EnqueueAlltoAllTensor(std::string& name,
   std::vector<QueueType> request_q = GetAlltoallRequestQueueList(use_pull);
   std::vector<QueueType> response_q = GetAlltoallResponseQueueList(use_pull, output_size_unknown);
 
-  auto request_task = new P2PTensorTableEntry(priority, version, ready_event, callback,
-                                              input_device, request_q, output_device, output_size_unknown,
-                                              group_inputs, group_outputs);
+  auto request_task_ptr = new P2PTensorTableEntry(priority, version, ready_event, callback,
+                                                  input_device, request_q, output_device,
+                                                  output_size_unknown, group_inputs,
+                                                  group_outputs);
+  std::shared_ptr<TensorTableEntry> request_task(request_task_ptr);
+  // base_resp_task is a reference task for recv tasks
+  // unlike other tasks, recv tasks uses raw pointer instead of shared_ptr to
+  // avoid shared_ptr overheads as there'll be many of them
   P2PTensorTableEntry base_resp_task(priority, version, ready_event, callback,
-                                    input_device, response_q, output_device, output_size_unknown,
-                                    group_inputs, group_outputs);
-  request_task->tensor_name = std::string("Base_Request_Task");
-  base_resp_task.tensor_name = std::string("Base_Response_Task");
+                                     input_device, response_q, output_device,
+                                     output_size_unknown, group_inputs,
+                                     group_outputs);
+  request_task_ptr->tensor_name = std::string("base_request_task");
+  base_resp_task.tensor_name = std::string("base_response_task");
 
   // the accumulated offset list always starts with 0
-  request_task->offset = 0;
-  request_task->offset_list.push_back(0);
-  request_task->context = &byteps_context;
-  request_task->counter_ptr = counter_ptr;
-  request_task->tensor = input;
-  request_task->output = output;
+  request_task_ptr->offset = 0;
+  request_task_ptr->offset_list.push_back(0);
+  request_task_ptr->context = &byteps_context;
+  request_task_ptr->counter_ptr = counter_ptr;
+  request_task_ptr->tensor = input;
+  request_task_ptr->output = output;
 
   base_resp_task.offset_list.push_back(0);
   base_resp_task.context = &byteps_context;
@@ -377,7 +385,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
     // send to rank i
     int request_size = unit_size * (request_begin[i+1] - request_begin[i]);
     request_size_list.emplace_back(request_size);
-    request_task->offset_list.push_back(request_begin[i + 1] * unit_size);
+    request_task_ptr->offset_list.push_back(request_begin[i + 1] * unit_size);
     // we check the case for valid ps-lite send operations
     if (output_size_unknown && i != my_rank) {
       num_ps_requests += 1;
@@ -399,7 +407,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
     request_total_partnum = 0;
   }
   int total_partnum = request_total_partnum + resp_total_partnum;
-  request_task->total_partnum = total_partnum;
+  request_task_ptr->total_partnum = total_partnum;
   base_resp_task.total_partnum = total_partnum;
 
   // initialize the key list and buffer list
@@ -408,35 +416,33 @@ Status EnqueueAlltoAllTensor(std::string& name,
   BPS_CHECK(byteps_context.cpubuff_list.size() == num_ranks * 2);
   BPS_CHECK(byteps_context.key_list.size() == num_ranks * 2);
   // the first half of cpubuff_list/key_list is for the request task
-  request_task->pcie_cpubuff.insert(request_task->pcie_cpubuff.begin(),
-                                    byteps_context.cpubuff_list.begin(),
-                                    byteps_context.cpubuff_list.begin() + num_ranks);
-  request_task->key_list.insert(request_task->key_list.begin(),
-                             byteps_context.key_list.begin(),
-                             byteps_context.key_list.begin() + num_ranks);
+  request_task_ptr->pcie_cpubuff.insert(request_task_ptr->pcie_cpubuff.begin(),
+                                        byteps_context.cpubuff_list.begin(),
+                                        byteps_context.cpubuff_list.begin() + num_ranks);
+  request_task_ptr->key_list.insert(request_task_ptr->key_list.begin(),
+                                    byteps_context.key_list.begin(),
+                                    byteps_context.key_list.begin() + num_ranks);
   // the second half of cpubuff_list/key_list is for the response task
   base_resp_task.pcie_cpubuff.insert(base_resp_task.pcie_cpubuff.begin(),
-                                    byteps_context.cpubuff_list.begin() + num_ranks,
-                                    byteps_context.cpubuff_list.end());
+                                     byteps_context.cpubuff_list.begin() + num_ranks,
+                                     byteps_context.cpubuff_list.end());
   base_resp_task.key_list.insert(base_resp_task.key_list.begin(),
-                                byteps_context.key_list.begin() + num_ranks,
-                                byteps_context.key_list.end());
-  BPS_CHECK(request_task->pcie_cpubuff.size() == num_ranks);
-  BPS_CHECK(request_task->key_list.size() == num_ranks);
+                                 byteps_context.key_list.begin() + num_ranks,
+                                 byteps_context.key_list.end());
+  BPS_CHECK(request_task_ptr->pcie_cpubuff.size() == num_ranks);
+  BPS_CHECK(request_task_ptr->key_list.size() == num_ranks);
   BPS_CHECK(base_resp_task.pcie_cpubuff.size() == num_ranks);
   BPS_CHECK(base_resp_task.key_list.size() == num_ranks);
 
-  request_task->request_counter = std::make_shared<std::atomic_int>(num_ps_requests);
+  request_task_ptr->request_counter = std::make_shared<std::atomic_int>(num_ps_requests);
 
   // enqueue send tasks
   if (request_total_partnum) {
-    request_task->offset = 0; // DO WE NEED THIS? use default value?
-    request_task->tensor_name = name + "_request";
+    request_task_ptr->offset = 0; // DO WE NEED THIS? use default value?
+    request_task_ptr->tensor_name = name + "_request";
     BytePSGlobal::GetScheduledQueue(request_q.at(0))->addTask(request_task);
-  } else {
-    // nothing to send.
-    delete request_task;
   }
+  // otherwise, nothing to send.
 
   // enqueue recv tasks
   if (total_partnum == 0) {
@@ -475,10 +481,10 @@ Status EnqueueAlltoAllTensor(std::string& name,
     }
   }
   BPS_LOG(TRACE) << "EnqueueAlltoAllTensor finished: " << name
-                << " rank=" << BytePSGlobal::GetRank()
-                << " request_partnum=" << request_total_partnum
-                << " resp_partnum=" << resp_total_partnum
-                << " num_ps_requests=" << num_ps_requests;
+                 << " rank=" << BytePSGlobal::GetRank()
+                 << " request_partnum=" << request_total_partnum
+                 << " resp_partnum=" << resp_total_partnum
+                 << " num_ps_requests=" << num_ps_requests;
   return Status::OK();
 }
 
@@ -989,25 +995,30 @@ int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver) {
   return BytePSGlobal::DeclareP2PTensor(name, sender, receiver);
 }
 
+// queue for p2p send/recv
 std::shared_ptr<std::vector<QueueType>> GetSendQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
   queue_list->push_back(SEND);
   return queue_list;
 }
 
+// queue for p2p send/recv
 std::shared_ptr<std::vector<QueueType>> GetRecvQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
   queue_list->push_back(RECV);
   return queue_list;
 }
 
+// queue for alltoall requests
 std::vector<QueueType> GetAlltoallRequestQueueList(bool use_pull) {
   std::vector<QueueType> queue_list;
   queue_list.emplace_back(use_pull ? P2P_PULL : SEND);
   return queue_list;
 }
 
-std::vector<QueueType> GetAlltoallResponseQueueList(bool use_pull, bool output_size_unknown) {
+// queue for alltoall response
+std::vector<QueueType> GetAlltoallResponseQueueList(bool use_pull,
+                                                    bool output_size_unknown) {
   if (use_pull) {
     if (BytePSGlobal::IsP2PAckDisabled()) {
       return {P2P_PULL_RESPONSE};
