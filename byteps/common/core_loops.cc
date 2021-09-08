@@ -1132,6 +1132,13 @@ void CopyD2H(char* dst, const char* src, int len, bool from_cpu) {
   }
 }
 
+// Note that we use shared_ptr on purpose to help manage the life cycle of the
+// object. For alltoall we need to make sure the object is alive inside
+// RunAlltoallSend, with shared_ptr the liveness is guaranteed.
+// In earlier versions, manually recycling the memory of task object
+// inside the ZPush callback may lead to segfault, when the number of
+// valid ZPush is very small and the object is released while the for-loop
+// in RunAlltoallSend is not completed yet.
 void RunAlltoallSend(std::shared_ptr<TensorTableEntry>& t) {
   P2PTensorTableEntry* task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
   // shuffle the receiver rank
