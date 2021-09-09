@@ -20,6 +20,12 @@ from torch.nn.modules import linear
 import torch.optim as optim
 import byteps.torch as bps
 from utils import LinearRegression, check_weight, check_grad
+import argparse
+
+parser = argparse.ArgumentParser(description='warmup test')
+parser.add_argument("--warmup_iter", type=int, default=0,
+                    help="number of iterations for pipesgd warmup")
+args = parser.parse_args()
 
 # initialization
 bps.init()
@@ -35,7 +41,8 @@ y_np = np.array([2.0], dtype=np.float)
 learning_rate = 0.01
 
 # define numpy model
-linear_regression = LinearRegression(weight=w_np, lr=learning_rate)
+linear_regression = LinearRegression(weight=w_np, lr=learning_rate,
+                                     warmup_iter=args.warmup_iter)
 
 # move tensor to GPU
 x = torch.from_numpy(x_np).type(torch.float32).to(device_id)
@@ -51,7 +58,8 @@ loss_fn = torch.nn.MSELoss(reduction='sum')
 optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 optimizer = bps.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
-                                     staleness=1)
+                                     staleness=1,
+                                     pipesgd_warmup_iter=args.warmup_iter)
 
 print(f'x = {x}, y = {y}, x.dtype = {x.dtype}, y.dtype = {y.dtype}')
 
@@ -68,7 +76,7 @@ for i in range(iteration):
 
     check_weight(model, linear_regression, rank, i)
     optimizer.step()
-    linear_regression.step(should_skip=(i == 0))
+    linear_regression.step(should_skip=(i == args.warmup_iter))
     check_grad(model, linear_regression, rank, i)
 
 print('All good!')

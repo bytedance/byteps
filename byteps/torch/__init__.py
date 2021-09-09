@@ -36,11 +36,13 @@ import collections
 
 class _DistributedOptimizer(torch.optim.Optimizer):
     def __init__(self, params, named_parameters, compression,
-                 backward_passes_per_step=1, staleness=0):
+                 backward_passes_per_step=1, staleness=0,
+                 pipesgd_warmup_iter=0):
         super(self.__class__, self).__init__(params)
         self._compression = compression
         self._niter = 0
         self._staleness = staleness
+        self._pipesgd_warmup_iter = pipesgd_warmup_iter
         assert staleness == 0 or staleness == 1, staleness
 
         if named_parameters is not None:
@@ -165,9 +167,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
             # pipe-sgd: need to clone the gradient to avoid race condition
-            if self._staleness:
-                tensor_compressed = tensor_compressed.clone()
+            version = 0
             niter = self.state['byteps_niter']
+            if self._staleness and niter >= self._pipesgd_warmup_iter:
+                tensor_compressed = tensor_compressed.clone()
             handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name,
                                       version=niter, staleness=self._staleness)
         return handle, ctx, name
@@ -219,6 +222,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
 
     def _synchronize(self):
+        """Synchronize the pushpull operations"""
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
             if type(p.grad) == type(None):
@@ -243,6 +247,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._handles.clear()
 
     def _stale_synchronize(self):
+        """Synchronize the pushpull operations when pipesgd is enabled"""
         has_amp = hasattr(self, "_amp_stash")
         niter = self.state['byteps_niter']
         assert niter >= 0, niter
@@ -256,20 +261,29 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         # if the loss scale increases at the current iteration
         # amp will rescale it back after synchronize(). so we need
         # to adjust the gradient from the previous step accordingly
-        prev_loss_scale = self.state['byteps_stale_scale'] if niter > 0 else loss_scale
+        if niter > self._pipesgd_warmup_iter:
+            prev_loss_scale = self.state['byteps_stale_scale']
+        else:
+            prev_loss_scale = loss_scale
         grad_ratio = loss_scale / prev_loss_scale
 
         # materialzed grad tensors are not available. obtain them from handles
         stale_grad_state = self.state['byteps_stale_grad']
         if not stale_grad_state:
-            if niter == 0:
+            if niter <= self._pipesgd_warmup_iter:
+                if niter == self._pipesgd_warmup_iter:
+                    print(f'BytePS pipeSGD: started pipeline at iter {niter}', flush=True)
                 for name, (p, handle, ctx) in self._stale_handles[niter].items():
                     assert handle is not None, name
                     assert not p.grad.is_sparse, "sparse gradient is not supported"
                     output = synchronize(handle)
                     tmp = self._compression.decompress(output, ctx)
-                    stale_grad_state[name] = tmp
-                    p.grad.copy_(tmp)
+                    # sync SGD duration warmup
+                    if niter < self._pipesgd_warmup_iter:
+                        p.grad.data = tmp
+                    else:
+                        stale_grad_state[name] = tmp
+                        p.grad.copy_(tmp)
             else:
                 for name, (p, handle, ctx) in self._stale_handles[niter-1].items():
                     assert handle is not None
@@ -283,7 +297,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         if grad_ratio != 1.0:
                             prev_grad.mul_(grad_ratio)
                         p.grad.copy_(prev_grad)
-            if niter > 0:
+            if (niter - 1) in self._stale_handles:
                 del self._stale_handles[niter - 1]
         else:
             # grad tensors alread materialized
@@ -362,7 +376,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             # skip sync if calling skip_synchronize
             if self._should_sync:
                 self.synchronize()
-            if self._staleness == 0:
+            niter = self.state['byteps_niter']
+            # synchronize() already incremented niter by 1
+            pipesgd_active = self._staleness and niter > self._pipesgd_warmup_iter
+            if not pipesgd_active:
                 return super(self.__class__, self).step(closure)
             else:
                 if not self.state['byteps_skipped_init_step']:
@@ -373,7 +390,8 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
-                         backward_passes_per_step=1, staleness=0):
+                         backward_passes_per_step=1, staleness=0,
+                         pipesgd_warmup_iter=0):
     """
     An optimizer that wraps another torch.optim.Optimizer, using an push_pull to
     average gradient values before applying gradients to model weights.
@@ -411,13 +429,16 @@ def DistributedOptimizer(optimizer, named_parameters=None,
                    This allows optimizer using stale gradients to update parameters. Defaults 
                    to not using pipelined SGD, i.e., staleness=0. If set to 1, the parameter
                    update is delayed by 1 step. Reference: https://arxiv.org/abs/1811.03619
+        pipesgd_warmup_iter: Number of warmup steps for pipesgd, during which pipesgd staleness
+                   is fixed at 0.
     """
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override the `step()` method with an push_pull implementation.
     cls = type(optimizer.__class__.__name__, (optimizer.__class__,),
                dict(_DistributedOptimizer.__dict__))
     return cls(optimizer.param_groups, named_parameters,
-               compression, backward_passes_per_step, staleness)
+               compression, backward_passes_per_step,
+               staleness=staleness, pipesgd_warmup_iter=pipesgd_warmup_iter)
 
 
 def broadcast_parameters(params, root_rank, prefix="Parameter."):

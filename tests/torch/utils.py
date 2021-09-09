@@ -19,13 +19,14 @@ import os
 
 class LinearRegression:
     """LR with stale gradient for testing purpose"""
-    def __init__(self, weight=None, lr=None, grad_acc=1) -> None:
+    def __init__(self, weight=None, lr=None, grad_acc=1, warmup_iter=0) -> None:
         self.weight = weight
         self.lr = lr
         self.staled_grad = np.zeros_like(self.weight)
         self.grad = np.zeros_like(self.weight)
         self.grad_acc = grad_acc
         self.step_cnt = 0
+        self.warmup_iter = warmup_iter
 
     def step(self, should_skip=False):
         if should_skip:
@@ -37,7 +38,10 @@ class LinearRegression:
         self.grad += 2 * x * (self.weight @ x - y)
         self.step_cnt += 1
         if self.step_cnt % self.grad_acc == 0:
-            self.grad, self.staled_grad = self.staled_grad, self.grad
+            if (self.step_cnt / self.grad_acc) > (self.warmup_iter + 1):
+                self.grad, self.staled_grad = self.staled_grad, self.grad
+            else:
+                self.grad, self.staled_grad = self.grad, self.grad
 
     def zero_grad(self):
         self.grad = np.zeros_like(self.weight)
