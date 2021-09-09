@@ -41,6 +41,7 @@ VERSION = '0.7.2'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
+    'cloudpickle',
     # 'cffi>=1.4.0',
 ]
 
