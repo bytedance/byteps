@@ -66,6 +66,8 @@ class NcclManager {
   int GetGroupSize() { return _nccl_group_size; }
   void EnqueueGroup(std::shared_ptr<NcclGroupEntry> e);
   std::shared_ptr<NcclGroupEntry> DequeueGroup();
+  // get the list of pending tasks
+  void GetPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* results);
 
   virtual cudaStream_t GetStream(uint64_t key, QueueType op);
   virtual ncclComm_t GetComm(uint64_t key, QueueType op);

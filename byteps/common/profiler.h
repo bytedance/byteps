@@ -68,7 +68,7 @@ class Telemetry {
   // initialize the configuration based on env vars
   static void InitEnv();
   // start recording an operation
-  static void RecordStart(const std::string& name);
+  static uint64_t RecordStart(const std::string& name);
   // end recording an operation
   static void RecordEnd(const std::string& name);
   // return the telemetry data
@@ -86,8 +86,10 @@ class Telemetry {
   // the summary of an operation is calculated for the most
   // recent `_record_capacity` occurrences
   static int _record_capacity;
-  // occurrence count
+  // occurrence count, incremented when starting an op
   static std::unordered_map<std::string, uint64_t> _occurrences;
+  // completion count, incremented when ending an op
+  static std::unordered_map<std::string, uint64_t> _completions;
   // current metric
   static std::unordered_map<std::string, Metric> _metrics;
   // metric summaries

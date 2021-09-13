@@ -1608,6 +1608,51 @@ void CpuBcastFinishLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
 }
 
+void MonitorLoop() {
+  std::chrono::seconds interval(BytePSGlobal::GetMonitorInterval());
+  std::unordered_map<uint64_t, TaskMetaMap> prev_tasks;
+  while (!BytePSGlobal::ShouldShutdown() && !BytePSGlobal::WaitForShutdown(interval)) {
+    std::unordered_map<uint64_t, TaskMetaMap> curr_tasks;
+    // interate over all queues
+    for (int i = 0; i < QueueNum; i++) {
+      auto type = static_cast<QueueType>(i);
+      auto queue = BytePSGlobal::GetScheduledQueue(type);
+      if (!queue) continue;
+      // queue exists
+      queue->getPendingTasks(&curr_tasks);
+    }
+#if BYTEPS_BUILDING_CUDA == 1
+    BytePSGlobal::GetNccl()->GetPendingTasks(&curr_tasks);
+#endif
+    for (auto& it : curr_tasks) {
+      auto op_count = it.first;
+      if (prev_tasks.find(op_count) == prev_tasks.end()) {
+        continue;
+      }
+      // found tasks with matching op_count
+      auto& prev_meta = prev_tasks[op_count];
+      for (auto& name_meta : it.second) {
+        auto& name = name_meta.first;
+        if (prev_meta.find(name) != prev_meta.end()) {
+          std::string next_queue = "none";
+	  auto& meta = name_meta.second;
+          if (meta.next_queue_ != -1) {
+            next_queue = LogStrings.at(meta.next_queue_);
+          }
+          // found a pending task
+          BPS_LOG(INFO) << "rank=" << BytePSGlobal::GetRank()
+                        << " pending task context=" << meta.ctx_->tensor_name
+                        << " name=" << name << " count="
+                        << op_count << " queue=" << next_queue;
+        }
+      }
+    }
+    prev_tasks = curr_tasks;
+  }
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
 #if BYTEPS_BUILDING_CUDA == 0
 void CoordinateReduceLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;

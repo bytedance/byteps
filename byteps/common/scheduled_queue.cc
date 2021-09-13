@@ -302,5 +302,16 @@ TensorTableEntry* BytePSScheduledQueue::getTaskLiteLockless() {
   return nullptr;
 }
 
+void BytePSScheduledQueue::getPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* results) {
+  std::lock_guard<std::mutex> lock(_mutex);
+  BPS_CHECK(!_lockless);
+  for (auto& task : _sq_shared) {
+    TaskMeta::addPendingTask(task.get(), results);
+  }
+  for (auto& task : _sq_lite) {
+    TaskMeta::addPendingTask(task, results);
+  }
+}
+
 }  // namespace common
 }  // namespace byteps

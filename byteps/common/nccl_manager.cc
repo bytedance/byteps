@@ -181,6 +181,24 @@ std::shared_ptr<NcclGroupEntry> NcclManager::DequeueGroup() {
   return r;
 }
 
+void NcclManager::GetPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* results) {
+  std::queue<std::shared_ptr<NcclGroupEntry>> entries;
+  {
+    std::lock_guard<std::mutex> lock(_nccl_mutex);
+    if (!_nccl_pipeline.size()) {
+      return;
+    }
+    entries = _nccl_pipeline;
+  }
+  while (!entries.empty()) {
+    auto entry = entries.front();
+    for (auto& task : entry->tasks) {
+      TaskMeta::addPendingTask(task.get(), results);
+    }
+    entries.pop();
+  }
+}
+
 // Example:
 // 4 reduce rings:
 // 0 1 2 3 | 4 5 6 7

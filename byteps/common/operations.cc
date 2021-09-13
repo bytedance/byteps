@@ -53,6 +53,9 @@ void byteps_lazy_init() {
 
   // The order of func does not matter
   std::vector<LoopFunction> func;
+  if (BytePSGlobal::GetMonitorInterval() > 0) {
+    func.push_back(MonitorLoop);
+  }
 
   // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
@@ -336,7 +339,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   const int my_rank = common::byteps_rank();
   auto& byteps_context = common::GetContextFromName(name);
   bool recv_on_gpu = output_device != CPU_DEVICE_ID;
-  Telemetry::RecordStart(byteps_context.base_tensor_name);
+  byteps_context.op_count = Telemetry::RecordStart(byteps_context.base_tensor_name);
   // ========= basic task info ==========
   // if use_pull, request_task->offset_list is based on recv_begin
   const std::vector<int>& request_begin = use_pull ? recv_begin : send_begin;
@@ -560,7 +563,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     ret->start_t = (long long)(us.count());
     context.comm_time.push(ret);
   }
-  Telemetry::RecordStart(context.base_tensor_name);
+  context.op_count = Telemetry::RecordStart(context.base_tensor_name);
 
   unsigned int accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {

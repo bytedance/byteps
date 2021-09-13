@@ -34,6 +34,9 @@ namespace common {
 std::mutex BytePSGlobal::_init_mutex;
 volatile bool BytePSGlobal::_initialized = false;
 volatile bool BytePSGlobal::_should_shutdown = false;
+std::condition_variable BytePSGlobal::_shutdown_cv;
+std::mutex BytePSGlobal::_shutdown_mu;
+int64_t BytePSGlobal::_monitor_interval = 300;
 
 int BytePSGlobal::_rank = -1;
 int BytePSGlobal::_local_rank = 0;
@@ -80,7 +83,6 @@ std::string BytePSGlobal::_hash_knob;
 // loops
 volatile BytePSScheduledQueue* BytePSGlobal::_queues[QueueNum] = {NULL};
 std::mutex BytePSGlobal::_queues_mutex[QueueNum];
-bool BytePSGlobal::_lockless_queue = false;
 std::vector<std::thread*> BytePSGlobal::_threads;
 std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 // features
@@ -177,14 +179,14 @@ void BytePSGlobal::Init() {
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
   _skip_input_copy = getenv("BYTEPS_P2P_SKIP_INPUT_COPY") ? atoi(getenv("BYTEPS_P2P_SKIP_INPUT_COPY")) : false;
-  _lockless_queue = getenv("BYTEPS_LOCKLESS_QUEUE") ? atoi(getenv("BYTEPS_LOCKLESS_QUEUE")) : false;
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   _ps_instance_size = getenv("DMLC_GROUP_SIZE") ? atoi(getenv("DMLC_GROUP_SIZE")) : 1;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
+  _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
-  BPS_LOG(INFO) << "Joint=" << _is_joint << ", skip_h2d=" << _skip_h2d
+  BPS_LOG(INFO) << "Joint=" << _is_joint
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
@@ -488,10 +490,17 @@ Status BytePSGlobal::CheckInit() {
   }
 }
 
+bool BytePSGlobal::WaitForShutdown(const std::chrono::seconds& duration) {
+  std::unique_lock<std::mutex> lk(_shutdown_mu);
+  return _shutdown_cv.wait_for(lk, duration, []{ return _should_shutdown; });
+}
+
 void BytePSGlobal::Shutdown() {
   BPS_LOG(DEBUG) << "Shutdown BytePS: start to clean the resources"
                  << " (rank=" << _local_rank << ")";
   _should_shutdown = true;
+  _shutdown_cv.notify_all();
+
   int total_thread_num = _threads.size();
 
   BPS_LOG(DEBUG) << "Shutdown BytePS: joining " << total_thread_num << " threads"
@@ -693,7 +702,7 @@ void BytePSGlobal::RegisterCompressor(
 }
 
 void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
-  GetOrInitPS(0);
+  GetOrInitPS();
   CHECK(_ps.size() == 1);
   bool gpu = true;
   if (BytePSGlobal::IsAlltoallUsePull()) {

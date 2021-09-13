@@ -25,6 +25,7 @@ bool Telemetry::_enable_nvtx = false;
 int Telemetry::_record_interval;
 int Telemetry::_record_capacity;
 std::unordered_map<std::string, uint64_t> Telemetry::_occurrences;
+std::unordered_map<std::string, uint64_t> Telemetry::_completions;
 std::unordered_map<std::string, Metric> Telemetry::_metrics;
 std::unordered_map<std::string, MetricSummary> Telemetry::_summaries;
 std::vector<std::unique_ptr<std::string>> Telemetry::_names;
@@ -103,15 +104,15 @@ void Telemetry::GetData(const char** names, float* mean, float* stdev,
   *actual_size = i;
 }
 
-void Telemetry::RecordStart(const std::string& name) {
+uint64_t Telemetry::RecordStart(const std::string& name) {
   std::lock_guard<std::mutex> lock(_mtx);
 #if BYTEPS_BUILDING_CUDA == 1
   if (_enable_nvtx) {
     _nvtx_ranges[name] = nvtxRangeStartA(name.c_str());
   }
 #endif
-  if (!_should_record) return;
   uint64_t occurrence = ++_occurrences[name];
+  if (!_should_record) return occurrence;
   if (occurrence % _record_interval == 0) {
     if (_metrics.find(name) == _metrics.end()) {
       BPS_CHECK(occurrence == 1) << occurrence;
@@ -122,6 +123,7 @@ void Telemetry::RecordStart(const std::string& name) {
     // update the start timestamp
     _metrics[name].start_ts_ = std::chrono::system_clock::now();
   }
+  return occurrence;
 }
 
 void Telemetry::RecordEnd(const std::string& name) {
@@ -131,6 +133,7 @@ void Telemetry::RecordEnd(const std::string& name) {
     nvtxRangeEnd(_nvtx_ranges[name]);
   }
 #endif
+  ++_completions[name];
   if (!_should_record) return;
   uint64_t occurrence = _occurrences[name];
   if (occurrence % _record_interval == 0) {

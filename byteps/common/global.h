@@ -18,6 +18,7 @@
 #define BYTEPS_DEFAULT_UUID "0000"
 
 #include <unistd.h>
+#include <condition_variable>
 
 #include <map>
 #include <memory>
@@ -52,7 +53,6 @@ struct PSKV {
 };
 
 typedef void (*LoopFunction)();
-typedef void (*IndexedLoopFn)(int);
 
 class BytePSGlobal {
  public:
@@ -100,7 +100,6 @@ class BytePSGlobal {
 
   static BytePSScheduledQueue* GetScheduledQueue(QueueType queueType);
   static void CreateScheduledQueue(QueueType queueType);
-  static bool IsQueueLockless() { return _lockless_queue; }
   static ps::KVWorker<char>* GetPS(size_t index = 0) { CHECK(_ps.size()); return _ps.at(index % _ps.size()); }
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(size_t index = 0);
@@ -218,6 +217,11 @@ class BytePSGlobal {
   static int GetP2PCopyGroupSize() { return _p2p_copy_group_size; }
   static bool IsP2PAckDisabled() { return _p2p_disable_pull_ack; }
 
+  // returns true if the system should shutdown
+  // returns false if it times out with target duration
+  static bool WaitForShutdown(const std::chrono::seconds&);
+  static int64_t GetMonitorInterval() { return _monitor_interval; }
+
   // feature
   static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
@@ -226,6 +230,10 @@ class BytePSGlobal {
   static std::mutex _init_mutex;
   static volatile bool _initialized;
   static volatile bool _should_shutdown;
+  static std::condition_variable _shutdown_cv;
+  static std::mutex _shutdown_mu;
+  // monitor frequency, measured in seconds
+  static int64_t _monitor_interval;
 
   static int _rank;
   static int _local_rank;
@@ -289,7 +297,6 @@ class BytePSGlobal {
 
   static std::mutex _context_mutex;
   static std::vector<ps::KVWorker<char>*> _ps;
-  static bool _lockless_queue;
   static std::mutex _encode_mutex;
   static std::unordered_map<std::string, BPSContext> _name_to_cxt;
   // the next tensor key for declaration for given operation type

@@ -67,6 +67,9 @@ void CpuReduceLoop();
 void CpuBcastLoop();
 void CpuBcastFinishLoop();
 
+// monitoring loop
+void MonitorLoop();
+
 }  // namespace common
 }  // namespace byteps
 

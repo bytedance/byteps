@@ -261,6 +261,7 @@ typedef struct BytePSContext {
   int receiver = -1;
   // The type of the operation. this field is checked during tensor initialization
   OperationType op_type;
+  uint64_t op_count = 0;
 } BPSContext;
 
 class Tensor {

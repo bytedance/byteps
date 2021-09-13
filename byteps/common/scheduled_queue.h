@@ -19,6 +19,7 @@
 #include <atomic>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "common.h"
 #include "ready_table.h"
@@ -26,6 +27,28 @@
 
 namespace byteps {
 namespace common {
+
+struct TaskMeta {
+  explicit TaskMeta(int next_queue, BPSContext* ctx) :
+    next_queue_(next_queue), ctx_(ctx) {}
+
+  int next_queue_;
+  BPSContext* ctx_;
+
+  static void addPendingTask(TensorTableEntry* task,
+                             std::unordered_map<uint64_t, std::unordered_map<std::string, TaskMeta>>* results) {
+    auto ctx = task->context;
+    int next_queue = -1;
+    if (task->queue_list.size()) {
+      next_queue = static_cast<int>(task->queue_list.at(0));
+    }
+    TaskMeta meta(next_queue, ctx);
+    auto& map = (*results)[ctx->op_count];
+    map.emplace(task->tensor_name, meta);
+  }
+};
+
+using TaskMetaMap = std::unordered_map<std::string, TaskMeta>;
 
 // T = {std::shared_ptr<TensorTableEntry>, TensorTableEntry*}
 // typically, with a TensorTableEntry*, it is created in operations.cc
@@ -56,6 +79,8 @@ class BytePSScheduledQueue {
   std::shared_ptr<TensorTableEntry> getTask(uint64_t key);
   void reportFinish(int size);
   void reset(uint64_t key, int cnt);
+  // get the map of task meta of pending tasks
+  void getPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* results);
 
  private:
   template <typename T>
