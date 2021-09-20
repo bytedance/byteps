@@ -1496,7 +1496,7 @@ bool RunCpuReduceLoopOnce() {
     }
 
     // send signal to root
-    BytePSCommSignal sig = PUSH_READY;
+    BytePSCommSignal sig =  BytePSGlobal::IsDistributed() ?  PUSH_READY : CPU_BCAST_READY;
     struct BytePSCommMsg msg = {my_lrank, sig, key};
     comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
     BPS_LOG(TRACE) << task->tensor_name << " sent coordinate info: "

@@ -220,6 +220,8 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
         // root to non-root
         BytePSGlobal::GetCpuReduceTable()->AddReadyCount(message.key);
         break;
+      case CPU_BCAST_READY:
+        // non-root to root
       case DO_CPU_BCAST:
         BytePSGlobal::GetCpuBcastTable()->AddReadyCount(message.key);
         break;

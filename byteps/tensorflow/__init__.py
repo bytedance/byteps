@@ -78,7 +78,12 @@ def push_pull(tensor, scope='', average=None, device_dense='', device_sparse='',
             # the server side. For MXNet and PyTorch, we need to check if a
             # particular tensor has registered c++ compressor. If so, we need to
             # disable server-side averaging.
-            new_tensor = reduced_tensor
+            if op == Average and size() == local_size() \
+                   and os.getenv("BYTEPS_FORCE_DISTRIBUTED", "0") != "1":
+                _div = tf.div if hasattr(tf, 'div') else tf.math.divide
+                new_tensor = _div(reduced_tensor, byteps_size)
+            else:
+                new_tensor = reduced_tensor
     return new_tensor
 
 

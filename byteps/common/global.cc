@@ -358,6 +358,11 @@ void BytePSGlobal::Init() {
   if (_is_root_device) {
     _push_table = new ReadyTable(_local_size - 1, "PUSH");
     _cpu_reduce_table = new ReadyTable(_local_size - 1, "CPU_REDUCE");
+    if (!_is_distributed_job) {
+      // a single node jobs desn't have the push queue, the local root rank uses
+      // this to wait for non-root ranks to come out of the CPU_REDUCE queue.
+      _cpu_bcast_table = new ReadyTable(_local_size - 1, "CPU_BCAST");
+    }
     _cpu_bcast_finish_table = new ReadyTable(_local_size - 1, "CPU_BCAST_FINISH");
   } else {
     _copy_table = new ReadyTable(1, "COPY");
