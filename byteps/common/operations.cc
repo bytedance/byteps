@@ -256,7 +256,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     context.comm_time.push(ret);
   }
 
-  unsigned int accumulated = 0;
+  size_t accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
@@ -320,7 +320,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   BPS_CHECK_GT(key_list.size(), 0) << name;
   BPS_CHECK_EQ(key_list.size(),
-               (unsigned int)(size + bound - 1) / bound)  // round up
+               (size_t)(size + bound - 1) / bound)  // round up
       << key_list.size() << ", size=" << size << ", bound=" << bound;
 
   BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
