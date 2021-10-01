@@ -33,11 +33,11 @@ class LinearRegression:
             return
         self.weight -= self.lr * self.grad
 
-    def backward(self, x=None, y=None):
+    def backward(self, x=None, y=None, start_step=0):
         '''backward computation with gradient accumulation support.'''
         self.grad += 2 * x * (self.weight @ x - y)
         self.step_cnt += 1
-        if self.step_cnt % self.grad_acc == 0:
+        if self.step_cnt % self.grad_acc == 0 and self.step_cnt >= start_step:
             if (self.step_cnt / self.grad_acc) > (self.warmup_iter + 1):
                 self.grad, self.staled_grad = self.staled_grad, self.grad
             else:
@@ -55,14 +55,14 @@ def check_weight(th_model, np_model, rank, i, tolerance=1e-5):
     np.testing.assert_allclose(weight_np, weight_th,
                                rtol=tolerance, atol=tolerance)
 
-def check_grad(th_model, np_model, rank, i, tolerance=1e-5):
+def check_grad(th_model, np_model, rank, i, tolerance=1e-5, start_step=0):
     grad_th = th_model.weight.grad.clone().cpu().numpy()[0]
     grad_np = np_model.grad
     if rank == 0:
         print(f'\n iter {i}, model grad = {grad_th}'
               f'\n iter {i}, numpy grad = {grad_np}\n')
     # we start to check the grad since iter 1
-    if i > 0:
+    if i > start_step:
         np.testing.assert_allclose(grad_np, grad_th,
                                    rtol=tolerance, atol=tolerance)
 

@@ -1,7 +1,6 @@
 #!/bin/bash
 
 path="`dirname $0`"
-set -x
 ip=$(ip a show eth0 | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}')
 RANK=$2
 export PATH=~/.local/bin:$PATH

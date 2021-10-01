@@ -50,5 +50,5 @@ class TorchTests(unittest.TestCase):
 if __name__ == '__main__':
     test = TorchTests()
     bps.init(lazy=False)
+    time.sleep(2)
     test.test_broadcast_object()
-    time.sleep(1)
