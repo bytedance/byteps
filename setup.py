@@ -942,8 +942,8 @@ def build_gpu_ops(options):
     output_path_prefix = subprocess.check_output(
         'spath=$(find . -name server.o -exec dirname {} \;); echo $spath/../common/cuda/', shell=True).strip().decode()
     output_path = output_path_prefix + 'cuda_kernels.o'
-
-    cmd = 'mkdir ' + output_path_prefix + '; nvcc -gencode arch=compute_' + sm_version + ',code=sm_' + sm_version + ' -Xcompiler="-fPIC" ' \
+    nvcc_path = os.environ.get('BYTEPS_NVCC_PATH', 'nvcc')
+    cmd = 'mkdir ' + output_path_prefix + f'; {nvcc_path} -gencode arch=compute_' + sm_version + ',code=sm_' + sm_version + ' -Xcompiler="-fPIC" ' \
                                         '-c byteps/common/cuda/cuda_kernels.cu ' \
                                         '-o ' + output_path
     for flag in options['COMPILE_FLAGS']:
