@@ -635,11 +635,11 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
       uint32_t req_size = std::max(request_size_list[i], resp_size_list[i]);
       uint32_t needed_size = static_cast<uint32_t>(req_size * BytePSGlobal::GetAlltoallBuffFactor());
       bounds_for_ranks[i] = std::max(needed_size, bound);
-      first_size += std::to_string(needed_size) + ",";
+      first_size += std::to_string(req_size) + ",";
       final_size += std::to_string(bounds_for_ranks[i]) + ",";
     }
     BPS_LOG(DEBUG) << "set alltoall buffer size for " << context.base_tensor_name
-                   << " min_size=" << bound
+                   << " min_size=" << bound << " factor=" << BytePSGlobal::GetAlltoallBuffFactor()
                    << first_size << "]" << final_size << "]";
     context.bounds_for_ranks = bounds_for_ranks;
   }
