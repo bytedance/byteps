@@ -116,6 +116,11 @@ def randomString(stringLength=16):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
+def declare_tensor(full_name):
+    full_name_ascii = full_name.encode("ascii")
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+
+
 def _push_pull(tensor, scope='', name=None, op=Average):
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
@@ -139,8 +144,7 @@ def _push_pull(tensor, scope='', name=None, op=Average):
     full_name = scope + _normalize_name(name)
     if not full_name:
         full_name = "empty_name_" + randomString()
-    full_name_ascii = full_name.encode("ascii")
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    declare_tensor(full_name)
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name,
                                   op=op.value.lower())
 
@@ -489,9 +493,7 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     full_name = scope + name
     if not full_name:
         full_name = "empty_name_" + randomString()
-    full_name_ascii = full_name.encode("ascii")
-
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    declare_tensor(full_name)
     op = Sum.value.lower()
     if root_rank != rank():
         if is_variable:
