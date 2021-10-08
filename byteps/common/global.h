@@ -61,6 +61,7 @@ class BytePSGlobal {
 
   static Status CheckInit();
   static bool ShouldShutdown() { return _should_shutdown; }
+  static bool ShouldAbortOnTimeout() { return _should_abort_on_timeout; }
   static void Shutdown();
 
   static int GetRank() { return _rank; }
@@ -234,7 +235,7 @@ class BytePSGlobal {
   static std::mutex _shutdown_mu;
   // monitor frequency, measured in seconds
   static int64_t _monitor_interval;
-
+  static bool _should_abort_on_timeout;
   static int _rank;
   static int _local_rank;
   static int _size;

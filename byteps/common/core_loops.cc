@@ -1630,12 +1630,13 @@ void MonitorLoop() {
         continue;
       }
       // found tasks with matching op_count
+      bool found = false;
       auto& prev_meta = prev_tasks[op_count];
       for (auto& name_meta : it.second) {
         auto& name = name_meta.first;
         if (prev_meta.find(name) != prev_meta.end()) {
           std::string next_queue = "none";
-	  auto& meta = name_meta.second;
+          auto& meta = name_meta.second;
           if (meta.next_queue_ != -1) {
             next_queue = LogStrings.at(meta.next_queue_);
           }
@@ -1644,7 +1645,11 @@ void MonitorLoop() {
                         << " pending task context=" << meta.ctx_->tensor_name
                         << " name=" << name << " count="
                         << op_count << " queue=" << next_queue;
+          found = true;
         }
+      }
+      if (BytePSGlobal::ShouldAbortOnTimeout() && found) {
+        LOG(FATAL) << "Aborting BytePS ...";
       }
     }
     prev_tasks = curr_tasks;

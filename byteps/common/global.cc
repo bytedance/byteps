@@ -37,6 +37,7 @@ volatile bool BytePSGlobal::_should_shutdown = false;
 std::condition_variable BytePSGlobal::_shutdown_cv;
 std::mutex BytePSGlobal::_shutdown_mu;
 int64_t BytePSGlobal::_monitor_interval = 300;
+bool BytePSGlobal::_should_abort_on_timeout = false;
 
 int BytePSGlobal::_rank = -1;
 int BytePSGlobal::_local_rank = 0;
@@ -186,6 +187,8 @@ void BytePSGlobal::Init() {
   _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
+  _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
+
   BPS_LOG(INFO) << "Joint=" << _is_joint
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
