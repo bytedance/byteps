@@ -234,12 +234,12 @@ void DeclareTensor(const std::string& name, int staleness) {
   int num_versions = staleness + 1;
   if (num_versions == 1) {
     std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
-    common::DeclareTensor(tensor_name);
+    common::DeclareTensor(tensor_name, -1);
   } else {
     for (int i=0; i < num_versions; ++i) {
       std::string tmp_name = "byteps_version_" + std::to_string(i);
       std::string tensor_name = GetOpName(tmp_name, name.c_str(), 0);
-      common::DeclareTensor(tensor_name);
+      common::DeclareTensor(tensor_name, -1);
     }
   }
 }

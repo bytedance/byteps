@@ -69,6 +69,8 @@ get_telemetry = _basics.get_telemetry
 dll_path = os.path.join(os.path.dirname(__file__),
                         'c_lib' + get_ext_suffix())
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
+TF_LIB_CTYPES.byteps_tensorflow_declare_tensor.restype = None
+TF_LIB_CTYPES.byteps_tensorflow_declare_tensor.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)
 TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.restype = None
 TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall.argtypes = ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int
 
@@ -118,8 +120,19 @@ def randomString(stringLength=16):
 
 def declare_tensor(full_name):
     full_name_ascii = full_name.encode("ascii")
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
+    key = ctypes.c_int(-1)
+    key_ptr = ctypes.pointer(key)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii), key_ptr)
+    return key_ptr[0]
 
+def _declare_alltoall_tensor(full_name):
+    full_name = full_name.encode("ascii")
+    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
+    # special case for alltoall: we store the declared tensor keys and pass them as attributes to alltoall ops
+    tensor_key_ptrs = (ctypes.c_int*session_size)()
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, tensor_key_ptrs, session_size)
+    tensor_key = list(tensor_key_ptrs)
+    return tensor_key
 
 def _push_pull(tensor, scope='', name=None, op=Average):
     """An op which sums an input tensor over all the BytePS processes.
@@ -144,9 +157,9 @@ def _push_pull(tensor, scope='', name=None, op=Average):
     full_name = scope + _normalize_name(name)
     if not full_name:
         full_name = "empty_name_" + randomString()
-    declare_tensor(full_name)
-    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name,
-                                  op=op.value.lower())
+    key = declare_tensor(full_name)
+    return C_LIB.byteps_push_pull(tensor, name=name, input_name=full_name,
+                                  op=op.value.lower(), tensor_key=key)
 
 def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_size=False,
               compression=Compression.none):
@@ -172,12 +185,8 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
     if not name:
         name = ''
     full_name = scope + name
-    full_name = full_name.encode("ascii")
-    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
-    # special case for alltoall: we store the declared tensor keys and pass them as attributes to alltoall ops
-    tensor_key_ptrs = (ctypes.c_int*session_size)()
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, tensor_key_ptrs, session_size)
-    tensor_key = list(tensor_key_ptrs)
+    tensor_key = _declare_alltoall_tensor(full_name)
+
     if recv_splits is None:
         recv_split_unknown = True
         recv_splits = splits    
@@ -194,8 +203,8 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         # TensorFlow requires the shape of input tensors to be identical.
         # You should guarantee this before calling this op.
         recved_data, recved_size = C_LIB.byteps_alltoall_group(tensors, splits=splits, recv_splits=recv_splits,
-                                                  name=name, input_name=full_name,
-                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+                                                               name=name, input_name=full_name,
+                                                               recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
         tensors_decompressed = []
         for i in range(len(recved_data)):
             tensors_decompressed.append(compression.decompress(recved_data[i], dtype))
@@ -204,8 +213,8 @@ def _alltoall(tensor, scope='', name=None, splits=None, recv_splits=None, with_s
         # compress if needed
         tensor_compressed, dtype = compression.compress(tensor)
         recved_data, recved_size = C_LIB.byteps_alltoall(tensor_compressed, splits=splits, recv_splits=recv_splits,
-                                                        name=name, input_name=full_name,
-                                                        recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+                                                         name=name, input_name=full_name,
+                                                         recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
         tensor_decompressed = compression.decompress(recved_data, dtype)
     if not with_size:
         return tensor_decompressed
@@ -239,11 +248,8 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
     if not name:
         name = ''
     full_name = scope + name + "_cpu2gpu"
-    full_name = full_name.encode("ascii")
-    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
-    p = (ctypes.c_int*session_size)()
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
-    tensor_key = list(p)
+    tensor_key = _declare_alltoall_tensor(full_name)
+
     if recv_splits is None:
         recv_split_unknown = True
         recv_splits = splits    
@@ -261,8 +267,9 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
         # TensorFlow requires the shape of input tensors to be identical.
         # You should guarantee this before calling this op.
         recved_data, recved_size = C_LIB.byteps_alltoall_cputogpu_group(tensors, splits=splits, recv_splits=recv_splits,
-                                                  name=name, input_name=full_name,
-                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+                                                                        name=name, input_name=full_name,
+                                                                        recv_split_unknown=recv_split_unknown,
+                                                                        tensor_key=tensor_key)
         tensors_decompressed = []
         for i in range(len(recved_data)):
             tensors_decompressed.append(compression.decompress(recved_data[i], dtype))
@@ -271,8 +278,8 @@ def _alltoall_cpu2gpu(tensor, scope='', name=None, splits=None, recv_splits=None
         # compress if needed
         tensor_compressed, dtype = compression.compress(tensor)
         recved_data, recved_size = C_LIB.byteps_alltoall_cputogpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
-                                                        name=name, input_name=full_name,
-                                                        recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+                                                                  name=name, input_name=full_name,
+                                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
         tensor_decompressed = compression.decompress(recved_data, dtype)
 
     if not with_size:
@@ -304,11 +311,7 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
     if not name:
         name = ''
     full_name = scope + name + "_gpu2cpu"
-    full_name = full_name.encode("ascii")
-    session_size = int(os.environ.get('BYTEPS_ALLTOALL_SESSION_SIZE', 2))
-    p = (ctypes.c_int*session_size)()
-    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_alltoall(full_name, p, session_size)
-    tensor_key = list(p)
+    tensor_key = _declare_alltoall_tensor(full_name)
     if recv_splits is None:
         recv_split_unknown = True
         recv_splits = splits    
@@ -326,8 +329,9 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
         # TensorFlow requires the shape of input tensors to be identical.
         # You should guarantee this before calling this op.
         recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu_group(tensors, splits=splits, recv_splits=recv_splits,
-                                                  name=name, input_name=full_name,
-                                                  recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+                                                                        name=name, input_name=full_name,
+                                                                        recv_split_unknown=recv_split_unknown,
+                                                                        tensor_key=tensor_key)
         tensors_decompressed = []
         for i in range(len(recved_data)):
             tensors_decompressed.append(compression.decompress(recved_data[i], dtype))
@@ -335,9 +339,11 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
     else: # single tensor
         # compress if needed
         tensor_compressed, dtype = compression.compress(tensor)
-        recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu(tensor_compressed, splits=splits, recv_splits=recv_splits,
-                                                        name=name, input_name=full_name,
-                                                        recv_split_unknown=recv_split_unknown, tensor_key=tensor_key)
+        recved_data, recved_size = C_LIB.byteps_alltoall_gputocpu(tensor_compressed, splits=splits,
+                                                                  recv_splits=recv_splits,
+                                                                  name=name, input_name=full_name,
+                                                                  recv_split_unknown=recv_split_unknown,
+                                                                  tensor_key=tensor_key)
         tensor_decompressed = compression.decompress(recved_data, dtype)
     
     if not with_size:
@@ -493,22 +499,25 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     full_name = scope + name
     if not full_name:
         full_name = "empty_name_" + randomString()
-    declare_tensor(full_name)
+    key = declare_tensor(full_name)
     op = Sum.value.lower()
     if root_rank != rank():
         if is_variable:
             if hasattr(tf, 'assign_sub'):
                 with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name, op=op)
+                    return C_LIB.byteps_push_pull(tensor, name=name, op=op, tensor_key=key)
             else:
                 with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name, op=op)
+                    return C_LIB.byteps_push_pull(tensor, name=name, input_name=full_name,
+                                                  op=op, tensor_key=key)
         else:
             with tf.device(tensor.device):
                 input_tensor = tf.zeros_like(tensor)
-            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name, op=op)
+            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name=full_name,
+                                          op=op, tensor_key=key)
     else:
-        return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name, op=op)
+        return C_LIB.byteps_push_pull(tensor, name=name, input_name=full_name,
+                                      op=op, tensor_key=key)
 
 
 @ops.RegisterGradient('BytePSBroadcast')

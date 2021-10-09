@@ -137,7 +137,8 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);
 
 // Only call these in Framework plugins for the best performance
-int32_t DeclareTensor(const std::string &name);
+// declare the operation name with a provided key. -1 means no key is provided.
+int32_t DeclareTensor(const std::string &name, int32_t provided_key);
 // declare the operation name with a provided key and session id.
 // provided_key = -1 means no key is provided
 // session = -1 means no session is provided

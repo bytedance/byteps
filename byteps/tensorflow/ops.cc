@@ -191,9 +191,9 @@ common::ReadyEvent* RecordReadyEvent(::tensorflow::OpKernelContext* context) {
   return nullptr;
 }
 
-extern "C" void byteps_tensorflow_declare_tensor(char* name) {
+extern "C" void byteps_tensorflow_declare_tensor(char* name, int32_t* tensor_key) {
   std::string tensor_name(name);
-  common::DeclareTensor(tensor_name);
+  *tensor_key = common::DeclareTensor(tensor_name, -1);
   return;
 }
 
@@ -260,11 +260,14 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
      std::string input_tensor_name;
      std::string op;
      common::ReduceOp reduce_op;
+     int tensor_key;
+
  public:
   explicit BytePSPushPullOp(::tensorflow::OpKernelConstruction* context)
       : AsyncOpKernel(context) {
           context->GetAttr("input_name", &input_tensor_name);
           context->GetAttr("op", &op);
+          context->GetAttr("tensor_key", &tensor_key);
           if (op == std::string("average")) {
             reduce_op = common::REDUCE_OP_AVERAGE;
           } else if (op == std::string("sum")) {
@@ -292,10 +295,12 @@ class BytePSPushPullOp : public ::tensorflow::AsyncOpKernel {
     auto node_name = name();
     std::string tmp_name;
     if (input_tensor_name == "default_tensor_name") {
-        tmp_name = node_name;
+      tmp_name = node_name;
     } else {
-        tmp_name = input_tensor_name;
+      tmp_name = input_tensor_name;
     }
+    // declare the tensor with the provided tensor_key
+    common::DeclareTensor(tmp_name, tensor_key);
 
     auto& bps_context = common::GetContextFromName(tmp_name);
     if (bps_context.initialized) {
@@ -319,6 +324,7 @@ REGISTER_OP("BytepsPushPull")
     .Attr("T: {int32, int64, float16, float32, float64}")
     .Attr("input_name: string = 'default_tensor_name'")
     .Attr("op: string = 'average'")
+    .Attr("tensor_key: int")
     .Input("tensor: T")
     .Output("sum: T")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {

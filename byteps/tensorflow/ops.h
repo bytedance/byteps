@@ -67,9 +67,10 @@ class TFTensor : public common::Tensor {
   int device_;
 };
 
-extern "C" void byteps_tensorflow_declare_tensor(char* name);
+extern "C" void byteps_tensorflow_declare_tensor(char* name, int32_t* tensor_key);
 extern "C" void byteps_tensorflow_declare_tensor_p2p(char* name, int sender, int receiver);
-
+extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* tensor_key,
+                                                          uint32_t session_size);
 }  // namespace tensorflow
 }  // namespace byteps
 

@@ -977,8 +977,8 @@ BPSContext &GetContextFromName(const std::string &name) {
   return BytePSGlobal::GetContextFromName(name);
 }
 
-int32_t DeclareTensor(const std::string &name) {
-  return BytePSGlobal::DeclareTensor(name, PUSH_PULL_OP, -1, -1);
+int32_t DeclareTensor(const std::string &name, int32_t provided_key) {
+  return BytePSGlobal::DeclareTensor(name, PUSH_PULL_OP, provided_key, -1);
 }
 
 int32_t DeclareAlltoallTensor(const std::string &name, int32_t provided_key, int32_t session) {

@@ -139,7 +139,7 @@ extern "C" void byteps_mxnet_declare_tensor(char* name, int num_args,
                                             char** args_keys,
                                             char** args_vals) {
   std::string tensor_name = GetOpName("byteps", name);
-  common::DeclareTensor(tensor_name);
+  common::DeclareTensor(tensor_name, -1);
 
   std::unordered_map<std::string, std::string> kwargs;
   std::string key, val;

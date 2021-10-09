@@ -105,7 +105,7 @@ class BytePSGlobal {
   // index: the KVWorker instance index. It is used when DMLC_GROUP_SIZE is set.
   static ps::KVWorker<char>* GetOrInitPS(size_t index = 0);
 
-  // declare a tensor with the provided name, op_type, and key
+  // declare a tensor with the provided name, op_type, and key, returns the declared tensor key
   // name: the operation name
   // op_type: PUSH_PULL_OP, P2P_OP, etc
   // provided_key: the tensor key for this operation. If provided_key is -1, a new key will be generated.
