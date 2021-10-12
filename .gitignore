@@ -117,3 +117,7 @@ venv.bak/
 # for development
 scripts/
 exps/
+
+# dependency tarballs
+ucx.tar.gz
+zeromq-4.1.4.tar.gz
