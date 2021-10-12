@@ -7,7 +7,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D
 from tensorflow.keras import backend as K
 import math
 import tensorflow as tf
-import byteps.keras as bps
+import byteps.tensorflow.keras as bps
 
 # BytePS: initialize BytePS.
 bps.init()
