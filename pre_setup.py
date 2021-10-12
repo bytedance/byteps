@@ -6,4 +6,5 @@ def setup():
 def extra_make_option():
     return ""
 
-ucx_path = ""
+# absolute path to the ucx tar.gz file
+ucx_tarball_path = ""
