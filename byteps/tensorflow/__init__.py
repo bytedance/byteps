@@ -116,7 +116,7 @@ def broadcast_variables(variables, root_rank, scope=''):
         scope: the graph name scope
     """
     if size() <= 1:
-        return variables
+        return tf.group(*variables)
     _assign = tf.assign if hasattr(tf, 'assign') else tf.compat.v1.assign
     return tf.group(*[_assign(var, broadcast(var, root_rank, scope))
                       for var in variables])
