@@ -24,11 +24,13 @@
 #include "memory_visitor.h"
 #include "../common/logging.h"
 
+#if TF_MAJOR_VERSION >= 2 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
+#endif
 
 using namespace byteps;
 
@@ -38,6 +40,7 @@ namespace tensorflow {
 class MemoryVistor {
  public:
   MemoryVistor() {
+#if TF_MAJOR_VERSION >= 2
 #if BYTEPS_BUILDING_CUDA == 1
     ::tensorflow::SubAllocator::Visitor gpu_alloc_visitor = [](void* ptr, int gpu_id,
                                              size_t num_bytes) {
@@ -54,6 +57,7 @@ class MemoryVistor {
     } else {
       std::cout << "BytePS pinned memory visitor NOT enabled" << std::endl;
     }
+#endif
 #endif
 
   }
