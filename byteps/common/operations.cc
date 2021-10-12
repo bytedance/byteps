@@ -328,9 +328,7 @@ Status EnqueueAlltoAllTensor(std::string& name,
   // alltoall, it refers to the operation that copies from recv buffer to output buffers allocated
   // by frameworks. For pull-based alltoall, it refers to the operation that responses to the
   // requester with actual data.
-  bool use_pull = BytePSGlobal::IsAlltoallUsePull();
-  BPS_CHECK(!use_pull || !output_size_unknown)
-    << "pull-based alltoall does not support unknown recv_spilt";
+  bool use_pull = BytePSGlobal::IsAlltoallUsePull() && !output_size_unknown;
   // send_begin always starts with a zero
   size_t num_ranks = send_begin.size() - 1;
   std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(0));
