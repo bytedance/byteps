@@ -57,7 +57,6 @@ void byteps_lazy_init() {
     func.push_back(MonitorLoop);
   }
 
-  // Push & Pull in distributed mode
   if (BytePSGlobal::IsDistributed()) {
     // p2p operations are only available in joint mode
     if (BytePSGlobal::IsJoint()) {
@@ -76,30 +75,32 @@ void byteps_lazy_init() {
     }
   }
 
-  // Cross-PCIe-switch reduce
-  if (BytePSGlobal::IsCrossPcieSwitch() && !BytePSGlobal::IsGpuAllreduceDisabled()) {
-    func.push_back(PcieReduceLoop);
-  }
+  if (!BytePSGlobal::IsGDR()) {
+    // Cross-PCIe-switch reduce
+    if (BytePSGlobal::IsCrossPcieSwitch() && !BytePSGlobal::IsGpuAllreduceDisabled()) {
+      func.push_back(PcieReduceLoop);
+    }
 
-  // Copy between GPU and CPU
-  if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
-    func.push_back(CopyDevice2HostLoop);
-    if (BytePSGlobal::IsRootDevice()) {
-      // PUSH can be a real push in distributed mode
-      // Or a dummy barrier in cross-pcie-switch mode
-      func.push_back(PushLoop);
-      func.push_back(CompressLoop);
-      func.push_back(RootCopyHost2DeviceLoop);
-    } else {
-      func.push_back(CoordinatePushLoop);
-      func.push_back(NonRootCopyHost2DeviceLoop);
-      // DO_COPYH2D handling moved to commsocket listen thread
-      // func.push_back(NonRootCopyListenLoop);
+    // Copy between GPU and CPU
+    if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
+      func.push_back(CopyDevice2HostLoop);
+      if (BytePSGlobal::IsRootDevice()) {
+        // PUSH can be a real push in distributed mode
+        // Or a dummy barrier in cross-pcie-switch mode
+        func.push_back(PushLoop);
+        func.push_back(CompressLoop);
+        func.push_back(RootCopyHost2DeviceLoop);
+      } else {
+        func.push_back(CoordinatePushLoop);
+        func.push_back(NonRootCopyHost2DeviceLoop);
+        // DO_COPYH2D handling moved to commsocket listen thread
+        // func.push_back(NonRootCopyListenLoop);
+      }
     }
   }
 
-  // Per-PCIe-switch NCCL calls
 #if BYTEPS_BUILDING_CUDA == 1
+  // Per-PCIe-switch NCCL calls
   if (!BytePSGlobal::IsGpuAllreduceDisabled()) {
     func.push_back(SyncNcclLoop);
     if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
@@ -108,6 +109,10 @@ void byteps_lazy_init() {
       func.push_back(CoordinateReduceLoop);
       func.push_back(CoordinateBroadcastLoop);
       func.push_back(NonRootNcclLoop);
+    }
+    if (BytePSGlobal::IsGDR() && BytePSGlobal::IsDistributed()) {
+      func.push_back(PushPullGDRLoop);
+      func.push_back(GDRWaitLocalLoop);
     }
   }
 #endif
@@ -228,6 +233,11 @@ void PartitionTensor(
     if (!entry->context->compressor_list.empty()) {
       e->compressor = entry->context->compressor_list[i];
     }
+
+    // unlike `counter_ptr` which is shared by all partitions, 
+    // `push_pull_counter_ptr` should be set for each partition
+    e->push_pull_counter_ptr = std::make_shared<std::atomic_int>(BytePSGlobal::GetPhyNodeNum()-1);
+    
     accumulated += e->len;
     ++i;
 
@@ -879,7 +889,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     BPS_CHECK(!BytePSGlobal::IsCpuAllreduceDisabled());
     context.gpu_ptr = nullptr;
   } else {
-    BPS_CHECK(!BytePSGlobal::IsGpuAllreduceDisabled());
+    BPS_CHECK(BytePSGlobal::IsGDR() || !BytePSGlobal::IsGpuAllreduceDisabled());
   }
 
   // We always allocate our own cpu buffer
@@ -900,7 +910,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size, false));
       }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
-    } else {
+    } else if (!BytePSGlobal::IsGDR()) {
       auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
       context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size, true);
     }
@@ -920,11 +930,12 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     // in joint mode every byteps worker instantiates PS.
     BytePSGlobal::GetOrInitPS();
   }
-
+  
+  bool should_init_push = BytePSGlobal::IsRootDevice() && !BytePSGlobal::IsGDR();
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
-    if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
+    if (BytePSGlobal::IsDistributed() && should_init_push) {
       auto ps = BytePSGlobal::GetOrInitPS();
       // encode the key for pskv scattering
       auto &pskv = BytePSGlobal::EncodeDefaultKey(key, len);
@@ -934,7 +945,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       int cmd = server::GetCommandType(server::RequestType::kLeaderPushPull, dtype, CPU);
       // blocking push, also as a global barrirer
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
-      BPS_LOG(TRACE) << "registereed with server, key " << key;
+      BPS_LOG(TRACE) << "registered with server, key=" << key;
 
       // register
       if (!context.kwargs.empty()) {
@@ -943,7 +954,6 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
         context.compressor_list.push_back(std::move(compressor_ptr));
       }
     }
-
     accumulated += len;
     ++i;
   }
@@ -951,8 +961,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   BPS_CHECK_EQ(accumulated, size);
 
   // send to server
-  if (!context.kwargs.empty() && BytePSGlobal::IsDistributed() &&
-      BytePSGlobal::IsRootDevice()) {
+  if (!context.kwargs.empty() && BytePSGlobal::IsDistributed() && should_init_push) {
     auto ps = BytePSGlobal::GetOrInitPS();
     auto content = compressor::Serialize(context.kwargs);
     auto len = content.size();
@@ -1090,10 +1099,44 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueListCPU(int device) {
   return queue_list;
 }
 
+std::shared_ptr<std::vector<QueueType>> GetPushQueueListGDR() {
+  auto queue_list = std::make_shared<std::vector<QueueType>>();
+#if BYTEPS_BUILDING_CUDA == 1
+  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+    queue_list->push_back(REDUCE);
+  } else {
+    queue_list->push_back(COORDINATE_REDUCE);
+    queue_list->push_back(REDUCE);
+  }
+
+  if (BytePSGlobal::IsDistributed()) {
+    queue_list->push_back(PUSH_PULL_GDR);
+    queue_list->push_back(WAIT_LOCAL_GDR);
+  }
+#endif
+  return queue_list;
+}
+
+std::shared_ptr<std::vector<QueueType>> GetPullQueueListGDR() {
+  auto queue_list = std::make_shared<std::vector<QueueType>>();
+#if BYTEPS_BUILDING_CUDA == 1
+  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+    queue_list->push_back(BROADCAST);
+  } else {
+    queue_list->push_back(COORDINATE_BROADCAST);
+    queue_list->push_back(BROADCAST);
+  }
+#endif
+  return queue_list;
+}
+
 std::shared_ptr<std::vector<QueueType>> GetPushQueueList(int device) {
   if (device == CPU_DEVICE_ID) {
     return GetPushQueueListCPU(device);
   }
+  if (BytePSGlobal::IsGDR()) {
+    return GetPushQueueListGDR();
+  } 
   return GetPushQueueListGPU(device);
 }
 
@@ -1145,6 +1188,9 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device) {
   if (device == CPU_DEVICE_ID) {
     return GetPullQueueListCPU(device);
   }
+  if (BytePSGlobal::IsGDR()) {
+    return GetPullQueueListGDR();
+  } 
   return GetPullQueueListGPU(device);
 }
 

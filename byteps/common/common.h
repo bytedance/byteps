@@ -99,6 +99,8 @@ enum QueueType {
   COMPRESS,
   PUSH,
   PULL,
+  PUSH_PULL_GDR,
+  WAIT_LOCAL_GDR,
   DECOMPRESS,
   COPYH2D,
   COORDINATE_BROADCAST,
@@ -152,6 +154,8 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "COMPRESS",
                                              "PUSH",
                                              "PULL",
+                                             "PUSH_PULL_GDR",
+                                             "WAIT_LOCAL_GDR",
                                              "DECOMPRESS",
                                              "COPYH2D",
                                              "COORDINATE_BROADCAST",
@@ -321,8 +325,10 @@ struct TensorTableEntry {
   unsigned int offset = 0;
   // The length of this partition
   unsigned int len = 0;
-  // Atomic counter
+  // Atomic counter 
   std::shared_ptr<std::atomic_int> counter_ptr;
+  // Atomic counter for GDR push and pull
+  std::shared_ptr<std::atomic_int> push_pull_counter_ptr;
   // How many partitions
   unsigned int total_partnum = 0;
   // Compressor

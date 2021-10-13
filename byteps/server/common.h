@@ -23,6 +23,7 @@ enum class RequestType {
   kDefaultPushPull,
   kLeaderPushPull,
   kLeaderPushPullAvg,
+  kGDRPushPull,
   kRowSparsePushPull,
   kCompressedPushPull,
   kDefaultSend,

@@ -89,6 +89,7 @@ std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 // features
 bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
+bool BytePSGlobal::_is_gdr_allreduce = false;
 // tables
 std::mutex BytePSGlobal::_context_mutex;
 std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
@@ -187,14 +188,21 @@ void BytePSGlobal::Init() {
   _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
+  _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
   _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
+
+  if (_is_gdr_allreduce && _disable_gpu_allreduce) {
+    BPS_LOG(INFO) << "GDR allreduce enabled, forcing BYTEPS_DISABLE_GPU_ALLREDUCE to be false";
+    _disable_gpu_allreduce = false;
+  }
 
   BPS_LOG(INFO) << "Joint=" << _is_joint
                 << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
                 << ", session_size=" << _alltoall_session_size
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
                 << ", disable_cpu_allreduce=" << _disable_cpu_allreduce
-                << ", disable_gpu_allreduce=" << _disable_gpu_allreduce;
+                << ", disable_gpu_allreduce=" << _disable_gpu_allreduce
+                << ", is_gdr_allreduce=" << _is_gdr_allreduce;
 
   _basic_comm = std::make_shared<BytePSCommSocket>();
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
@@ -357,6 +365,9 @@ void BytePSGlobal::Init() {
   if (_is_joint) {
     server::BytePSServer::InitP2PCopyTable();
   }
+  if (_is_gdr_allreduce) {
+    server::BytePSServer::InitGDRCopyTable();
+  }
   // ReadyTable for Push & Pull
   if (_is_root_device) {
     _push_table = new ReadyTable(_local_size - 1, "PUSH");
@@ -415,6 +426,14 @@ void BytePSGlobal::Init() {
         roots_ss.ignore();
       }
     }
+  }
+
+  // check potential conflicts
+  if (_is_gdr_allreduce) {
+    BPS_CHECK(!_is_using_reduce) << "BYTEPS_USE_GDR_ALLREDUCE cannot be used with BYTEPS_REDUCE_ROOTS";
+    BPS_CHECK(!_is_cross_pcie_switch) << "BYTEPS_USE_GDR_ALLREDUCE cannot be used with BYTEPS_PCIE_SWITCH_SIZE";
+    // TODO: we may not need this constraint
+    BPS_CHECK(_is_joint) << "BYTEPS_USE_GDR_ALLREDUCE should be used in joint mode for now";
   }
 
   // Create CUDA streams for GPU-CPU copies
@@ -710,6 +729,9 @@ void BytePSGlobal::RegisterCompressor(
 }
 
 void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
+  if (!BytePSGlobal::IsDistributed()) return;
+  GetOrInitPS(0);
+  BPS_CHECK_EQ(_ps.size(), 1);
   GetOrInitPS();
   CHECK(_ps.size() == 1);
   bool gpu = true;
@@ -719,7 +741,7 @@ void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
   } else {
     ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
   }
-  BPS_LOG(INFO) << "Pinned memory " << ptr << " device_id=" << device_id << " bytes=" << bytes;
+  BPS_LOG(DEBUG) << "Pinned memory " << ptr << " device_id=" << device_id << " bytes=" << bytes;
 }
 
 // Append for communication traces
@@ -958,7 +980,6 @@ PSKV& BytePSGlobal::EncodeDefaultKey(uint64_t key, size_t len) {
       BPS_CHECK(0) << "Unsupported BYTEPS_KEY_HASH_FN, "
                    << "must be one of [naive, built_in, djb2, sdbm]";
     }
-
     _server_accumulated_len[server] += len;
     _total_accumulated_len += len;
     BPS_LOG(DEBUG) << "key " << key << " assigned to server " << server
@@ -1012,6 +1033,10 @@ ReadyTable* BytePSGlobal::GetP2PPullResponseTable() {
 
 ReadyTable* BytePSGlobal::GetP2PAckTable() {
   return server::BytePSServer::GetP2PAckTable();
+}
+
+ReadyTable* BytePSGlobal::GetWaitLocalGDRTable() {
+  return server::BytePSServer::GetWaitLocalGDRTable();
 }
 
 int BytePSGlobal::IsDirectResponse() {

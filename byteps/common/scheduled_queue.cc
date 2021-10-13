@@ -123,6 +123,9 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
     case CPU_BCAST_FINISH:
       _rt = BytePSGlobal::GetCpuBcastFinishTable();
       break;
+    case WAIT_LOCAL_GDR:
+      _rt = BytePSGlobal::GetWaitLocalGDRTable();
+      break;
     default:
       break;
   }

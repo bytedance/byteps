@@ -179,6 +179,10 @@ class CpuReducer {
   template <typename T>
   int _sum(T* dst, const T* src1, const T* src2, size_t len);
 
+#if __AVX__ && __F16C__
+  int _sum_float32(void* dst, const void* src, size_t len);
+#endif
+
   int _sum_float16(void* dst, const void* src, size_t len);
   int _sum_float16(void* dst, const void* src1, const void* src2, size_t len);
 
@@ -202,6 +206,7 @@ class CpuReducer {
   std::shared_ptr<BytePSComm> _comm;
   int _num_threads = 0;
   size_t _single_thread_threshold;
+
 };
 
 }  // namespace common

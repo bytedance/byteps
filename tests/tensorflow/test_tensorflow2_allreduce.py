@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import os
+import time
+import sys
 import itertools
 from byteps.tensorflow.util import _executing_eagerly
 
@@ -8,6 +10,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')
 parser.add_argument('--backend', type=str, default='byteps')
 parser.add_argument('--iter', type=int, default=250)
+parser.add_argument('--device', type=str, default='cpu')
 
 args = parser.parse_args()
 if args.backend == 'byteps':
@@ -20,6 +23,7 @@ else:
 print(f'loading byteps from {bps.__file__}')
 
 args.iter = int(os.environ.get('TEST_NUM_ITER', args.iter))
+args.device = os.environ.get('TEST_ALLREDUCE_DEVICE', args.device)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -120,6 +124,69 @@ class TensorFlowTests(tf.test.TestCase):
             diff = self.evaluate(max_difference)
             self.assertTrue(diff <= threshold, "bps.push_pull produced incorrect results")
 
+    def test_byteps_allreduce_sum_gpu(self):
+        """Test on GPU that the allreduce correctly sums 1D, 2D, 3D tensors."""
+        rank = self.rank
+        size = self.size
+        dtypes = [tf.int32, tf.int64, tf.float16, tf.float32, tf.float64]
+        dims = [1, 2, 3]
+        devices = ["/gpu:0"]
+        for dtype, dim, device in itertools.product(dtypes, dims, devices):
+            with tf.device(device):
+                tensor = self.random_uniform(
+                    [17] * dim, -100, 100, dtype=dtype)
+                summed = bps.push_pull(tensor, average=False,
+                        name=f'allreduce_{dtype.name}_{dim}_{device.strip("/")}')
+                multiplied = tensor * size
+                max_difference = tf.reduce_max(tf.abs(summed - multiplied))
+
+            # Threshold for floating point equality depends on number of
+            # ranks, since we're comparing against precise multiplication.
+            if size <= 3 or dtype in [tf.int32, tf.int64]:
+                threshold = 0
+            elif size < 10:
+                threshold = 1e-4
+            elif size < 15:
+                threshold = 5e-4
+            else:
+                self.skipTest("BytePS cluster too large for precise multiplication comparison")
+
+            diff = self.evaluate(max_difference)
+            assert diff <= threshold, "bps.push_pull produced incorrect results"
+            print(f"bps.push_pull test success!")
+            print(f'name: allreduce_{dtype.name}_{dim}_{device.strip("/")}')
+
+    def test_byteps_allreduce_sum_gpu_throughput(self, niters=args.iter):
+        """Speed tests of GPU allreduce."""
+        rank = self.rank
+        size = self.size
+        dtypes = [tf.float32, tf.float16]
+        dims = [3]
+        devices = ["/gpu:0"]
+        interval = 10
+        for dtype, dim, device in itertools.product(dtypes, dims, devices):
+            t0 = time.time()
+            for i in range(niters):
+                with tf.device(device):
+                    tensor = self.random_uniform(
+                        [128] * dim, -100, 100, dtype=dtype)
+                    summed = bps.push_pull(tensor, average=False,
+                        name=f'allreduce_{dtype.name}_{dim}_{device.strip("/")}')
+                if i % interval == 0:
+                    t1 = time.time()
+                    latency = (t1 - t0) / interval
+                    len = int(tf.size(tensor).numpy()) * (2 if dtype == tf.float16 else 4)
+                    goodput = len * 8 / latency / 1e9
+                    if bps.local_rank() == 0:
+                        print(f'iter {i} \t goodput {goodput:.4} Gb/s \t latency {(latency * 1e3):.4} ms \t size {len} bytes')
+                        sys.stdout.flush()
+                    t0 = time.time()
+            print(f"bps.push_pull test success!")
+
+
 tests = TensorFlowTests()
-tests.test_byteps_allreduce_sum_cpu()
-tests.test_byteps_allreduce_average_cpu()
+if args.device == 'cpu':
+    tests.test_byteps_allreduce_sum_cpu()
+    tests.test_byteps_allreduce_average_cpu()
+else:
+    tests.test_byteps_allreduce_sum_gpu()

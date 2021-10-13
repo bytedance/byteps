@@ -330,9 +330,6 @@ def get_common_options(build_ext):
     LIBRARY_DIRS = []
     LIBRARIES = []
 
-    # worker server colocate
-    COMPILE_FLAGS += ['-DBYTEPS_BUILDING_SERVER']
-
     if use_cuda():
         nccl_include_dirs, nccl_lib_dirs, nccl_libs = get_nccl_vals()
         INCLUDES += nccl_include_dirs

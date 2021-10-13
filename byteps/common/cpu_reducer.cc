@@ -51,6 +51,7 @@ CpuReducer::CpuReducer(std::shared_ptr<BytePSComm> comm) {
     _num_threads = 4;
   }
   if (_num_threads > 0) omp_set_num_threads(_num_threads);
+  
   return;
 }
 
@@ -63,11 +64,36 @@ bool CpuReducer::isRoot() {
 }
 #endif
 
+#if __AVX__ && __F16C__
+int CpuReducer::_sum_float32(void* dst, const void* src, size_t len) {
+  int float_count = len / 4;
+#pragma omp parallel for simd num_threads(_num_threads)
+  for (int i = 0; i < float_count; i += 4) {
+      __m128 vc = _mm_load_ps((float*)dst + i);
+      __m128 va = _mm_load_ps((float*)src + i);
+      vc = _mm_add_ps(vc, va);
+      _mm_store_ps((float*)dst + i, vc);
+  }
+  float* d = (float*) dst;
+  float* s = (float*) src;
+  for (int i = 0; i < float_count % 4; ++i) {
+    d[float_count + i] += s[float_count + i];
+  }
+  return 0;
+}
+#endif // __AVX__ && __F16C__
+
+
 int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype) {
   switch (dtype) {
     case BYTEPS_FLOAT32:
+#if __AVX__ && __F16C__
+      return _sum_float32(dst, src, len);
+#else
       return _sum(reinterpret_cast<float*>(dst),
                   reinterpret_cast<const float*>(src), len);
+#endif
+
     case BYTEPS_FLOAT64:
       return _sum(reinterpret_cast<double*>(dst),
                   reinterpret_cast<const double*>(src), len);

@@ -41,6 +41,10 @@ void PushLoop();
 
 void PullLoop();
 
+void PushPullGDRLoop();
+
+void GDRWaitLocalLoop();
+
 void DecompressLoop();
 
 void RootCopyHost2DeviceLoop();

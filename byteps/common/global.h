@@ -70,6 +70,7 @@ class BytePSGlobal {
   static int GetLocalSize() { return _local_size; }
   static int GetWorkerID() { return _worker_id; }
   static int GetPhyNodeID() { return _phy_node_id; }
+  static int GetPhyNodeNum() { return _num_phy_node; }
   static int GetNumWorker() { return _num_worker; }
   static int GetWorkerLocalRoot() { return _worker_local_root; }
   static int GetServerLocalRoot() { return _server_local_root; }
@@ -227,6 +228,9 @@ class BytePSGlobal {
   static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
 
+  static bool IsGDR() { return _is_gdr_allreduce; }
+  static ReadyTable* GetWaitLocalGDRTable();
+
  private:
   static std::mutex _init_mutex;
   static volatile bool _initialized;
@@ -284,6 +288,9 @@ class BytePSGlobal {
 
   // whether the pull-based alltoall implementation will be used
   static bool _is_alltoall_use_pull;
+
+  // is GPU direct allreduce mode
+  static bool _is_gdr_allreduce;
 
   static bool _is_cross_pcie_switch;
   static BytePSRole _my_role;
