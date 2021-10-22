@@ -64,7 +64,7 @@ std::mutex BytePSServer::debug_mu_;
 // server operations
 byteps::common::CpuReducer* BytePSServer::bps_reducer_ = nullptr;
 
-CpuBufferManager* BytePSServer::gdr_copy_mngr_ = nullptr;
+GDRCopyManager* BytePSServer::gdr_copy_mngr_ = nullptr;
 
 // ========= for p2p ==========
 volatile bool BytePSServer::should_stop_ = false;
@@ -1080,9 +1080,6 @@ void BytePSServer::Init(int rank) {
   // cpu reducer
   bps_reducer_ = new byteps::common::CpuReducer(nullptr);
 
-  // GDR copy manager
-  gdr_copy_mngr_ = new CpuBufferManager();
-
   // flag mu and its protected map
   std::vector<std::mutex> tmp_flagmu(engine_thread_num_);
   std::vector<std::unordered_map<uint64_t, bool> > tmp_ispushfinished(
@@ -1143,6 +1140,11 @@ void BytePSServer::Init(int rank) {
   if (role_ != ps::Node::JOINT) {
     ps::StartPS(0, role, rank_, false, "byteps\0");
   }
+
+  if (is_server_ && role_ == ps::Node::JOINT) {
+    // GDR copy manager
+    gdr_copy_mngr_ = new GDRCopyManager();
+  } 
 
   // init server instance
   if (is_server_) {

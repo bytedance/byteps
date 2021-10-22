@@ -93,16 +93,16 @@ struct BytePSEngineMessage {
   ps::KVMeta req_meta;
 };
 
-class CpuBufferManager {
+class GDRCopyManager {
  public: 
-  CpuBufferManager() {
+  GDRCopyManager() {
 #if HAVE_CUDA == 1
     CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
     InitCudaStream();
 #endif
   }
 
-  ~CpuBufferManager() {
+  ~GDRCopyManager() {
 #if HAVE_CUDA == 1
     std::lock_guard<std::mutex> lk(mu_);
     for (auto& it : map_) {
@@ -340,7 +340,7 @@ class BytePSServer {
     static std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 
     // GDR push_pull 
-    static CpuBufferManager* gdr_copy_mngr_;
+    static GDRCopyManager* gdr_copy_mngr_;
 
     // byteps handler
     static std::mutex handle_mu_;
