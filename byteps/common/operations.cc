@@ -59,7 +59,7 @@ void byteps_lazy_init() {
 
   if (BytePSGlobal::IsDistributed()) {
     // p2p operations are only available in joint mode
-    if (BytePSGlobal::IsJoint()) {
+    if (BytePSGlobal::IsJoint() && !BytePSGlobal::IsP2PDisabled()) {
       func.push_back(RecvLoop);
       func.push_back(SendLoop);
       if (BytePSGlobal::IsAlltoallUsePull()) {

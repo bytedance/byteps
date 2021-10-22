@@ -158,4 +158,10 @@ export BYTEPS_REDUCE_ROOTS=  # use ncclReduceScatter()/ncclAllGather()
 export BYTEPS_REDUCE_ROOTS=""  # use ncclReduceScatter()/ncclAllGather()  
 ```
 
+# Tuning Knobs
 
+## Disable specific features
+
+- BYTEPS_DISABLE_P2P: disable the peer-to-peer send/recv and alltoall feature. Default: 0
+- BYTEPS_DISABLE_CPU_ALLREDUCE: disable the allreduce feature for CPU tensors. Default: 0
+- BYTEPS_DISABLE_GPU_ALLREDUCE: disable the allreduce feature for GPU tensors. Default: 0

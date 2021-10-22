@@ -87,6 +87,7 @@ std::mutex BytePSGlobal::_queues_mutex[QueueNum];
 std::vector<std::thread*> BytePSGlobal::_threads;
 std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 // features
+bool BytePSGlobal::_disable_p2p = false;
 bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
 bool BytePSGlobal::_is_gdr_allreduce = false;
@@ -193,6 +194,7 @@ void BytePSGlobal::Init() {
   _ps_instance_size = getenv("DMLC_GROUP_SIZE") ? atoi(getenv("DMLC_GROUP_SIZE")) : 1;
   _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
   _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
+  _disable_p2p = ParseEnv("BYTEPS_DISABLE_P2P", false);
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
   _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
@@ -210,6 +212,7 @@ void BytePSGlobal::Init() {
                 << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
                 << ", disable_cpu_allreduce=" << _disable_cpu_allreduce
                 << ", disable_gpu_allreduce=" << _disable_gpu_allreduce
+                << ", disable_p2p=" << _disable_p2p
                 << ", is_gdr_allreduce=" << _is_gdr_allreduce;
 
   if (_is_gdr_allreduce) {
