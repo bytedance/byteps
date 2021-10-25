@@ -52,7 +52,8 @@ using common::ReadyTable;
 using BytePSGlobal=byteps::common::BytePSGlobal;
 
 enum BytePSEngineOperation {
-  SUM_RECV, SUM_LOCAL_COPY, COPY_FIRST, ALL_RECV, COPY_D2H, COPY_H2D, TERMINATE
+  SUM_RECV, SUM_LOCAL_COPY, COPY_FIRST, ALL_RECV, COPY_D2H, COPY_H2D, TERMINATE,
+  GPU_SUM_RECV, GPU_SUM_RECV_LOCAL
 };
 
 struct PSKV {
@@ -222,6 +223,9 @@ class BytePSServer {
     static void BytePSGDRHandler(const ps::KVMeta& req_meta,
                               const ps::KVPairs<char> &req_data,
                               ps::KVServer<char>* server);
+    static void BytePSGDRv2Handler(const ps::KVMeta& req_meta,
+                              const ps::KVPairs<char> &req_data,
+                              ps::KVServer<char>* server);
 
     static std::vector<RecvArray> GetRecvPartitions(std::vector<uint64_t> keys) {
       std::vector<RecvArray> arrs;
@@ -251,14 +255,17 @@ class BytePSServer {
     static ReadyTable* GetP2PGroupCopyTable() { return p2p_group_copy_table_; }
     static ReadyTable* GetP2PPullResponseTable() { return p2p_pull_response_table_; }
     static ReadyTable* GetP2PAckTable() { return p2p_ack_table_; }
-    static ReadyTable* GetWaitLocalGDRTable() { return gdr_local_wait_table_; } 
+    static ReadyTable* GetGDRPushPullTable() { return gdr_push_pull_table_; } 
+    static ReadyTable* GetGDRAckTable() { return gdr_ack_table_; } 
 
     static void InitP2PCopyTable();
     static int IsP2PDirectResponse() { return p2p_direct_response_; }
     static void SendPullResponse(uint64_t key, char* data, int len);
     
-    static void InitGDRCopyTable();
+    static void InitGDRReadyTable();
     static void LocalPushPull(uint64_t key, char* push_addr, char* pull_addr, size_t len, int dtype);
+    static void EnqueueLocalGpuSumTask(uint64_t key, char* input, char* output, size_t len, int dtype, bool do_copy);
+
 
   private:
     // functions
@@ -271,6 +278,8 @@ class BytePSServer {
     static size_t GetUpdateNumRequest(uint64_t key);
     static void CleanUpdateRequest(uint64_t key);
     static void AddUpdateRequest(uint64_t key, const ps::KVMeta& req_meta);
+
+    static BytePSArray* GetGDRPushBuffer(uint64_t key, int sender);
 
     // routines
     static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
@@ -287,7 +296,11 @@ class BytePSServer {
     static void SetNumExpectedWorker(uint64_t key, size_t num);
 
     static void InitStoreAndUpdateBuf(uint64_t key, size_t len, int dtype);
-    static void ExecuteParallel(void* dst, void* src, size_t len, int dtype, bool is_sum);
+
+    static void PrintServerRecvMessageLog(
+        const ps::KVMeta& req_meta, const ps::KVPairs<char> &req_data);
+
+    inline static void SendGDRBufferedPullResponse(int i, BytePSEngineMessage& msg);
 
     static std::atomic<uint64_t> independent_cnt_;
 
@@ -339,8 +352,10 @@ class BytePSServer {
     static std::vector<std::unordered_map<uint64_t, std::set<int> > > seen_sender_;
     static std::vector<std::unordered_map<uint64_t, size_t> > pull_cnt_;
 
-    // GDR push_pull 
+    // GDR allreduce 
     static GDRCopyManager* gdr_copy_mngr_;
+    static std::mutex gdr_push_buffer_mu_;
+    static std::unordered_map<uint64_t, std::unordered_map<int, BytePSArray>> gdr_push_buffer_;
 
     // byteps handler
     static std::mutex handle_mu_;
@@ -366,7 +381,8 @@ class BytePSServer {
     static ReadyTable* p2p_group_copy_table_;
     static ReadyTable* p2p_pull_response_table_;
     static ReadyTable* p2p_ack_table_;
-    static ReadyTable* gdr_local_wait_table_;
+    static ReadyTable* gdr_push_pull_table_;
+    static ReadyTable* gdr_ack_table_;
     static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
     
     static std::unordered_map<uint64_t, ps::KVMeta> p2p_pull_reqmetas_;

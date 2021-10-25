@@ -90,6 +90,12 @@ std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
 bool BytePSGlobal::_is_gdr_allreduce = false;
+#if HAVE_CUDA == 1
+std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
+#endif
+std::unordered_map<uint64_t, std::unordered_map<int, bool>> BytePSGlobal::_gdr_inited_key;
+std::mutex BytePSGlobal::_gdr_inited_key_mu;
+GDRLevel BytePSGlobal::_gdr_allreduce_level = GPU2GPU;
 // tables
 std::mutex BytePSGlobal::_context_mutex;
 std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
@@ -189,6 +195,7 @@ void BytePSGlobal::Init() {
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
   _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
+  int gdr_allreduce_level = getenv("BYTEPS_GDR_ALLREDUCE_LEVEL") ? atoi(getenv("BYTEPS_GDR_ALLREDUCE_LEVEL")) : 1;
   _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
 
   if (_is_gdr_allreduce && _disable_gpu_allreduce) {
@@ -203,6 +210,25 @@ void BytePSGlobal::Init() {
                 << ", disable_cpu_allreduce=" << _disable_cpu_allreduce
                 << ", disable_gpu_allreduce=" << _disable_gpu_allreduce
                 << ", is_gdr_allreduce=" << _is_gdr_allreduce;
+
+  if (_is_gdr_allreduce) {
+    BPS_CHECK(gdr_allreduce_level == 0 || gdr_allreduce_level == 1)
+        << "BYTEPS_GDR_ALLREDUCE_LEVEL should be 0 or 1";
+    _gdr_allreduce_level = static_cast<GDRLevel>(gdr_allreduce_level);
+#if HAVE_CUDA == 1
+    int num_block = getenv("BYTEPS_CUDA_REDUCER_NUM_BLOCK") 
+                            ? atoi(getenv("BYTEPS_CUDA_REDUCER_NUM_BLOCK")) : 512;
+    int num_thread = getenv("BYTEPS_CUDA_REDUCER_NUM_THREAD") 
+                             ? atoi(getenv("BYTEPS_CUDA_REDUCER_NUM_THREAD")) : 256;
+    int server_engine_thread = getenv("BYTEPS_SERVER_ENGINE_THREAD") 
+                             ? atoi(getenv("BYTEPS_SERVER_ENGINE_THREAD")) : 8;
+    for (int i = 0; i < server_engine_thread; ++i) {
+      _cuda_reducers.push_back(std::make_shared<CudaReducer>(num_block, num_thread));
+    }
+#endif
+    BPS_LOG(INFO) << "GDR Allreduce level set to " 
+        << (_gdr_allreduce_level == GPU2GPU ? "GPU2GPU" : "GPU2CPU");
+  }
 
   _basic_comm = std::make_shared<BytePSCommSocket>();
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
@@ -366,7 +392,7 @@ void BytePSGlobal::Init() {
     server::BytePSServer::InitP2PCopyTable();
   }
   if (_is_gdr_allreduce) {
-    server::BytePSServer::InitGDRCopyTable();
+    server::BytePSServer::InitGDRReadyTable();
   }
   // ReadyTable for Push & Pull
   if (_is_root_device) {
@@ -1004,6 +1030,15 @@ uint32_t BytePSGlobal::GetTensorCount() {
   return BytePSGlobal::_name_to_cxt.size();
 }
 
+bool BytePSGlobal::IsGDRKeyInited(uint64_t key, int receiver) {
+  std::lock_guard<std::mutex> lk(_gdr_inited_key_mu);
+  if (!_gdr_inited_key[key][receiver]) {
+    _gdr_inited_key[key][receiver] = true;
+    return false;
+  }
+  return true;
+}
+
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
   return BytePSGlobal::_copy_device2host_stream;
@@ -1035,9 +1070,14 @@ ReadyTable* BytePSGlobal::GetP2PAckTable() {
   return server::BytePSServer::GetP2PAckTable();
 }
 
-ReadyTable* BytePSGlobal::GetWaitLocalGDRTable() {
-  return server::BytePSServer::GetWaitLocalGDRTable();
+ReadyTable* BytePSGlobal::GetGDRPushPullTable() {
+  return server::BytePSServer::GetGDRPushPullTable();
 }
+
+ReadyTable* BytePSGlobal::GetGDRAckTable() {
+  return server::BytePSServer::GetGDRAckTable();
+}
+
 
 int BytePSGlobal::IsDirectResponse() {
   return server::BytePSServer::IsP2PDirectResponse();

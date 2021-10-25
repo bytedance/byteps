@@ -42,7 +42,7 @@ mkdir -p $BYTEPS_SOCKET_PATH
 
 if [ $1 == "scheduler" ]; then
   echo "Launch scheduler"
-  CUDA_VISIBLE_DEVICES=0 DMLC_ROLE=scheduler python3 -c 'import byteps.server'
+  DMLC_NUM_CPU_DEV=1 DMLC_NUM_GPU_DEV=0 CUDA_VISIBLE_DEVICES= DMLC_ROLE=scheduler python3 -c 'import byteps.server'
   exit $?
 fi
 
@@ -55,11 +55,11 @@ if [ $1 == "server" ]; then
   exit $?
 fi
 
-if [ "$#" -ne 3 ]; then
-  echo "Usage: bash run_byteps_test_byteccl.sh role rank test_script"
+if [ "$#" -lt 3 ]; then
+  echo "Usage: bash run_byteps_test_byteccl.sh role rank test_script args"
   exit
 fi
-BIN="$3"
+BIN="$3 ${@:4}"
 
 
 if [ "$RANK" == "0" ]; then

@@ -43,6 +43,10 @@
 #include "shared_memory.h"
 #include "thread_pool.h"
 
+#if HAVE_CUDA == 1
+#include "cuda/cuda_kernels.h"
+#endif
+
 namespace byteps {
 namespace common {
 
@@ -229,7 +233,16 @@ class BytePSGlobal {
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
 
   static bool IsGDR() { return _is_gdr_allreduce; }
-  static ReadyTable* GetWaitLocalGDRTable();
+  static bool IsGDRGpu2Gpu() { return _gdr_allreduce_level == common::GPU2GPU; }
+  static bool IsGDRKeyInited(uint64_t key, int receiver);
+  static ReadyTable* GetGDRPushPullTable();
+  static ReadyTable* GetGDRAckTable();
+#if HAVE_CUDA == 1
+  static std::shared_ptr<CudaReducer> GetCudaReducer(int i) { 
+    BPS_CHECK_LT((size_t)i, _cuda_reducers.size()) << i;
+    return _cuda_reducers[i]; 
+  }
+#endif
 
  private:
   static std::mutex _init_mutex;
@@ -291,7 +304,12 @@ class BytePSGlobal {
 
   // is GPU direct allreduce mode
   static bool _is_gdr_allreduce;
-
+  static GDRLevel _gdr_allreduce_level;
+  static std::mutex _gdr_inited_key_mu;
+  static std::unordered_map<uint64_t, std::unordered_map<int, bool>> _gdr_inited_key;
+#if HAVE_CUDA == 1
+  static std::vector<std::shared_ptr<CudaReducer>> _cuda_reducers;
+#endif 
   static bool _is_cross_pcie_switch;
   static BytePSRole _my_role;
   static std::shared_ptr<BytePSComm> _basic_comm;

@@ -935,12 +935,10 @@ def build_gpu_ops(options):
     sm_version = os.getenv('BYTEPS_BUILD_SM_VERSION', '70') # default for v100
     print('\nBuilding GPU ops, SM_VERSION=' + sm_version)
 
-    # get the output path by finding the path of server obj
-    output_path_prefix = subprocess.check_output(
-        'spath=$(find . -name server.o -exec dirname {} \;); echo $spath/../common/cuda/', shell=True).strip().decode()
+    output_path_prefix = 'build/cuda_obj/'
     output_path = output_path_prefix + 'cuda_kernels.o'
     nvcc_path = os.environ.get('BYTEPS_NVCC_PATH', 'nvcc')
-    cmd = 'mkdir ' + output_path_prefix + f'; {nvcc_path} -gencode arch=compute_' + sm_version + ',code=sm_' + sm_version + ' -Xcompiler="-fPIC" ' \
+    cmd = 'mkdir -p ' + output_path_prefix + f'; {nvcc_path} -gencode arch=compute_' + sm_version + ',code=sm_' + sm_version + ' -Xcompiler="-fPIC" ' \
                                         '-c byteps/common/cuda/cuda_kernels.cu ' \
                                         '-o ' + output_path
     for flag in options['COMPILE_FLAGS']:
@@ -1070,6 +1068,10 @@ class custom_build_ext(build_ext):
         options = get_common_options(self)
         if has_cxx_flag:
             options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
+
+        if int(os.environ.get('BYTEPS_WITH_GPU', '1')):
+            build_gpu_ops(options)
+
         built_plugins = []
         try:
             build_server(self, options)
@@ -1077,7 +1079,6 @@ class custom_build_ext(build_ext):
             raise DistutilsSetupError('An ERROR occured while building the server module.\n\n'
                                       '%s' % traceback.format_exc())
 
-        # servers are always built without GPU
         if use_cuda():
             options['COMPILE_FLAGS'] += ['-DBYTEPS_BUILDING_CUDA=1']
             options['LIBRARIES'] += ['nvToolsExt']
@@ -1086,9 +1087,6 @@ class custom_build_ext(build_ext):
         # we may get an error: dlopen: cannot load any more object with static TLS
         if not without_pytorch():
             dummy_import_torch()
-
-        if int(os.environ.get('BYTEPS_WITH_GPU', '1')):
-            build_gpu_ops(options)
 
         if not without_tensorflow():
             try:

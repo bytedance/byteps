@@ -20,6 +20,7 @@
 #include <cuda_runtime.h>
 
 #include "../common.h"
+#include "../logging.h"
 
 #define BATCHED_D2D_CAPACITY 160
 #define BATCHED_D2D_PADDING 16
@@ -52,6 +53,57 @@ void ScaleBufferCudaImpl(const void* fused_input_data, void* buffer_data, const 
 
 void BatchedScaledD2DMemcpyCudaImpl(BatchedD2DParams& params, int num_copies, double scale_factor,
                                     DataType dtype, cudaStream_t stream);
+
+class CudaReducer {
+ public:
+  CudaReducer(int block_num, int thread_num) :
+      _kernel_block_num(block_num), _kernel_thread_num(thread_num) {
+    BPS_LOG(DEBUG) << "Create Cuda Reducer with <block_num, thread_num>: " 
+        << "<" << _kernel_block_num << ", " << _kernel_thread_num << ">";
+  };
+
+  ~CudaReducer() {
+    if (_stream) {
+      CUDA_CALL(cudaStreamSynchronize(*_stream));
+      CUDA_CALL(cudaStreamDestroy(*_stream));
+      free(_stream);
+      _stream = nullptr;
+    }
+    BPS_LOG(TRACE) << "Clear CudaReducer";
+  } 
+
+  DataType GetDataType(int dtype) { return static_cast<DataType>(dtype); }
+
+  void CopyD2D(void* dst, void* src, size_t len, bool sync);
+
+  void Sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, bool sync);
+
+  void Sum(void* dst, const void* src, size_t len, DataType dtype, bool sync) {
+    Sum(dst, dst, src, len, dtype, sync);  
+  }
+
+  void Sync() { CUDA_CALL(cudaStreamSynchronize(*_stream)); }
+  
+ private:
+  int _kernel_block_num;
+  int _kernel_thread_num;
+  cudaStream_t* _stream = nullptr;
+
+  void InitStream() {
+    int greatest_priority;
+    _stream = (cudaStream_t*) malloc(sizeof(cudaStream_t));
+    cudaError_t e1 = cudaDeviceGetStreamPriorityRange(
+                        NULL, &greatest_priority);
+    BPS_CHECK(e1 == cudaSuccess 
+              || e1 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e1);  
+    cudaError_t e2 = cudaStreamCreateWithPriority(_stream, 
+                        cudaStreamNonBlocking, greatest_priority);
+    BPS_CHECK(e2 == cudaSuccess 
+              || e2 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e2);   
+    CUDA_CALL(cudaStreamSynchronize(*_stream));
+  }
+};
+
 
 } // namespace common
 } // namespace byteps

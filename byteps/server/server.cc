@@ -99,6 +99,9 @@ std::mutex BytePSServer::update_buf_mu_;
 std::mutex BytePSServer::store_mu_;
 std::unordered_map<uint64_t, BytePSArray> BytePSServer::store_;
 
+std::mutex BytePSServer::gdr_push_buffer_mu_;
+std::unordered_map<uint64_t, std::unordered_map<int, BytePSArray>> BytePSServer::gdr_push_buffer_;
+
 // req_meta
 std::mutex BytePSServer::req_meta_mu_;
 std::unordered_map<uint64_t, std::pair<ps::KVMeta, ps::KVServer<char>*>> BytePSServer::response_meta_;
@@ -111,7 +114,8 @@ std::vector<uint64_t> BytePSServer::acc_load_;
 // ready table
 ReadyTable* BytePSServer::p2p_copy_table_ = nullptr;
 ReadyTable* BytePSServer::p2p_group_copy_table_ = nullptr;
-ReadyTable* BytePSServer::gdr_local_wait_table_ = nullptr;
+ReadyTable* BytePSServer::gdr_push_pull_table_ = nullptr;
+ReadyTable* BytePSServer::gdr_ack_table_ = nullptr;
 
 // compression
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
@@ -188,6 +192,11 @@ void* PageAlignedSharedMemory(const std::string& shm_name, size_t size) {
 BytePSArray* BytePSServer::GetStore(uint64_t key) {
   std::lock_guard<std::mutex> lock(store_mu_);
   return &store_[key];
+}
+
+BytePSArray* BytePSServer::GetGDRPushBuffer(uint64_t key, int sender) {
+  std::lock_guard<std::mutex> lock(gdr_push_buffer_mu_);
+  return &gdr_push_buffer_[key][sender];
 }
 
 void BytePSServer::SendPushResponse(uint64_t key, const ps::KVMeta& req,
@@ -408,7 +417,7 @@ void BytePSServer::BytePSServerGDRIndependentThread(int i) {
       case COPY_H2D: {
         gdr_copy_mngr_->CopyH2D(
             (void*)msg.dst,(void*)msg.src, msg.len);
-        GetWaitLocalGDRTable()->AddReadyCount(msg.key);
+        GetGDRPushPullTable()->AddReadyCount(msg.key);
       } // case COPY_H2D
       break;
 
@@ -417,6 +426,37 @@ void BytePSServer::BytePSServerGDRIndependentThread(int i) {
   }   // while
 }
 
+inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage& msg) {
+  std::lock_guard<std::mutex> lock(flag_mu_[i]);
+  if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
+    is_push_finished_[i][msg.key] = false;
+    pull_cnt_[i][msg.key] = 0;
+    seen_sender_[i][msg.key].clear();
+  }
+  is_push_finished_[i][msg.key] = true;
+  auto it = q_pull_reqmeta_[i][msg.key].begin();
+  while (it != q_pull_reqmeta_[i][msg.key].end()) {
+    if (seen_sender_[i][msg.key].find(it->sender) ==
+        seen_sender_[i][msg.key].end()) {
+      // TODO: support multi-instance for push-pull
+      SendPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
+      pull_cnt_[i][msg.key] += 1;
+      seen_sender_[i][msg.key].insert(it->sender);
+      it = q_pull_reqmeta_[i][msg.key].erase(it);
+    } else {
+      ++it;
+    }
+    if (pull_cnt_[i][msg.key] == num_phy_node_ - 1) {
+      is_push_finished_[i][msg.key] = false;
+      pull_cnt_[i][msg.key] = 0;
+      seen_sender_[i][msg.key].clear();
+      if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()) {
+        GetUpdateBuf(msg.key)->merged.tensor = nullptr;
+      }
+      break;
+    }
+  }
+}
 
 void BytePSServer::BytePSServerGDREngineThread(int i) {
   auto& q = engine_queues_[i];
@@ -425,11 +465,46 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
     q->WaitAndPop(&msg);
     if (msg.ops == TERMINATE) break;
 
-    auto stored = GetStore(msg.key);
     switch (msg.ops) {
+#if HAVE_CUDA == 1
+      case GPU_SUM_RECV_LOCAL:
+        // go to next
+      case GPU_SUM_RECV: {
+        auto updates = GetUpdateBuf(msg.key);
+        auto cuda_reducer = BytePSGlobal::GetCudaReducer(i);
+        if (!updates->merged.len) {
+          updates->merged.len = msg.len;
+        } else {
+          CHECK_EQ(updates->merged.len, msg.len) 
+              << updates->merged.len << " " << msg.len
+              << " (key=" << msg.key << ")";
+        }
+        if (!updates->merged.tensor) {
+          updates->merged.tensor = (char*) msg.src;
+        } else {
+          auto bps_dtype = cuda_reducer->GetDataType(msg.type.dtype);
+          if (msg.ops == GPU_SUM_RECV_LOCAL) {
+            cuda_reducer->Sum(msg.src, updates->merged.tensor, msg.len, bps_dtype, /*sync*/false);
+            cuda_reducer->Sync();
+            updates->merged.tensor = (char*) msg.src;
+          } else {
+            cuda_reducer->Sum(updates->merged.tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
+          }
+        }
+        AddUpdateRequest(msg.key, msg.req_meta);
+        if (GetUpdateNumRequest(msg.key) == GetNumExpectedWorker(msg.key)) {
+          cuda_reducer->Sync();
+          GetGDRPushPullTable()->AddReadyCount(msg.key);
+          CleanUpdateRequest(msg.key);
+          SendGDRBufferedPullResponse(i, msg);
+        }
+      } 
+      break; // case GPU_SUM_RECV
+#endif
       case SUM_LOCAL_COPY:
         // go to SUM_RECV
       case SUM_RECV: {
+        auto stored = GetStore(msg.key);
         // stored = stored + recved
         if (!stored->tensor) { // first 
           stored->tensor = (char*) msg.src;
@@ -461,6 +536,7 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
          Step 2: local H2D copy 
          Step 3: call asynchronous SendPullResponse
         */
+        auto stored = GetStore(msg.key);
 
         // Step 1: copy to pull buffer, and set stored to null
         bps_reducer_->copy(GetUpdateBuf(msg.key)->merged.tensor, stored->tensor, msg.len);
@@ -476,34 +552,7 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
         independent_queues_[independent_cnt_++ % engine_thread_num_]->Push(std::move(new_msg));
 
         // Step 3: call asynchronous SendPullResponse
-        { 
-          std::lock_guard<std::mutex> lock(flag_mu_[i]);
-          if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
-            is_push_finished_[i][msg.key] = false;
-            pull_cnt_[i][msg.key] = 0;
-            seen_sender_[i][msg.key].clear();
-          }
-          is_push_finished_[i][msg.key] = true;
-          auto it = q_pull_reqmeta_[i][msg.key].begin();
-          while (it != q_pull_reqmeta_[i][msg.key].end()) {
-            if (seen_sender_[i][msg.key].find(it->sender) ==
-                seen_sender_[i][msg.key].end()) {
-              // TODO: support multi-instance for push-pull
-              SendPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
-              pull_cnt_[i][msg.key] += 1;
-              seen_sender_[i][msg.key].insert(it->sender);
-              it = q_pull_reqmeta_[i][msg.key].erase(it);
-            } else {
-              ++it;
-            }
-            if (pull_cnt_[i][msg.key] == GetNumExpectedWorker(msg.key)) {
-              is_push_finished_[i][msg.key] = false;
-              pull_cnt_[i][msg.key] = 0;
-              seen_sender_[i][msg.key].clear();
-              break;
-            }
-          }
-        } // flag_mu[i]
+        SendGDRBufferedPullResponse(i, msg);
       } 
       break; // case ALL_RECV
 
@@ -645,9 +694,12 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
       || req_type == RequestType::kAckSignal) {
     P2PHandler(req_meta, req_data, server);
     return;
-  }
-  if (type.requestType == RequestType::kGDRPushPull) {
+  } else if (type.requestType == RequestType::kGDRPushPull) {
     BytePSGDRHandler(req_meta, req_data, server);
+    return;
+  } else if (type.requestType == RequestType::kGDRv2PushPull
+             || type.requestType == RequestType::kGDRAckSignal) {
+    BytePSGDRv2Handler(req_meta, req_data, server);
     return;
   }
   CHECK_EQ(req_data.keys.size(), (size_t)1);
@@ -881,6 +933,30 @@ void BytePSServer::InitStoreAndUpdateBuf(uint64_t key, size_t len, int dtype) {
 #endif
 }
 
+void BytePSServer::PrintServerRecvMessageLog(const ps::KVMeta& req_meta,
+                                   const ps::KVPairs<char> &req_data) {
+  DataHandleType type = DepairDataHandleType(req_meta.cmd);
+  if (!log_key_info_) return;
+  std::string ack_string("");
+  if (type.requestType == RequestType::kGDRAckSignal) {
+    ack_string = "ack signal";
+  }
+  if (req_meta.push) {
+    CHECK_EQ(req_data.lens.size(), (size_t)1);
+    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
+    LOG(INFO) << "push key=" << DecodeKey(req_data.keys[0])
+              << "\t sender=" << req_meta.sender
+              << "\t size=" << (size_t)req_data.lens[0]
+              << "\t " << ack_string
+              << "\t (rank=" << rank_ << ")";
+  } else {
+    LOG(INFO) << "pull key=" << (uint64_t)DecodeKey(req_data.keys[0])
+              << "\t sender=" << req_meta.sender
+              << "\t " << ack_string
+              << "\t (rank=" << rank_ << ")";
+  }
+}
+
 void BytePSServer::BytePSGDRHandler(const ps::KVMeta& req_meta,
                                  const ps::KVPairs<char> &req_data,
                                  ps::KVServer<char>* server) {
@@ -890,18 +966,7 @@ void BytePSServer::BytePSGDRHandler(const ps::KVMeta& req_meta,
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   uint64_t key = DecodeKey(req_data.keys[0]);
 
-  if (log_key_info_) {
-    if (req_meta.push) {
-      CHECK_EQ(req_data.lens.size(), (size_t)1);
-      CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
-      LOG(INFO) << "push key=" << DecodeKey(req_data.keys[0])
-                << "\t sender=" << req_meta.sender
-                << "\t size=" << (size_t)req_data.lens[0];
-    } else {
-      LOG(INFO) << "pull key=" << (uint64_t)DecodeKey(req_data.keys[0])
-                << "\t sender=" << req_meta.sender;
-    }
-  }
+  PrintServerRecvMessageLog(req_meta, req_data);
 
   // get expected number of phy node for each key 
   SetNumExpectedWorker(key, num_phy_node_ - 1);
@@ -951,6 +1016,102 @@ void BytePSServer::BytePSGDRHandler(const ps::KVMeta& req_meta,
   } // end of pull request 
 }
 
+void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
+                                      const ps::KVPairs<char> &req_data,
+                                      ps::KVServer<char>* server) {
+  PrintServerRecvMessageLog(req_meta, req_data);
+  DataHandleType type = DepairDataHandleType(req_meta.cmd);
+  auto req_type = type.requestType;
+  CHECK_EQ(req_data.keys.size(), (size_t)1);
+  uint64_t key = DecodeKey(req_data.keys[0]);
+
+  if (req_type == RequestType::kGDRAckSignal) {
+    GetGDRAckTable()->AddReadyCount(key);
+    return;
+  }
+  
+  SetNumExpectedWorker(key, num_phy_node_);
+
+  if (req_meta.push) {  // push request
+    CHECK_EQ(req_data.lens.size(), (size_t)1);
+    CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
+    size_t len = (size_t) req_data.lens[0];
+
+    int worker_rank = (req_meta.sender - 9) / 2;
+    auto pbuff = GetGDRPushBuffer(key, worker_rank);
+    // initialization
+    if (!pbuff->tensor) {
+      CHECK_EQ(type.device, common::GPU);
+      ps::SArray<ps::Key> keys;
+      ps::SArray<char> vals;
+      ps::SArray<int> lens;
+      CUDA_CALL(cudaMalloc(&(pbuff->tensor), len));
+      keys.push_back(req_data.keys[0]);
+      vals.reset((char*) pbuff->tensor, len * sizeof(char), [](void *){});
+      lens.push_back(len);
+      pbuff->device = common::GPU;
+      // perform registration
+      server->RegisterRecvBufferWithRank(worker_rank, keys, vals, lens);
+      if (log_key_info_) {
+        LOG(INFO) << "init cuda buffer for key=" << key 
+                  << ", len=" << len << ", worker_rank=" << worker_rank
+                  <<  "(rank=" << rank_ << ")";
+      }
+      // the max length
+      pbuff->len = len;
+      pbuff->dtype = type.dtype;
+      CHECK(pbuff->tensor);
+      SendPushResponse(key, req_meta, server);
+      return;
+    } 
+    
+    std::lock_guard<std::mutex> lock(handle_mu_); 
+    auto tid = GetThreadID(key, len);
+    void* addr = (void*)req_data.vals.data();
+    CHECK_EQ(addr, pbuff->tensor) << key;
+    BytePSEngineMessage msg = {timestamp_++, type, key,
+                               addr, addr, pbuff->len,
+                               GPU_SUM_RECV, req_data, req_meta};
+    engine_queues_[tid]->Push(std::move(msg));
+    SendPushResponse(key, req_meta, server);
+
+  } else {  // pull request
+    auto tid = GetThreadID(key, 0);
+    std::lock_guard<std::mutex> lock(flag_mu_[tid]);
+    if (is_push_finished_[tid].find(key) == is_push_finished_[tid].end()) {
+      is_push_finished_[tid][key] = false;
+      pull_cnt_[tid][key] = 0;
+      seen_sender_[tid][key].clear();
+    }
+    auto it = seen_sender_[tid][key].find(req_meta.sender);
+    if (is_push_finished_[tid][key] && (it == seen_sender_[tid][key].end())) {
+      // push already finished && not received the associated pull response yet
+      if (log_key_info_) {
+        LOG(INFO) << "pull request of key " << key 
+                  << " received and processed immediately";
+      }
+      SendPullResponse(type, key, req_meta, server);
+      pull_cnt_[tid][key] += 1;
+      seen_sender_[tid][key].insert(req_meta.sender);
+      if (pull_cnt_[tid][key] == num_phy_node_ - 1) {
+        is_push_finished_[tid][key] = false;
+        pull_cnt_[tid][key] = 0;
+        seen_sender_[tid][key].clear();
+        if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()) {
+          GetUpdateBuf(key)->merged.tensor = nullptr;
+        }
+      }
+    } else {
+      // push not finished, put into the queue, and wait for the engine
+      if (log_key_info_) {
+        LOG(INFO) << "pull request of key " << key 
+                  << " buffered because the push flag is not ready";
+      }
+      q_pull_reqmeta_[tid][key].push_back(req_meta);
+    }
+  } // end of pull request 
+}
+
 void BytePSServer::LocalPushPull(uint64_t key, char* push_addr, char* pull_addr, size_t len, int dtype) {
   InitStoreAndUpdateBuf(key, len, dtype);
   BytePSEngineMessage msg;
@@ -964,10 +1125,34 @@ void BytePSServer::LocalPushPull(uint64_t key, char* push_addr, char* pull_addr,
   independent_queues_[independent_cnt_++ % engine_thread_num_]->Push(std::move(msg));
 }
 
+void BytePSServer::EnqueueLocalGpuSumTask(uint64_t key, char* input, 
+                                          char* output, size_t len, 
+                                          int dtype, bool do_copy) {
+#if HAVE_CUDA == 1
+  auto tid = GetThreadID(key, len);
+  auto cuda_reducer = BytePSGlobal::GetCudaReducer(tid);
+  if (do_copy && input != output) {
+    // TODO: remove this copy 
+    cuda_reducer->CopyD2D(output, input, len, /*sync*/false);
+    cuda_reducer->Sync();
+  } 
+  BytePSEngineMessage msg;
+  msg.id = timestamp_++;
+  msg.key = key;
+  msg.dst = output;
+  msg.src = output;
+  msg.len = len;
+  msg.ops = GPU_SUM_RECV_LOCAL;
+  msg.type.dtype = dtype;
+  engine_queues_[tid]->Push(std::move(msg));
+#endif
+}
+
 size_t BytePSServer::GetNumExpectedWorker(uint64_t key) {
   std::lock_guard<std::mutex> lk(expected_worker_mu_);
   if (BytePSGlobal::IsGDR()) {
-    size_t num_expected = num_phy_node_ - 1; 
+    size_t num_expected = num_phy_node_; 
+    if (!BytePSGlobal::IsGDRGpu2Gpu()) num_expected--;
     if (num_expected_workers_.find(key) == num_expected_workers_.end()) {
       num_expected_workers_[key] = num_expected;
     } else {
@@ -998,8 +1183,15 @@ void BytePSServer::InitP2PCopyTable() {
   p2p_group_copy_table_ = new ReadyTable(num_workers - 1, "P2P_GROUP_COPYH2D");
 }
 
-void BytePSServer::InitGDRCopyTable() {
-  gdr_local_wait_table_ = new ReadyTable(1, "GDR_LOCAL_WAIT");
+void BytePSServer::InitGDRReadyTable() {
+  int wait_count;
+  if (BytePSGlobal::IsGDRGpu2Gpu()) {
+    wait_count = BytePSGlobal::GetPhyNodeNum();
+  } else {
+    wait_count = 1;
+  }
+  gdr_push_pull_table_ = new ReadyTable(wait_count, "GDR_PUSH_PULL");
+  gdr_ack_table_ = new ReadyTable(BytePSGlobal::GetPhyNodeNum()-1, "GDR_ACK");
 }
 
 void BytePSServer::InitEnv() {
@@ -1186,6 +1378,14 @@ void BytePSServer::Init(int rank) {
     }
   }
 
+  for (auto& it1 : gdr_push_buffer_) {
+    for (auto& it2 : it1.second) {
+      if (it2.second.tensor) {
+        CUDA_CALL(cudaFree(it2.second.tensor));
+      }
+    }
+  }
+
 #if HAVE_CUDA == 1
   for (auto &it : update_buf_) {
     char* buf = it.second.merged.tensor;
@@ -1196,9 +1396,14 @@ void BytePSServer::Init(int rank) {
   }
 #endif
 
-  if (gdr_local_wait_table_) {
-    delete gdr_local_wait_table_;
-    gdr_local_wait_table_ = nullptr;
+  if (gdr_push_pull_table_) {
+    delete gdr_push_pull_table_;
+    gdr_push_pull_table_ = nullptr;
+  }
+
+  if (gdr_ack_table_) {
+    delete gdr_ack_table_;
+    gdr_ack_table_ = nullptr;
   }
 
   if (gdr_copy_mngr_) {

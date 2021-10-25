@@ -394,6 +394,60 @@ void BatchedScaledD2DMemcpyCudaImpl(BatchedD2DParams& params, int num_copies, do
   }
 }
 
+template <typename T>
+__global__ void _SumKernel(void* dst, const void* src1, const void* src2, size_t len) {
+  T* d = (T*) dst;
+  T* s1 = (T*) src1;
+  T* s2 = (T*) src2;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int total_threads = blockDim.x * gridDim.x;
+  for(; tid < len; tid += total_threads) {
+    d[tid] = __ldg(&s1[tid]) + __ldg(&s2[tid]);
+  }
+}
+
+__global__ void _SumKernelFloat16(void* dst, const void* src1, const void* src2, size_t len) {
+  __half* d = (__half*) dst;
+  __half* s1 = (__half*) src1;
+  __half* s2 = (__half*) src2;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int total_threads = blockDim.x * gridDim.x;
+  for(; tid < len; tid += total_threads) {
+    d[tid] = __hadd(__ldg(&s1[tid]), __ldg(&s2[tid]));
+  }
+}
+
+void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, bool sync) {
+  if (!_stream) InitStream();
+  switch (dtype) {
+    case BYTEPS_FLOAT16:
+      _SumKernelFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/2);
+      break;
+    case BYTEPS_FLOAT32:
+      _SumKernel<float><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      _SumKernel<double><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(double));
+      break;
+    case BYTEPS_INT32:
+      _SumKernel<int><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(int));
+      break;
+    case BYTEPS_INT64:
+      _SumKernel<long><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(long));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type for Cuda Reducer: " << dtype;
+  }
+  if (sync) CUDA_CALL(cudaStreamSynchronize(*_stream));
+}
+
+void CudaReducer::CopyD2D(void* dst, void* src, size_t len, bool sync) {
+  CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
+                            (cudaMemcpyKind) cudaMemcpyDeviceToDevice,
+                            (cudaStream_t)*_stream));
+  if (sync) CUDA_CALL(cudaStreamSynchronize(*_stream));
+}
+
 } // namespace common
 } // namespace byteps
 

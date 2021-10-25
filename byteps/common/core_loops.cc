@@ -841,8 +841,8 @@ bool RunPushLoopOnce() {
   return true;
 }
 
-bool RunPushPullGDRLoopOnce() {
-  QueueType this_op = PUSH_PULL_GDR;
+bool RunGDRv1PushPullLoopOnce() {
+  QueueType this_op = GDR_V1_PUSH_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   auto task = q->getTask();
   if (task) {
@@ -912,6 +912,89 @@ bool RunPushPullGDRLoopOnce() {
   return true;
 }
 
+bool RunGDRv2PushPullLoopOnce() {
+  QueueType this_op = GDR_V2_PUSH_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+  if (!task) {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    return true;
+  }
+  BPS_CHECK_NE(task->device, CPU_DEVICE_ID); // must be GPU tensor
+  auto local_rank = BytePSGlobal::GetLocalRank();
+  auto local_size = BytePSGlobal::GetLocalSize();
+  auto tensor = (local_size > 1) ? task->output : task->tensor;
+  auto offset = task->offset; 
+  auto len = task->len;
+  int dtype = task->tensor->dtype();
+  auto unit_len = tensor->size() / tensor->shape().num_elements();
+  auto num_elem_per_gpu = len / local_size / unit_len;
+  // lrs: local reduce scatter
+  int lrs_offset = local_rank * num_elem_per_gpu * unit_len; 
+  int comm_len = num_elem_per_gpu * unit_len;
+  auto left_elem = (len / unit_len) - (num_elem_per_gpu * local_size);
+  if (left_elem && (local_rank == local_size - 1)) {
+    // We assume the last GPU is the root.
+    // If the assumption breaks, we should fix 
+    // zpush and the associated reduce stage
+    BPS_CHECK(BytePSGlobal::IsRootDevice()); 
+    comm_len += left_elem * unit_len;
+  }
+
+  char* data = (char*)(tensor->data()) + offset + lrs_offset;
+  
+  // note: grs stands for "global reduce scatter"
+  auto grs_rank = BytePSGlobal::GetPhyNodeID();
+  auto grs_size = BytePSGlobal::GetPhyNodeNum();
+  auto num_elem_per_node = comm_len / grs_size / unit_len;
+  auto grs_left_elem = (comm_len / unit_len) - (num_elem_per_node * grs_size);
+  for (int j = 0; j < grs_size; ++j) {
+    int i = (grs_rank + 1 + j) % grs_size; // form a ring to balance the traffic
+    int grs_offset = i * num_elem_per_node * unit_len;    
+    int grs_len = num_elem_per_node * unit_len;
+    if (grs_left_elem && (i == grs_size - 1)) {
+      grs_len += grs_left_elem * unit_len;
+    }
+    char* grs_push_data = data + grs_offset;
+    if (i == grs_rank) {
+      char* input = (char*) task->tensor->data() + offset + lrs_offset + grs_offset;
+      char* output = grs_push_data;
+      server::BytePSServer::EnqueueLocalGpuSumTask(task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
+      continue;
+    }
+    char* grs_pull_data = (char*)task->output->data() + task->offset + lrs_offset + grs_offset;
+    ps::SArray<char> vals(grs_push_data, grs_len, false);
+    int cmd = server::GetCommandType(server::RequestType::kGDRv2PushPull, dtype, GPU);
+    int receiver = i * local_size + local_rank;
+    auto pskv = BytePSGlobal::EncodeP2PKey(task->key, grs_len, receiver);
+    if (!BytePSGlobal::IsGDRKeyInited(task->key, receiver)) {
+      BytePSGlobal::GetPS()->Wait(
+          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
+    }
+    BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
+        [task, grs_pull_data, grs_len, cmd, receiver]() { 
+            auto pull_vals = new ps::SArray<char>(grs_pull_data, grs_len, false);
+            auto pskv = BytePSGlobal::EncodeP2PKey(task->key, grs_len, receiver);
+            BytePSGlobal::GetPS()->ZPull(pskv.keys, 
+                pull_vals, &pskv.lens, cmd, [task, pull_vals, receiver]() { 
+                    // step 1: callbacks of zpull
+                    delete pull_vals; 
+                    BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
+                    // step 2: send a signal to notify remote that pull response is already received
+                    int ack_cmd = server::GetCommandType(server::RequestType::kGDRAckSignal, 
+                                                         task->tensor->dtype(), GPU);
+                    char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
+                    ps::SArray<char> ack_vals(cpubuff, 1, false);
+                    auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
+                    // zpull outperforms zpush for sending ack signal, so we use zpull
+                    BytePSGlobal::GetPS()->ZPull(pskv.keys, &ack_vals, &pskv.lens, ack_cmd);
+                });
+        });
+  }
+  FinishOrProceed(task); 
+  return true;
+}
+
 bool RunPullLoopOnce() {
   QueueType this_op = PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -949,14 +1032,16 @@ bool RunPullLoopOnce() {
   return true;
 }
 
-bool RunGDRWaitLocalLoopOnce() {
-  QueueType this_op = WAIT_LOCAL_GDR;
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (task) {
-    FinishOrProceed(task);
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+bool RunGDRWaitLoopOnce() {
+  QueueType wait_ops[] = { GDR_WAIT_ACK, GDR_WAIT_PUSH_PULL };
+  for (auto this_op : wait_ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto task = q->getTask();
+    if (task) {
+      FinishOrProceed(task);
+    } else {
+      std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+    }
   }
   return true;
 }
@@ -969,17 +1054,25 @@ void PushLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
 }
 
-void PushPullGDRLoop() {
+void GDRv1PushPullLoop() {
   BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
-  while (RunPushPullGDRLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  while (RunGDRv1PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
 }
 
-void GDRWaitLocalLoop() {
+void GDRWaitLoop() {
   BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
-  while (RunGDRWaitLocalLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  while (RunGDRWaitLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+}
+
+void GDRv2PushPullLoop() {
+  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  while (RunGDRv2PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;

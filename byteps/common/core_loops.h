@@ -41,9 +41,11 @@ void PushLoop();
 
 void PullLoop();
 
-void PushPullGDRLoop();
+void GDRv1PushPullLoop();
 
-void GDRWaitLocalLoop();
+void GDRv2PushPullLoop();
+
+void GDRWaitLoop();
 
 void DecompressLoop();
 

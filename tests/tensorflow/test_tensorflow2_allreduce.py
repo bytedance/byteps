@@ -132,11 +132,11 @@ class TensorFlowTests(tf.test.TestCase):
         dims = [1, 2, 3]
         devices = ["/gpu:0"]
         for dtype, dim, device in itertools.product(dtypes, dims, devices):
+            name = f'allreduce_{dtype.name}_{dim}_{device.strip("/")}'
             with tf.device(device):
                 tensor = self.random_uniform(
                     [17] * dim, -100, 100, dtype=dtype)
-                summed = bps.push_pull(tensor, average=False,
-                        name=f'allreduce_{dtype.name}_{dim}_{device.strip("/")}')
+                summed = bps.push_pull(tensor, average=False, name=name)
                 multiplied = tensor * size
                 max_difference = tf.reduce_max(tf.abs(summed - multiplied))
 
@@ -152,9 +152,11 @@ class TensorFlowTests(tf.test.TestCase):
                 self.skipTest("BytePS cluster too large for precise multiplication comparison")
 
             diff = self.evaluate(max_difference)
-            assert diff <= threshold, "bps.push_pull produced incorrect results"
-            print(f"bps.push_pull test success!")
-            print(f'name: allreduce_{dtype.name}_{dim}_{device.strip("/")}')
+            if diff <= threshold:
+                print(f"bps.push_pull of {name} test success!\n")
+            else:
+                print(f"rank {rank}: {name} incorrect results:\n expect: {multiplied.numpy()}\n summed: {summed.numpy()}\n")
+                assert False, "{name}: push_pull test failed, see errors above"
 
     def test_byteps_allreduce_sum_gpu_throughput(self, niters=args.iter):
         """Speed tests of GPU allreduce."""

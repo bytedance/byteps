@@ -99,8 +99,10 @@ enum QueueType {
   COMPRESS,
   PUSH,
   PULL,
-  PUSH_PULL_GDR,
-  WAIT_LOCAL_GDR,
+  GDR_V1_PUSH_PULL,
+  GDR_V2_PUSH_PULL,
+  GDR_WAIT_PUSH_PULL,
+  GDR_WAIT_ACK,
   DECOMPRESS,
   COPYH2D,
   COORDINATE_BROADCAST,
@@ -154,8 +156,10 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "COMPRESS",
                                              "PUSH",
                                              "PULL",
-                                             "PUSH_PULL_GDR",
-                                             "WAIT_LOCAL_GDR",
+                                             "GDR_V1_PUSH_PULL",
+                                             "GDR_V2_PUSH_PULL",
+                                             "GDR_WAIT_PUSH_PULL",
+                                             "GDR_WAIT_ACK",
                                              "DECOMPRESS",
                                              "COPYH2D",
                                              "COORDINATE_BROADCAST",
@@ -170,6 +174,10 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "CPU_REDUCE",
                                              "CPU_BCAST",
                                              "CPU_BCAST_FINISH"};
+
+enum GDRLevel {
+  GPU2CPU, GPU2GPU
+};
 
 class Status {
  public:
