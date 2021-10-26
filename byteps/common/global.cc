@@ -96,6 +96,7 @@ std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
 std::unordered_map<uint64_t, std::unordered_map<int, bool>> BytePSGlobal::_gdr_inited_key;
 std::mutex BytePSGlobal::_gdr_inited_key_mu;
 GDRLevel BytePSGlobal::_gdr_allreduce_level = GPU2GPU;
+size_t BytePSGlobal::_small_tensor_threshold;
 // tables
 std::mutex BytePSGlobal::_context_mutex;
 std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
@@ -226,8 +227,14 @@ void BytePSGlobal::Init() {
       _cuda_reducers.push_back(std::make_shared<CudaReducer>(num_block, num_thread));
     }
 #endif
-    BPS_LOG(INFO) << "GDR Allreduce level set to " 
-        << (_gdr_allreduce_level == GPU2GPU ? "GPU2GPU" : "GPU2CPU");
+    _small_tensor_threshold = getenv("BYTEPS_SMALL_TENSOR_THRESH") 
+                            ? atoi(getenv("BYTEPS_SMALL_TENSOR_THRESH")) : 128000;
+    if (_gdr_allreduce_level == GPU2GPU) {
+      BPS_LOG(INFO) << "GDR Allreduce level set to GPU2GPU, "
+          << "small tensor thresh is " << _small_tensor_threshold << " bytes";
+    } else {
+      BPS_LOG(INFO) << "GDR Allreduce level set to GPU2CPU";
+    }
   }
 
   _basic_comm = std::make_shared<BytePSCommSocket>();

@@ -409,13 +409,13 @@ def build_server(build_ext, options):
         if ucx_home:
             server_lib.include_dirs += [f'{ucx_home}/include']
             server_lib.library_dirs += [f'{ucx_home}/lib']
-            if use_cuda():
-                cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
-                    build_ext, options['COMPILE_FLAGS'])
-                server_lib.define_macros += [('HAVE_CUDA', '1')]
-                server_lib.include_dirs += cuda_include_dirs
-                server_lib.library_dirs += cuda_lib_dirs
-                server_lib.libraries += ['cudart', 'nvToolsExt']
+    if use_cuda():
+        cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+            build_ext, options['COMPILE_FLAGS'])
+        server_lib.define_macros += [('HAVE_CUDA', '1')]
+        server_lib.include_dirs += cuda_include_dirs
+        server_lib.library_dirs += cuda_lib_dirs
+        server_lib.libraries += ['cudart', 'nvToolsExt']
 
     server_lib.libraries += ['numa']
     build_ext.build_extension(server_lib)
