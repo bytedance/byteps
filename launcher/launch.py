@@ -300,6 +300,8 @@ def launch_bps():
         t[i].join()
 
 if __name__ == "__main__":
+    # for ps-lite RDMAVan IPC compatibility
+    os.environ["BYTEPS_ENCODING_SCHEME_VERSION"] = os.environ.get("BYTEPS_ENCODING_SCHEME_VERSION", "1")
     if is_joint_mode():
         os.environ["DMLC_NUM_WORKER"] = str(int(os.environ["BYTEPS_NUM_NODES"]) *
                                             int(os.environ["BYTEPS_LOCAL_SIZE"]))

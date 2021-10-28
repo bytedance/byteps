@@ -134,7 +134,7 @@ cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
-std::string BytePSGlobal::_uuid;
+std::string BytePSGlobal::_uuid = "";
 // reduction
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 std::shared_ptr<GpuReducer> BytePSGlobal::_gpu_reducer;
@@ -185,7 +185,7 @@ void BytePSGlobal::Init() {
   Telemetry::InitEnv();
   // Set p2p related variables
   _prof_all2all_latency = getenv("BYTEPS_PROFILE_ALL2ALL") ? atoi(getenv("BYTEPS_PROFILE_ALL2ALL")) : false;
-  _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : BYTEPS_DEFAULT_UUID;
+  _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : "";
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
   _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
   _skip_input_copy = getenv("BYTEPS_P2P_SKIP_INPUT_COPY") ? atoi(getenv("BYTEPS_P2P_SKIP_INPUT_COPY")) : false;

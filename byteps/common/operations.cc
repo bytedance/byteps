@@ -885,8 +885,8 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
                (unsigned int)(size + bound - 1) / bound)  // round up
       << key_list.size() << ", size=" << size << ", bound=" << bound;
 
-  BPS_LOG(TRACE) << "Begin init " << name << ", size=" << size
-                 << ", parts=" << key_list.size();
+  BPS_LOG(TRACE) << "Begin init " << name << " size=" << size
+                 << " parts=" << key_list.size();
 
   // If cpubuff is not nullptr, the tensor itself is on CPU
   if (cpubuff) {
@@ -902,20 +902,22 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
-    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetUUID() + "_";
+    BPS_CHECK(BytePSGlobal::IsCpuAllreduceDisabled() || cpubuff == nullptr)
+      << "CPU allreduce does not support cross PCIe switch";
+    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetUUID();
     context.pcie_cpubuff =
         shm_obj->openPcieSharedMemory(shm_prefix, key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     if (cpubuff) {
-      auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID() + "_";
+      auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID();
       for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
         std::string prefix_i = shm_prefix + std::to_string(i) + "_ShM_";
         context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size, false));
       }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
     } else if (!BytePSGlobal::IsGDR()) {
-      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
+      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID();
       context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size, true);
     }
   }

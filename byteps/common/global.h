@@ -15,7 +15,6 @@
 
 #ifndef BYTEPS_GLOBAL_H
 #define BYTEPS_GLOBAL_H
-#define BYTEPS_DEFAULT_UUID "0000"
 
 #include <unistd.h>
 #include <condition_variable>
