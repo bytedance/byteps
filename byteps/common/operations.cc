@@ -110,7 +110,7 @@ void byteps_lazy_init() {
       func.push_back(CoordinateBroadcastLoop);
       func.push_back(NonRootNcclLoop);
     }
-    if (BytePSGlobal::IsGDR() && BytePSGlobal::IsDistributed()) {
+    if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() > 1) {
       if (!BytePSGlobal::IsGDRGpu2Gpu()) {
         func.push_back(GDRv1PushPullLoop);
       } else {
@@ -1115,7 +1115,7 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueListGDR() {
     queue_list->push_back(REDUCE);
   }
 
-  if (BytePSGlobal::IsDistributed()) {
+  if (BytePSGlobal::GetPhyNodeNum() > 1) {
     if (BytePSGlobal::IsGDRGpu2Gpu()) {
       queue_list->push_back(GDR_V2_PUSH_PULL);
     } else {
@@ -1130,14 +1130,16 @@ std::shared_ptr<std::vector<QueueType>> GetPushQueueListGDR() {
 std::shared_ptr<std::vector<QueueType>> GetPullQueueListGDR() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 #if BYTEPS_BUILDING_CUDA == 1
-  if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
-    queue_list->push_back(BROADCAST);
-  } else {
-    queue_list->push_back(COORDINATE_BROADCAST);
-    queue_list->push_back(BROADCAST);
-  }
-  if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsGDRGpu2Gpu()) {
-    queue_list->push_back(GDR_WAIT_ACK);
+  if (BytePSGlobal::GetPhyNodeNum() > 1) {
+    if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+      queue_list->push_back(BROADCAST);
+    } else {
+      queue_list->push_back(COORDINATE_BROADCAST);
+      queue_list->push_back(BROADCAST);
+    }
+    if (BytePSGlobal::IsGDRGpu2Gpu()) {
+      queue_list->push_back(GDR_WAIT_ACK);
+    }
   }
 #endif
   return queue_list;

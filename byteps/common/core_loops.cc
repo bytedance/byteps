@@ -258,12 +258,21 @@ inline void PostNcclCalls(
     }
 
     if (num_elem_per_gpu) {
-      NCCLCHECK(ncclReduceScatter(
-          (const void *)p,
-          (void *)(out_p + nccl_rank * num_elem_per_gpu * unit_len),
-          (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
-          (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
-          (cudaStream_t)nccl_stream));
+      if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() == 1) {
+        NCCLCHECK(ncclAllReduce(
+            (const void *)p,
+            (void *)out_p,
+            (size_t)(len/unit_len), (ncclDataType_t)nccl_dtype,
+            (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
+            (cudaStream_t)nccl_stream));
+      } else {
+        NCCLCHECK(ncclReduceScatter(
+            (const void *)p,
+            (void *)(out_p + nccl_rank * num_elem_per_gpu * unit_len),
+            (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
+            (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
+            (cudaStream_t)nccl_stream));
+      }
     }
     if (left_elem) {
       NCCLCHECK(ncclReduce((const void *)(p + len - left_elem * unit_len),
