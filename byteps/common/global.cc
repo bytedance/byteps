@@ -764,20 +764,20 @@ void BytePSGlobal::RegisterCompressor(
   _name_to_cxt[name].kwargs = std::move(kwargs);
 }
 
-void BytePSGlobal::PinMemory(void* ptr, int device_id, size_t bytes) {
+void BytePSGlobal::PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, bool gpu) {
   if (!BytePSGlobal::IsDistributed()) return;
-  GetOrInitPS(0);
-  BPS_CHECK_EQ(_ps.size(), 1);
   GetOrInitPS();
   CHECK(_ps.size() == 1);
-  bool gpu = true;
   if (BytePSGlobal::IsAlltoallUsePull()) {
-    ps::Postoffice::GetServer()->van()->PinMemory(ptr, bytes, gpu);
-    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
+    if (gpu) {
+      ps::Postoffice::GetServer()->van()->PinMemory(ptr, bytes, gpu, numa_or_gpu_index);
+    }
+    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu, numa_or_gpu_index);
   } else {
-    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu);
+    ps::Postoffice::GetWorker()->van()->PinMemory(ptr, bytes, gpu, numa_or_gpu_index);
   }
-  BPS_LOG(DEBUG) << "Pinned memory " << ptr << " device_id=" << device_id << " bytes=" << bytes;
+  BPS_LOG(DEBUG) << "Pinned memory " << ptr << " index=" << numa_or_gpu_index
+                 << " bytes=" << bytes << " gpu=" << gpu;
 }
 
 // Append for communication traces

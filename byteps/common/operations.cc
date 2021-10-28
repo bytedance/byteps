@@ -1001,8 +1001,8 @@ void RegisterCompressor(const std::string &name,
   return BytePSGlobal::RegisterCompressor(name, kwargs);
 }
 
-void PinMemory(void* ptr, int numa_node, size_t bytes) {
-  return BytePSGlobal::PinMemory(ptr, numa_node, bytes);
+void PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, bool gpu) {
+  return BytePSGlobal::PinMemory(ptr, numa_or_gpu_index, bytes, gpu);
 }
 
 int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver) {

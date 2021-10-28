@@ -148,7 +148,7 @@ int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver);
 void RegisterCompressor(const std::string &name,
                         std::unordered_map<std::string, std::string> &kwargs);
 
-void PinMemory(void* ptr, int numa_node, size_t bytes);
+void PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, bool gpu);
 
 BPSContext &GetContextFromName(const std::string &name);
 

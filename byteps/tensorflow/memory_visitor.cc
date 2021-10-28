@@ -42,24 +42,34 @@ class MemoryVistor {
   MemoryVistor() {
 #if TF_MAJOR_VERSION >= 2
 #if BYTEPS_BUILDING_CUDA == 1
+    auto add_visitor = getenv("BYTEPS_PIN_MEMORY");
     ::tensorflow::SubAllocator::Visitor gpu_alloc_visitor = [](void* ptr, int gpu_id,
                                              size_t num_bytes) {
-      common::PinMemory(ptr, gpu_id, num_bytes);
+      common::PinMemory(ptr, gpu_id, num_bytes, true);
     };
-    auto add_visitor = getenv("BYTEPS_PIN_MEMORY");
     if (add_visitor && atoi(add_visitor)) {
       // XXX we assume only 1 GPU is visible to the current process
       // TODO: TfGpuId is not defined for the latest TF
       auto numa_id = getenv("BYTEPS_NUMA_ID");
       int bus_id = numa_id ? atoi(numa_id) : 0;
       ::tensorflow::GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id, gpu_alloc_visitor);
-      std::cout << "BytePS pinned memory visitor enabled. bus_id=" << bus_id << std::endl;
+      BPS_LOG(DEBUG) << "BytePS pinned memory visitor for GPU enabled. numa_id=" << bus_id;
     } else {
-      std::cout << "BytePS pinned memory visitor NOT enabled" << std::endl;
+      BPS_LOG(DEBUG) << "BytePS pinned memory visitor for GPU NOT enabled";
     }
 #endif
+    auto add_visitor_cpu = getenv("BYTEPS_PIN_MEMORY_CPU");
+    if (add_visitor_cpu && atoi(add_visitor_cpu)) {
+      ::tensorflow::SubAllocator::Visitor alloc_visitor = [](void* ptr, int numa_node,
+                                              size_t num_bytes) {
+        common::PinMemory(ptr, numa_node, num_bytes, false);
+      };
+      ::tensorflow::ProcessState::singleton()->AddCPUAllocVisitor(alloc_visitor);
+      BPS_LOG(DEBUG) << "BytePS pinned memory visitor for CPU enabled.";
+    } else {
+      BPS_LOG(DEBUG) << "BytePS pinned memory visitor for CPU NOT enabled";
+    }
 #endif
-
   }
 };
 static MemoryVistor visitor;

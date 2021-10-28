@@ -124,7 +124,7 @@ class BytePSGlobal {
 
   static void RegisterCompressor(const std::string& name, 
                                  std::unordered_map<std::string, std::string>& kwargs);
-  static void PinMemory(void* ptr, int numa_node, size_t bytes);
+  static void PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, bool gpu);
   static ps::Key GetKeyFromName(const std::string& name);
   static BPSContext& GetContextFromName(const std::string& name);
   static uint32_t GetTensorCount();
