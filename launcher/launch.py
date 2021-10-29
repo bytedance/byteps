@@ -151,6 +151,12 @@ def check_env():
             print("The env " + env + " is missing")
             os._exit(-1)
 
+def get_ucx_src_addr(local_size=1):
+    ucx_rdmacm_src_addr = os.getenv("UCX_RDMA_CM_SOURCE_ADDRESS", "").split(',')
+    if len(ucx_rdmacm_src_addr) == 1:
+        ucx_rdmacm_src_addr *= local_size
+    return ucx_rdmacm_src_addr
+
 def is_joint_mode():
     return os.getenv("BYTEPS_FORCE_JOINT_MODE", "0").lower() in ["1", "true"]
 
@@ -158,6 +164,9 @@ def worker_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
+    ucx_src_addr = get_ucx_src_addr(local_size)
+    if ucx_src_addr:
+        my_env["UCX_RDMA_CM_SOURCE_ADDRESS"] = ucx_src_addr[local_rank]
 
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
@@ -217,6 +226,10 @@ def server_fn(local_rank, local_size, command, allocation=None):
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
     my_env["DMLC_RANK"] = "-1"
+    ucx_src_addr = get_ucx_src_addr(local_size)
+    if ucx_src_addr:
+        my_env["UCX_RDMA_CM_SOURCE_ADDRESS"] = ucx_src_addr[local_rank]
+
     subprocess.check_call(command, env=my_env,
                           stdout=sys.stdout, stderr=sys.stderr, shell=True)
 
@@ -279,6 +292,9 @@ def launch_bps():
     if os.environ["DMLC_ROLE"] == "scheduler":
         my_env = os.environ.copy()
         my_env['PS_VERBOSE'] = my_env.get('PS_VERBOSE', '1')
+        ucx_src_addr = get_ucx_src_addr()
+        if ucx_src_addr:
+            my_env["UCX_RDMA_CM_SOURCE_ADDRESS"] = ucx_src_addr[0]
         subprocess.check_call(command, env=my_env,
                               stdout=sys.stdout, stderr=sys.stderr, shell=True)
         return
