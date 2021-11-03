@@ -973,11 +973,23 @@ bool RunGDRv2PushPullLoopOnce() {
         BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
       }
     }
+    BPS_LOG(TRACE) << "GDR_ALLREDUCE send info: rank " << BytePSGlobal::GetRank() 
+        << ", grs_len=" << grs_len << ", i=" << i << ", grs_rank=" << grs_rank
+        << ", key=" << task->key;
     char* grs_push_data = data + grs_offset;
     if (i == grs_rank) {
       char* input = (char*) task->tensor->data() + offset + lrs_offset + grs_offset;
       char* output = grs_push_data;
-      server::BytePSServer::EnqueueLocalGpuSumTask(task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
+      if (grs_len) {
+        server::BytePSServer::EnqueueLocalGpuSumTask(
+            task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
+      } else {
+        BPS_CHECK(is_small_tensor);
+        BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
+        for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
+          BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
+        }
+      }
       if (is_small_tensor) break;
       continue;
     }
@@ -986,34 +998,39 @@ bool RunGDRv2PushPullLoopOnce() {
     int cmd = server::GetCommandType(server::RequestType::kGDRv2PushPull, dtype, GPU);
     int receiver = i * local_size + local_rank;
     auto pskv = BytePSGlobal::EncodeP2PKey(task->key, grs_len, receiver);
-    if (!BytePSGlobal::IsGDRKeyInited(task->key, receiver)) {
-      BPS_LOG(DEBUG) << "rank " << BytePSGlobal::GetRank() 
-                     << ": GDR init push, key " << task->key << ", len " << grs_len
-                     << ", receiver " << receiver 
-                     << (is_small_tensor ? " (small tensor)" : ", partition ")
-                     << (is_small_tensor ? "" : std::to_string(j));
-      BytePSGlobal::GetPS()->Wait(
-          BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
+    if (grs_len) {
+      if (!BytePSGlobal::IsGDRKeyInited(task->key, receiver)) {
+        BPS_LOG(DEBUG) << "rank " << BytePSGlobal::GetRank() 
+                      << ": GDR init push, key " << task->key << ", len " << grs_len
+                      << ", receiver " << receiver 
+                      << (is_small_tensor ? " (small tensor)" : ", partition ")
+                      << (is_small_tensor ? "" : std::to_string(j));
+        BytePSGlobal::GetPS()->Wait(
+            BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
+      }
+      BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
+          [task, grs_pull_data, grs_len, cmd, receiver]() { 
+              auto pull_vals = new ps::SArray<char>(grs_pull_data, grs_len, false);
+              auto pskv = BytePSGlobal::EncodeP2PKey(task->key, grs_len, receiver);
+              BytePSGlobal::GetPS()->ZPull(pskv.keys, 
+                  pull_vals, &pskv.lens, cmd, [task, pull_vals, receiver]() { 
+                      // step 1: callbacks of zpull
+                      delete pull_vals; 
+                      BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
+                      // step 2: send a signal to notify remote that pull response is already received
+                      int ack_cmd = server::GetCommandType(server::RequestType::kGDRAckSignal, 
+                                                          task->tensor->dtype(), GPU);
+                      char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
+                      ps::SArray<char> ack_vals(cpubuff, 1, false);
+                      auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
+                      // zpull outperforms zpush for sending ack signal, so we use zpull
+                      BytePSGlobal::GetPS()->ZPull(pskv.keys, &ack_vals, &pskv.lens, ack_cmd);
+                  });
+          });
+    } else {
+      BPS_CHECK(is_small_tensor);
+      BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
     }
-    BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd,
-        [task, grs_pull_data, grs_len, cmd, receiver]() { 
-            auto pull_vals = new ps::SArray<char>(grs_pull_data, grs_len, false);
-            auto pskv = BytePSGlobal::EncodeP2PKey(task->key, grs_len, receiver);
-            BytePSGlobal::GetPS()->ZPull(pskv.keys, 
-                pull_vals, &pskv.lens, cmd, [task, pull_vals, receiver]() { 
-                    // step 1: callbacks of zpull
-                    delete pull_vals; 
-                    BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
-                    // step 2: send a signal to notify remote that pull response is already received
-                    int ack_cmd = server::GetCommandType(server::RequestType::kGDRAckSignal, 
-                                                         task->tensor->dtype(), GPU);
-                    char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
-                    ps::SArray<char> ack_vals(cpubuff, 1, false);
-                    auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
-                    // zpull outperforms zpush for sending ack signal, so we use zpull
-                    BytePSGlobal::GetPS()->ZPull(pskv.keys, &ack_vals, &pskv.lens, ack_cmd);
-                });
-        });
     if (is_small_tensor) {
       for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
         BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
