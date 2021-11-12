@@ -765,7 +765,8 @@ void BytePSGlobal::RegisterCompressor(
 }
 
 void BytePSGlobal::PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, bool gpu) {
-  if (!BytePSGlobal::IsDistributed()) return;
+  bool need_ps = IsDistributed() && (_my_role == BytePSRole::LOCAL_ROOT || _is_joint);
+  if (!need_ps) return;
   GetOrInitPS();
   CHECK(_ps.size() == 1);
   if (BytePSGlobal::IsAlltoallUsePull()) {
