@@ -256,9 +256,9 @@ def use_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     return byteps_with_ucx
 
-def without_pre_setup():
-    return int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0))
-    
+def with_pre_setup():
+    return int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)) == 0
+
 def with_tensorflow():
     return int(os.environ.get('BYTEPS_WITH_TENSORFLOW', 0))
 
@@ -271,21 +271,27 @@ def with_pytorch():
 def without_pytorch():
     return int(os.environ.get('BYTEPS_WITHOUT_PYTORCH', 0))
 
-def build_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
-    has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME')
-    return byteps_with_ucx and not has_prebuilt_ucx
+def with_mxnet():
+    return int(os.environ.get('BYTEPS_WITH_MXNET', 0))
 
+def without_mxnet():
+    return int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0))
+
+def should_build_ucx():
+    has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME', '')
+    return use_ucx() and not has_prebuilt_ucx
+
+ucx_default_home = '/usr/local'
 def get_ucx_prefix():
     """ specify where to install ucx """
-    ucx_prefix = os.getenv('BYTEPS_UCX_PREFIX', '/usr/local/ucx')
+    ucx_prefix = os.getenv('BYTEPS_UCX_PREFIX', ucx_default_home)
     return ucx_prefix
 
 def get_ucx_home():
     """ pre-installed ucx path """
-    if build_ucx():
+    if should_build_ucx():
         return get_ucx_prefix()
-    return os.environ.get('BYTEPS_UCX_HOME', '/usr/local/ucx')
+    return os.environ.get('BYTEPS_UCX_HOME', ucx_default_home)
 
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
@@ -932,6 +938,39 @@ def build_torch_extension(build_ext, options, torch_version):
         pytorch_lib.__dict__[k] = v
     build_ext.build_extension(pytorch_lib)
 
+def build_ucx():
+    ucx_tarball_path = os.getenv("BYTEPS_UCX_TARBALL_PATH", "")
+    if not ucx_tarball_path and with_pre_setup() \
+       and hasattr(pre_setup, 'ucx_tarball_path'):
+        ucx_tarball_path = pre_setup.ucx_tarball_path.strip()
+
+    if not ucx_tarball_path:
+        if os.path.exists("./ucx.tar.gz"):
+            ucx_tarball_path = os.path.join(here, './ucx.tar.gz')
+
+    if not ucx_tarball_path:
+        cmd = "curl -kL {} -o ucx.tar.gz".format("https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.tar.gz")
+        subprocess.run(cmd, shell=True)
+        ucx_tarball_path = os.path.join(here, './ucx.tar.gz')
+
+    print("ucx_tarball_path is", ucx_tarball_path)
+    ucx_prefix = get_ucx_prefix()
+    sudo_str = "" if os.access(ucx_prefix, os.W_OK) else "sudo"
+    cmd = "mkdir -p tmp; tar xzf {} -C tmp; ".format(ucx_tarball_path) + \
+          "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/; " + \
+          "cd ucx-build; pwd; which libtoolize; " + \
+          "./autogen.sh; ./autogen.sh && " + \
+          "./contrib/configure-release --enable-mt --prefix={0} && make -j && {1} make install -j".format(ucx_prefix, sudo_str)
+    make_process = subprocess.Popen(cmd,
+                                    cwd='3rdparty',
+                                    stdout=sys.stdout,
+                                    stderr=sys.stderr,
+                                    shell=True)
+    make_process.communicate()
+    if make_process.returncode:
+        raise DistutilsSetupError('An ERROR occured while running the '
+                                  'Makefile for the ucx library. '
+                                  'Exit code: {0}'.format(make_process.returncode))
 
 def build_gpu_ops(options):
     sm_version = os.getenv('BYTEPS_BUILD_SM_VERSION', '70') # default for v100
@@ -970,7 +1009,7 @@ def build_gpu_ops(options):
 # run the customize_compiler
 class custom_build_ext(build_ext):
     def build_extensions(self):
-        if not without_pre_setup():
+        if with_pre_setup():
             pre_setup.setup()
 
         ucx_home = get_ucx_home()
@@ -1013,33 +1052,12 @@ class custom_build_ext(build_ext):
             except:
                 pass
 
-        print("build_ucx is", build_ucx())
-        # Build official UCX only if BYTEPS_UCX_HOME is not provided
-        if build_ucx():
-            ucx_path = pre_setup.ucx_path.strip()
-            if not ucx_path:
-                ucx_path = "https://codeload.github.com/openucx/ucx/zip/6d3fcfc"
-            print("ucx_path is", ucx_path)
-            cmd = "sudo apt install -y build-essential libtool autoconf automake libnuma-dev unzip;" +\
-            "rm -rf ucx*;" +\
-            "curl " + ucx_path + " -o ucx.zip; " + \
-                "unzip -o ./ucx.zip -d tmp; " + \
-                "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/;" +\
-                "cd ucx-build; pwd; which libtoolize; " + \
-                "./autogen.sh || ./autogen.sh && ./contrib/configure-release --enable-logging --enable-mt --prefix=" + ucx_home + " && make -j && sudo make install -j"
-            make_process = subprocess.Popen(cmd,
-                                            cwd='3rdparty',
-                                            stdout=sys.stdout,
-                                            stderr=sys.stderr,
-                                            shell=True)
-            make_process.communicate()
-            if make_process.returncode:
-                raise DistutilsSetupError('An ERROR occured while running the '
-                                          'Makefile for the ucx library. '
-                                          'Exit code: {0}'.format(make_process.returncode))
-
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
            not os.path.exists("3rdparty/ps-lite/deps/lib"):
+            print("should_build_ucx is", should_build_ucx())
+            if should_build_ucx():
+                build_ucx()
+
             if os.environ.get('CI', 'false') == 'false':
                 make_option += "-j "
             if has_rdma_header():
@@ -1052,9 +1070,13 @@ class custom_build_ext(build_ext):
                 if use_cuda():
                     cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
                     make_option += f'USE_CUDA=1 CUDA_HOME={cuda_home} '
-        
-            if not without_pre_setup():
+
+            if with_pre_setup():
                 make_option += pre_setup.extra_make_option()
+
+            if os.path.exists("./zeromq-4.1.4.tar.gz"):
+                zmq_tarball_path = os.path.join(here, './zeromq-4.1.4.tar.gz')
+                make_option += " WGET='curl -O '  ZMQ_URL=file://" + zmq_tarball_path + " "
 
             make_process = subprocess.Popen('make ' + make_option,
                                             cwd='3rdparty/ps-lite',
@@ -1071,7 +1093,7 @@ class custom_build_ext(build_ext):
         if has_cxx_flag:
             options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
 
-        if int(os.environ.get('BYTEPS_WITH_GPU', '1')):
+        if use_cuda():
             build_gpu_ops(options)
 
         built_plugins = []
@@ -1090,7 +1112,7 @@ class custom_build_ext(build_ext):
         if not without_pytorch():
             dummy_import_torch()
 
-        if not without_tensorflow():
+        if tensorflow_lib in self.extensions:
             try:
                 build_tf_extension(self, options)
                 built_plugins.append(True)
@@ -1102,7 +1124,7 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
-        if not without_pytorch():
+        if pytorch_lib in self.extensions:
             try:
                 torch_version = check_torch_version()
                 build_torch_extension(self, options, torch_version)
@@ -1115,7 +1137,7 @@ class custom_build_ext(build_ext):
                     built_plugins.append(False)
                 else:
                     raise
-        if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
+        if mxnet_lib in self.extensions:
             # fix "libcuda.so.1 not found" issue
             cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
             cuda_stub_path = cuda_home + '/lib64/stubs'
@@ -1126,7 +1148,7 @@ class custom_build_ext(build_ext):
                 built_plugins.append(True)
                 print('INFO: MXNet extension is built successfully.')
             except:
-                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
+                if not with_mxnet():
                     print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
                           '%s' % traceback.format_exc())
                     built_plugins.append(False)
@@ -1155,20 +1177,40 @@ if os.path.exists('launcher/launch.py'):
     shutil.copyfile('launcher/launch.py', 'bin/bpslaunch')
 
 extensions_to_build = [server_lib, tensorflow_lib, mxnet_lib, pytorch_lib]
-if int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
-    extensions_to_build.remove(mxnet_lib)
+extensions_to_exclude = set()
+if without_mxnet():
+    extensions_to_exclude.add(mxnet_lib)
 
 if without_tensorflow():
-    extensions_to_build.remove(tensorflow_lib)
+    extensions_to_exclude.add(tensorflow_lib)
 
 if without_pytorch():
-    extensions_to_build.remove(pytorch_lib)
+    extensions_to_exclude.add(pytorch_lib)
+
+if sys.argv[1].startswith('develop'):
+    # skip if the framework is missing, otherwise develop mode will fail
+    try:
+        import mxnet
+    except ImportError:
+        extensions_to_exclude.add(mxnet_lib)
+
+    try:
+        import tensorflow
+    except ImportError:
+        extensions_to_exclude.add(tensorflow_lib)
+
+    try:
+        import torch
+    except ImportError:
+        extensions_to_exclude.add(pytorch_lib)
+
+extensions_to_build = [x for x in extensions_to_build if x not in extensions_to_exclude]
 
 class sdist(sdist_orig):
     def run(self):
         try:
-            if not os.path.isfile("./ucx.zip"):
-                self.spawn(['curl', '-kL', 'https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.zip', '-o', 'ucx.zip'])
+            if not os.path.isfile("./ucx.tar.gz"):
+                self.spawn(['curl', '-kL', 'https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.tar.gz', '-o', 'ucx.tar.gz'])
             if not os.path.isfile("./zeromq-4.1.4.tar.gz"):
                 self.spawn(['curl', '-kL', '-O', 'https://github.com/zeromq/zeromq4-1/releases/download/v4.1.4/zeromq-4.1.4.tar.gz'])
         except DistutilsExecError:
