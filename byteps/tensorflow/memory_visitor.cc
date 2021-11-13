@@ -24,12 +24,14 @@
 #include "memory_visitor.h"
 #include "../common/logging.h"
 
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/process_state.h"
+
+// the memory visitor header is only available since TF2
 #if TF_MAJOR_VERSION >= 2 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/pool_allocator.h"
-#include "tensorflow/core/common_runtime/process_state.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #endif
 
 using namespace byteps;
@@ -58,6 +60,7 @@ class MemoryVistor {
       BPS_LOG(DEBUG) << "BytePS pinned memory visitor for GPU NOT enabled";
     }
 #endif
+#endif
     auto add_visitor_cpu = getenv("BYTEPS_PIN_MEMORY_CPU");
     if (add_visitor_cpu && atoi(add_visitor_cpu)) {
       ::tensorflow::SubAllocator::Visitor alloc_visitor = [](void* ptr, int numa_node,
@@ -69,7 +72,6 @@ class MemoryVistor {
     } else {
       BPS_LOG(DEBUG) << "BytePS pinned memory visitor for CPU NOT enabled";
     }
-#endif
   }
 };
 static MemoryVistor visitor;
