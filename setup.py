@@ -960,7 +960,9 @@ def build_ucx():
           "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/; " + \
           "cd ucx-build; pwd; which libtoolize; " + \
           "./autogen.sh; ./autogen.sh && " + \
-          "./contrib/configure-release --enable-mt --prefix={0} && make -j && {1} make install -j".format(ucx_prefix, sudo_str)
+          "./contrib/configure-release --enable-mt --prefix={0} && ".format(ucx_prefix) + \
+          "make -j && {0} make install -j && ".format(sudo_str) + \
+          "(sudo ldconfig || echo $?)"
     make_process = subprocess.Popen(cmd,
                                     cwd='3rdparty',
                                     stdout=sys.stdout,

@@ -3,7 +3,7 @@ from distutils.errors import CompileError, DistutilsError, DistutilsPlatformErro
 # For internal use. Please do not modify this file.
 
 def should_build_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
+    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 1))
     has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME', '')
     return byteps_with_ucx and not has_prebuilt_ucx
 
