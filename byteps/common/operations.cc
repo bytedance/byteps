@@ -923,9 +923,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     if (cpubuff) {
-      auto shm_prefix = std::string("BytePS_Numa_") + BytePSGlobal::GetUUID();
+      int byteps_root = BytePSGlobal::GetBasicComm()->getRoot();
+      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID();
       for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
-        std::string prefix_i = shm_prefix + std::to_string(i) + "_ShM_";
+        std::string prefix_i = shm_prefix;
+        if (i != byteps_root) {
+          prefix_i = prefix_i + std::string("_Numa_") + std::to_string(i);
+        }
         context.numa_cpubuff.push_back(shm_obj->openSharedMemory(prefix_i, key_list[0], aligned_size, false));
       }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
