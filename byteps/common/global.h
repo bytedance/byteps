@@ -245,6 +245,8 @@ class BytePSGlobal {
     return _cuda_reducers[i]; 
   }
 #endif
+  // error handling
+  static bool EnableErrHandling() { return _enable_err_handling; }
 
  private:
   static std::mutex _init_mutex;
@@ -255,6 +257,7 @@ class BytePSGlobal {
   // monitor frequency, measured in seconds
   static int64_t _monitor_interval;
   static bool _should_abort_on_timeout;
+  static bool _enable_err_handling;
   static int _rank;
   static int _local_rank;
   static int _size;

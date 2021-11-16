@@ -24,6 +24,7 @@
 #include "compressor/compressor.h"
 #include "core_loops.h"
 #include "global.h"
+#include "error.h"
 #include "logging.h"
 #include "../server/server.h"
 
@@ -119,6 +120,9 @@ bool DoFinishOrProceed(T& task) {
       Telemetry::RecordEnd(task->context->base_tensor_name);
 
       task->callback(Status::OK());
+      // error handling: remove the callback from the pending list
+      BytePSError::RemoveCallback(task->context->key_list[0]);
+
       // Add for profiling communication events
       if (ctx->profile_flag) {
         BPS_CHECK(task->context->comm_time.back()->dur == 0)

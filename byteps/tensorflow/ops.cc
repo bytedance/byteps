@@ -62,7 +62,6 @@ std::string GetOpName(const std::string& prefix, const std::string& name,
   return prefix + ".noname." + std::to_string(handle);
 }
 
-
 ::tensorflow::Status ConvertStatus(const common::Status& status) {
   switch (status.type()) {
     case common::OK:
@@ -75,6 +74,8 @@ std::string GetOpName(const std::string& prefix, const std::string& name,
       return ::tensorflow::errors::Aborted(status.reason());
     case common::INVALID_ARGUMENT:
       return ::tensorflow::errors::InvalidArgument(status.reason());
+    case common::DATA_LOSS:
+      return ::tensorflow::errors::DataLoss(status.reason());
     default:
       return ::tensorflow::errors::Unknown("Unknown error.");
   }

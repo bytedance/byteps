@@ -31,6 +31,7 @@
 #include "compressor/utils.h"
 #include "core_loops.h"
 #include "global.h"
+#include "error.h"
 #include "logging.h"
 #include "operations.h"
 #if BYTEPS_BUILDING_CUDA == 1
@@ -45,7 +46,7 @@ extern "C" {
 void byteps_init() {
   byteps_lazy_init();
   BytePSGlobal::GetOrInitPS();
-  BPS_LOG(INFO) << "byteps_init() DONE. rank=" << BytePSGlobal::GetRank();
+  BPS_LOG(DEBUG) << "byteps_init() DONE. rank=" << BytePSGlobal::GetRank();
 }
 
 void byteps_lazy_init() {
@@ -463,6 +464,9 @@ Status EnqueueAlltoAllTensor(std::string& name,
   if (total_partnum == 0) {
     callback(Status::OK());
   } else if (resp_total_partnum) {
+    // error handling
+    BytePSError::RecordCallback(byteps_context.key_list[0], callback);
+
     base_resp_task.offset = 0;
     base_resp_task.aux_output = size_output;
     if (output_size_unknown) {
@@ -590,6 +594,10 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
     accumulated += task->len;
   }
+
+  // keep a reference of the callback for error handling
+  // TODO(haibin.lin): unify send/recv key encoding
+  BytePSError::RecordCallback(context.key_list[0], callback);
 
   auto tensor = (e->tensor ? e->tensor : e->output);
   BPS_CHECK(tensor);

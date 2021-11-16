@@ -85,7 +85,8 @@ enum StatusType {
   PRECONDITION_ERROR,
   ABORTED,
   INVALID_ARGUMENT,
-  IN_PROGRESS
+  IN_PROGRESS,
+  DATA_LOSS
 };
 
 enum DeviceType { CPU, GPU };
@@ -186,6 +187,7 @@ class Status {
   static Status UnknownError(std::string message);
   static Status PreconditionError(std::string message);
   static Status Aborted(std::string message);
+  static Status DataLoss(std::string message);
   static Status InvalidArgument(std::string message);
   static Status InProgress();
   bool ok() const;

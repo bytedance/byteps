@@ -19,6 +19,7 @@
 #include "server.h"
 #include "../common/compressor/utils.h"
 #include "queue.h"
+#include "../common/error.h"
 
 namespace byteps {
 namespace server {
@@ -1348,6 +1349,10 @@ void BytePSServer::Init(int rank) {
   }
   int barrier_group = ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup;
   ps::Postoffice::GetServer()->Barrier(0, barrier_group);
+  // error handling
+  if (BytePSGlobal::EnableErrHandling()) {
+    ps::Postoffice::GetServer()->van()->set_err_handle(common::BytePSError::ErrHandle);
+  }
 
   // clean the server resource
   ps::Finalize(0, role, true);

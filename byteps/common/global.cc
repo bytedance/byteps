@@ -26,6 +26,7 @@
 #include "compressor/compressor.h"
 #include "../server/server.h"
 #include "global.h"
+#include "error.h"
 
 namespace byteps {
 namespace common {
@@ -38,7 +39,7 @@ std::condition_variable BytePSGlobal::_shutdown_cv;
 std::mutex BytePSGlobal::_shutdown_mu;
 int64_t BytePSGlobal::_monitor_interval = 300;
 bool BytePSGlobal::_should_abort_on_timeout = false;
-
+bool BytePSGlobal::_enable_err_handling = false;
 int BytePSGlobal::_rank = -1;
 int BytePSGlobal::_local_rank = 0;
 int BytePSGlobal::_size = 1;
@@ -184,15 +185,15 @@ void BytePSGlobal::Init() {
 
   Telemetry::InitEnv();
   // Set p2p related variables
-  _prof_all2all_latency = getenv("BYTEPS_PROFILE_ALL2ALL") ? atoi(getenv("BYTEPS_PROFILE_ALL2ALL")) : false;
+  _prof_all2all_latency = ParseEnv("BYTEPS_PROFILE_ALL2ALL", false);
   _uuid = getenv("BYTEPS_UUID") ? std::string(getenv("BYTEPS_UUID")) : "";
   _is_joint = std::string(getenv("DMLC_ROLE")) == "joint" ? true : false;
-  _skip_h2d = getenv("BYTEPS_P2P_SKIP_H2D") ? atoi(getenv("BYTEPS_P2P_SKIP_H2D")) : false;
-  _skip_input_copy = getenv("BYTEPS_P2P_SKIP_INPUT_COPY") ? atoi(getenv("BYTEPS_P2P_SKIP_INPUT_COPY")) : false;
+  _skip_h2d = ParseEnv("BYTEPS_P2P_SKIP_H2D", false);
+  _skip_input_copy = ParseEnv("BYTEPS_P2P_SKIP_INPUT_COPY", false);
   _alltoall_session_size = getenv("BYTEPS_ALLTOALL_SESSION_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_SESSION_SIZE")) : 2;
   _p2p_copy_group_size = getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE") ? atoi(getenv("BYTEPS_ALLTOALL_COPY_GROUP_SIZE")) : 16;
   _ps_instance_size = getenv("DMLC_GROUP_SIZE") ? atoi(getenv("DMLC_GROUP_SIZE")) : 1;
-  _is_alltoall_use_pull = getenv("BYTEPS_ALL2ALL_USE_PULL") ? atoi(getenv("BYTEPS_ALL2ALL_USE_PULL")) : false;
+  _is_alltoall_use_pull = ParseEnv("BYTEPS_ALL2ALL_USE_PULL", false);
   _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
   _disable_p2p = ParseEnv("BYTEPS_DISABLE_P2P", false);
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
@@ -200,20 +201,21 @@ void BytePSGlobal::Init() {
   _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
   int gdr_allreduce_level = getenv("BYTEPS_GDR_ALLREDUCE_LEVEL") ? atoi(getenv("BYTEPS_GDR_ALLREDUCE_LEVEL")) : 1;
   _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
-
+  _enable_err_handling = ParseEnv("BYTEPS_ENABLE_ERR_HANDLING", false);
   if (_is_gdr_allreduce && _disable_gpu_allreduce) {
     BPS_LOG(INFO) << "GDR allreduce enabled, forcing BYTEPS_DISABLE_GPU_ALLREDUCE to be false";
     _disable_gpu_allreduce = false;
   }
 
-  BPS_LOG(INFO) << "Joint=" << _is_joint
-                << ", skip_in2aligned=" << _skip_input_copy << ", trace=" << _is_trace
-                << ", session_size=" << _alltoall_session_size
-                << ", use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
-                << ", disable_cpu_allreduce=" << _disable_cpu_allreduce
-                << ", disable_gpu_allreduce=" << _disable_gpu_allreduce
-                << ", disable_p2p=" << _disable_p2p
-                << ", is_gdr_allreduce=" << _is_gdr_allreduce;
+  BPS_LOG(INFO) << "joint=" << _is_joint
+                << " skip_in2aligned=" << _skip_input_copy << " trace=" << _is_trace
+                << " session_size=" << _alltoall_session_size
+                << " use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
+                << " disable_cpu_allreduce=" << _disable_cpu_allreduce
+                << " disable_gpu_allreduce=" << _disable_gpu_allreduce
+                << " disable_p2p=" << _disable_p2p
+                << " is_gdr_allreduce=" << _is_gdr_allreduce
+                << " err_handling=" << _enable_err_handling;
 
   if (_is_gdr_allreduce) {
     BPS_CHECK(gdr_allreduce_level == 0 || gdr_allreduce_level == 1)
@@ -524,6 +526,9 @@ ps::KVWorker<char>* BytePSGlobal::GetOrInitPS(size_t index) {
     }
     int barrier_group = ps::kScheduler + ps::kWorkerGroup + ps::kServerGroup;
     ps::Postoffice::GetWorker()->Barrier(0, barrier_group);
+    if (_enable_err_handling) {
+      ps::Postoffice::GetWorker()->van()->set_err_handle(BytePSError::ErrHandle);
+    }
     BPS_LOG(DEBUG) << "PS rank " << _worker_id << " initialized. num_server="
                     << ps::NumServers() << ". num_worker=" << ps::NumWorkers();
   }
@@ -690,6 +695,7 @@ int32_t BytePSGlobal::DeclareP2PTensor(const std::string& name, int sender, int 
     _name_to_cxt[name].tensor_name = name.c_str();  // disable copy-on-write
     _name_to_cxt[name].base_tensor_name = name.c_str();
     _name_to_cxt[name].op_type = P2P_OP;
+    // TODO(haibin.lin): unify send/recv key encoding with other operations
     // the next key starts from 0 per send/recv pair
     int send_recv_pair = (sender << 16) + receiver;
     _name_to_cxt[name].sender = sender;

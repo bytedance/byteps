@@ -85,6 +85,10 @@ Status Status::Aborted(std::string message) {
   return Status(StatusType::ABORTED, message);
 }
 
+Status Status::DataLoss(std::string message) {
+  return Status(StatusType::DATA_LOSS, message);
+}
+
 Status Status::InvalidArgument(std::string message) {
   return Status(StatusType::INVALID_ARGUMENT, message);
 }

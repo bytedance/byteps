@@ -221,11 +221,11 @@ class BytePSServer {
                               const ps::KVPairs<char> &req_data,
                               ps::KVServer<char>* server);
     static void BytePSGDRHandler(const ps::KVMeta& req_meta,
-                              const ps::KVPairs<char> &req_data,
-                              ps::KVServer<char>* server);
+                                 const ps::KVPairs<char> &req_data,
+                                 ps::KVServer<char>* server);
     static void BytePSGDRv2Handler(const ps::KVMeta& req_meta,
-                              const ps::KVPairs<char> &req_data,
-                              ps::KVServer<char>* server);
+                                   const ps::KVPairs<char> &req_data,
+                                   ps::KVServer<char>* server);
 
     static std::vector<RecvArray> GetRecvPartitions(std::vector<uint64_t> keys) {
       std::vector<RecvArray> arrs;
@@ -261,10 +261,11 @@ class BytePSServer {
     static void InitP2PCopyTable();
     static int IsP2PDirectResponse() { return p2p_direct_response_; }
     static void SendPullResponse(uint64_t key, char* data, int len);
-    
+
     static void InitGDRReadyTable();
     static void LocalPushPull(uint64_t key, char* push_addr, char* pull_addr, size_t len, int dtype);
-    static void EnqueueLocalGpuSumTask(uint64_t key, char* input, char* output, size_t len, int dtype, bool do_copy);
+    static void EnqueueLocalGpuSumTask(uint64_t key, char* input, char* output, size_t len,
+                                       int dtype, bool do_copy);
 
 
   private:
@@ -301,7 +302,6 @@ class BytePSServer {
         const ps::KVMeta& req_meta, const ps::KVPairs<char> &req_data);
 
     inline static void SendGDRBufferedPullResponse(int i, BytePSEngineMessage& msg);
-
     static std::atomic<uint64_t> independent_cnt_;
 
     // knobs

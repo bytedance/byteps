@@ -1,8 +1,10 @@
 #!/bin/bash
 
 path="`dirname $0`"
-ip=$(ip a show eth0 | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}')
 RANK=$2
+export DMLC_INTERFACE=${DMLC_INTERFACE:-eth0}
+ip=$(ip a show $DMLC_INTERFACE | awk '/inet / {print $2}' |  awk -F'[/]' '{print $1}')
+
 export PATH=~/.local/bin:$PATH
 export BYTEPS_OMP_THREAD_PER_GPU=0
 export LD_LIBRARY_PATH=$CUDA_HOME/lib:$UCX_HOME/lib:$CUDA_HOME/extras/CUPTI/lib64:$CUDA_HOME/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
