@@ -25,6 +25,7 @@ from byteps.torch.ops import size, local_size, rank, local_rank
 from byteps.torch.ops import send_async, recv_async
 from byteps.torch.optimizer import _DistributedOptimizer
 from byteps.torch.functions import broadcast_parameters, broadcast_optimizer_state, broadcast_object
+from byteps.torch.sync_batch_norm import SyncBatchNorm
 
 def DistributedOptimizer(optimizer, named_parameters=None,
                          compression=Compression.none,
