@@ -235,7 +235,8 @@ class BytePSGlobal {
   static bool IsGDR() { return _is_gdr_allreduce; }
   static bool IsGDRGpu2Gpu() { return _gdr_allreduce_level == common::GPU2GPU; }
   static bool IsGDRKeyInited(uint64_t key, int receiver);
-  static size_t GetSmallTensorThreshold() { return _small_tensor_threshold; };
+  static size_t GetGDRPhase1Threshold() { return _gdr_phase1_tensor_threshold; }
+  static size_t GetGDRPhase2Threshold() { return _gdr_phase2_tensor_threshold; }
   static int GetGlobalReduceRoot(uint64_t key) { return Hash_DJB2(key) % _num_phy_node; }
   static ReadyTable* GetGDRPushPullTable();
   static ReadyTable* GetGDRAckTable();
@@ -245,6 +246,12 @@ class BytePSGlobal {
     return _cuda_reducers[i]; 
   }
 #endif
+  static uint64_t Hash_DJB2(uint64_t key);
+  static uint64_t Hash_Naive(uint64_t key);
+  static uint64_t Hash_BuiltIn(uint64_t key);
+  static uint64_t Hash_SDBM(uint64_t key);
+  static uint64_t Hash_Mixed_Mode(uint64_t key);
+  
   // error handling
   static bool EnableErrHandling() { return _enable_err_handling; }
 
@@ -311,7 +318,8 @@ class BytePSGlobal {
   // is GPU direct allreduce mode
   static bool _is_gdr_allreduce;
   static GDRLevel _gdr_allreduce_level;
-  static size_t _small_tensor_threshold;
+  static size_t _gdr_phase1_tensor_threshold;
+  static size_t _gdr_phase2_tensor_threshold;
   static std::mutex _gdr_inited_key_mu;
   static std::unordered_map<uint64_t, std::unordered_map<int, bool>> _gdr_inited_key;
 #if HAVE_CUDA == 1
@@ -416,11 +424,6 @@ class BytePSGlobal {
   static std::hash<std::string> _built_in_hash_fn;
   static unsigned int _built_in_hash_coefficient;
   static volatile bool _mixed_mode;
-  static uint64_t Hash_Naive(uint64_t key);
-  static uint64_t Hash_BuiltIn(uint64_t key);
-  static uint64_t Hash_DJB2(uint64_t key);
-  static uint64_t Hash_SDBM(uint64_t key);
-  static uint64_t Hash_Mixed_Mode(uint64_t key);
 };
 
 

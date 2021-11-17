@@ -585,13 +585,18 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
+    if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu() 
+        && task->len <= BytePSGlobal::GetGDRPhase1Threshold()) {
+      task->queue_list.clear();
+      task->queue_list.push_back(GDR_V2_PUSH_PULL);
+    }
     BPS_CHECK(task->tensor_name != "");
     BPS_LOG(TRACE) << "EnqueueTensor: " << (task->tensor_name)
                    << ", key=" << (task->key) << ", offset=" << (task->offset)
                    << ", len=" << (task->len) << ", device=" << (task->device)
                    << ", local_rank=" << BytePSGlobal::GetLocalRank();
 
-    BytePSGlobal::GetScheduledQueue(e->queue_list[0])->addTask(task);
+    BytePSGlobal::GetScheduledQueue(task->queue_list[0])->addTask(task);
     accumulated += task->len;
   }
 

@@ -135,7 +135,7 @@ class TensorFlowTests(tf.test.TestCase):
             name = f'allreduce_{dtype.name}_{dim}_{device.strip("/")}'
             with tf.device(device):
                 tensor = self.random_uniform(
-                    [17] * dim, -100, 100, dtype=dtype)
+                    [17] * dim, -10, 10, dtype=dtype)
                 summed = bps.push_pull(tensor, average=False, name=name)
                 multiplied = tensor * size
                 max_difference = tf.reduce_max(tf.abs(summed - multiplied))
@@ -144,10 +144,12 @@ class TensorFlowTests(tf.test.TestCase):
             # ranks, since we're comparing against precise multiplication.
             if size <= 3 or dtype in [tf.int32, tf.int64]:
                 threshold = 0
+            elif dtype == tf.float16:
+                threshold = 0.1
             elif size < 10:
-                threshold = 1e-4
+                threshold = 0.01
             elif size < 15:
-                threshold = 5e-4
+                threshold = 0.1
             else:
                 self.skipTest("BytePS cluster too large for precise multiplication comparison")
 

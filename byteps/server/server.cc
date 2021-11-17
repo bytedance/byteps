@@ -118,6 +118,9 @@ ReadyTable* BytePSServer::p2p_group_copy_table_ = nullptr;
 ReadyTable* BytePSServer::gdr_push_pull_table_ = nullptr;
 ReadyTable* BytePSServer::gdr_ack_table_ = nullptr;
 
+std::mutex SmallTensorMngr::small_tensor_mu_;
+std::unordered_map<uint64_t, bool> SmallTensorMngr::small_tensor_map_;
+
 // compression
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
 
@@ -255,6 +258,21 @@ void BytePSServer::SendPullResponse(const DataHandleType type,
     response->vals = ps::SArray<char>(p, len, false);
     server->Response(req_meta, *response);
   }
+}
+
+void BytePSServer::SendGDRPullResponse(const DataHandleType type,
+                                       const uint64_t key,
+                                       const ps::KVMeta& req_meta,
+                                       ps::KVServer<char>* server) {
+  auto& m = GetUpdateBuf(key)->merged;
+  char* data = m.flap ? m.tensor_aux : m.tensor;
+  CHECK(data) << "init " << key << " first";
+  auto len = m.len;
+  ps::KVPairs<char> response;
+  response.keys = {EncodeKey(key)};
+  response.lens = {len};
+  response.vals = ps::SArray<char>(data, len, false); 
+  server->Response(req_meta, response);
 }
 
 void BytePSServer::BytePSServerEngineThread(int i) {
@@ -429,30 +447,42 @@ void BytePSServer::BytePSServerGDRIndependentThread(int i) {
 
 inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage& msg) {
   std::lock_guard<std::mutex> lock(flag_mu_[i]);
+  CHECK(BytePSGlobal::IsGDR());
   if (is_push_finished_[i].find(msg.key) == is_push_finished_[i].end()) {
     is_push_finished_[i][msg.key] = false;
     pull_cnt_[i][msg.key] = 0;
     seen_sender_[i][msg.key].clear();
   }
+  GetUpdateBuf(msg.key)->merged.flap = !GetUpdateBuf(msg.key)->merged.flap;
   is_push_finished_[i][msg.key] = true;
   auto it = q_pull_reqmeta_[i][msg.key].begin();
   while (it != q_pull_reqmeta_[i][msg.key].end()) {
     if (seen_sender_[i][msg.key].find(it->sender) ==
         seen_sender_[i][msg.key].end()) {
-      // TODO: support multi-instance for push-pull
-      SendPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
+      if (BytePSGlobal::IsGDRGpu2Gpu()) {
+        SendGDRPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
+      } else {
+        SendPullResponse(msg.type, msg.key, *it, byteps_server_.at(0));
+      }
       pull_cnt_[i][msg.key] += 1;
       seen_sender_[i][msg.key].insert(it->sender);
       it = q_pull_reqmeta_[i][msg.key].erase(it);
     } else {
       ++it;
     }
-    if (pull_cnt_[i][msg.key] == num_phy_node_ - 1) {
+    size_t expected = SmallTensorMngr::IsRegistered(msg.key) 
+                    ? BytePSGlobal::GetSize() : (num_phy_node_ - 1);
+    if (pull_cnt_[i][msg.key] == expected) {
       is_push_finished_[i][msg.key] = false;
       pull_cnt_[i][msg.key] = 0;
       seen_sender_[i][msg.key].clear();
-      if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()) {
-        GetUpdateBuf(msg.key)->merged.tensor = nullptr;
+      if (BytePSGlobal::IsGDRGpu2Gpu()) {
+        auto& m = GetUpdateBuf(msg.key)->merged;
+        if (m.flap) {
+          m.tensor_aux = nullptr;
+        } else {
+          m.tensor = nullptr;
+        }
       }
       break;
     }
@@ -471,31 +501,36 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
       case GPU_SUM_RECV_LOCAL:
         // go to next
       case GPU_SUM_RECV: {
-        auto updates = GetUpdateBuf(msg.key);
+        auto& m = GetUpdateBuf(msg.key)->merged;
         auto cuda_reducer = BytePSGlobal::GetCudaReducer(i);
-        if (!updates->merged.len) {
-          updates->merged.len = msg.len;
+        if (!m.len) {
+          m.len = msg.len;
         } else {
-          CHECK_EQ(updates->merged.len, msg.len) 
-              << updates->merged.len << " " << msg.len
+          CHECK_EQ(m.len, msg.len) 
+              << m.len << " " << msg.len
               << " (key=" << msg.key << ")";
         }
-        if (!updates->merged.tensor) {
-          updates->merged.tensor = (char*) msg.src;
+        auto& tensor = m.flap ? m.tensor : m.tensor_aux;
+        if (!tensor) {
+          tensor = (char*) msg.src;
         } else {
           auto bps_dtype = cuda_reducer->GetDataType(msg.type.dtype);
           if (msg.ops == GPU_SUM_RECV_LOCAL) {
-            cuda_reducer->Sum(msg.src, updates->merged.tensor, msg.len, bps_dtype, /*sync*/false);
+            cuda_reducer->Sum(msg.src, tensor, msg.len, bps_dtype, /*sync*/false);
             cuda_reducer->Sync();
-            updates->merged.tensor = (char*) msg.src;
+            tensor = (char*) msg.src;
           } else {
-            cuda_reducer->Sum(updates->merged.tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
+            cuda_reducer->Sum(tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
           }
         }
         AddUpdateRequest(msg.key, msg.req_meta);
-        if (GetUpdateNumRequest(msg.key) == GetNumExpectedWorker(msg.key)) {
+        size_t expected = SmallTensorMngr::IsRegistered(msg.key) 
+                        ? BytePSGlobal::GetSize() : GetNumExpectedWorker(msg.key);
+        if (GetUpdateNumRequest(msg.key) == expected) {
           cuda_reducer->Sync();
-          GetGDRPushPullTable()->AddReadyCount(msg.key);
+          if (!SmallTensorMngr::IsRegistered(msg.key)) {
+            GetGDRPushPullTable()->AddReadyCount(msg.key);
+          }
           CleanUpdateRequest(msg.key);
           SendGDRBufferedPullResponse(i, msg);
         }
@@ -699,6 +734,7 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
     BytePSGDRHandler(req_meta, req_data, server);
     return;
   } else if (type.requestType == RequestType::kGDRv2PushPull
+             || type.requestType == RequestType::kGDRv2PushPullSmall
              || type.requestType == RequestType::kGDRAckSignal) {
     BytePSGDRv2Handler(req_meta, req_data, server);
     return;
@@ -1031,7 +1067,11 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
     return;
   }
   
-  SetNumExpectedWorker(key, num_phy_node_);
+  if (req_type == RequestType::kGDRv2PushPullSmall) {
+    SmallTensorMngr::Register(key);
+  } else {
+    SetNumExpectedWorker(key, num_phy_node_);
+  }
 
   if (req_meta.push) {  // push request
     CHECK_EQ(req_data.lens.size(), (size_t)1);
@@ -1091,15 +1131,26 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
         LOG(INFO) << "pull request of key " << key 
                   << " received and processed immediately";
       }
-      SendPullResponse(type, key, req_meta, server);
+      SendGDRPullResponse(type, key, req_meta, server);
       pull_cnt_[tid][key] += 1;
       seen_sender_[tid][key].insert(req_meta.sender);
-      if (pull_cnt_[tid][key] == num_phy_node_ - 1) {
+      // For small tensor, we receive from all GPUs
+      size_t expected = SmallTensorMngr::IsRegistered(key) 
+                      ? BytePSGlobal::GetSize() : (num_phy_node_ - 1);
+      if (pull_cnt_[tid][key] == expected) {
         is_push_finished_[tid][key] = false;
         pull_cnt_[tid][key] = 0;
         seen_sender_[tid][key].clear();
         if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()) {
-          GetUpdateBuf(key)->merged.tensor = nullptr;
+          auto& m = GetUpdateBuf(key)->merged;
+          // a pair of ping-pong buffers to enable zero-copy and 
+          // avoid data conflict. ``flap`` is the control switch 
+          // between these two buffers.
+          if (m.flap) {
+            m.tensor_aux = nullptr;
+          } else {
+            m.tensor = nullptr;
+          }
         }
       }
     } else {
@@ -1156,9 +1207,8 @@ size_t BytePSServer::GetNumExpectedWorker(uint64_t key) {
     if (!BytePSGlobal::IsGDRGpu2Gpu()) num_expected--;
     if (num_expected_workers_.find(key) == num_expected_workers_.end()) {
       num_expected_workers_[key] = num_expected;
-    } else {
-      CHECK_EQ(num_expected_workers_[key], num_expected);
-    }
+    } 
+    // for small tensors, it is guaranteed that SetNumExpectedWorker has already been called
   } else {
     CHECK_NE(num_expected_workers_.find(key), num_expected_workers_.end()) << key;
   }

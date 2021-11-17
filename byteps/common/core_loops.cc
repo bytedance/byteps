@@ -942,6 +942,34 @@ bool RunGDRv2PushPullLoopOnce() {
   int dtype = task->tensor->dtype();
   auto unit_len = tensor->size() / tensor->shape().num_elements();
   auto num_elem_per_gpu = len / local_size / unit_len;
+  bool is_phase1_small_tensor = (len <= BytePSGlobal::GetGDRPhase1Threshold());
+  if (is_phase1_small_tensor) {
+    int global_reduce_root = BytePSGlobal::Hash_DJB2(task->key) % BytePSGlobal::GetSize();
+    auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, global_reduce_root);
+    char* push_data = (char*)(task->tensor->data()) + offset;
+    char* pull_data = (char*)(task->output->data()) + offset;
+    ps::SArray<char> push_vals(push_data + offset, len, false);
+    int cmd = server::GetCommandType(server::RequestType::kGDRv2PushPullSmall, dtype, GPU);
+    if (!BytePSGlobal::IsGDRKeyInited(task->key, global_reduce_root)) {
+      BPS_LOG(DEBUG) << "rank " << BytePSGlobal::GetRank() 
+                    << ": GDR init push, key " << task->key << ", len " << len
+                    << ", receiver " << global_reduce_root 
+                    << " (small tensor < threshold1)";
+      BytePSGlobal::GetPS()->Wait(BytePSGlobal::GetPS()->ZPush(pskv.keys, push_vals, pskv.lens, cmd));
+    }
+    BytePSGlobal::GetPS()->ZPush(pskv.keys, push_vals, pskv.lens, cmd,
+        [task, pull_data, len, cmd, global_reduce_root]() { 
+            auto pull_vals = new ps::SArray<char>(pull_data, len, false);
+            auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, global_reduce_root);
+            BytePSGlobal::GetPS()->ZPull(pskv.keys, pull_vals, &pskv.lens, cmd, 
+                [task, pull_vals, global_reduce_root]() { 
+                  delete pull_vals; 
+                  FinishOrProceed(task); 
+                });
+        });
+    return true;
+  }
+
   // lrs: local reduce scatter
   int lrs_offset = local_rank * num_elem_per_gpu * unit_len; 
   size_t comm_len = num_elem_per_gpu * unit_len;
@@ -961,7 +989,7 @@ bool RunGDRv2PushPullLoopOnce() {
   auto grs_size = BytePSGlobal::GetPhyNodeNum();
   auto num_elem_per_node = comm_len / grs_size / unit_len;
   auto grs_left_elem = (comm_len / unit_len) - (num_elem_per_node * grs_size);
-  bool is_small_tensor = ((num_elem_per_node * unit_len) < BytePSGlobal::GetSmallTensorThreshold());
+  bool is_phase2_small_tensor = ((num_elem_per_node * unit_len) < BytePSGlobal::GetGDRPhase2Threshold());
   for (int j = 0; j < grs_size; ++j) {
     int i = (grs_rank + 1 + j) % grs_size; // form a ring to balance the traffic
     int grs_offset = i * num_elem_per_node * unit_len;    
@@ -969,7 +997,7 @@ bool RunGDRv2PushPullLoopOnce() {
     if (grs_left_elem && (i == grs_size - 1)) {
       grs_len += grs_left_elem * unit_len;
     }
-    if (is_small_tensor) {
+    if (is_phase2_small_tensor) {
       grs_len = comm_len;
       grs_offset = 0;
       i = BytePSGlobal::GetGlobalReduceRoot(task->key);
@@ -988,13 +1016,13 @@ bool RunGDRv2PushPullLoopOnce() {
         server::BytePSServer::EnqueueLocalGpuSumTask(
             task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
       } else {
-        BPS_CHECK(is_small_tensor);
+        BPS_CHECK(is_phase2_small_tensor);
         BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
         for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
           BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
         }
       }
-      if (is_small_tensor) break;
+      if (is_phase2_small_tensor) break;
       continue;
     }
     char* grs_pull_data = (char*)task->output->data() + task->offset + lrs_offset + grs_offset;
@@ -1007,8 +1035,8 @@ bool RunGDRv2PushPullLoopOnce() {
         BPS_LOG(DEBUG) << "rank " << BytePSGlobal::GetRank() 
                       << ": GDR init push, key " << task->key << ", len " << grs_len
                       << ", receiver " << receiver 
-                      << (is_small_tensor ? " (small tensor)" : ", partition ")
-                      << (is_small_tensor ? "" : std::to_string(j));
+                      << (is_phase2_small_tensor ? " (small tensor < threshold2)" : ", partition ")
+                      << (is_phase2_small_tensor ? "" : std::to_string(j));
         BytePSGlobal::GetPS()->Wait(
             BytePSGlobal::GetPS()->ZPush(pskv.keys, vals, pskv.lens, cmd));
       }
@@ -1032,10 +1060,10 @@ bool RunGDRv2PushPullLoopOnce() {
                   });
           });
     } else {
-      BPS_CHECK(is_small_tensor);
+      BPS_CHECK(is_phase2_small_tensor);
       BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
     }
-    if (is_small_tensor) {
+    if (is_phase2_small_tensor) {
       for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
         BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
       }

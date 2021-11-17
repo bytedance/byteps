@@ -25,6 +25,7 @@ enum class RequestType {
   kLeaderPushPullAvg,
   kGDRPushPull,
   kGDRv2PushPull,
+  kGDRv2PushPullSmall,
   kGDRAckSignal,
   kRowSparsePushPull,
   kCompressedPushPull,

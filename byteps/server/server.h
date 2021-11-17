@@ -70,6 +70,8 @@ struct BytePSArray {
   // whether the tensor data is managed by the server
   bool managed = true;
   bool registered = false;
+  char* tensor_aux;
+  bool flap = true; // a switch between using tensor and tensor_aux
 };
 
 struct RecvArray {
@@ -207,6 +209,21 @@ class GDRCopyManager {
 #endif
 };
 
+class SmallTensorMngr {
+ public:
+  static void Register(uint64_t key) {
+    std::lock_guard<std::mutex> lk(small_tensor_mu_);
+    small_tensor_map_[key] = true;
+  }
+  static bool IsRegistered(uint64_t key) {
+    std::lock_guard<std::mutex> lk(small_tensor_mu_);
+    return small_tensor_map_.find(key) != small_tensor_map_.end();
+  }
+ private:
+  static std::mutex small_tensor_mu_;
+  static std::unordered_map<uint64_t, bool> small_tensor_map_;
+};
+
 class BytePSServer {
   public: 
     // Init should be called before Init(), since it
@@ -286,6 +303,11 @@ class BytePSServer {
     static void SendPushResponse(uint64_t key, const ps::KVMeta& req,
                                  ps::KVServer<char>* server);
     static void SendPullResponse(const DataHandleType type,
+                                const uint64_t key,
+                                const ps::KVMeta& req_meta,
+                                ps::KVServer<char>* server);
+    static void SendGDRPullResponse(
+                                const DataHandleType type,
                                 const uint64_t key,
                                 const ps::KVMeta& req_meta,
                                 ps::KVServer<char>* server);

@@ -98,7 +98,8 @@ std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
 std::unordered_map<uint64_t, std::unordered_map<int, bool>> BytePSGlobal::_gdr_inited_key;
 std::mutex BytePSGlobal::_gdr_inited_key_mu;
 GDRLevel BytePSGlobal::_gdr_allreduce_level = GPU2GPU;
-size_t BytePSGlobal::_small_tensor_threshold;
+size_t BytePSGlobal::_gdr_phase1_tensor_threshold;
+size_t BytePSGlobal::_gdr_phase2_tensor_threshold;
 // tables
 std::mutex BytePSGlobal::_context_mutex;
 std::vector<ps::KVWorker<char>*> BytePSGlobal::_ps;
@@ -232,11 +233,16 @@ void BytePSGlobal::Init() {
       _cuda_reducers.push_back(std::make_shared<CudaReducer>(num_block, num_thread));
     }
 #endif
-    _small_tensor_threshold = getenv("BYTEPS_SMALL_TENSOR_THRESH") 
-                            ? atoi(getenv("BYTEPS_SMALL_TENSOR_THRESH")) : 128000;
+    _gdr_phase1_tensor_threshold = getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH") 
+                            ? atoi(getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH")) : 1024;
+    _gdr_phase2_tensor_threshold = getenv("BYTEPS_GDR_PHASE2_TENSOR_THRESH") 
+                            ? atoi(getenv("BYTEPS_GDR_PHASE2_TENSOR_THRESH")) : 128000;
     if (_gdr_allreduce_level == GPU2GPU) {
+      BPS_CHECK_LT(_gdr_phase1_tensor_threshold, _gdr_phase2_tensor_threshold) 
+          << "BYTEPS_GDR_PHASE1_TENSOR_THRESH must be smaller than BYTEPS_GDR_PHASE2_TENSOR_THRESH";
       BPS_LOG(INFO) << "GDR Allreduce level set to GPU2GPU, "
-          << "small tensor thresh is " << _small_tensor_threshold << " bytes";
+          << "phase-1 threshold is " << _gdr_phase1_tensor_threshold << " bytes, "
+          << "phase-2 threshold is " << _gdr_phase2_tensor_threshold << " bytes";
     } else {
       BPS_LOG(INFO) << "GDR Allreduce level set to GPU2CPU";
     }
