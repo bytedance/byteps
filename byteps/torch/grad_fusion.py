@@ -87,6 +87,8 @@ class Bucket:
         self.ready_param_idx = set()
         self.name = None # for bps push_pull
         self.no_copy = False
+        self.dtype = None
+        self.num_element = 0
 
     def init_tensor(self, num_element, dtype, no_copy=False):
         '''init bucket tensor'''
@@ -94,6 +96,8 @@ class Bucket:
             self.no_copy = no_copy
         else:
             self.tensor = torch.zeros(num_element, dtype=dtype).cuda()
+        self.dtype = dtype
+        self.num_element = num_element
 
     @property
     def ready(self):
@@ -119,6 +123,7 @@ class _GradFusion:
         # https://github.com/pytorch/pytorch/issues/7733
         self.param_idx = {v.__hash__(): i for i, v
                           in enumerate(self._trainable_params)}
+        self._orig_param_idx = self.param_idx
         self.param_set = set(self._trainable_params)
         self.num_successful_step = 0 # tracks the number of successful training steps, 1-based index
         # tracks the order a grad hook is called within one step. Will be set to
@@ -139,11 +144,15 @@ class _GradFusion:
             self.buckets = self.bucket_set[self.bucket_set_idx]
 
         print(f'rank {rank()}: Grad fusion enabled, num params ' +
-                f'{len(self._trainable_params)}, bucket_bytes_cap {self.bucket_bytes_cap/1024/1024} MB, ' +
+                f'{len(self._trainable_params)}, bucket_bytes_cap {self.bucket_bytes_cap/1024/1024} MiB, ' +
                 f'grad_accum_step {self._optim.backward_passes_per_step} fuse_last_bucket ' +
                 f'{self.fuse_last_bucket}')
 
         self._grad_hooks = list()
+
+        # only used by the ddp front end
+        self._should_remove_grads = True
+        self._should_restore_grads = False
 
     def _construct_buckets(self):
         # construct buckets based on dtype
@@ -156,6 +165,14 @@ class _GradFusion:
         # dtype2bucket[dtype][1] means num_element
         dtype2bucket = {v: [Bucket(), 0] for v in dtypes}
         for idx, param in enumerate(self._trainable_params):
+            new_num_bytes = param.numel() * param.element_size()
+            if new_num_bytes >= self.bucket_bytes_cap:
+                bucket = Bucket()
+                bucket.param_idx.append(idx)
+                no_copy = self._optim._staleness == 0
+                bucket.init_tensor(param.numel(), param.dtype, no_copy=no_copy)
+                self.buckets.append(bucket)
+                continue
             (bucket, num_element) = dtype2bucket[param.dtype]
             self.param_bucket_info[idx][1] = num_element
             bucket.param_idx.append(idx)
@@ -198,7 +215,10 @@ class _GradFusion:
         # We assume that the order of the tensors is the order in which they are
         # used (or the reverse order in which their gradients are produced).
         # This sorting step ensures that the buckets are ready in consecutive order.
-        self.buckets = sorted(self.buckets, key=lambda k: min(k.param_idx), reverse=True)
+        if kwargs.get('is_reorder', False):
+            self.buckets = sorted(self.buckets, key=lambda k: max(k.param_idx))
+        else:
+            self.buckets = sorted(self.buckets, key=lambda k: min(k.param_idx), reverse=True)
         self.fuse_last_bucket = min(self.fuse_last_bucket, len(self.buckets))
         for i, bucket in enumerate(self.buckets):
             for param_idx in bucket.param_idx:
@@ -209,11 +229,12 @@ class _GradFusion:
             print("=================")
             print("bucket structure")
             for i, bucket in enumerate(self.buckets):
-                print(f'bucket.name: {bucket.name}, size: {bucket.tensor.element_size() * bucket.tensor.numel()}')
+                print(f'bucket.name: {bucket.name}, size: {torch.ones(1, dtype=bucket.dtype).element_size() * bucket.num_element:_}')
                 for param_idx in bucket.param_idx:
                     curr_param = self._trainable_params[param_idx]
-                    print(f'  param_idx: {param_idx}, name: {self.param_to_name[curr_param.__hash__()]}, '
-                          f'size: {curr_param.element_size() * curr_param.numel()}')
+                    orig_param_idx = self._orig_param_idx[curr_param.__hash__()]
+                    print(f'  param_idx: {param_idx}, orig_param_idx: {orig_param_idx}, name: {self.param_to_name[curr_param.__hash__()]}, '
+                          f'dtype: {curr_param.dtype}, size: {curr_param.element_size() * curr_param.numel():_}')
 
     def _init_param_reorder_state(self, **kwargs):
         ''' init state for reorder params. '''
@@ -222,6 +243,23 @@ class _GradFusion:
         default_probe_steps = int(os.getenv("BYTEPS_BUCKET_PROBE_STEPS", 5))
         self.param_order_record_step = kwargs.get('param_order_record_step',
             default_probe_steps)
+
+    def _zero_grads_(self):
+        with torch.no_grad():
+            for param in self._trainable_params:
+                param.grad.zero_()
+
+    def _remove_grads(self):
+        self._stash_grads = {}
+        with torch.no_grad():
+            for param in self._trainable_params:
+                self._stash_grads[param.__hash__()] =  param.grad
+                param.grad = None
+
+    def _restore_grads(self):
+        with torch.no_grad():
+            for param in self._trainable_params:
+                param.grad = self._stash_grads[param.__hash__()]
 
     def _model_post_fwd_hook(self, module, _inputs, outputs):
         ''' post model forward hook. '''
@@ -250,13 +288,13 @@ class _GradFusion:
         self.param_order_base_idx = 0
         if self.num_successful_step == self.param_order_record_step:
             self._reorder_params()
-            self._init_bucket()
+            self._init_bucket(is_reorder=True)
             self.fusion_already_reordered = True
             if self._optim._staleness:
                 niter = self._optim.state['byteps_niter']
                 self.bucket_set_idx = niter % (self._optim._staleness + 1)
                 self.bucket_set = [self.buckets]
-                self._init_bucket()
+                self._init_bucket(is_reorder=True)
                 self.bucket_set.append(self.buckets)
                 self.buckets = self.bucket_set[self.bucket_set_idx]
 
@@ -275,10 +313,13 @@ class _GradFusion:
         ''' reorder params. '''
         param_num = len(self._trainable_params)
         sort_fn = lambda idx: self.param_order_idx.get(idx, param_num)
-        param_idx = sorted(list(range(param_num)), key=sort_fn, reverse=True)
+        param_idx = sorted(list(range(param_num)), key=sort_fn)
         idx_tensor = torch.tensor(param_idx)  # pylint:disable=not-callable
         name = "reorder_idx." + str(self.num_successful_step)
+        if torch.cuda.is_available():
+            idx_tensor = idx_tensor.to(device='cuda')
         bcast_param_indices([(name, idx_tensor)], root_rank=0, prefix="Reorder_params.")
+        idx_tensor = idx_tensor.to(device='cpu')
         if rank() != 0:
             param_idx = idx_tensor.tolist()
 
@@ -287,6 +328,7 @@ class _GradFusion:
                           in enumerate(self._trainable_params)}
 
     def _process_single_bucket_async(self, bucket_id):
+        torch.cuda.nvtx.mark(f'PushPull_bucket_{bucket_id}')
         '''process single bucket'''
         tensor = self.buckets[bucket_id].tensor
         tensor_compressed, ctx = self._optim._compression.compress(tensor)
@@ -309,7 +351,7 @@ class _GradFusion:
             if lone_param.grad is None:
                 with torch.no_grad():
                     lone_param.grad = lone_param.new(lone_param.size()).zero_()
-            bucket.tensor = lone_param.grad()
+            bucket.tensor = lone_param.grad
             return
         my_grads = []
         for param_idx in bucket.param_idx:
@@ -326,6 +368,8 @@ class _GradFusion:
         self.buckets = self.bucket_set[self.bucket_set_idx]
 
     def _push_to_bucket(self, p):
+        orig_param_idx = self._orig_param_idx[p.__hash__()]
+        torch.cuda.nvtx.mark(f'push_to_bucket_{orig_param_idx}')
         '''push param to bucket'''
         param_idx = self.param_idx[p.__hash__()]
         (bucket_id, offset) = self.param_bucket_info[param_idx]
@@ -351,6 +395,21 @@ class _GradFusion:
                self.buckets[self.curr_bucket_idx].ready):
             self._process_single_bucket_async(self.curr_bucket_idx)
             self.curr_bucket_idx += 1
+        if hasattr(self._optim, '_require_backward_grad_sync') and\
+            self._optim._require_backward_grad_sync and \
+            self.curr_bucket_idx == len(self.buckets):
+            niter = self._optim.state['byteps_niter']
+            if self._optim._staleness and niter >= self._optim._pipesgd_warmup_iter \
+                    and self.fusion_already_reordered:
+                self._fused_stale_synchronize()
+                if self._should_remove_grads:
+                    # self._remove_grads()
+                    self._zero_grads_()
+                    self._should_remove_grads = False
+                    self._should_restore_grads = True
+            else:
+                self._fused_synchronize()
+                self._optim.state['byteps_niter'] += 1
 
     def _clear_tensor_fusion(self, _optimizer):
         ''' clear all hook for dist parallel. '''
@@ -418,3 +477,6 @@ class _GradFusion:
                 self.prev_step_params.remove(p)
             self._mark_param_ready(p)
         return fusion_hook
+
+    def size(self):
+        return len(self.bucket_set)

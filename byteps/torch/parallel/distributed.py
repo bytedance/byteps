@@ -9,6 +9,8 @@ import byteps as bps
 from byteps.torch.compression import Compression
 from torch.cuda._utils import _get_device_index
 import os
+from byteps.torch.grad_fusion import _GradFusion
+import collections
 
 class DistributedDataParallel(Module):
     r"""Implements distributed data parallelism that is based on
@@ -121,7 +123,9 @@ class DistributedDataParallel(Module):
     """
     def __init__(self, module, device_ids=None,
             broadcast_buffers=True,
-            compression=Compression.none
+            compression=Compression.none,
+            bucket_cap_mb=25,
+            *args, **kwargs
             ):
         super(DistributedDataParallel, self).__init__()
 
@@ -140,6 +144,7 @@ class DistributedDataParallel(Module):
         self.modules_buffers = [list(self.module.buffers())]
         self._compression = compression
         self._enable_async = False
+        self._require_backward_grad_sync = True
         named_parameters = self.module.named_parameters()
         named_parameters = list(named_parameters)
         if len(named_parameters) > 0:
@@ -162,10 +167,44 @@ class DistributedDataParallel(Module):
             self._parameter_names = {v: 'push_pull.noname.%s' % i
                                      for param_group in self.param_groups
                                      for i, v in enumerate(param_group['params'])}
+        ##################
+        self._pipesgd_warmup_iter = int(os.getenv('BYTEPS_PIPESGD_WARMUP_ITER', '0'))
+        self._staleness = int(os.getenv('BYTEPS_STALENESS', '0'))
+        self.state = {'byteps_niter': 0}
+        self.backward_passes_per_step = 1
+        self._push_pull_delay = {v: self.backward_passes_per_step
+                                 for _, v in sorted(named_parameters)}
+        # for pipesgd
+        self._stale_handles = collections.defaultdict(dict)
+        self._stale_handles[-1] = {}
+        self._stale_push_pull_delay = collections.defaultdict(dict)
+        self._stale_push_pull_delay = {self._get_param_name(v): self.backward_passes_per_step
+                                       for _, v in sorted(named_parameters)}
+        # whether it is the initial optimizer.step()
+        self.state['byteps_skipped_init_step'] = False
+        # a reference of self._niter stored in states
+        # self.state['byteps_niter'] = 0
+        # store the scale factor from amp if fp16 dynamic scaling is present
+        self.state['byteps_stale_scale'] = 1
+        # checkpoint the materialized gradient before torch.save() is called.
+        # the ckpt grad will be used in three cases: the iteration after checkpoint,
+        # the 1-st iteration after resuming training from ckpt, and the first iteration
+        # that pipesgd takes effect.
+        self.state['byteps_stale_grad'] = {}
+
+        ##################
+        self._enable_tensor_fusion = False
+        self._grad_fusion = None
+        named_params = self.module.named_parameters()
+        self._num_grads = sum(p.requires_grad for _, p in named_params)
+        if size() > 1 and bucket_cap_mb > 0:
+            self._enable_tensor_fusion = True
+            os.environ['BYTEPS_BUCKET_SIZE_BYTES'] = str(bucket_cap_mb * 1024 * 1024)
+            self._grad_fusion = _GradFusion(module, self)
+            self._num_grads = self._grad_fusion.size()
+        # print(f'xxxx self._enable_tensor_fusion { self._enable_tensor_fusion}, bucket_cap_mb {bucket_cap_mb}', flush=True)
         if size() > 1:
             self._register_hooks()
-            named_params = self.module.named_parameters()
-            self._num_grads = sum(p.requires_grad for _, p in named_params)
             byteps_torch_set_num_grads(self._num_grads)
 
         # declare tensors
@@ -180,18 +219,58 @@ class DistributedDataParallel(Module):
         if len(module_states) > 0:
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
 
+        print("Using the BytePS DistributedDataParallel Module")
+
+    def _get_param_name(self, p):
+        """Get the name of a parameter."""
+        if self._is_tensor_instance:
+            name = self._parameter_names.get(p.__hash__())
+        else:
+            name = self._parameter_names.get(p)
+        return name
+
+    @contextmanager
+    def no_sync(self):
+        r"""
+        A context manager to disable gradient synchronizations across DDP
+        processes. Within this context, gradients will be accumulated on module
+        variables, which will later be synchronized in the first
+        forward-backward pass exiting the context.
+
+        Example::
+
+            >>> ddp = byteps.torch.parallel.DistributedDataParallel(model, pg)
+            >>> with ddp.no_sync():
+            ...   for input in inputs:
+            ...     ddp(input).backward()  # no synchronization, accumulate grads
+            ... ddp(another_input).backward()  # synchronize grads
+        """
+        if self._enable_async:
+            raise AssertionError("no_sync cannot be used in async training")
+        old_require_backward_grad_sync = self._require_backward_grad_sync
+        self._require_backward_grad_sync = False
+        try:
+            yield
+        finally:
+            self._require_backward_grad_sync = old_require_backward_grad_sync
+
     def forward(self, *inputs, **kwargs):
+        torch.cuda.nvtx.range_push("byteps.DistributedDataParallel.forward")
         if self.require_forward_param_sync:
             self._sync_params()
-        return self.module(*inputs, **kwargs)
+        output = self.module(*inputs, **kwargs)
+        torch.cuda.nvtx.range_pop()
+        return output
 
     def _sync_params(self):
+        torch.cuda.nvtx.range_push("_sync_params")
         with torch.no_grad():
             # sync module buffers
             if self.broadcast_buffers and len(self.modules_buffers[0]) > 0:
                 # Synchronize buffers across processes.
                 # The process with rank 0 is considered the authoritative copy.
                 bps.torch.broadcast_parameters(list(self.module.named_buffers()), root_rank=0)
+        torch.cuda.nvtx.range_pop()
 
     def _register_hooks(self):
         for _, p in self.module.named_parameters():
@@ -233,16 +312,20 @@ class DistributedDataParallel(Module):
         return handle, ctx
 
     def _make_hook(self, p, num_grads):
+        if self._enable_tensor_fusion and size() > 1:
+            return self._grad_fusion._make_hook(p)
+
         def hook(*ignore):
-            handle, ctx = None, None
-            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
-            self._handles[p] = (handle, ctx)
-            # sync if we have processed all gradients
-            if grad_count == self._num_grads:
-                self.synchronize()
+            if self._require_backward_grad_sync:
+                handle, ctx = None, None
+                handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
+                self._handles[p] = (handle, ctx)
+                # sync if we have processed all gradients
+                if grad_count == self._num_grads:
+                    self._synchronize()
         return hook
 
-    def synchronize(self):
+    def _normal_synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
             handle, ctx, grad_count = self._push_pull_grad_group_sync(p, self._num_grads)
@@ -258,3 +341,75 @@ class DistributedDataParallel(Module):
             if not self._enable_async:
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
+
+    def _stale_synchronize(self):
+        """Synchronize the pushpull operations when pipesgd is enabled"""
+        has_amp = hasattr(self, "_amp_stash")
+        niter = self.state['byteps_niter']
+        assert niter >= 0, niter
+        loss_scale = _get_loss_scale()
+        # if the loss scale increases at the current iteration
+        # amp will rescale it back after synchronize(). so we need
+        # to adjust the gradient from the previous step accordingly
+        if niter > self._pipesgd_warmup_iter:
+            prev_loss_scale = self.state['byteps_stale_scale']
+        else:
+            prev_loss_scale = loss_scale
+        grad_ratio = loss_scale / prev_loss_scale
+
+        # materialzed grad tensors are not available. obtain them from handles
+        stale_grad_state = self.state['byteps_stale_grad']
+        if not stale_grad_state:
+            if niter <= self._pipesgd_warmup_iter:
+                if niter == self._pipesgd_warmup_iter:
+                    print(f'BytePS pipeSGD: started pipeline at iter {niter}', flush=True)
+                for name, (p, handle, ctx) in self._stale_handles[niter].items():
+                    assert handle is not None, name
+                    assert not p.grad.is_sparse, "sparse gradient is not supported"
+                    output = synchronize(handle)
+                    tmp = self._compression.decompress(output, ctx)
+                    # sync SGD duration warmup
+                    if niter < self._pipesgd_warmup_iter:
+                        p.grad.data = tmp
+                    else:
+                        stale_grad_state[name] = tmp
+                        p.grad.copy_(tmp)
+            else:
+                for name, (p, handle, ctx) in self._stale_handles[niter-1].items():
+                    assert handle is not None
+                    assert not p.grad.is_sparse, "sparse gradient is not supported"
+                    output = synchronize(handle)
+                    prev_grad = self._compression.decompress(output, ctx)
+                    with torch.no_grad():
+                        # if the loss scale increases at the current iteration
+                        # amp will rescale it back after synchronize(). so we need
+                        # to adjust the gradient from the previous step accordingly
+                        if grad_ratio != 1.0:
+                            prev_grad.mul_(grad_ratio)
+                        p.grad.copy_(prev_grad)
+            if (niter - 1) in self._stale_handles:
+                del self._stale_handles[niter - 1]
+        else:
+            # grad tensors alread materialized
+            for p in self._requires_update:
+                assert not p.grad.is_sparse, "sparse gradient is not supported"
+                name = self._get_param_name(p)
+                if name in stale_grad_state:
+                    prev_grad = stale_grad_state[name]
+                    with torch.no_grad():
+                        if grad_ratio != 1.0:
+                            prev_grad.mul_(grad_ratio)
+                        p.grad.copy_(prev_grad)
+            self.state['byteps_stale_grad'] = {}
+
+        # update states
+        for name in self._stale_push_pull_delay:
+            self._stale_push_pull_delay[name] = self.backward_passes_per_step
+        self.state['byteps_stale_scale'] = loss_scale
+        self.state['byteps_niter'] += 1
+
+    def _synchronize(self):
+        if self._staleness:
+            self._stale_synchronize()
+        else:
+            self._normal_synchronize()

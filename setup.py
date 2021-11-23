@@ -277,11 +277,13 @@ def with_mxnet():
 def without_mxnet():
     return int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0))
 
+ucx_default_home = '/usr/local'
 def should_build_ucx():
     has_prebuilt_ucx = os.environ.get('BYTEPS_UCX_HOME', '')
+    if os.path.isfile(ucx_default_home + '/include/ucp/api/ucp.h'):
+        has_prebuilt_ucx = True
     return use_ucx() and not has_prebuilt_ucx
 
-ucx_default_home = '/usr/local'
 def get_ucx_prefix():
     """ specify where to install ucx """
     ucx_prefix = os.getenv('BYTEPS_UCX_PREFIX', ucx_default_home)
@@ -292,6 +294,9 @@ def get_ucx_home():
     if should_build_ucx():
         return get_ucx_prefix()
     return os.environ.get('BYTEPS_UCX_HOME', ucx_default_home)
+
+def get_cuda_home():
+    return os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
 
 def get_common_options(build_ext):
     cpp_flags = get_cpp_flags(build_ext)
@@ -967,12 +972,13 @@ def build_ucx():
 
     print("ucx_tarball_path is", ucx_tarball_path)
     ucx_prefix = get_ucx_prefix()
+    cuda_home = get_cuda_home()
     sudo_str = "" if os.access(ucx_prefix, os.W_OK) else "sudo"
     cmd = "mkdir -p tmp; tar xzf {} -C tmp; ".format(ucx_tarball_path) + \
           "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/; " + \
           "cd ucx-build; pwd; which libtoolize; " + \
           "./autogen.sh; ./autogen.sh && " + \
-          "./contrib/configure-release --enable-mt --prefix={0} && ".format(ucx_prefix) + \
+          "./contrib/configure-release --enable-mt --with-verbs --with-rdmacm --with-cuda={0} --prefix={1} && ".format(cuda_home, ucx_prefix) + \
           "make -j && {0} make install -j && ".format(sudo_str) + \
           "(sudo ldconfig || echo $?)"
     make_process = subprocess.Popen(cmd,
@@ -1153,7 +1159,7 @@ class custom_build_ext(build_ext):
                     raise
         if mxnet_lib in self.extensions:
             # fix "libcuda.so.1 not found" issue
-            cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
+            cuda_home = get_cuda_home()
             cuda_stub_path = cuda_home + '/lib64/stubs'
             ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
             os.system(ln_command)

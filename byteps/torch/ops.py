@@ -56,8 +56,8 @@ def _check_function(function_factory, tensor):
     from byteps.torch import c_lib
     if not hasattr(c_lib, function):
         raise ValueError('Tensor type %s is not supported.' % tensor.type())
-    if not tensor.is_contiguous():
-        raise ValueError('Tensor is required to be contiguous.')
+    if tensor.is_sparse:
+        raise ValueError('Tensor is required to be dense.')
     return function
 
 
