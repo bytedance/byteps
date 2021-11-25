@@ -33,6 +33,8 @@ using ps::GetEnv;
 // engine related
 std::vector<PriorityQueue*> engine_queues_;
 std::vector<std::thread*> engine_threads_;
+std::vector<PriorityQueue*> gdr_engine_queues_;
+std::vector<std::thread*> gdr_engine_threads_;
 std::vector<PriorityQueue*> independent_queues_;
 std::vector<std::thread*> independent_threads_;
 
@@ -429,7 +431,7 @@ void BytePSServer::BytePSServerGDRIndependentThread(int i) {
         new_msg.len = msg.len;
         new_msg.ops = SUM_LOCAL_COPY;
         int tid = GetThreadID(msg.key, msg.len);
-        engine_queues_[tid]->Push(std::move(new_msg));
+        gdr_engine_queues_[tid]->Push(std::move(new_msg));
       } // case COPY_D2H
       break;
 
@@ -490,7 +492,7 @@ inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage
 }
 
 void BytePSServer::BytePSServerGDREngineThread(int i) {
-  auto& q = engine_queues_[i];
+  auto& q = gdr_engine_queues_[i];
   while (true) {
     BytePSEngineMessage msg;
     q->WaitAndPop(&msg);
@@ -1023,7 +1025,7 @@ void BytePSServer::BytePSGDRHandler(const ps::KVMeta& req_meta,
     BytePSEngineMessage msg = {timestamp_++,   type,     key,
                                 stored->tensor, recved,   stored->len,
                                 SUM_RECV,       req_data, req_meta};
-    engine_queues_[tid]->Push(std::move(msg));
+    gdr_engine_queues_[tid]->Push(std::move(msg));
     SendPushResponse(key, req_meta, server);
 
   } else {  // pull request
@@ -1113,7 +1115,7 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
     BytePSEngineMessage msg = {timestamp_++, type, key,
                                addr, addr, pbuff->len,
                                GPU_SUM_RECV, req_data, req_meta};
-    engine_queues_[tid]->Push(std::move(msg));
+    gdr_engine_queues_[tid]->Push(std::move(msg));
     SendPushResponse(key, req_meta, server);
 
   } else {  // pull request
@@ -1196,7 +1198,7 @@ void BytePSServer::EnqueueLocalGpuSumTask(uint64_t key, char* input,
   msg.len = len;
   msg.ops = GPU_SUM_RECV_LOCAL;
   msg.type.dtype = dtype;
-  engine_queues_[tid]->Push(std::move(msg));
+  gdr_engine_queues_[tid]->Push(std::move(msg));
 #endif
 }
 
@@ -1355,22 +1357,25 @@ void BytePSServer::Init(int rank) {
       engine_queues_.push_back(q);
     }
     for (size_t i = 0; i < engine_thread_num_; ++i) {
-      std::thread* t;
-      if (BytePSGlobal::IsGDR()) {
-        t = new std::thread(&BytePSServerGDREngineThread, i);
-      } else {
-        t = new std::thread(&BytePSServerEngineThread, i);
-      }
+      auto t = new std::thread(&BytePSServerEngineThread, i);
       engine_threads_.push_back(t);
-    }
-    for (size_t i = 0; i < engine_thread_num_; ++i) {
-      auto q = new PriorityQueue(enable_schedule_);
-      independent_queues_.push_back(q);
     }
     if (BytePSGlobal::IsGDR()) {
       for (size_t i = 0; i < engine_thread_num_; ++i) {
+        auto q = new PriorityQueue(enable_schedule_);
+        gdr_engine_queues_.push_back(q);
+      }
+      for (size_t i = 0; i < engine_thread_num_; ++i) {
+        auto q = new PriorityQueue(enable_schedule_);
+        independent_queues_.push_back(q);
+      }
+      for (size_t i = 0; i < engine_thread_num_; ++i) {
         auto t = new std::thread(&BytePSServerGDRIndependentThread, i);
         independent_threads_.push_back(t);
+      }
+      for (size_t i = 0; i < engine_thread_num_; ++i) {
+        auto t = new std::thread(&BytePSServerGDREngineThread, i);
+        gdr_engine_threads_.push_back(t);
       }
     }
   }
@@ -1418,7 +1423,9 @@ void BytePSServer::Init(int rank) {
   BytePSEngineMessage msg;
   msg.ops = TERMINATE;
   for (auto q : engine_queues_) q->Push(msg);
+  for (auto q : gdr_engine_queues_) q->Push(msg);
   for (auto t : engine_threads_) t->join();
+  for (auto t : gdr_engine_threads_) t->join();
   for (auto q : independent_queues_) q->Push(msg);
   for (auto t : independent_threads_) t->join();
 

@@ -76,27 +76,25 @@ void byteps_lazy_init() {
     }
   }
 
-  if (!BytePSGlobal::IsGDR()) {
-    // Cross-PCIe-switch reduce
-    if (BytePSGlobal::IsCrossPcieSwitch() && !BytePSGlobal::IsGpuAllreduceDisabled()) {
-      func.push_back(PcieReduceLoop);
-    }
+  // Cross-PCIe-switch reduce
+  if (BytePSGlobal::IsCrossPcieSwitch() && !BytePSGlobal::IsGpuAllreduceDisabled()) {
+    func.push_back(PcieReduceLoop);
+  }
 
-    // Copy between GPU and CPU
-    if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
-      func.push_back(CopyDevice2HostLoop);
-      if (BytePSGlobal::IsRootDevice()) {
-        // PUSH can be a real push in distributed mode
-        // Or a dummy barrier in cross-pcie-switch mode
-        func.push_back(PushLoop);
-        func.push_back(CompressLoop);
-        func.push_back(RootCopyHost2DeviceLoop);
-      } else {
-        func.push_back(CoordinatePushLoop);
-        func.push_back(NonRootCopyHost2DeviceLoop);
-        // DO_COPYH2D handling moved to commsocket listen thread
-        // func.push_back(NonRootCopyListenLoop);
-      }
+  // Copy between GPU and CPU
+  if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
+    func.push_back(CopyDevice2HostLoop);
+    if (BytePSGlobal::IsRootDevice()) {
+      // PUSH can be a real push in distributed mode
+      // Or a dummy barrier in cross-pcie-switch mode
+      func.push_back(PushLoop);
+      func.push_back(CompressLoop);
+      func.push_back(RootCopyHost2DeviceLoop);
+    } else {
+      func.push_back(CoordinatePushLoop);
+      func.push_back(NonRootCopyHost2DeviceLoop);
+      // DO_COPYH2D handling moved to commsocket listen thread
+      // func.push_back(NonRootCopyListenLoop);
     }
   }
 
@@ -585,7 +583,8 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
-    if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu() 
+    if (task->device != CPU_DEVICE_ID 
+        && BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu() 
         && task->len <= BytePSGlobal::GetGDRPhase1Threshold()) {
       task->queue_list.clear();
       task->queue_list.push_back(GDR_V2_PUSH_PULL);
@@ -954,7 +953,11 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
     BytePSGlobal::GetOrInitPS();
   }
   
-  bool should_init_push = BytePSGlobal::IsRootDevice() && !BytePSGlobal::IsGDR();
+  // condition to do init push:
+  // (1) if need init push, then only the root rank do it
+  // (2) if cpu tensor, do init push; 
+  // (3) if gpu tensor and not GDR mode, do init push.
+  bool should_init_push = BytePSGlobal::IsRootDevice() && (cpubuff || !BytePSGlobal::IsGDR());
   while (accumulated < size) {
     auto key = key_list[i];
     int len = ((size - accumulated) > bound) ? bound : (size - accumulated);
