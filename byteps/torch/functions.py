@@ -68,6 +68,7 @@ def broadcast_optimizer_state(optimizer, root_rank, prefix="Parameter."):
         root_rank: The rank of the process from which the optimizer will be
                    broadcasted to all other processes.
     """
+    from byteps.torch.optimizer import DistributedOptimizer
     if isinstance(optimizer, torch.optim.LBFGS):
         # TODO(travis): L-BFGS cannot be easily supported without serializing
         # the entire state_dict, as its structure is deeply nested and contains
