@@ -19,11 +19,7 @@
 namespace byteps {
 namespace common {
 
-void CoordinateReduceLoop();
-
-void CoordinateBroadcastLoop();
-
-void CoordinatePushLoop();
+void CoordinateLoop();
 
 void PcieReduceLoop();
 
@@ -72,6 +68,14 @@ void CpuCopyLoop();
 void CpuReduceLoop();
 void CpuBcastLoop();
 void CpuBcastFinishLoop();
+
+// allgather loop
+void AllgatherPullLoop();
+void AllgatherPullResponseLoop();
+void AllgatherP2PAckLoop();
+void AllgatherCopyDevice2HostLoop();
+void AllgatherRootCopyHost2DeviceLoop();
+void AllgatherNonRootCopyHost2DeviceLoop();
 
 // monitoring loop
 void MonitorLoop();

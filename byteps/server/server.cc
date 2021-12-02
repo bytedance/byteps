@@ -93,6 +93,12 @@ std::vector<std::unordered_map<uint64_t, std::vector<ps::KVMeta> > > BytePSServe
 std::vector<std::unordered_map<uint64_t, std::set<int> > > BytePSServer::seen_sender_;
 std::vector<std::unordered_map<uint64_t, size_t> > BytePSServer::pull_cnt_;
 
+// ========= for allgather ==========
+std::unordered_map<uint64_t, ps::KVMeta> BytePSServer::allgather_pull_reqmetas_;
+std::mutex BytePSServer::allgather_pull_resp_mu_;
+ReadyTable* BytePSServer::allgather_pull_response_table_;
+ReadyTable* BytePSServer::allgather_ack_table_;
+
 // byteps handler
 std::mutex BytePSServer::handle_mu_;
 std::unordered_map<uint64_t, UpdateBuf> BytePSServer::update_buf_;
@@ -225,6 +231,20 @@ void BytePSServer::SendPullResponse(uint64_t key, char* data, int len) {
   {
     std::lock_guard<std::mutex> lk(pullresp_mu_);
     req_meta = p2p_pull_reqmetas_[key];
+  }
+  ps::KVPairs<char> response;
+  response.keys = {key};
+  response.lens = {len};
+  response.vals = ps::SArray<char>(data, len, false); // zero copy
+  byteps_server_[0]->Response(req_meta, response);
+}
+
+// For allgather use only 
+void BytePSServer::SendAllgatherPullResponse(uint64_t key, char* data, int len) {
+  ps::KVMeta req_meta;
+  {
+    std::lock_guard<std::mutex> lk(allgather_pull_resp_mu_);
+    req_meta = allgather_pull_reqmetas_[key];
   }
   ps::KVPairs<char> response;
   response.keys = {key};
@@ -616,7 +636,9 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
         || req_type == RequestType::kGroupSend
         || req_type == RequestType::kEmptyGroupSend
         || req_type == RequestType::kDefaultPull
-        || req_type == RequestType::kAckSignal);
+        || req_type == RequestType::kAckSignal
+        || req_type == RequestType::kAllgatherPull
+        || req_type == RequestType::kAllgatherAckSignal);
   // do some check
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   if (req_meta.push) {
@@ -630,21 +652,33 @@ void BytePSServer::P2PHandler(const ps::KVMeta& req_meta,
               << "\t msgtype=" << (req_meta.push ? "push" : "pull")
               << "\t sender=" << req_meta.sender;
   }
-  if (req_type == RequestType::kAckSignal) {
-    GetP2PAckTable()->AddReadyCount(key);
+
+  if (req_type == RequestType::kAckSignal || req_type == RequestType::kAllgatherAckSignal) {
+    auto table = req_type == RequestType::kAckSignal ? GetP2PAckTable() : GetAllgatherAckTable();
+    table->AddReadyCount(key);
     return;
   }
+
   // not ack message
   size_t len;
   if (req_meta.push) {
     len = (size_t) req_data.lens[0];
   } else { // pull 
-    CHECK_EQ(req_type, RequestType::kDefaultPull);
-    {
-      std::lock_guard<std::mutex> lk(pullresp_mu_);
-      p2p_pull_reqmetas_[key] = req_meta;
+    if (req_type == RequestType::kDefaultPull) {
+      {
+        std::lock_guard<std::mutex> lk(pullresp_mu_);
+        p2p_pull_reqmetas_[key] = req_meta;
+      }
+      GetP2PPullResponseTable()->AddReadyCount(key);
     }
-    GetP2PPullResponseTable()->AddReadyCount(key);
+    else if (req_type == RequestType::kAllgatherPull) {
+      {
+        std::lock_guard<std::mutex> lk(allgather_pull_resp_mu_);
+        allgather_pull_reqmetas_[key] = req_meta;
+      }
+      GetAllgatherPullResponseTable()->AddReadyCount(key);
+    }
+
     return;
   }
   auto stored = GetStore(key);
@@ -729,7 +763,9 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
       || req_type == RequestType::kGroupSend
       || req_type == RequestType::kEmptyGroupSend
       || req_type == RequestType::kDefaultPull
-      || req_type == RequestType::kAckSignal) {
+      || req_type == RequestType::kAckSignal
+      || req_type == RequestType::kAllgatherPull
+      || req_type == RequestType::kAllgatherAckSignal) {
     P2PHandler(req_meta, req_data, server);
     return;
   } else if (type.requestType == RequestType::kGDRPushPull) {
@@ -1245,6 +1281,12 @@ void BytePSServer::InitGDRReadyTable() {
   }
   gdr_push_pull_table_ = new ReadyTable(wait_count, "GDR_PUSH_PULL");
   gdr_ack_table_ = new ReadyTable(BytePSGlobal::GetPhyNodeNum()-1, "GDR_ACK");
+}
+
+void BytePSServer::InitAllgatherTable() {
+  // 1 + 1, the first 1 indicates allgather is ready, the second 1 indicates the pull request has already come
+  allgather_pull_response_table_ = new ReadyTable(2, "ALLGATHER_PULL_RESPONSE");
+  allgather_ack_table_ = new ReadyTable(1, "ALLGATHER_WAIT_ACK");
 }
 
 void BytePSServer::InitEnv() {

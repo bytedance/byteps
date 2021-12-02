@@ -123,6 +123,37 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
     case CPU_BCAST_FINISH:
       _rt = BytePSGlobal::GetCpuBcastFinishTable();
       break;
+    case ALLGATHER:
+#if BYTEPS_BUILDING_CUDA == 1
+      if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        _rt = BytePSGlobal::GetAllgatherTable();
+      }
+#else
+      _rt = nullptr;
+      BPS_LOG(WARNING) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+#endif
+      break;
+    case ALLGATHER_BCAST:
+#if BYTEPS_BUILDING_CUDA == 1
+      if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        _rt = BytePSGlobal::GetAllgatherBcastTable();
+      }
+#else
+      _rt = nullptr;
+      BPS_LOG(WARNING) << "Please build BytePS with BYTEPS_WITH_GPU=1";
+#endif
+      break;
+    case ALLGATHER_PULL_RESPONSE:
+      _rt = BytePSGlobal::GetAllgatherPullResponseTable();
+      break;
+    case ALLGATHER_P2P_WAIT_ACK:
+      _rt = BytePSGlobal::GetAllgatherAckTable();
+      break;
+    case ALLGATHER_COPYH2D:
+      if (!BytePSGlobal::IsRootDevice()) {
+        _rt = BytePSGlobal::GetAllgatherCopyH2DTable();
+      }
+      break;
     case GDR_WAIT_PUSH_PULL:
       _rt = BytePSGlobal::GetGDRPushPullTable();
       break;

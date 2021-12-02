@@ -216,6 +216,12 @@ extern "C" void byteps_tensorflow_declare_tensor_alltoall(char* name, int32_t* t
   }
 }
 
+extern "C" void byteps_tensorflow_declare_tensor_allgather(char* name, int32_t* tensor_key) {
+  std::string tensor_name(name);
+  *tensor_key = common::DeclareAllgatherTensor(tensor_name, -1);
+  return;
+}
+
 enum TaskType {
   kSend,
   kRecv,
@@ -1105,6 +1111,120 @@ Arguments
 Output
     sum:    A tensor with the same shape as `tensor`, summed across all processes.
 )doc");
+
+
+// ================== ALLGATHER ======================== // 
+
+void StartAllgatherTask(::tensorflow::OpKernelContext* context,
+                        ::tensorflow::AsyncOpKernel::DoneCallback done,
+                        std::string node_name, std::shared_ptr<TFTensor> byteps_input,
+                        std::shared_ptr<TFTensor> byteps_output,
+                        std::shared_ptr<common::ReadyEvent> ready_event) {
+  auto& byteps_context = common::GetContextFromName(node_name);
+  auto device = GetDeviceID(context);
+  auto size = byteps_input->size();
+  auto dtype = byteps_input->dtype();
+  void* cpubuff = (device == CPU_DEVICE_ID)
+                      ? const_cast<void*>(byteps_input->data())
+                      : nullptr;
+  common::InitTensorAllgather(byteps_context, size, dtype, cpubuff);
+
+  // TODO: assign priority based on topological sort
+  // TODO: why -byteps_context.declared_key 
+  auto enqueue_result =
+      EnqueueAllgatherTensor(byteps_context, byteps_input, byteps_output, ready_event,
+                             device, -byteps_context.declared_key, 0,
+                             [context, done](const common::Status& status) {
+                               context->SetStatus(ConvertStatus(status));
+                               done();
+                             });
+  OP_REQUIRES_OK_ASYNC(context, ConvertStatus(enqueue_result), done);
+}
+
+class BytePSAllgatherOp : public ::tensorflow::AsyncOpKernel {
+  private:
+     std::string input_tensor_name;
+     std::string op;
+     int tensor_key;
+
+ public:
+  explicit BytePSAllgatherOp(::tensorflow::OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+        context->GetAttr("input_name", &input_tensor_name);
+        context->GetAttr("tensor_key", &tensor_key);
+      }
+
+  void ComputeAsync(::tensorflow::OpKernelContext* context,
+                    DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
+                         done);
+
+    auto tensor = context->input(0);
+    ::tensorflow::Tensor* output;
+    ::tensorflow::TensorShape result_shape;
+    int num_ranks = common::byteps_size();
+    CHECK(tensor.shape().dims());
+    result_shape.AddDim(num_ranks * tensor.shape().dim_size(0));
+    for (int i = 1; i < tensor.shape().dims(); ++i) {
+      result_shape.AddDim(tensor.shape().dim_size(i));
+    }
+
+    OP_REQUIRES_OK_ASYNC(
+        context, context->allocate_output(0, result_shape, &output), done);
+
+    // ReadyEvent makes sure input tensor is ready, and output is allocated.
+    auto ready_event =
+        std::shared_ptr<common::ReadyEvent>(RecordReadyEvent(context));
+    auto bps_input = std::make_shared<TFTensor>(tensor, GetDeviceID(context));
+    auto bps_output = std::make_shared<TFTensor>(*output, GetDeviceID(context));
+    auto node_name = name();
+    std::string tmp_name;
+    if (input_tensor_name == "default_tensor_name") {
+      tmp_name = node_name;
+    } else {
+      tmp_name = input_tensor_name;
+    }
+    // declare the tensor with the provided tensor_key
+    common::DeclareTensor(tmp_name, tensor_key);
+
+    auto& bps_context = common::GetContextFromName(tmp_name);
+    if (bps_context.initialized) {
+      StartAllgatherTask(context, done, tmp_name, bps_input, bps_output, ready_event);
+    } else {
+      std::thread t(StartAllgatherTask, context, done, tmp_name, bps_input, bps_output,
+                    ready_event);
+      t.detach();
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_CPU),
+                        BytePSAllgatherOp);
+REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_GPU),
+                        BytePSAllgatherOp);
+
+REGISTER_OP("BytepsAllgather")
+    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("input_name: string = 'default_tensor_name'")
+    .Attr("tensor_key: int")
+    .Input("tensor: T")
+    .Output("output: T")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &output));
+      c->set_output(0, output);
+      return ::tensorflow::Status::OK();
+    })
+    .Doc(R"doc(
+Perform an Allgather on a tensor. All other processes that do a gather on a tensor 
+with the same name must have the same rank for that tensor, and have the same dimension 
+on all but the first dimension.
+Arguments
+    tensor:     A tensor to gather.
+Output
+    gathered:    A tensor with the same shape as `tensor` except for the first dimension.
+)doc");
+
 
 }  // namespace tensorflow
 }  // namespace byteps

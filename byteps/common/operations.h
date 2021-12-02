@@ -103,6 +103,12 @@ Status EnqueueAlltoAllTensor(std::string& name,
                              const std::vector<int>& recv_begin, // begin offsets for recv
                              bool output_size_unknown);
 
+Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input,
+                              std::shared_ptr<Tensor> output,
+                              std::shared_ptr<ReadyEvent> ready_event, const int device,
+                              const int priority, const int version,
+                              StatusCallback callback);
+
 // shape: input tensor shape
 // tensor_key: the 32-bit tensor_key returned from declare_alltoall_tensor
 // split_list: the split list for alltoall send
@@ -136,6 +142,8 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);
 
+void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpubuff);
+
 // Only call these in Framework plugins for the best performance
 // declare the operation name with a provided key. -1 means no key is provided.
 int32_t DeclareTensor(const std::string &name, int32_t provided_key);
@@ -144,6 +152,7 @@ int32_t DeclareTensor(const std::string &name, int32_t provided_key);
 // session = -1 means no session is provided
 int32_t DeclareAlltoallTensor(const std::string &name, int32_t provided_key, int32_t session);
 int32_t DeclareP2PTensor(const std::string &name, int sender, int receiver);
+int32_t DeclareAllgatherTensor(const std::string &name, int32_t provided_key);
 
 void RegisterCompressor(const std::string &name,
                         std::unordered_map<std::string, std::string> &kwargs);
@@ -165,6 +174,10 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueList(int device);
 std::vector<QueueType> GetAlltoallRequestQueueList(bool use_pull);
 
 std::vector<QueueType> GetAlltoallResponseQueueList(bool use_pull, bool output_size_unknown);
+
+std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList();
+
+std::shared_ptr<std::vector<QueueType>> GetAllgatherResponseQueueList();
 
 void print_queue_list(std::shared_ptr<std::vector<QueueType>> queue_list,
                       std::string &name, bool is_dist_reduce_root_node);

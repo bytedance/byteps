@@ -37,7 +37,9 @@ enum class RequestType {
   kGroupSend,
   // a special case for group send, where the send does not contain any
   // valid data (i.e. empty)
-  kEmptyGroupSend
+  kEmptyGroupSend,
+  kAllgatherPull,
+  kAllgatherAckSignal,
 };
 
 struct DataHandleType {

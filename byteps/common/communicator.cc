@@ -231,6 +231,18 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
       case DO_COPYH2D:
         BytePSGlobal::GetCopyTable()->AddReadyCount(message.key);
         break;
+      case ALLGATHER_REDAY:
+        BytePSGlobal::GetAllgatherTable()->AddReadyCount(message.key);
+        break;
+      case ALLGATHER_BCAST_READY:
+        BytePSGlobal::GetAllgatherBcastTable()->AddReadyCount(message.key);
+        break;
+      case ALLGATHER_COPY_D2H_READY:
+        BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(message.key);
+        break;
+      case DO_ALLGATHER_COPYH2D:
+        BytePSGlobal::GetAllgatherCopyH2DTable()->AddReadyCount(message.key);
+        break;
       default:
         BPS_CHECK(0) << "unsupported signal: " << message.signal;
     }

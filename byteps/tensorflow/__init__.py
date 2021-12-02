@@ -26,7 +26,7 @@ import warnings
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
 from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_speed
-from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu, _alltoall_gpu2cpu
+from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu, _alltoall_gpu2cpu, _allgather
 from byteps.tensorflow.ops import send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank
 from byteps.tensorflow.ops import get_telemetry
@@ -209,6 +209,24 @@ if _global_variables is not None:
             )
 
         return broadcast_variables(_global_variables(), root_rank)
+
+def allgather(tensor, scope='', name=None):
+    """An op which concatenates the input tensor with the same input tensor on
+    all other BytePS processes.
+    Arguments:
+        tensor: A tensor to distribute with allgather.
+        scope: the graph name scope
+        name: A name of the allgather operation.
+
+    Returns:
+        A tensor of the same type as `tensor`, concatenated on dimension zero
+        across all processes. The shape is identical to the input shape, except for
+        the first dimension, which may be greater and is the sum of all first
+        dimensions of the tensors in different allgather processes.
+    """
+
+    results = _allgather(tensor, scope, name=name)
+    return results
 
 def broadcast_variables(variables, root_rank, scope=''):
     """Broadcasts variables from root rank to all other processes.

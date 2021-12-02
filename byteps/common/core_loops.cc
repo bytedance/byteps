@@ -161,62 +161,79 @@ void FinishOrProceed(std::shared_ptr<TensorTableEntry> task) {
 }
 
 #if BYTEPS_BUILDING_CUDA == 1
-bool RunCoordinateLoopOnce(QueueType this_op) {
-  auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
-  if (task) {
-    int rank = BytePSGlobal::GetLocalRank();
-    auto key = task->key;
+bool RunCoordinateLoopOnce() {
+  QueueType ops[] = {COORDINATE_REDUCE, COORDINATE_BROADCAST, 
+                     COORDINATE_PUSH, COORDINATE_ALLGATHER,
+                     COORDINATE_ALLGATHER_BCAST};
+  for (auto this_op : ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    auto task = q->getTask();
+    if (task) {
+      int rank = BytePSGlobal::GetLocalRank();
+      auto key = task->key;
 
-    // first send to next queue and then broadcast signal
-    // to guarantee the entry is available when getTask(key) at Reduce/Broadcast
-    // thread
-    FinishOrProceed(task);
+      // first send to next queue and then broadcast signal
+      // to guarantee the entry is available when getTask(key) at Reduce/Broadcast
+      // thread
+      FinishOrProceed(task);
 
-    BytePSCommSignal sig = PUSH_READY;
-    std::shared_ptr<BytePSComm> comm;
+      BytePSCommSignal sig = PUSH_READY;
+      std::shared_ptr<BytePSComm> comm;
 
-    switch (this_op) {
-      case COORDINATE_REDUCE: {
-        sig = REDUCE_READY;
-        comm = BytePSGlobal::GetNccl()->GetSignalComm();
-        break;
+      switch (this_op) {
+        case COORDINATE_REDUCE: {
+          sig = REDUCE_READY;
+          comm = BytePSGlobal::GetNccl()->GetSignalComm();
+          break;
+        }
+        case COORDINATE_BROADCAST: {
+          sig = BCAST_READY;
+          comm = BytePSGlobal::GetNccl()->GetSignalComm();
+          break;
+        }
+        case COORDINATE_PUSH: {
+          sig = PUSH_READY;
+          comm = BytePSGlobal::GetBasicComm();
+          break;
+        }
+        case COORDINATE_ALLGATHER: {
+          sig = ALLGATHER_REDAY;
+          comm = BytePSGlobal::GetBasicComm();
+          break;
+        }
+        case COORDINATE_ALLGATHER_BCAST: {
+          sig = ALLGATHER_BCAST_READY;
+          comm = BytePSGlobal::GetBasicComm();
+          break;
+        }
+        default:
+          BPS_CHECK(0) << "unsupported op: " << this_op;
       }
-      case COORDINATE_BROADCAST: {
-        sig = BCAST_READY;
-        comm = BytePSGlobal::GetNccl()->GetSignalComm();
-        break;
-      }
-      case COORDINATE_PUSH: {
-        sig = PUSH_READY;
-        comm = BytePSGlobal::GetBasicComm();
-        break;
-      }
-      default:
-        BPS_CHECK(0) << "unsupported op: " << this_op;
+
+      BPS_CHECK_NE(rank, comm->getRoot())
+          << "only non-root device should enter COORDINATE loop";
+
+      struct BytePSCommMsg msg = {rank, sig, key};
+      comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+
+      BPS_CHECK(task->tensor_name != "");
+      BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
+                    << "Signal=" << sig << ", rank=" << rank << ", key=" << key;
+
+    } else {
+      std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
     }
-
-    BPS_CHECK_NE(rank, comm->getRoot())
-        << "only non-root device should enter COORDINATE loop";
-
-    struct BytePSCommMsg msg = {rank, sig, key};
-    comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
-
-    BPS_CHECK(task->tensor_name != "");
-    BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
-                   << "Signal=" << sig << ", rank=" << rank << ", key=" << key;
-
-  } else {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
+  
   return true;
 }
 
 inline void PostNcclCalls(
     std::shared_ptr<byteps::common::TensorTableEntry> task, QueueType this_op) {
-  BPS_CHECK(this_op == REDUCE || this_op == BROADCAST)
-      << "Only REDUCE and BROADCAST use NCCL.";
-  auto tensor = (this_op == REDUCE) ? task->tensor : task->output;
+  BPS_CHECK(this_op == REDUCE || this_op == BROADCAST || 
+            this_op == ALLGATHER || this_op == ALLGATHER_BCAST)
+      << "Only REDUCE, BROADCAST, ALLGATHER and ALLGATHER_BCAST use NCCL.";
+  auto tensor = (this_op == REDUCE || this_op == ALLGATHER) ? task->tensor : task->output;
   BPS_CHECK(tensor);
   BPS_CHECK_EQ(0, tensor->size() % tensor->shape().num_elements());
 
@@ -238,6 +255,12 @@ inline void PostNcclCalls(
   auto nccl_size = nccl->GetSize();
   auto nccl_rank = nccl->GetRank(key, this_op);
 
+  BPS_CHECK(task->tensor_name != "");
+  BPS_LOG(TRACE) << task->tensor_name << " calling NCCL " << LogStrings[this_op]
+                 << " (rank=" << nccl_rank << ") key=" << key
+                 << ", elements=" << len / unit_len
+                 << ", device=" << task->device;
+
   auto num_elem_per_gpu = len / nccl_size / unit_len;
   auto left_elem = (len / unit_len) - (num_elem_per_gpu * nccl_size);
   if (BytePSGlobal::IsUsingReduce()) {
@@ -248,11 +271,24 @@ inline void PostNcclCalls(
                    << " rank=" << BytePSGlobal::GetLocalRank();
   }
 
-  BPS_CHECK(task->tensor_name != "");
-  BPS_LOG(TRACE) << task->tensor_name << " calling NCCL " << LogStrings[this_op]
-                 << " (rank=" << nccl_rank << ") key=" << key
-                 << ", elements=" << len / unit_len
-                 << ", device=" << task->device;
+  if (this_op == ALLGATHER) {
+    auto out_p = (char *)(task->output->data());
+    NCCLCHECK(ncclAllGather(
+        (const void *)p, (void *)out_p, 
+        (size_t)len / unit_len, (ncclDataType_t)nccl_dtype,
+        (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+
+    return;
+  } else if (this_op == ALLGATHER_BCAST) {
+    int num_ranks = BytePSGlobal::GetSize();
+    NCCLCHECK(ncclBroadcast(
+        (const void *)p, (void *)p,
+        (size_t)num_ranks * len / unit_len, (ncclDataType_t)nccl_dtype,
+        (int)nccl_root, (ncclComm_t)nccl_comm,
+        (cudaStream_t)nccl_stream));
+
+    return;
+  }
 
   if (this_op == REDUCE) {
     // We reduce to task->output except that it is a CPU tensor
@@ -309,7 +345,7 @@ bool RunRootNcclLoopOnce() {
   BPS_CHECK_EQ(rank, root);
 
   int nccl_size = BytePSGlobal::GetNccl()->GetSize();
-  QueueType nccl_ops[] = {REDUCE, BROADCAST};
+  QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER, ALLGATHER_BCAST};
 
   auto nccl_entry = std::make_shared<NcclGroupEntry>();
   auto &tasks = nccl_entry->tasks;
@@ -336,8 +372,23 @@ bool RunRootNcclLoopOnce() {
 
       if (nccl_size > 1) {
         // notify non-root devices
-        struct BytePSCommMsg msg = {
-            rank, (this_op == REDUCE) ? DO_REDUCE : DO_BROADCAST, task->key};
+        struct BytePSCommMsg msg = {rank, DO_REDUCE, task->key};
+        switch (this_op) {
+          case REDUCE:
+            msg.signal = DO_REDUCE;
+            break;
+          case BROADCAST:
+            msg.signal = DO_BROADCAST;
+            break;
+          case ALLGATHER:
+            msg.signal = DO_ALLGATHER;
+            break;
+          case ALLGATHER_BCAST:
+            msg.signal = DO_ALLGATHER_BCAST;
+            break;
+          default:
+            BPS_CHECK(false) << "nccl op not supported";
+        }
         signal_comm->broadcastSignal(&msg, sizeof(BytePSCommMsg));
         PostNcclCalls(task, this_op);
       }
@@ -375,11 +426,23 @@ bool RunNonRootNcclLoopOnce() {
     if (msg.signal == DO_GROUP) {
       break;
     }
+
     QueueType this_op = REDUCE;
-    if (msg.signal == DO_BROADCAST) {
-      this_op = BROADCAST;
-    } else {
-      BPS_CHECK_EQ(msg.signal, DO_REDUCE) << msg.signal << ", " << DO_REDUCE;
+    switch (msg.signal) {
+      case DO_REDUCE:
+        this_op = REDUCE;
+        break;
+      case DO_BROADCAST:
+        this_op = BROADCAST;
+        break;
+      case DO_ALLGATHER:
+        this_op = ALLGATHER;
+        break;
+      case DO_ALLGATHER_BCAST:
+        this_op = ALLGATHER_BCAST;
+        break;
+      default:
+        BPS_CHECK(false) << msg.signal << ", unknown signal for non-root nccl loop";
     }
 
     auto key = msg.key;
@@ -711,22 +774,134 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
   return true;
 }
 
-void CoordinateReduceLoop() {
-  while (RunCoordinateLoopOnce(COORDINATE_REDUCE) &&
-         !BytePSGlobal::ShouldShutdown()) {
+bool RunAllgatherCopyDevice2HostLoopOnce() {
+  QueueType this_op = ALLGATHER_COPYD2H;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+
+  if (task) {
+    BPS_CHECK(task->output) << task->tensor_name
+                    << ": output tensor is empty, size=" << task->len;
+    BPS_CHECK(task->cpubuff) << task->tensor_name
+                       << ": CPU buffer not initialized, size=" << task->len;
+    
+    auto key = task->key;
+    auto nccl = BytePSGlobal::GetNccl();
+    auto nccl_root = nccl->GetRoot(key, this_op);
+    auto nccl_rank = nccl->GetRank(key, this_op);
+    int copy_len = 0;
+    if (BytePSGlobal::IsUsingReduce())
+      copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ? 
+                  BytePSGlobal::GetLocalSize() * task->len : 0;
+    else
+      // can change to if BytePSGlobal::GetNccl()->IsSignalRoot(), then copy ?
+      copy_len = (nccl_rank == nccl_root) ?
+                  BytePSGlobal::GetLocalSize() * task->len : 0;
+
+    if (copy_len) {
+      int phy_id = BytePSGlobal::GetPhyNodeID();
+      int local_size = BytePSGlobal::GetLocalSize();
+      int offset = phy_id * local_size * task->len;
+      auto copy_d2h_Stream = BytePSGlobal::GetAllgatherCopyDevice2HostStream();
+      CUDA_CALL(cudaMemcpyAsync(
+          (void *)((char*)task->cpubuff + offset), (const void *)task->output->data(),
+          (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyDeviceToHost,
+          (cudaStream_t)*copy_d2h_Stream));
+      CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
+
+      if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
+        for (auto key : task->context->key_list) {
+          if (key != task->key) {
+            BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(key);
+          }
+        }
+      }
+      else {
+        int local_rank = BytePSGlobal::GetLocalRank();
+        std::shared_ptr<BytePSComm> comm = BytePSGlobal::GetBasicComm();
+        for (auto key : task->context->key_list) {
+          if (key != task->key) {
+            struct BytePSCommMsg msg = {local_rank, ALLGATHER_COPY_D2H_READY, key};
+            comm->sendSignalToRoot(&msg, sizeof(BytePSCommMsg));
+          }
+        }
+      }
+    }
+
+    FinishOrProceed(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
-  BytePSGlobal::ReportThreadFinish();
+  return true;
 }
 
-void CoordinateBroadcastLoop() {
-  while (RunCoordinateLoopOnce(COORDINATE_BROADCAST) &&
-         !BytePSGlobal::ShouldShutdown()) {
+void AllgatherCopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
+  BPS_CHECK(task->output) << task->tensor_name
+                          << ": output tensor is empty, size=" << task->len;
+  BPS_CHECK(task->cpubuff) << task->tensor_name
+                          << ": CPU buffer not initialized, size=" << task->len;
+
+  QueueType this_op = ALLGATHER_COPYH2D;
+  auto key = task->key;
+  auto nccl = BytePSGlobal::GetNccl();
+  auto nccl_root = nccl->GetRoot(key, this_op);
+  auto nccl_rank = nccl->GetRank(key, this_op);
+  int copy_len = 0;
+  if (BytePSGlobal::IsUsingReduce()) {
+    copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ?
+                BytePSGlobal::GetSize() * task->len : 0;
+  } else {
+    // can change to if BytePSGlobal::GetNccl()->IsSignalRoot(), then copy ?
+    copy_len = (nccl_rank == nccl_root) ?
+                BytePSGlobal::GetSize() * task->len : 0;
   }
-  BytePSGlobal::ReportThreadFinish();
+
+  if (copy_len) {
+    auto copy_h2d_stream = BytePSGlobal::GetAllgatherCopyHost2DeviceStream();
+    CUDA_CALL(cudaMemcpyAsync(
+        (void *)task->output->data(), (const void *)task->cpubuff,
+        (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyHostToDevice,
+        (cudaStream_t)*copy_h2d_stream));
+    CUDA_CALL(cudaStreamSynchronize(*copy_h2d_stream));
+  }
 }
 
-void CoordinatePushLoop() {
-  while (RunCoordinateLoopOnce(COORDINATE_PUSH) &&
+bool RunAllgatherRootCopyHost2DeviceLoopOnce() {
+  QueueType this_op = ALLGATHER_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+
+  if (task) {
+    // notify non-root devices
+    int local_rank = BytePSGlobal::GetLocalRank();
+    struct BytePSCommMsg msg = {local_rank, DO_ALLGATHER_COPYH2D, task->key};
+    BytePSGlobal::GetBasicComm()->broadcastSignal(&msg,
+                                                   sizeof(BytePSCommMsg));
+
+    AllgatherCopyHost2Device(task);
+    FinishOrProceed(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunAllgatherNonRootCopyHost2DeviceLoopOnce() {
+  QueueType this_op = ALLGATHER_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto task = q->getTask();
+
+  if (task) {
+    AllgatherCopyHost2Device(task);
+    FinishOrProceed(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void CoordinateLoop() {
+  while (RunCoordinateLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -800,6 +975,31 @@ void NonRootCopyHost2DeviceLoop() {
   }
   BytePSGlobal::ReportThreadFinish();
 }
+
+void AllgatherCopyDevice2HostLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherCopyDevice2HostLoopOnce() && 
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherRootCopyHost2DeviceLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherRootCopyHost2DeviceLoopOnce() && 
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherNonRootCopyHost2DeviceLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherNonRootCopyHost2DeviceLoopOnce() && 
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 #endif
 
 bool RunPushLoopOnce() {
@@ -1623,8 +1823,7 @@ bool RunP2PPullResponseOnce() {
   return true;
 }
 
-bool RunP2PAckLoopOnce() {
-  QueueType this_op = P2P_WAIT_ACK;
+bool RunP2PAckLoopOnce(QueueType this_op) {
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   auto task = q->getTaskLite();
   if (task) {
@@ -1653,7 +1852,7 @@ void P2PPullResponseLoop() {
 
 void P2PAckLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
-  while (RunP2PAckLoopOnce() &&
+  while (RunP2PAckLoopOnce(P2P_WAIT_ACK) &&
          !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1879,6 +2078,110 @@ void CpuBcastFinishLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
 }
 
+bool RunAllgatherPullLoopOnce() {
+  QueueType this_op = ALLGATHER_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto t = q->getTask();
+  if (t) {
+    auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
+    const int dtype = task->tensor->dtype();
+    const int device_type = (task->device == CPU_DEVICE_ID) ? CPU : GPU;
+
+    int local_size = BytePSGlobal::GetLocalSize();
+    int phy_id = BytePSGlobal::GetPhyNodeID();
+    int num_phy_node = BytePSGlobal::GetPhyNodeNum();
+
+    for (int r = 0; r < num_phy_node; ++r) {
+      int i = (phy_id + r + 1) % num_phy_node;
+      if (i == phy_id) continue;
+
+      i *= local_size;
+      int receiver = i + BytePSGlobal::GetWorkerLocalRoot();
+      auto len = task->len;
+      if (len == 0)
+        continue;
+      else {
+        auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
+        int cmd = server::GetCommandType(server::RequestType::kAllgatherPull, 
+                                         dtype, device_type);
+        int ack_cmd = server::GetCommandType(server::RequestType::kAllgatherAckSignal,
+                                             dtype, device_type);
+
+        BPS_CHECK(task->cpubuff) << task->tensor_name
+                  << ": CPU buffer not initialized, size=" << task->len;
+        char* output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + i * len);
+        auto vals = new ps::SArray<char>(output, local_size * len, false);
+        BytePSGlobal::GetPS()
+          ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [receiver, vals, task, t, ack_cmd]() {
+            if (!BytePSGlobal::IsP2PAckDisabled()) {
+              // notify the server that the response is received
+              // We perform zpush with 1 byte data using tensor_name,
+              // which should persist until byteps is shutdown
+              char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
+              ps::SArray<char> ack_vals(cpubuff, 1, false);
+              auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
+              // no need to wait for this zpush
+              BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
+            }
+            // the rest of the callbacks are for zpull
+            delete vals;
+            int v = task->request_counter.get()->fetch_sub(1);
+            if (v == 1) {
+              FinishOrProceed(t);
+            }
+          });
+      }
+    }
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunAllgatherPullResponseOnce() {
+  QueueType this_op = ALLGATHER_PULL_RESPONSE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto t = q->getTaskLite();
+  if (t) {
+    auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
+    int phy_id = BytePSGlobal::GetPhyNodeID();
+    int local_size = BytePSGlobal::GetLocalSize();
+
+    BPS_CHECK(task->cpubuff) << task->tensor_name
+              << ": CPU buffer not initialized, size=" << task->len;
+    char* tensor = const_cast<char *>(static_cast<const char *>(task->cpubuff) + phy_id * local_size * task->len);
+    server::BytePSServer::SendAllgatherPullResponse(task->key, tensor, local_size * task->len);
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+void AllgatherPullLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherPullLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+};
+
+void AllgatherPullResponseLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherPullResponseOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherP2PAckLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunP2PAckLoopOnce(ALLGATHER_P2P_WAIT_ACK) &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
 void MonitorLoop() {
   std::chrono::seconds interval(BytePSGlobal::GetMonitorInterval());
   std::unordered_map<uint64_t, TaskMetaMap> prev_tasks;
@@ -1930,17 +2233,7 @@ void MonitorLoop() {
 }
 
 #if BYTEPS_BUILDING_CUDA == 0
-void CoordinateReduceLoop() {
-  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
-  BytePSGlobal::ReportThreadFinish();
-}
-
-void CoordinateBroadcastLoop() {
-  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
-  BytePSGlobal::ReportThreadFinish();
-}
-
-void CoordinatePushLoop() {
+void CoordinateLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
@@ -1991,6 +2284,21 @@ void NonRootCopyListenLoop() {
 }
 
 void NonRootCopyHost2DeviceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherCopyDevice2HostLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherRootCopyHost2DeviceLoop() {
+  BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherNonRootCopyHost2DeviceLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }

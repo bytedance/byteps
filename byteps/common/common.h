@@ -127,6 +127,16 @@ enum QueueType {
   // for pure CPU allreduce
   CPU_BCAST,
   CPU_BCAST_FINISH,
+  // for allgather pull
+  ALLGATHER,
+  COORDINATE_ALLGATHER,
+  ALLGATHER_PULL,
+  ALLGATHER_PULL_RESPONSE,
+  ALLGATHER_BCAST,
+  COORDINATE_ALLGATHER_BCAST,
+  ALLGATHER_P2P_WAIT_ACK,
+  ALLGATHER_COPYD2H,
+  ALLGATHER_COPYH2D,
   QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
 };
 
@@ -138,6 +148,8 @@ enum OperationType {
   P2P_OP,
   // alltoall operations
   ALLTOALL_OP,
+  // allgather operations
+  ALLGATHER_OP,
 };
 
 enum ReduceOp {
@@ -174,7 +186,16 @@ const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
                                              "CPU_COPY",
                                              "CPU_REDUCE",
                                              "CPU_BCAST",
-                                             "CPU_BCAST_FINISH"};
+                                             "CPU_BCAST_FINISH",
+                                             "ALLGATHER",
+                                             "COORDINATE_ALLGATHER",
+                                             "ALLGATHER_PULL",
+                                             "ALLGATHER_PULL_RESPONSE",
+                                             "ALLGATHER_BCAST",
+                                             "COORDINATE_ALLGATHER_BCAST",
+                                             "ALLGATHER_P2P_WAIT_ACK",
+                                             "ALLGATHER_COPYD2H",
+                                             "ALLGATHER_COPYH2D"};
 
 enum GDRLevel {
   GPU2CPU, GPU2GPU
@@ -399,6 +420,11 @@ struct P2PTensorTableEntry : TensorTableEntry {
    : TensorTableEntry(priority_, version_, ready_event_, callback_, device_, queue_list_),
      output_device(output_device_), output_size_unknown(output_size_unknown_),
      group_tensors(group_inputs_), group_outputs(group_outputs_) {}
+
+  explicit P2PTensorTableEntry(int priority_, int version_, 
+                               std::shared_ptr<ReadyEvent> ready_event_, const StatusCallback& callback_,
+                               int device_, std::vector<QueueType>& queue_list_)
+   : TensorTableEntry(priority_, version_, ready_event_, callback_, device_, queue_list_) {}
 
   ~P2PTensorTableEntry() {
     aux_output.reset();

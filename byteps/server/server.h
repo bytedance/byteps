@@ -275,9 +275,15 @@ class BytePSServer {
     static ReadyTable* GetGDRPushPullTable() { return gdr_push_pull_table_; } 
     static ReadyTable* GetGDRAckTable() { return gdr_ack_table_; } 
 
+    static ReadyTable* GetAllgatherPullResponseTable() { return allgather_pull_response_table_; }
+    static ReadyTable* GetAllgatherAckTable() { return allgather_ack_table_; }
+
     static void InitP2PCopyTable();
     static int IsP2PDirectResponse() { return p2p_direct_response_; }
     static void SendPullResponse(uint64_t key, char* data, int len);
+
+    static void SendAllgatherPullResponse(uint64_t key, char* data, int len);
+    static void InitAllgatherTable();
 
     static void InitGDRReadyTable();
     static void LocalPushPull(uint64_t key, char* push_addr, char* pull_addr, size_t len, int dtype);
@@ -392,6 +398,9 @@ class BytePSServer {
     static std::mutex req_meta_mu_;
     static std::unordered_map<uint64_t, std::pair<ps::KVMeta, ps::KVServer<char>*>> response_meta_;
 
+    static std::mutex allgather_pull_resp_mu_;
+    static std::unordered_map<uint64_t, ps::KVMeta> allgather_pull_reqmetas_;
+
     // hash function
     static std::mutex hash_mu_;
     static std::unordered_map<uint64_t, size_t> hash_cache_;
@@ -403,6 +412,10 @@ class BytePSServer {
     static ReadyTable* p2p_group_copy_table_;
     static ReadyTable* p2p_pull_response_table_;
     static ReadyTable* p2p_ack_table_;
+
+    static ReadyTable* allgather_pull_response_table_;
+    static ReadyTable* allgather_ack_table_;
+
     static ReadyTable* gdr_push_pull_table_;
     static ReadyTable* gdr_ack_table_;
     static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;

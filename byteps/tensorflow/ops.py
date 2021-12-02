@@ -134,6 +134,13 @@ def _declare_alltoall_tensor(full_name):
     tensor_key = list(tensor_key_ptrs)
     return tensor_key
 
+def _declare_allgather_tensor(full_name):
+    full_name_ascii = full_name.encode("ascii")
+    key = ctypes.c_int(-1)
+    key_ptr = ctypes.pointer(key)
+    TF_LIB_CTYPES.byteps_tensorflow_declare_tensor_allgather(ctypes.c_char_p(full_name_ascii), key_ptr)
+    return key_ptr[0]
+
 def _push_pull(tensor, scope='', name=None, op=Average):
     """An op which sums an input tensor over all the BytePS processes.
     The reduction operation is keyed by the name of the op. The tensor type and
@@ -354,6 +361,24 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
         recved_size = recv_splits
     return tensor_decompressed, recved_size
 
+def _allgather(tensor, scope='', name=None):
+    if name is None and not _executing_eagerly():
+        name = 'BytePSAllgather_%s' % _normalize_name(tensor.name)
+    if scope == '' and not _executing_eagerly():
+        if 'v1' in dir(tf.compat):
+            scope = tf.compat.v1.get_default_graph().get_name_scope()
+        else:
+            scope = tf.get_default_graph().get_name_scope()
+        if scope != '':
+            scope += '/'
+    if not name:
+        name = ''
+    full_name = scope + _normalize_name(name)
+    if not full_name:
+        full_name = "empty_name_" + randomString()
+    key = _declare_allgather_tensor(full_name)
+    return C_LIB.byteps_allgather(tensor, name=name, input_name=full_name,
+                                  tensor_key=key)
 
 @ops.RegisterGradient('BytepsAlltoall')
 def _alltoall_grad(op, grad, recv_bytes):
@@ -471,6 +496,25 @@ def _push_pull_grad(op, grad):
       The gradient with respect to the input of the op.
     """
     return _push_pull(grad)
+
+@ops.RegisterGradient('BytepsAllgather')
+def _allgather_grad(op, grad):
+    """Gradient for allgather op.
+    Args:
+      op: An operation.
+      grad: `Tensor` gradient with respect to the output of the op.
+    Returns:
+      The gradient with respect to the input of the op.
+    """
+    # if not distributed, _push_pull always sum no matter op param is Average or Sum
+    # grad = _push_pull(grad, op=Average)
+    grad = _push_pull(grad)
+    if size() == local_size() and os.getenv("BYTEPS_FORCE_DISTRIBUTED", "0") != "1":
+        _div = tf.div if hasattr(tf, 'div') else tf.math.divide
+        grad = _div(grad, size())
+    # TODO: support tensors of variable lengths
+    splits = tf.split(grad, num_or_size_splits=size(), axis=0)
+    return splits[rank()]
 
 
 def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):

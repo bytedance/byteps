@@ -152,6 +152,8 @@ class BytePSGlobal {
   }
   static cudaStream_t* GetCopyDevice2HostStream();
   static cudaStream_t* GetCopyHost2DeviceStream();
+  static cudaStream_t* GetAllgatherCopyDevice2HostStream();
+  static cudaStream_t* GetAllgatherCopyHost2DeviceStream();
   static std::shared_ptr<NcclManager> GetNccl() { return _nccl_manager; }
 #endif
 
@@ -177,6 +179,13 @@ class BytePSGlobal {
   static ReadyTable* GetP2PAckTable();
   // for non-root
   static ReadyTable* GetCopyTable() { return _copy_table; }
+
+  static ReadyTable* GetAllgatherTable() { return _allgather_table; }
+  static ReadyTable* GetAllgatherBcastTable() { return _allgather_bcast_table; }
+  static ReadyTable* GetAllgatherPullResponseTable();
+  static ReadyTable* GetAllgatherAckTable();
+  // for non-root
+  static ReadyTable* GetAllgatherCopyH2DTable() { return _allgather_copy_h2d_table; }
 
   static std::shared_ptr<CpuReducer> GetCpuReducer() { return _cpu_reducer; }
   static std::shared_ptr<GpuReducer> GetGpuReducer() { return _gpu_reducer; }
@@ -231,6 +240,7 @@ class BytePSGlobal {
   static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
   static bool IsP2PDisabled() { return _disable_p2p; }
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
+  static bool IsGpuAllgatherDisabled() { return _disable_gpu_allgather; }
 
   static bool IsGDR() { return _is_gdr_allreduce; }
   static bool IsGDRGpu2Gpu() { return _gdr_allreduce_level == common::GPU2GPU; }
@@ -283,6 +293,7 @@ class BytePSGlobal {
   // features
   static bool _disable_cpu_allreduce;
   static bool _disable_gpu_allreduce;
+  static bool _disable_gpu_allgather;
   static bool _disable_p2p;
   // p2p
   static bool _skip_h2d;
@@ -367,6 +378,8 @@ class BytePSGlobal {
 #if BYTEPS_BUILDING_CUDA == 1
   static cudaStream_t* _copy_device2host_stream;
   static cudaStream_t* _copy_host2device_stream;
+  static cudaStream_t* _allgather_copy_device2host_stream;
+  static cudaStream_t* _allgather_copy_host2device_stream;
   static std::shared_ptr<NcclManager> _nccl_manager;
 #endif
 
@@ -394,6 +407,10 @@ class BytePSGlobal {
   static ReadyTable* _p2p_copy_table;
   // (key, ready_signal_count) pair, only valid for non-root device
   static ReadyTable* _copy_table;
+
+  static ReadyTable* _allgather_table;
+  static ReadyTable* _allgather_bcast_table;
+  static ReadyTable* _allgather_copy_h2d_table;
 
   static std::shared_ptr<ThreadPool> _thread_pool;
 

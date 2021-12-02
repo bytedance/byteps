@@ -91,6 +91,7 @@ std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 bool BytePSGlobal::_disable_p2p = false;
 bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
+bool BytePSGlobal::_disable_gpu_allgather = false;
 bool BytePSGlobal::_is_gdr_allreduce = false;
 #if HAVE_CUDA == 1
 std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
@@ -113,6 +114,9 @@ ReadyTable* BytePSGlobal::_cpu_bcast_table;
 ReadyTable* BytePSGlobal::_cpu_bcast_finish_table;
 ReadyTable* BytePSGlobal::_copy_table;
 ReadyTable* BytePSGlobal::_p2p_copy_table;
+ReadyTable* BytePSGlobal::_allgather_table;
+ReadyTable* BytePSGlobal::_allgather_bcast_table;
+ReadyTable* BytePSGlobal::_allgather_copy_h2d_table;
 bool BytePSGlobal::_is_using_reduce = false;
 std::vector<int> BytePSGlobal::_reduce_roots;
 // for alltoall
@@ -134,6 +138,8 @@ std::unordered_map<int, unsigned int> BytePSGlobal::p2p_next_keys_;
 #if BYTEPS_BUILDING_CUDA == 1
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
+cudaStream_t* BytePSGlobal::_allgather_copy_device2host_stream = NULL;
+cudaStream_t* BytePSGlobal::_allgather_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
 #endif
 std::string BytePSGlobal::_uuid = "";
@@ -199,6 +205,7 @@ void BytePSGlobal::Init() {
   _disable_p2p = ParseEnv("BYTEPS_DISABLE_P2P", false);
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
+  _disable_gpu_allgather = ParseEnv("BYTEPS_DISABLE_GPU_ALLGATHER", false);
   _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
   int gdr_allreduce_level = getenv("BYTEPS_GDR_ALLREDUCE_LEVEL") ? atoi(getenv("BYTEPS_GDR_ALLREDUCE_LEVEL")) : 1;
   _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
@@ -214,6 +221,7 @@ void BytePSGlobal::Init() {
                 << " use_pull=" << (_is_alltoall_use_pull ? "Y" : "N")
                 << " disable_cpu_allreduce=" << _disable_cpu_allreduce
                 << " disable_gpu_allreduce=" << _disable_gpu_allreduce
+                << " disable_gpu_allgather=" << _disable_gpu_allgather
                 << " disable_p2p=" << _disable_p2p
                 << " is_gdr_allreduce=" << _is_gdr_allreduce
                 << " err_handling=" << _enable_err_handling;
@@ -408,6 +416,7 @@ void BytePSGlobal::Init() {
   // ready table for send & recv
   if (_is_joint) {
     server::BytePSServer::InitP2PCopyTable();
+    server::BytePSServer::InitAllgatherTable();
   }
   if (_is_gdr_allreduce) {
     server::BytePSServer::InitGDRReadyTable();
@@ -426,6 +435,8 @@ void BytePSGlobal::Init() {
     _copy_table = new ReadyTable(1, "COPY");
     _cpu_reduce_table = new ReadyTable(1, "CPU_REDUCE");
     _cpu_bcast_table = new ReadyTable(1, "CPU_BCAST");
+
+    _allgather_copy_h2d_table = new ReadyTable(1, "ALLGATHER_COPY_H2D");
   }
 
   if (_is_root_device) {
@@ -450,6 +461,10 @@ void BytePSGlobal::Init() {
     _reduce_table = new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_REDUCE");
     _broadcast_table =
         new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_BROADCAST");
+
+    _allgather_table = new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_ALLGATHER_REDUCE");
+    _allgather_bcast_table = 
+        new ReadyTable(GetPcieSwitchSize() - 1, "NCCL_ALLGATHER_BCAST");
   }
 
   // Configure the reduce strategy
@@ -489,6 +504,15 @@ void BytePSGlobal::Init() {
                                       cudaStreamNonBlocking));
   CUDA_CALL(cudaStreamSynchronize(*_copy_host2device_stream));
   CUDA_CALL(cudaStreamSynchronize(*_copy_device2host_stream));
+
+  _allgather_copy_host2device_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  _allgather_copy_device2host_stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * 1);
+  CUDA_CALL(cudaStreamCreateWithFlags(_allgather_copy_host2device_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamCreateWithFlags(_allgather_copy_device2host_stream,
+                                      cudaStreamNonBlocking));
+  CUDA_CALL(cudaStreamSynchronize(*_allgather_copy_host2device_stream));
+  CUDA_CALL(cudaStreamSynchronize(*_allgather_copy_device2host_stream));
 #endif
   // Create queues
   for (int i = 0; i < QueueNum; i++) {
@@ -629,6 +653,15 @@ void BytePSGlobal::Shutdown() {
   if (_copy_host2device_stream) {
     CUDA_CALL(cudaStreamDestroy(*_copy_host2device_stream));
     _copy_host2device_stream = NULL;
+  }
+
+  if (_allgather_copy_device2host_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_allgather_copy_device2host_stream));
+    _allgather_copy_device2host_stream = NULL;
+  }
+  if (_allgather_copy_host2device_stream) {
+    CUDA_CALL(cudaStreamDestroy(*_allgather_copy_host2device_stream));
+    _allgather_copy_host2device_stream = NULL;
   }
 #endif
 
@@ -1070,6 +1103,14 @@ cudaStream_t* BytePSGlobal::GetCopyDevice2HostStream() {
 cudaStream_t* BytePSGlobal::GetCopyHost2DeviceStream() {
   return BytePSGlobal::_copy_host2device_stream;
 }
+
+cudaStream_t* BytePSGlobal::GetAllgatherCopyDevice2HostStream() {
+  return BytePSGlobal::_allgather_copy_device2host_stream;
+}
+
+cudaStream_t* BytePSGlobal::GetAllgatherCopyHost2DeviceStream() {
+  return BytePSGlobal::_allgather_copy_host2device_stream;
+}
 #endif
 
 bool BytePSGlobal::IsAllThreadFinish(int total_thread_num) {
@@ -1105,5 +1146,14 @@ ReadyTable* BytePSGlobal::GetGDRAckTable() {
 int BytePSGlobal::IsDirectResponse() {
   return server::BytePSServer::IsP2PDirectResponse();
 }
+
+ReadyTable* BytePSGlobal::GetAllgatherPullResponseTable() {
+  return server::BytePSServer::GetAllgatherPullResponseTable();
+}
+
+ReadyTable* BytePSGlobal::GetAllgatherAckTable() {
+  return server::BytePSServer::GetAllgatherAckTable();
+}
+
 }  // namespace common
 }  // namespace byteps
