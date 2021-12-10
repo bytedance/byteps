@@ -297,15 +297,15 @@ inline void PostNcclCalls(
       out_p = p;
     }
 
-    if (num_elem_per_gpu) {
-      if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() == 1) {
-        NCCLCHECK(ncclAllReduce(
-            (const void *)p,
-            (void *)out_p,
-            (size_t)(len/unit_len), (ncclDataType_t)nccl_dtype,
-            (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
-            (cudaStream_t)nccl_stream));
-      } else {
+    if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() == 1) {
+      NCCLCHECK(ncclAllReduce(
+          (const void *)p,
+          (void *)out_p,
+          (size_t)(len/unit_len), (ncclDataType_t)nccl_dtype,
+          (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
+          (cudaStream_t)nccl_stream));
+    } else {
+      if (num_elem_per_gpu) {
         NCCLCHECK(ncclReduceScatter(
             (const void *)p,
             (void *)(out_p + nccl_rank * num_elem_per_gpu * unit_len),
@@ -313,13 +313,14 @@ inline void PostNcclCalls(
             (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
             (cudaStream_t)nccl_stream));
       }
-    }
-    if (left_elem) {
-      NCCLCHECK(ncclReduce((const void *)(p + len - left_elem * unit_len),
-                           (void *)(out_p + len - left_elem * unit_len),
-                           (size_t)left_elem, (ncclDataType_t)nccl_dtype,
-                           (ncclRedOp_t)ncclSum, (int)nccl_root,
-                           (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+      if (left_elem) {
+        NCCLCHECK(ncclReduce(
+            (const void *)(p + len - left_elem * unit_len),
+            (void *)(out_p + len - left_elem * unit_len),
+            (size_t)left_elem, (ncclDataType_t)nccl_dtype,
+            (ncclRedOp_t)ncclSum, (int)nccl_root,
+            (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+      }
     }
   } else {
     if (num_elem_per_gpu) {
