@@ -93,6 +93,7 @@ bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allgather = false;
 bool BytePSGlobal::_is_gdr_allreduce = false;
+bool BytePSGlobal::_is_gdr_allgather = true;
 #if HAVE_CUDA == 1
 std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
 #endif
@@ -207,6 +208,7 @@ void BytePSGlobal::Init() {
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
   _disable_gpu_allgather = ParseEnv("BYTEPS_DISABLE_GPU_ALLGATHER", false);
   _is_gdr_allreduce = ParseEnv("BYTEPS_USE_GDR_ALLREDUCE", false);
+  _is_gdr_allgather = ParseEnv("BYTEPS_USE_GDR_ALLGATHER", true);
   int gdr_allreduce_level = getenv("BYTEPS_GDR_ALLREDUCE_LEVEL") ? atoi(getenv("BYTEPS_GDR_ALLREDUCE_LEVEL")) : 1;
   _should_abort_on_timeout = ParseEnv("BYTEPS_ABORT_ON_TIMEOUT", false);
   _enable_err_handling = ParseEnv("BYTEPS_ENABLE_ERR_HANDLING", false);
@@ -224,6 +226,7 @@ void BytePSGlobal::Init() {
                 << " disable_gpu_allgather=" << _disable_gpu_allgather
                 << " disable_p2p=" << _disable_p2p
                 << " is_gdr_allreduce=" << _is_gdr_allreduce
+                << " is_gdr_allgather=" << _is_gdr_allgather
                 << " err_handling=" << _enable_err_handling;
 
   if (_is_gdr_allreduce) {

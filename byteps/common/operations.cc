@@ -138,11 +138,14 @@ void byteps_lazy_init() {
       func.push_back(AllgatherPullResponseLoop);
       func.push_back(AllgatherP2PAckLoop);
 
-      func.push_back(AllgatherCopyDevice2HostLoop);
-      if (BytePSGlobal::IsRootDevice())
-        func.push_back(AllgatherRootCopyHost2DeviceLoop);
-      else
-        func.push_back(AllgatherNonRootCopyHost2DeviceLoop);
+      if (!BytePSGlobal::IsGDRAllgather()) {
+        func.push_back(AllgatherCopyDevice2HostLoop);
+        if (BytePSGlobal::IsRootDevice()) {
+          func.push_back(AllgatherRootCopyHost2DeviceLoop);
+        } else {
+          func.push_back(AllgatherNonRootCopyHost2DeviceLoop);
+        }
+      }
     }
   }
 #endif
@@ -1141,11 +1144,13 @@ void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpub
   }
 
   // shared memory is not necessary, just for convenience
-  auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
-  size_t aligned_size = Align(BytePSGlobal::GetSize() * size, dtype);
-  auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
-  context.cpubuff = shm_obj->openSharedMemory(shm_prefix, context.key_list[0], aligned_size, true);
-  BPS_LOG(TRACE) << context.tensor_name << ": open shared memory size " << aligned_size;
+  if (!BytePSGlobal::IsGDRAllgather()) {
+    auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
+    size_t aligned_size = Align(BytePSGlobal::GetSize() * size, dtype);
+    auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
+    context.cpubuff = shm_obj->openSharedMemory(shm_prefix, context.key_list[0], aligned_size, true);
+    BPS_LOG(TRACE) << context.tensor_name << ": open shared memory size " << aligned_size;
+  }
 
   if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsJoint()) {
     // in joint mode every byteps worker instantiates PS.
@@ -1397,14 +1402,18 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
 
   if (BytePSGlobal::IsDistributed()) {
     // TODO: ALLGATHER_COPYD2H can be parallel with ALLGATHER_PULL
-    queue_list->push_back(ALLGATHER_COPYD2H);
+    if (!BytePSGlobal::IsGDRAllgather()) {
+      queue_list->push_back(ALLGATHER_COPYD2H);
+    }
     
     if (BytePSGlobal::IsRootDevice()) {
       queue_list->push_back(ALLGATHER_PULL);
     }
 
-    queue_list->push_back(ALLGATHER_COPYH2D);
-
+    if (!BytePSGlobal::IsGDRAllgather()) {
+      queue_list->push_back(ALLGATHER_COPYH2D);
+    }
+    
     if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
       queue_list->push_back(ALLGATHER_BCAST);
     } else {
@@ -1419,6 +1428,7 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
 // queue for allgather response
 std::shared_ptr<std::vector<QueueType>> GetAllgatherResponseQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
+#if BYTEPS_BUILDING_CUDA == 1
   if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
     if (BytePSGlobal::IsP2PAckDisabled()) {
       queue_list->push_back(ALLGATHER_PULL_RESPONSE);
@@ -1427,7 +1437,7 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherResponseQueueList() {
       queue_list->push_back(ALLGATHER_P2P_WAIT_ACK);
     }
   }
-
+#endif
   return queue_list;
 }
 

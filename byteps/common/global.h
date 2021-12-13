@@ -240,7 +240,9 @@ class BytePSGlobal {
   static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
   static bool IsP2PDisabled() { return _disable_p2p; }
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
+
   static bool IsGpuAllgatherDisabled() { return _disable_gpu_allgather; }
+  static bool IsGDRAllgather() { return _is_gdr_allgather; }
 
   static bool IsGDR() { return _is_gdr_allreduce; }
   static bool IsGDRGpu2Gpu() { return _gdr_allreduce_level == common::GPU2GPU; }
@@ -293,8 +295,11 @@ class BytePSGlobal {
   // features
   static bool _disable_cpu_allreduce;
   static bool _disable_gpu_allreduce;
-  static bool _disable_gpu_allgather;
   static bool _disable_p2p;
+
+  static bool _disable_gpu_allgather;
+  static bool _is_gdr_allgather;
+
   // p2p
   static bool _skip_h2d;
   static bool _skip_input_copy;

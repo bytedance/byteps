@@ -40,6 +40,8 @@ bool DoFinishOrProceed(T& task) {
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   q->reportFinish(task->len);
 
+  AllgatherPullRespTableUpdate(this_op, task->key, task->context->key_list);
+
   if (BytePSGlobal::IsTensorSampled(task->key)) {
     // We only support sampling
     BPS_CHECK(task->tensor->dtype() == common::BYTEPS_FLOAT32);
@@ -273,6 +275,12 @@ inline void PostNcclCalls(
 
   if (this_op == ALLGATHER) {
     auto out_p = (char *)(task->output->data());
+    if (BytePSGlobal::IsGDRAllgather() && BytePSGlobal::IsRootDevice()) {
+      int phy_id = BytePSGlobal::GetPhyNodeID();
+      int local_size = BytePSGlobal::GetLocalSize();
+      out_p += phy_id * local_size * len;
+    }
+
     NCCLCHECK(ncclAllGather(
         (const void *)p, (void *)out_p, 
         (size_t)len / unit_len, (ncclDataType_t)nccl_dtype,
@@ -2079,6 +2087,17 @@ void CpuBcastFinishLoop() {
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
 }
 
+inline void AllgatherPullRespTableUpdate(QueueType op, uint64_t key, const std::vector<uint64_t>& key_list) {
+  if (op == ALLGATHER && BytePSGlobal::IsGDRAllgather() &&
+      BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
+    for (auto k : key_list) {
+      if (k != key) {
+        BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(k);
+      }
+    }
+  }
+}
+
 bool RunAllgatherPullLoopOnce() {
   QueueType this_op = ALLGATHER_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
@@ -2108,9 +2127,17 @@ bool RunAllgatherPullLoopOnce() {
         int ack_cmd = server::GetCommandType(server::RequestType::kAllgatherAckSignal,
                                              dtype, device_type);
 
-        BPS_CHECK(task->cpubuff) << task->tensor_name
-                  << ": CPU buffer not initialized, size=" << task->len;
-        char* output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + i * len);
+        char* output = nullptr;
+        if (BytePSGlobal::IsGDRAllgather()) {
+          output = (char*)task->output->data() + i * len;
+        } else {
+          BPS_CHECK(task->cpubuff) << task->tensor_name
+              << ": CPU buffer not initialized, size=" << task->len;
+          output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + i * len);
+        }
+        BPS_CHECK(output) << task->tensor_name
+            << ": output buffer not initialized, size=" << task->len;
+
         auto vals = new ps::SArray<char>(output, local_size * len, false);
         BytePSGlobal::GetPS()
           ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [receiver, vals, task, t, ack_cmd]() {
@@ -2148,9 +2175,15 @@ bool RunAllgatherPullResponseOnce() {
     int phy_id = BytePSGlobal::GetPhyNodeID();
     int local_size = BytePSGlobal::GetLocalSize();
 
-    BPS_CHECK(task->cpubuff) << task->tensor_name
-              << ": CPU buffer not initialized, size=" << task->len;
-    char* tensor = const_cast<char *>(static_cast<const char *>(task->cpubuff) + phy_id * local_size * task->len);
+    char* tensor = nullptr;
+    if (BytePSGlobal::IsGDRAllgather()) {
+      tensor = (char*) task->output->data() + phy_id * local_size * task->len;
+    } else {
+      BPS_CHECK(task->cpubuff) << task->tensor_name
+          << ": CPU buffer not initialized, size=" << task->len;
+      tensor = const_cast<char *>(static_cast<const char *>(task->cpubuff) + phy_id * local_size * task->len);
+    }
+
     server::BytePSServer::SendAllgatherPullResponse(task->key, tensor, local_size * task->len);
     FinishOrProceedLite(task);
   } else {
