@@ -483,13 +483,66 @@ if hasattr(tf, 'GradientTape'):
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
                                  else grad for grad in grads]
-                    return [push_pull(grad, scope,
-                                      device_dense=self._device_dense,
-                                      device_sparse=self._device_sparse,
-                                      compression=self._compression)
-                            if grad is not None else grad
-                            for grad in grads]
-
+                    if os.getenv("BYTEPS_TF_GRADIENT_FUSION", "0") == "1":
+                        print("BytePS: Enable gradient fusion for TensorFlow.")
+                        grads_wo_none = [grad for grad in grads if (grad is not None) and (None not in grad.shape)]
+                        if len(grads_wo_none) == 0: return grads
+                        reshaped_grads_fp32, grad_shapes_fp32, grad_lens_fp32 = [], [], []
+                        reshaped_grads_fp16, grad_shapes_fp16, grad_lens_fp16 = [], [], []
+                        # reshape to 1D tensor
+                        for idx in range(len(grads_wo_none)):
+                            grad = grads_wo_none[idx]
+                            reshaped_grad = tf.reshape(grad, [-1]) if len(grad.shape) != 1 else grad
+                            grads_fused_fp32, grads_fused_fp16 = None, None
+                            if grad.dtype == tf.float32:
+                                grad_shapes_fp32.append(grad.shape)
+                                grad_lens_fp32.append(tf.size(reshaped_grad))
+                                reshaped_grads_fp32.append(reshaped_grad)
+                            else:
+                                grad_shapes_fp16.append(grad.shape)
+                                grad_lens_fp16.append(reshaped_grad.shape[0])
+                                reshaped_grads_fp16.append(reshaped_grad)
+                        if len(reshaped_grads_fp32) > 0: 
+                            grads_fused_fp32 = tf.concat(reshaped_grads_fp32, axis=0, name='concat_allreduce_fp32')
+                            grads_fused_fp32_avg = push_pull(grads_fused_fp32, name="bps_allreduce_fp32", 
+                                                             scope=scope, device_dense=self._device_dense,
+                                                             device_sparse=self._device_sparse, 
+                                                             compression=self._compression) 
+                            grads_fp32_avg_split = tf.split(grads_fused_fp32_avg, grad_lens_fp32, axis=0)
+                        if len(reshaped_grads_fp16)> 0: 
+                            grads_fused_fp16 = tf.concat(reshaped_grads_fp16, axis=0, name='concat_allreduce_fp16')
+                            grads_fused_fp16_avg = push_pull(grads_fused_fp16, name="bps_allreduce_fp16",
+                                                             scope=scope, device_dense=self._device_dense,
+                                                             device_sparse=self._device_sparse, 
+                                                             compression=self._compression) 
+                            grads_fp16_avg_split = tf.split(grads_fused_fp16_avg, grad_lens_fp16, axis=0)
+                        # now split the tensors according to their initial shape
+                        num_grads = len(grads)
+                        results = [None for _ in range(num_grads)]
+                        i_32, i_16 = 0, 0
+                        for idx in range(num_grads):
+                            grad = grads[idx]
+                            if (grad is not None):
+                                if None in grad.shape:
+                                    results[idx] = push_pull(grad, scope=scope, name="unknown_shape_tensor_" + str(idx),
+                                                             device_dense=self._device_dense,
+                                                             device_sparse=self._device_sparse, 
+                                                             compression=self._compression)
+                                else:
+                                    if len(reshaped_grads_fp32) > 0 and grad.dtype == tf.float32:
+                                        results[idx] = tf.reshape(grads_fp32_avg_split[i_32], grad_shapes_fp32[i_32]) \
+                                                        if len(grad_shapes_fp32[i_32]) != 1 else grads_fp32_avg_split[i_32]
+                                        i_32 += 1
+                                    elif len(reshaped_grads_fp16) > 0 and grad.dtype == tf.float16:
+                                        results[idx] = tf.reshape(grads_fp16_avg_split[i_16], grad_shapes_fp16[i_16]) \
+                                                        if len(grad_shapes_fp16[i_16]) != 1 else grads_fp16_avg_split[i_16]
+                                        i_16 += 1
+                        return results
+                    else:
+                        return [push_pull(grad, scope, device_dense=self._device_dense,
+                                            device_sparse=self._device_sparse, compression=self._compression)
+                                if grad is not None else grad
+                                for grad in grads]
             self._push_pull_grads = push_pull_grads
 
         def gradient(self, target, sources, output_gradients=None):
