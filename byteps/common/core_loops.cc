@@ -475,11 +475,10 @@ bool RunNonRootNcclLoopOnce() {
 bool RunSyncNcclOnce() {
   auto nccl_entry = BytePSGlobal::GetNccl()->DequeueGroup();
   if (nccl_entry) {
-    nccl_entry->SynchronizeEvents();
+    nccl_entry->BusyWaitEvents();
     for (size_t i = 0; i < nccl_entry->tasks.size(); i++) {
       FinishOrProceed(nccl_entry->tasks[i]);
     }
-    nccl_entry->DestroyEvents();
     BPS_LOG(TRACE) << "Finished NCCL Group size=" << nccl_entry->tasks.size()
                    << " rank=" << BytePSGlobal::GetLocalRank();
   } else {

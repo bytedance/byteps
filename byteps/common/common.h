@@ -297,6 +297,15 @@ typedef struct BytePSContext {
   // The type of the operation. this field is checked during tensor initialization
   OperationType op_type;
   uint64_t op_count = 0;
+
+#if BYTEPS_BUILDING_CUDA == 1
+  std::unordered_map<uint64_t, cudaEvent_t> cuda_events;
+  ~BytePSContext() {
+    for (auto& it : cuda_events) {
+      CUDA_CALL(cudaEventDestroy(it.second));
+    }
+  }
+#endif
 } BPSContext;
 
 class Tensor {

@@ -898,8 +898,11 @@ def build_torch_extension(build_ext, options, torch_version):
     updated_macros = options['MACROS']
     if use_cuda() and have_cuda:
         # Update HAVE_CUDA to mean that PyTorch supports CUDA.
+        # TODO: consolidate these two macros
         updated_macros = set_macro(
             updated_macros, 'HAVE_CUDA', str(int(have_cuda)))
+        updated_macros = set_macro(
+            updated_macros, 'BYTEPS_BUILDING_CUDA', str(int(have_cuda)))
 
     # Export TORCH_VERSION equal to our representation of torch.__version__. Internally it's
     # used for backwards compatibility checks.

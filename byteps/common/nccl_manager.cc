@@ -23,9 +23,9 @@ namespace common {
 
 void NcclGroupEntry::RecordEvents() {
   for (size_t i = 0; i < tasks.size(); i++) {
-    cudaEvent_t event;
-    CUDA_CALL(cudaEventCreateWithFlags(
-        &event, cudaEventBlockingSync | cudaEventDisableTiming));
+    auto key = tasks[i]->key;
+    auto context = tasks[i]->context;
+    cudaEvent_t event = context->cuda_events[key];
     CUDA_CALL(
         cudaEventRecord(event, BytePSGlobal::GetNccl()->GetStream(
                                    tasks[i]->key, queues[i]->getQueueType())));
@@ -33,15 +33,13 @@ void NcclGroupEntry::RecordEvents() {
   }
 }
 
-void NcclGroupEntry::SynchronizeEvents() {
+void NcclGroupEntry::BusyWaitEvents() {
   for (size_t i = 0; i < tasks.size(); i++) {
-    CUDA_CALL(cudaEventSynchronize(_events[i]));
-  }
-}
-
-void NcclGroupEntry::DestroyEvents() {
-  for (size_t i = 0; i < tasks.size(); i++) {
-    CUDA_CALL(cudaEventDestroy(_events[i]));
+    auto status = cudaEventQuery(_events[i]);
+    while (status != cudaSuccess) {
+      std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+      status = cudaEventQuery(_events[i]);
+    }
   }
 }
 

@@ -29,8 +29,7 @@ namespace common {
 class NcclGroupEntry {
  public:
   void RecordEvents();
-  void SynchronizeEvents();
-  void DestroyEvents();
+  void BusyWaitEvents();
 
   std::vector<std::shared_ptr<TensorTableEntry>> tasks;
   std::vector<BytePSScheduledQueue*> queues;

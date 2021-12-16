@@ -988,6 +988,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   // TODO: support compression in the future
   start_key += (uint32_t) PUSH_PULL_OP << 10;
   while (accumulated < size) {
+    // create cuda event
+#if BYTEPS_BUILDING_CUDA == 1
+    cudaEvent_t event;
+    CUDA_CALL(cudaEventCreateWithFlags(
+        &event, cudaEventBlockingSync | cudaEventDisableTiming));
+    context.cuda_events[start_key] = event;
+#endif
     context.key_list.push_back(start_key++);
     accumulated +=
         ((size - accumulated) > bound) ? bound : (size - accumulated);
