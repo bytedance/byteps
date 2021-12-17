@@ -1147,6 +1147,12 @@ void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpub
       ps::Key key = ((uint64_t) i) << 32;
       key += ((uint64_t) context.declared_key) << 16;
       key += ((uint64_t) common::ALLGATHER_OP) << 10;
+#if BYTEPS_BUILDING_CUDA == 1
+      cudaEvent_t event;
+      CUDA_CALL(cudaEventCreateWithFlags(
+          &event, cudaEventBlockingSync | cudaEventDisableTiming));
+      context.cuda_events[key] = event;
+#endif
       context.key_list.push_back(key);
   }
 
