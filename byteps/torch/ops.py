@@ -82,6 +82,9 @@ def _batched_unfuse_function_factory(tensor):
 def _batched_zero_out_function_factory(tensor):
     return 'byteps_torch_batched_zero_out_async_' + tensor.type().replace('.', '_')
 
+def _allgather_function_factory(tensor):
+    return 'byteps_torch_allgather_async_' + tensor.type().replace('.', '_')
+
 def _do_push_pull_async(tensor, output, average, name, version=0, priority=0, staleness=0):
     from byteps.torch import c_lib
     if staleness != 0:
@@ -134,6 +137,16 @@ def _do_push_pull_group_sync(tensor, output, average, name, version=0, priority=
     _handle_map[handle] = (tensor, output)
     return handle, curr_count
 
+def _do_allgather_async(tensor, output, name, version=0, priority=0, staleness=0):
+    from byteps.torch import c_lib
+    assert staleness == 0, 'allgather not support staleness > 0'
+    c_lib.byteps_torch_declare_tensor_allgather(name.encode() if name is not None else _NULL, staleness)
+    function = _check_function(_allgather_function_factory, tensor)
+    handle = getattr(c_lib, function)(tensor, output,
+                                      name.encode() if name is not None else _NULL,
+                                      version, priority, staleness)
+    _handle_map[handle] = (tensor, output)
+    return handle
 
 def push_pull_async(tensor, average=True, name=None, version=0, priority=0):
     """
@@ -179,6 +192,27 @@ def send_async(tensor, receiver, name=None, version=0, priority=0):
     """
     return _do_send_async(tensor, receiver, name, version, priority)
 
+def allgather_async(tensor, name=None, version=0, priority=0):
+    """
+    A function that asynchronously concatenates the input tensor over all 
+    the BytePS processes. The input tensor is not modified. If name is not 
+    provided, an incremented auto-generated name is used.  The tensor type 
+    must be the same on all BytePS processes for a given name. The concatenation 
+    is done on the first dimension, so the input tensors on the different processes 
+    must have the same shape, except for the first dimension,  which is allowed 
+    to be different. The allgather will not start until all processes are ready 
+    to send and receive the tensor.
+    Arguments:
+        tensor: A tensor to allgather.
+        name: A name of the allgather operation.
+    Returns:
+        A handle to the allgather operation that can be used with `poll()` or
+        `synchronize()`.
+    """
+    shape = list(tensor.shape)
+    shape[0] *= size()
+    output = tensor.new(torch.Size(shape))
+    return _do_allgather_async(tensor, output, name, version, priority, staleness=0)
 
 class BytePSPushPull(torch.autograd.Function):
     """An autograd function that performs push_pull on a tensor."""
@@ -195,7 +229,7 @@ class BytePSPushPull(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return push_pull(grad_output,
-                         ctx.average, ctx.name, ctx.version, ctx.priority), None, None
+                         ctx.average, ctx.name, ctx.version, ctx.priority), None, None, None, None
 
 
 def push_pull(tensor, average=True, name=None, version=0, priority=0, compression=Compression.none):
@@ -275,6 +309,55 @@ def push_pull_inplace(tensor, average=True, name=None, version=0, priority=0, st
     handle = push_pull_async_inplace(tensor, average, name, version, priority, staleness)
     return synchronize(handle)
 
+
+class BytePSAllgather(torch.autograd.Function):
+    """An autograd function that performs allgather on a tensor."""
+
+    @staticmethod
+    def forward(ctx, tensor, name, version, priority):
+        ctx.name = name
+        ctx.version = version
+        ctx.priority = priority
+        handle = allgather_async(tensor, name, version, priority)
+        return synchronize(handle)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_reduced = push_pull(grad_output, True, ctx.name + '_allgather_grad', ctx.version, ctx.priority)
+        s = size()
+        r = rank()
+        dim = grad_reduced.shape[0]
+        len = int(dim / s)
+        return grad_reduced.narrow(0, r * len, len), None, None, None
+
+
+def allgather(tensor, name=None, version=0, priority=0):
+    """
+    A function that asynchronously concatenates the input tensor over all 
+    the BytePS processes. The input tensor is not modified. The name must be provided.  
+    The tensor type must be the same on all BytePS processes for a given name. The 
+    concatenation is done on the first dimension, so the input tensors on the different 
+    processes must have the same shape, except for the first dimension,  which is allowed 
+    to be different. The allgather will not start until all processes are ready to send 
+    and receive the tensor.
+    This acts as a thin wrapper around an autograd function.  If your input
+    tensor requires gradients, then callings this function will allow gradients
+    to be computed and backpropagated.
+    Arguments:
+        tensor: A tensor to allgather.
+        name: A name of the allgather operation.
+        compression: Compression algorithm used during allgather to reduce the amount
+                     of data sent during the each parameter update step.  Defaults to
+                     not using compression.
+    Returns:
+        A tensor of the same type as `tensor`, concatenated on dimension zero
+        across all processes. The shape is identical to the input shape, except for
+        the first dimension, which may be greater and is the sum of all first
+        dimensions of the tensors in different processes.
+    """
+    if name == None:
+        raise AssertionError("To manually call allgather, you must specify a name by name=...")
+    return BytePSAllgather.apply(tensor, name, version, priority)
 
 def poll(handle):
     """

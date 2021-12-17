@@ -62,7 +62,8 @@ int GetDeviceID(const ::torch::Tensor& tensor) {
 enum TaskType {
   kSend,
   kRecv,
-  kPushPull
+  kPushPull,
+  kAllgather,
 };
 
 // For recv, the tensor is the output
@@ -158,6 +159,34 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 
 }
 
+void StartAllgatherTask(::torch::Tensor tensor, ::torch::Tensor output,
+                        const std::string tensor_name, int version, 
+                        int priority, int handle) {
+  auto& context = common::GetContextFromName(tensor_name);                       
+  auto device = GetDeviceID(tensor);
+  auto byteps_input = std::make_shared<TorchTensor>(tensor);
+  auto byteps_output = std::make_shared<TorchTensor>(output);
+  size_t size = byteps_input->size();
+  auto dtype = byteps_input->dtype();
+  
+  common::InitTensorAllgather(context, size, dtype,
+                             (device == CPU_DEVICE_ID)
+                             ? const_cast<void*>(byteps_input->data())
+                             : nullptr);
+
+  auto ready_event = RecordReadyEvent(device);
+  auto enqueue_result = 
+    common::EnqueueAllgatherTensor(
+      context, byteps_input, byteps_output, ready_event, device, priority, 
+      version,
+      [handle, tensor, output](const Status& status) mutable {
+        handle_manager.MarkDone(handle, status);
+      });
+
+  ThrowIfError(enqueue_result);
+  return;
+}
+
 int DoRecv(::torch::Tensor tensor, int sender, int receiver,
            const std::string& name, int version, int priority) {
   ThrowIfError(common::CheckInitialized());
@@ -202,7 +231,6 @@ int DoSend(::torch::Tensor tensor, int sender, int receiver,
 int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
                const std::string& name, int version, int priority, int staleness) {
   ThrowIfError(common::CheckInitialized());
-
   auto handle = handle_manager.AllocateHandle();
   std::string tensor_name;
   if (staleness == 0) {
@@ -216,6 +244,28 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
     StartTask(tensor, output, average, tensor_name, version, priority, handle);
   } else {
     std::thread t(StartTask, tensor, output, average, tensor_name, version, priority, handle);
+    t.detach();
+  }
+  return handle;
+}
+
+int DoAllgather(::torch::Tensor tensor, ::torch::Tensor output, const std::string& name, 
+                int version, int priority, int staleness) {
+  ThrowIfError(common::CheckInitialized());
+
+  auto handle = handle_manager.AllocateHandle();
+  std::string tensor_name;
+  if (staleness == 0) {
+    tensor_name = GetOpName("byteps", name.c_str(), 0);
+  } else {
+    std::string tmp_name = "byteps_version_" + std::to_string(version);
+    tensor_name = GetOpName(tmp_name, name.c_str(), 0);
+  }
+  auto& context = common::GetContextFromName(tensor_name);
+  if (context.initialized) {
+    StartAllgatherTask(tensor, output, tensor_name, version, priority, handle);
+  } else {
+    std::thread t(StartAllgatherTask, tensor, output, tensor_name, version, priority, handle);
     t.detach();
   }
   return handle;
@@ -251,6 +301,20 @@ void DeclareTensorP2P(const std::string& name, int sender, int receiver) {
   prefix += std::to_string(sender) + "_recv_" + std::to_string(receiver);
   std::string tensor_name = GetOpName(prefix, name.c_str(), 0);
   common::DeclareP2PTensor(tensor_name, sender, receiver);
+}
+
+void DeclareTensorAllgather(const std::string& name, int staleness) {
+  int num_versions = staleness + 1;
+  if (num_versions == 1) {
+    std::string tensor_name = GetOpName("byteps", name.c_str(), 0);
+    common::DeclareAllgatherTensor(tensor_name, -1);
+  } else {
+    for (int i=0; i < num_versions; ++i) {
+      std::string tmp_name = "byteps_version_" + std::to_string(i);
+      std::string tensor_name = GetOpName(tmp_name, name.c_str(), 0);
+      common::DeclareAllgatherTensor(tensor_name, -1);
+    }
+  }
 }
 
 void WaitAndClear(int handle, bool busy_waiting) {
@@ -413,6 +477,13 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_FloatTensor", &DoPushPullGroupSync);
   m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor", &DoPushPullGroupSync);
 
+  m.def("byteps_torch_allgather_async_torch_ByteTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_IntTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_LongTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_HalfTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_FloatTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_DoubleTensor", &DoAllgather);
+
 #if HAVE_CUDA
   m.def("byteps_torch_push_pull_async_torch_cuda_ByteTensor", &DoPushPull);
   m.def("byteps_torch_push_pull_async_torch_cuda_IntTensor", &DoPushPull);
@@ -462,6 +533,13 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_batched_zero_out_async_torch_cuda_HalfTensor", &BatchedZeroOut);
   m.def("byteps_torch_batched_zero_out_async_torch_cuda_FloatTensor", &BatchedZeroOut);
   m.def("byteps_torch_batched_zero_out_async_torch_cuda_DoubleTensor", &BatchedZeroOut);
+
+  m.def("byteps_torch_allgather_async_torch_cuda_ByteTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_IntTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_LongTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_HalfTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_FloatTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_DoubleTensor", &DoAllgather);
 #endif
 
   // basics
@@ -469,6 +547,7 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_wait_and_clear", &WaitAndClear);
   m.def("byteps_torch_declare_tensor", &DeclareTensor);
   m.def("byteps_torch_declare_tensor_p2p", &DeclareTensorP2P);
+  m.def("byteps_torch_declare_tensor_allgather", &DeclareTensorAllgather);
 }
 
 }  // namespace torch

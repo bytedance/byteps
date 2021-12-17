@@ -42,7 +42,12 @@ BytePSCommSocket::BytePSCommSocket(std::shared_ptr<BytePSComm> comm,
   _recv_fd = initSocket(_local_rank, _recv_path);
 
   _members = (members.size() > 0) ? members : sock_comm->getMembers();
-  _root = _members.back();
+  if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
+    _root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
+  }
+  if (_root == -1) {
+    _root = _members.back();
+  }
 
   auto my_role = (_local_rank == _root) ? LOCAL_ROOT : LOCAL_WORKER;
   bool is_root = (my_role == LOCAL_ROOT) ? true : false;
