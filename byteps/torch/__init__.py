@@ -168,11 +168,18 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if handle is None:
                 handle, ctx = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx)
-        for p, (handle, _) in self._handles.items():
+        for p, (handle, ctx) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
-                p.grad.set_(self._compression.decompress(output, ctx))
+                tmp = self._compression.decompress(output, ctx)
+                try:
+                    p.grad.set_(tmp)
+                except Exception as e:
+                    if "set_storage is not allowed on a Tensor created from .data or .detach()." in str(e):
+                        p.grad.copy_(tmp)
+                    else:
+                        raise
         self._handles.clear()
 
     @contextmanager
