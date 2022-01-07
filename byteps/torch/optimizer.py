@@ -256,7 +256,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if handle is None:
                 handle, ctx, _ = self._push_pull_grad_async(p)
                 self._handles[p] = (handle, ctx, name)
-        for p, (handle, _, name) in self._handles.items():
+        for p, (handle, ctx, name) in self._handles.items():
             output = synchronize(handle)
             self._push_pull_delay[p] = self.backward_passes_per_step
             if not self._enable_async:
