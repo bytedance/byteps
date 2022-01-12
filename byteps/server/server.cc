@@ -526,7 +526,7 @@ extern "C" void byteps_server() {
     }
   }
   
-  LOG(INFO) << "byteps has been shutdown";
+  LOG(INFO) << "BytePS server quited normally";
   return;
 }
 
