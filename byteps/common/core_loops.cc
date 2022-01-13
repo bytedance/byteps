@@ -13,12 +13,12 @@
 // limitations under the License.
 // =============================================================================
 
-#include "core_loops.h"
 #if BYTEPS_BUILDING_CUDA == 1
 #include <cuda_runtime.h>
 #endif
 #include <chrono>
 #include <memory>
+#include <sys/syscall.h>
 
 #include "common.h"
 #include "compressor/compressor.h"
@@ -30,6 +30,8 @@
 
 namespace byteps {
 namespace common {
+
+#define gettid() syscall(SYS_gettid)
 
 // returns true if the last partition is done
 template <typename T>
@@ -909,6 +911,8 @@ bool RunAllgatherNonRootCopyHost2DeviceLoopOnce() {
 }
 
 void CoordinateLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCoordinateLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -916,6 +920,8 @@ void CoordinateLoop() {
 }
 
 void PcieReduceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -923,6 +929,8 @@ void PcieReduceLoop() {
 }
 
 void RootNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -930,6 +938,8 @@ void RootNcclLoop() {
 }
 
 void NonRootNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -937,6 +947,8 @@ void NonRootNcclLoop() {
 }
 
 void SyncNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunSyncNcclOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -944,6 +956,8 @@ void SyncNcclLoop() {
 }
 
 void CopyDevice2HostLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -951,18 +965,24 @@ void CopyDevice2HostLoop() {
 }
 
 void CompressLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void DecompressLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunDecompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
 void RootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -970,6 +990,8 @@ void RootCopyHost2DeviceLoop() {
 }
 
 void NonRootCopyListenLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootCopyListenLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -977,6 +999,8 @@ void NonRootCopyListenLoop() {
 }
 
 void NonRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -985,6 +1009,8 @@ void NonRootCopyHost2DeviceLoop() {
 }
 
 void AllgatherCopyDevice2HostLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherCopyDevice2HostLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -993,6 +1019,8 @@ void AllgatherCopyDevice2HostLoop() {
 }
 
 void AllgatherRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherRootCopyHost2DeviceLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -1001,6 +1029,8 @@ void AllgatherRootCopyHost2DeviceLoop() {
 }
 
 void AllgatherNonRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherNonRootCopyHost2DeviceLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -1334,7 +1364,8 @@ bool RunGDRWaitLoopOnce() {
 }
 
 void PushLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1342,7 +1373,8 @@ void PushLoop() {
 }
 
 void GDRv1PushPullLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunGDRv1PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1350,7 +1382,8 @@ void GDRv1PushPullLoop() {
 }
 
 void GDRWaitLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunGDRWaitLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1358,7 +1391,8 @@ void GDRWaitLoop() {
 }
 
 void GDRv2PushPullLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunGDRv2PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1366,7 +1400,8 @@ void GDRv2PushPullLoop() {
 }
 
 void PullLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1843,6 +1878,8 @@ bool RunP2PAckLoopOnce(QueueType this_op) {
 }
 
 void P2PPullLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1851,6 +1888,8 @@ void P2PPullLoop() {
 };
 
 void P2PPullResponseLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullResponseOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1859,6 +1898,8 @@ void P2PPullResponseLoop() {
 }
 
 void P2PAckLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PAckLoopOnce(P2P_WAIT_ACK) &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1867,6 +1908,8 @@ void P2PAckLoop() {
 }
 
 void RecvLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRecvLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1874,6 +1917,8 @@ void RecvLoop() {
 }
 
 void P2PGroupCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PGroupCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1882,6 +1927,8 @@ void P2PGroupCopyHost2DeviceLoop() {
 }
 
 void SendLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunSendLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1923,7 +1970,8 @@ bool RunCpuCopyLoopOnce() {
 }
 
 void CpuCopyLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCpuCopyLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2006,7 +2054,8 @@ bool RunCpuReduceLoopOnce() {
 }
 
 void CpuReduceLoop() {
-  BPS_LOG(TRACE) << "Started thread: " << __PRETTY_FUNCTION__;
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCpuReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2060,6 +2109,8 @@ bool RunCpuBcastLoopOnce() {
 }
 
 void CpuBcastLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCpuBcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2080,6 +2131,8 @@ bool RunCpuBcastFinishLoopOnce() {
 }
 
 void CpuBcastFinishLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   while (RunCpuBcastFinishLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2192,6 +2245,8 @@ bool RunAllgatherPullResponseOnce() {
 }
 
 void AllgatherPullLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2200,6 +2255,8 @@ void AllgatherPullLoop() {
 };
 
 void AllgatherPullResponseLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullResponseOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2208,6 +2265,8 @@ void AllgatherPullResponseLoop() {
 }
 
 void AllgatherP2PAckLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PAckLoopOnce(ALLGATHER_P2P_WAIT_ACK) &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2216,6 +2275,8 @@ void AllgatherP2PAckLoop() {
 }
 
 void MonitorLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   std::chrono::seconds interval(BytePSGlobal::GetMonitorInterval());
   std::unordered_map<uint64_t, TaskMetaMap> prev_tasks;
   while (!BytePSGlobal::ShouldShutdown() && !BytePSGlobal::WaitForShutdown(interval)) {
@@ -2267,71 +2328,99 @@ void MonitorLoop() {
 
 #if BYTEPS_BUILDING_CUDA == 0
 void CoordinateLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void PcieReduceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void RootNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void SyncNcclLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void CopyDevice2HostLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void CompressLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void DecompressLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void RootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyListenLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void NonRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void AllgatherCopyDevice2HostLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void AllgatherRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
 
 void AllgatherNonRootCopyHost2DeviceLoop() {
+  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
+                 << gettid();
   BPS_LOG(TRACE) << "Exiting thread: " << __PRETTY_FUNCTION__;
   BytePSGlobal::ReportThreadFinish();
 }
