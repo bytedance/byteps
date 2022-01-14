@@ -817,7 +817,7 @@ void BytePSGlobal::PinMemory(void* ptr, int numa_or_gpu_index, size_t bytes, boo
   if (!need_ps) return;
   GetOrInitPS();
   CHECK(_ps.size() == 1);
-  if (BytePSGlobal::IsAlltoallUsePull()) {
+  if (BytePSGlobal::IsAlltoallUsePull() || BytePSGlobal::IsGDR()) {
     if (gpu) {
       ps::Postoffice::GetServer()->van()->PinMemory(ptr, bytes, gpu, numa_or_gpu_index);
     }
