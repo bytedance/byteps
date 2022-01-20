@@ -209,6 +209,7 @@ def launch_bps():
     sys.stdout.flush()
     check_env()
     os.environ["PYTHONUNBUFFERED"] = "1"
+    os.environ["UCX_HANDLE_ERRORS"] = os.getenv("UCX_HANDLE_ERRORS", "none")
     if os.environ["DMLC_ROLE"] == "worker":
         if "NVIDIA_VISIBLE_DEVICES" in os.environ:
             local_size = len(os.environ["NVIDIA_VISIBLE_DEVICES"].split(","))
