@@ -70,8 +70,6 @@ struct BytePSArray {
   // whether the tensor data is managed by the server
   bool managed = true;
   bool registered = false;
-  char* tensor_aux;
-  bool flap = true; // a switch between using tensor and tensor_aux
 };
 
 struct RecvArray {
@@ -179,6 +177,16 @@ class GDRCopyManager {
     std::lock_guard<std::mutex> lk(state_mu_);
     is_finished_[key] = false;
   }
+  
+  void StoreLocalAddress(uint64_t key, char* addr) {
+    std::lock_guard<std::mutex> lk(state_mu_);
+    local_key_addr_[key] = addr;
+  }
+
+  char* GetLocalAddress(uint64_t key) {
+    std::lock_guard<std::mutex> lk(state_mu_);
+    return local_key_addr_[key];
+  }
 
  private:
   void InitCudaStream() {
@@ -203,6 +211,7 @@ class GDRCopyManager {
   std::unordered_map<uint64_t, char*> pull_addr_map_;
   std::mutex state_mu_;
   std::unordered_map<uint64_t, bool> is_finished_;
+  std::unordered_map<uint64_t, char*> local_key_addr_;
 #if HAVE_CUDA == 1
   cudaStream_t* d2h_stream_ = nullptr;
   cudaStream_t* h2d_stream_ = nullptr;
@@ -273,7 +282,6 @@ class BytePSServer {
     static ReadyTable* GetP2PPullResponseTable() { return p2p_pull_response_table_; }
     static ReadyTable* GetP2PAckTable() { return p2p_ack_table_; }
     static ReadyTable* GetGDRPushPullTable() { return gdr_push_pull_table_; } 
-    static ReadyTable* GetGDRAckTable() { return gdr_ack_table_; } 
 
     static ReadyTable* GetAllgatherPullResponseTable() { return allgather_pull_response_table_; }
     static ReadyTable* GetAllgatherAckTable() { return allgather_ack_table_; }
@@ -289,7 +297,7 @@ class BytePSServer {
     static void LocalPushPull(uint64_t key, char* push_addr, char* pull_addr, size_t len, int dtype);
     static void EnqueueLocalGpuSumTask(uint64_t key, char* input, char* output, size_t len,
                                        int dtype, bool do_copy);
-
+    static void ThreadSafeInitCudaBuffer(uint64_t key, size_t len);
 
   private:
     // functions
@@ -417,7 +425,6 @@ class BytePSServer {
     static ReadyTable* allgather_ack_table_;
 
     static ReadyTable* gdr_push_pull_table_;
-    static ReadyTable* gdr_ack_table_;
     static std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> compressor_map_;
     
     static std::unordered_map<uint64_t, ps::KVMeta> p2p_pull_reqmetas_;

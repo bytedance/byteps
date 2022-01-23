@@ -417,6 +417,16 @@ __global__ void _SumKernelFloat16(void* dst, const void* src1, const void* src2,
   }
 }
 
+__global__ void _CopyKernel(void* dst, const void* src, size_t len) {
+  char* d = (char*) dst;
+  char* s = (char*) src;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int total_threads = blockDim.x * gridDim.x;
+  for(; tid < len; tid += total_threads) {
+    d[tid] = __ldg(&s[tid]);
+  }
+}
+
 void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, bool sync) {
   if (!_stream) InitStream();
   switch (dtype) {
@@ -442,9 +452,8 @@ void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len,
 }
 
 void CudaReducer::CopyD2D(void* dst, void* src, size_t len, bool sync) {
-  CUDA_CALL(cudaMemcpyAsync(dst, src, len, 
-                            (cudaMemcpyKind) cudaMemcpyDeviceToDevice,
-                            (cudaStream_t)*_stream));
+  if (!_stream) InitStream();
+  _CopyKernel<<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src, len);
   if (sync) CUDA_CALL(cudaStreamSynchronize(*_stream));
 }
 

@@ -1330,9 +1330,6 @@ std::shared_ptr<std::vector<QueueType>> GetPullQueueListGDR() {
       queue_list->push_back(COORDINATE_BROADCAST);
       queue_list->push_back(BROADCAST);
     }
-    if (BytePSGlobal::IsGDRGpu2Gpu()) {
-      queue_list->push_back(GDR_WAIT_ACK);
-    }
   }
 #endif
   return queue_list;

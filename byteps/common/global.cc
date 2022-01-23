@@ -1141,11 +1141,6 @@ ReadyTable* BytePSGlobal::GetGDRPushPullTable() {
   return server::BytePSServer::GetGDRPushPullTable();
 }
 
-ReadyTable* BytePSGlobal::GetGDRAckTable() {
-  return server::BytePSServer::GetGDRAckTable();
-}
-
-
 int BytePSGlobal::IsDirectResponse() {
   return server::BytePSServer::IsP2PDirectResponse();
 }

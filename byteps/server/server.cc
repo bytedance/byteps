@@ -124,7 +124,6 @@ std::vector<uint64_t> BytePSServer::acc_load_;
 ReadyTable* BytePSServer::p2p_copy_table_ = nullptr;
 ReadyTable* BytePSServer::p2p_group_copy_table_ = nullptr;
 ReadyTable* BytePSServer::gdr_push_pull_table_ = nullptr;
-ReadyTable* BytePSServer::gdr_ack_table_ = nullptr;
 
 std::mutex SmallTensorMngr::small_tensor_mu_;
 std::unordered_map<uint64_t, bool> SmallTensorMngr::small_tensor_map_;
@@ -287,9 +286,9 @@ void BytePSServer::SendGDRPullResponse(const DataHandleType type,
                                        const ps::KVMeta& req_meta,
                                        ps::KVServer<char>* server) {
   auto& m = GetUpdateBuf(key)->merged;
-  char* data = m.flap ? m.tensor_aux : m.tensor;
-  CHECK(data) << "init " << key << " first";
+  char* data = m.tensor;
   auto len = m.len;
+  CHECK(data) << "UpdateBuf of key " << key << " not inited";
   ps::KVPairs<char> response;
   response.keys = {EncodeKey(key)};
   response.lens = {len};
@@ -475,7 +474,6 @@ inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage
     pull_cnt_[i][msg.key] = 0;
     seen_sender_[i][msg.key].clear();
   }
-  GetUpdateBuf(msg.key)->merged.flap = !GetUpdateBuf(msg.key)->merged.flap;
   is_push_finished_[i][msg.key] = true;
   auto it = q_pull_reqmeta_[i][msg.key].begin();
   while (it != q_pull_reqmeta_[i][msg.key].end()) {
@@ -498,14 +496,6 @@ inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage
       is_push_finished_[i][msg.key] = false;
       pull_cnt_[i][msg.key] = 0;
       seen_sender_[i][msg.key].clear();
-      if (BytePSGlobal::IsGDRGpu2Gpu()) {
-        auto& m = GetUpdateBuf(msg.key)->merged;
-        if (m.flap) {
-          m.tensor_aux = nullptr;
-        } else {
-          m.tensor = nullptr;
-        }
-      }
       break;
     }
   }
@@ -520,41 +510,42 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
 
     switch (msg.ops) {
 #if HAVE_CUDA == 1
-      case GPU_SUM_RECV_LOCAL:
-        // go to next
+      case GPU_SUM_RECV_LOCAL: {
+        gdr_copy_mngr_->StoreLocalAddress(msg.key, (char*)msg.src);
+      }
+      // intentionally go to next without break
       case GPU_SUM_RECV: {
-        auto& m = GetUpdateBuf(msg.key)->merged;
+        auto stored = GetStore(msg.key);
         auto cuda_reducer = BytePSGlobal::GetCudaReducer(i);
-        if (!m.len) {
-          m.len = msg.len;
-        } else {
-          CHECK_EQ(m.len, msg.len) 
-              << m.len << " " << msg.len
-              << " (key=" << msg.key << ")";
-        }
-        auto& tensor = m.flap ? m.tensor : m.tensor_aux;
-        if (!tensor) {
-          tensor = (char*) msg.src;
+        CHECK_EQ(stored->len, msg.len) << stored->len << " " << msg.len;
+        CHECK(msg.src);
+        CHECK(stored->tensor);
+        int num_req = GetUpdateNumRequest(msg.key);
+        if (num_req == 0) {
+          cuda_reducer->CopyD2D(stored->tensor, msg.src, msg.len, /*sync*/false);
         } else {
           auto bps_dtype = cuda_reducer->GetDataType(msg.type.dtype);
-          if (msg.ops == GPU_SUM_RECV_LOCAL) {
-            cuda_reducer->Sum(msg.src, tensor, msg.len, bps_dtype, /*sync*/false);
-            cuda_reducer->Sync();
-            tensor = (char*) msg.src;
-          } else {
-            cuda_reducer->Sum(tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
-          }
+          cuda_reducer->Sum(stored->tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
         }
         AddUpdateRequest(msg.key, msg.req_meta);
         size_t expected = SmallTensorMngr::IsRegistered(msg.key) 
                         ? BytePSGlobal::GetSize() : GetNumExpectedWorker(msg.key);
-        if (GetUpdateNumRequest(msg.key) == expected) {
+        size_t num_req_new = GetUpdateNumRequest(msg.key);
+        CHECK(num_req_new <= expected);
+        if (num_req_new == expected) {
+          CHECK(GetUpdateBuf(msg.key)->merged.tensor);
+          cuda_reducer->CopyD2D(GetUpdateBuf(msg.key)->merged.tensor, stored->tensor, msg.len, /*sync*/false);
           cuda_reducer->Sync();
-          if (!SmallTensorMngr::IsRegistered(msg.key)) {
-            GetGDRPushPullTable()->AddReadyCount(msg.key);
-          }
           CleanUpdateRequest(msg.key);
           SendGDRBufferedPullResponse(i, msg);
+          if (!SmallTensorMngr::IsRegistered(msg.key)) {
+            char* local_addr = gdr_copy_mngr_->GetLocalAddress(msg.key);
+            if (local_addr) {
+              cuda_reducer->CopyD2D(local_addr, GetUpdateBuf(msg.key)->merged.tensor, msg.len, true);
+            }
+            // add count only when copy_d2d is done
+            GetGDRPushPullTable()->AddReadyCount(msg.key);
+          }
         }
       } 
       break; // case GPU_SUM_RECV
@@ -772,8 +763,7 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
     BytePSGDRHandler(req_meta, req_data, server);
     return;
   } else if (type.requestType == RequestType::kGDRv2PushPull
-             || type.requestType == RequestType::kGDRv2PushPullSmall
-             || type.requestType == RequestType::kGDRAckSignal) {
+             || type.requestType == RequestType::kGDRv2PushPullSmall) {
     BytePSGDRv2Handler(req_meta, req_data, server);
     return;
   }
@@ -1010,12 +1000,8 @@ void BytePSServer::InitStoreAndUpdateBuf(uint64_t key, size_t len, int dtype) {
 
 void BytePSServer::PrintServerRecvMessageLog(const ps::KVMeta& req_meta,
                                    const ps::KVPairs<char> &req_data) {
-  DataHandleType type = DepairDataHandleType(req_meta.cmd);
   if (!log_key_info_) return;
   std::string ack_string("");
-  if (type.requestType == RequestType::kGDRAckSignal) {
-    ack_string = "ack signal";
-  }
   if (req_meta.push) {
     CHECK_EQ(req_data.lens.size(), (size_t)1);
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
@@ -1091,6 +1077,23 @@ void BytePSServer::BytePSGDRHandler(const ps::KVMeta& req_meta,
   } // end of pull request 
 }
 
+void BytePSServer::ThreadSafeInitCudaBuffer(uint64_t key, size_t len) {
+#if HAVE_CUDA == 1
+  std::lock_guard<std::mutex> lk(handle_mu_);
+  auto& merged = GetUpdateBuf(key)->merged;
+  auto stored = GetStore(key);
+  if (!merged.tensor) {
+    CUDA_CALL(cudaMalloc(&(merged.tensor), len));
+    CUDA_CALL(cudaMalloc(&(stored->tensor), len));
+    merged.len = len;
+    merged.device = common::GPU;
+    stored->len = len;
+    stored->device = common::GPU;
+  }
+  CHECK_EQ(len, merged.len) << len << ", " << merged.len;
+#endif
+}
+
 void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
                                       const ps::KVPairs<char> &req_data,
                                       ps::KVServer<char>* server) {
@@ -1099,11 +1102,6 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
   auto req_type = type.requestType;
   CHECK_EQ(req_data.keys.size(), (size_t)1);
   uint64_t key = DecodeKey(req_data.keys[0]);
-
-  if (req_type == RequestType::kGDRAckSignal) {
-    GetGDRAckTable()->AddReadyCount(key);
-    return;
-  }
   
   if (req_type == RequestType::kGDRv2PushPullSmall) {
     SmallTensorMngr::Register(key);
@@ -1115,6 +1113,7 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
     CHECK_EQ(req_data.lens.size(), (size_t)1);
     CHECK_EQ(req_data.vals.size(), (size_t)req_data.lens[0]);
     size_t len = (size_t) req_data.lens[0];
+    ThreadSafeInitCudaBuffer(key, len);
 
     int worker_rank = (req_meta.sender - 9) / 2;
     auto pbuff = GetGDRPushBuffer(key, worker_rank);
@@ -1179,17 +1178,6 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
         is_push_finished_[tid][key] = false;
         pull_cnt_[tid][key] = 0;
         seen_sender_[tid][key].clear();
-        if (BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()) {
-          auto& m = GetUpdateBuf(key)->merged;
-          // a pair of ping-pong buffers to enable zero-copy and 
-          // avoid data conflict. ``flap`` is the control switch 
-          // between these two buffers.
-          if (m.flap) {
-            m.tensor_aux = nullptr;
-          } else {
-            m.tensor = nullptr;
-          }
-        }
       }
     } else {
       // push not finished, put into the queue, and wait for the engine
@@ -1226,6 +1214,7 @@ void BytePSServer::EnqueueLocalGpuSumTask(uint64_t key, char* input,
     cuda_reducer->CopyD2D(output, input, len, /*sync*/false);
     cuda_reducer->Sync();
   } 
+  ThreadSafeInitCudaBuffer(key, len);
   BytePSEngineMessage msg;
   msg.id = timestamp_++;
   msg.key = key;
@@ -1280,7 +1269,6 @@ void BytePSServer::InitGDRReadyTable() {
     wait_count = 1;
   }
   gdr_push_pull_table_ = new ReadyTable(wait_count, "GDR_PUSH_PULL");
-  gdr_ack_table_ = new ReadyTable(BytePSGlobal::GetPhyNodeNum()-1, "GDR_ACK");
 }
 
 void BytePSServer::InitAllgatherTable() {
@@ -1497,17 +1485,15 @@ void BytePSServer::Init(int rank) {
       CUDA_CALL(cudaHostUnregister(buf));
       free(buf);
     }
+    if (buf && it.second.merged.device == common::GPU) {
+      CUDA_CALL(cudaFree(buf));
+    }
   }
 #endif
 
   if (gdr_push_pull_table_) {
     delete gdr_push_pull_table_;
     gdr_push_pull_table_ = nullptr;
-  }
-
-  if (gdr_ack_table_) {
-    delete gdr_ack_table_;
-    gdr_ack_table_ = nullptr;
   }
 
   if (gdr_copy_mngr_) {

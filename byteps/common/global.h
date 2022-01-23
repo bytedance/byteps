@@ -251,7 +251,6 @@ class BytePSGlobal {
   static size_t GetGDRPhase2Threshold() { return _gdr_phase2_tensor_threshold; }
   static int GetGlobalReduceRoot(uint64_t key) { return Hash_DJB2(key) % _num_phy_node; }
   static ReadyTable* GetGDRPushPullTable();
-  static ReadyTable* GetGDRAckTable();
 #if HAVE_CUDA == 1
   static std::shared_ptr<CudaReducer> GetCudaReducer(int i) { 
     BPS_CHECK_LT((size_t)i, _cuda_reducers.size()) << i;

@@ -157,9 +157,6 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
     case GDR_WAIT_PUSH_PULL:
       _rt = BytePSGlobal::GetGDRPushPullTable();
       break;
-    case GDR_WAIT_ACK:
-      _rt = BytePSGlobal::GetGDRAckTable();
-      break;
     default:
       break;
   }

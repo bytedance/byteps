@@ -1255,10 +1255,6 @@ bool RunGDRv2PushPullLoopOnce() {
             task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
       } else {
         BPS_CHECK(is_phase2_small_tensor);
-        BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
-        for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
-          BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
-        }
       }
       if (is_phase2_small_tensor) break;
       continue;
@@ -1287,26 +1283,13 @@ bool RunGDRv2PushPullLoopOnce() {
                       // step 1: callbacks of zpull
                       delete pull_vals; 
                       BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
-                      // step 2: send a signal to notify remote that pull response is already received
-                      int ack_cmd = server::GetCommandType(server::RequestType::kGDRAckSignal, 
-                                                          task->tensor->dtype(), GPU);
-                      char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
-                      ps::SArray<char> ack_vals(cpubuff, 1, false);
-                      auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
-                      // zpull outperforms zpush for sending ack signal, so we use zpull
-                      BytePSGlobal::GetPS()->ZPull(pskv.keys, &ack_vals, &pskv.lens, ack_cmd);
                   });
           });
     } else {
       BPS_CHECK(is_phase2_small_tensor);
       BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
     }
-    if (is_phase2_small_tensor) {
-      for (int k = 0; k < BytePSGlobal::GetPhyNodeNum() - 1; ++k) {
-        BytePSGlobal::GetGDRAckTable()->AddReadyCount(task->key);
-      }
-      break; // small tensor only push_pull once
-    }
+    if (is_phase2_small_tensor) break; // small tensor only push_pull once
   }
   FinishOrProceed(task); 
   return true;
@@ -1350,7 +1333,7 @@ bool RunPullLoopOnce() {
 }
 
 bool RunGDRWaitLoopOnce() {
-  QueueType wait_ops[] = { GDR_WAIT_ACK, GDR_WAIT_PUSH_PULL };
+  QueueType wait_ops[] = { GDR_WAIT_PUSH_PULL };
   for (auto this_op : wait_ops) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
     auto task = q->getTask();
