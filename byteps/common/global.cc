@@ -96,6 +96,7 @@ bool BytePSGlobal::_is_gdr_allreduce = false;
 bool BytePSGlobal::_is_gdr_allgather = true;
 #if HAVE_CUDA == 1
 std::vector<std::shared_ptr<CudaReducer>> BytePSGlobal::_cuda_reducers;
+std::vector<cudaStream_t*> BytePSGlobal::_cuda_reducer_streams;
 #endif
 std::unordered_map<uint64_t, std::unordered_map<int, bool>> BytePSGlobal::_gdr_inited_key;
 std::mutex BytePSGlobal::_gdr_inited_key_mu;
@@ -242,6 +243,15 @@ void BytePSGlobal::Init() {
                              ? atoi(getenv("BYTEPS_SERVER_ENGINE_THREAD")) : 8;
     for (int i = 0; i < server_engine_thread; ++i) {
       _cuda_reducers.push_back(std::make_shared<CudaReducer>(num_block, num_thread));
+      // stream
+      int greatest_priority;
+      cudaStream_t* s = (cudaStream_t*) malloc(sizeof(cudaStream_t));
+      cudaError_t e1 = cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority);
+      BPS_CHECK(e1 == cudaSuccess || e1 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e1);  
+      cudaError_t e2 = cudaStreamCreateWithPriority(s, cudaStreamNonBlocking, greatest_priority);
+      BPS_CHECK(e2 == cudaSuccess || e2 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e2);   
+      CUDA_CALL(cudaStreamSynchronize(*s));
+      _cuda_reducer_streams.push_back(s);
     }
 #endif
     _gdr_phase1_tensor_threshold = getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH") 
@@ -665,6 +675,11 @@ void BytePSGlobal::Shutdown() {
   if (_allgather_copy_host2device_stream) {
     CUDA_CALL(cudaStreamDestroy(*_allgather_copy_host2device_stream));
     _allgather_copy_host2device_stream = NULL;
+  }
+  for (auto& s : _cuda_reducer_streams) {
+    CUDA_CALL(cudaStreamDestroy(*s));
+    free(s);
+    s = nullptr;
   }
 #endif
 

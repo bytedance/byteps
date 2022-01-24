@@ -131,6 +131,8 @@ std::unordered_map<uint64_t, bool> SmallTensorMngr::small_tensor_map_;
 // compression
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
 
+bool BytePSServer::gdr_lazy_sync_;
+
 // TODO: remove Postoffice API calls
 uint64_t DecodeKey(ps::Key key) {
   auto kr = ps::Postoffice::Get()->GetServerKeyRanges()[ps::MyRank()];
@@ -517,15 +519,18 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
       case GPU_SUM_RECV: {
         auto stored = GetStore(msg.key);
         auto cuda_reducer = BytePSGlobal::GetCudaReducer(i);
+        cudaStream_t* stream = BytePSGlobal::GetCudaReducerStream(i);
         CHECK_EQ(stored->len, msg.len) << stored->len << " " << msg.len;
         CHECK(msg.src);
         CHECK(stored->tensor);
         int num_req = GetUpdateNumRequest(msg.key);
         if (num_req == 0) {
-          cuda_reducer->CopyD2D(stored->tensor, msg.src, msg.len, /*sync*/false);
+          cuda_reducer->CopyD2DAsync(stored->tensor, msg.src, msg.len, stream);
+          if (!gdr_lazy_sync_) CUDA_CALL(cudaStreamSynchronize(*stream));
         } else {
           auto bps_dtype = cuda_reducer->GetDataType(msg.type.dtype);
-          cuda_reducer->Sum(stored->tensor, msg.src, msg.len, bps_dtype, /*sync*/false);
+          cuda_reducer->SumAsync(stored->tensor, msg.src, msg.len, bps_dtype, stream);
+          if (!gdr_lazy_sync_) CUDA_CALL(cudaStreamSynchronize(*stream));
         }
         AddUpdateRequest(msg.key, msg.req_meta);
         size_t expected = SmallTensorMngr::IsRegistered(msg.key) 
@@ -534,14 +539,15 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
         CHECK(num_req_new <= expected);
         if (num_req_new == expected) {
           CHECK(GetUpdateBuf(msg.key)->merged.tensor);
-          cuda_reducer->CopyD2D(GetUpdateBuf(msg.key)->merged.tensor, stored->tensor, msg.len, /*sync*/false);
-          cuda_reducer->Sync();
+          cuda_reducer->CopyD2DAsync(GetUpdateBuf(msg.key)->merged.tensor, stored->tensor, msg.len, stream);
+          CUDA_CALL(cudaStreamSynchronize(*stream));
           CleanUpdateRequest(msg.key);
           SendGDRBufferedPullResponse(i, msg);
           if (!SmallTensorMngr::IsRegistered(msg.key)) {
             char* local_addr = gdr_copy_mngr_->GetLocalAddress(msg.key);
             if (local_addr) {
-              cuda_reducer->CopyD2D(local_addr, GetUpdateBuf(msg.key)->merged.tensor, msg.len, true);
+              cuda_reducer->CopyD2DAsync(local_addr, GetUpdateBuf(msg.key)->merged.tensor, msg.len, stream);
+              CUDA_CALL(cudaStreamSynchronize(*stream));
             }
             // add count only when copy_d2d is done
             GetGDRPushPullTable()->AddReadyCount(msg.key);
@@ -1318,6 +1324,10 @@ void BytePSServer::InitEnv() {
 
   auto direct_response_str = getenv("BYTEPS_SERVER_DIRECT_RESPONSE");
   if (direct_response_str) p2p_direct_response_ = atoi(direct_response_str);
+
+  auto gdr_sync_str = getenv("BYTEPS_SERVER_GDR_LAZY_SYNC");
+  gdr_lazy_sync_ = gdr_sync_str ? atoi(gdr_sync_str) : true;
+  LOG(INFO) << "BYTEPS_SERVER_GDR_LAZY_SYNC set to " << (gdr_lazy_sync_ ? "enabled" : "disabled");
 
   auto num_worker_str = getenv("DMLC_NUM_WORKER");
   CHECK(num_worker_str);

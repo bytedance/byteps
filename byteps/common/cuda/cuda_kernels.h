@@ -76,11 +76,19 @@ class CudaReducer {
 
   void CopyD2D(void* dst, void* src, size_t len, bool sync);
 
+  void CopyD2DAsync(void* dst, void* src, size_t len, cudaStream_t* stream);
+
   void Sum(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, bool sync);
 
   void Sum(void* dst, const void* src, size_t len, DataType dtype, bool sync) {
     Sum(dst, dst, src, len, dtype, sync);  
   }
+
+  void SumAsync(void* dst, const void* src, size_t len, DataType dtype, cudaStream_t* stream) {
+    SumAsync(dst, dst, src, len, dtype, stream);
+  }
+
+  void SumAsync(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, cudaStream_t* stream);
 
   void Sync() { CUDA_CALL(cudaStreamSynchronize(*_stream)); }
   

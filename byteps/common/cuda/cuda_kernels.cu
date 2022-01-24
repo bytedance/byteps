@@ -451,10 +451,36 @@ void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len,
   if (sync) CUDA_CALL(cudaStreamSynchronize(*_stream));
 }
 
+void CudaReducer::SumAsync(void* dst, const void* src1, const void* src2, size_t len, DataType dtype, cudaStream_t* stream) {
+  switch (dtype) {
+    case BYTEPS_FLOAT16:
+      _SumKernelFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/2);
+      break;
+    case BYTEPS_FLOAT32:
+      _SumKernel<float><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(float));
+      break;
+    case BYTEPS_FLOAT64:
+      _SumKernel<double><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(double));
+      break;
+    case BYTEPS_INT32:
+      _SumKernel<int><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(int));
+      break;
+    case BYTEPS_INT64:
+      _SumKernel<long><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(long));
+      break;
+    default:
+      BPS_CHECK(0) << "Unsupported data type for Cuda Reducer: " << dtype;
+  }
+}
+
 void CudaReducer::CopyD2D(void* dst, void* src, size_t len, bool sync) {
   if (!_stream) InitStream();
   _CopyKernel<<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src, len);
   if (sync) CUDA_CALL(cudaStreamSynchronize(*_stream));
+}
+
+void CudaReducer::CopyD2DAsync(void* dst, void* src, size_t len, cudaStream_t* stream) {
+  _CopyKernel<<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src, len);
 }
 
 } // namespace common

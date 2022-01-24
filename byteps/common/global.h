@@ -256,6 +256,10 @@ class BytePSGlobal {
     BPS_CHECK_LT((size_t)i, _cuda_reducers.size()) << i;
     return _cuda_reducers[i]; 
   }
+  static cudaStream_t* GetCudaReducerStream(int i) { 
+    BPS_CHECK_LT((size_t)i, _cuda_reducer_streams.size()) << i;
+    return _cuda_reducer_streams[i]; 
+  }
 #endif
   static uint64_t Hash_DJB2(uint64_t key);
   static uint64_t Hash_Naive(uint64_t key);
@@ -339,6 +343,7 @@ class BytePSGlobal {
   static std::unordered_map<uint64_t, std::unordered_map<int, bool>> _gdr_inited_key;
 #if HAVE_CUDA == 1
   static std::vector<std::shared_ptr<CudaReducer>> _cuda_reducers;
+  static std::vector<cudaStream_t*> _cuda_reducer_streams;
 #endif 
   static bool _is_cross_pcie_switch;
   static BytePSRole _my_role;

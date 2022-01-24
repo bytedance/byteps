@@ -431,6 +431,8 @@ class BytePSServer {
 
     static std::mutex expected_worker_mu_;
     static std::unordered_map<uint64_t, size_t> num_expected_workers_;
+
+    static bool gdr_lazy_sync_;
 };
 
 extern "C" void byteps_server();
