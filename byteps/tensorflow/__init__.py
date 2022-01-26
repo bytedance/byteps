@@ -480,7 +480,11 @@ if hasattr(tf, 'GradientTape'):
 
             def _group_push_pull_grads(grads, scope, device_dense, device_sparse, compression, common_name=''):
                 grads_wo_none = [grad for grad in grads if (grad is not None) and (None not in grad.shape)]
-                if len(grads_wo_none) in [0, 1]: return grads
+                if len(grads_wo_none) == 0: return grads
+                if len(grads_wo_none) == 1: 
+                    return [push_pull(grad, scope, device_dense=self._device_dense,
+                                            device_sparse=self._device_sparse, compression=self._compression)
+                                if grad is not None else grad for grad in grads]
                 reshaped_grads_fp32, grad_shapes_fp32, grad_lens_fp32 = [], [], []
                 reshaped_grads_fp16, grad_shapes_fp16, grad_lens_fp16 = [], [], []
                 # reshape to 1D tensor
@@ -541,21 +545,41 @@ if hasattr(tf, 'GradientTape'):
                                  else grad for grad in grads]
                     if os.getenv("BYTEPS_TF_GRADIENT_FUSION", "0") == "1":
                         print("BytePS: Enable gradient fusion for TensorFlow.")
-                        if self._fuse_common_names is []:
+                        if len(self._fuse_common_names) == 0:
                             return _group_push_pull_grads(grads, scope, device_dense=self._device_dense,
                                                           device_sparse=self._device_sparse, compression=self._compression)
                         else:
-                            groups = {name:[] for name in self._fuse_common_names}
-                            name_to_id = {grad.name: i for i, grad in enumerate(grads)}
-                            for grad in grads:
-                                found = False
-                                for name in self._fuse_common_names:
-                                    if name in grad.name:
-                                        groups[name].append(grad)
-                                        found = True
-                                        break
-                                if not found: 
-                                    groups[grad.name] = [grad]
+                            assert all(isinstance(x, str) for x in self._fuse_common_names) \
+                                    or all(isinstance(x, list) for x in self._fuse_common_names)                            
+                            is_hierarchical_group = isinstance(self._fuse_common_names[0], list) 
+                            if is_hierarchical_group:
+                                num_group = len(self._fuse_common_names)
+                                prefix = 'fuse_group_'
+                                groups = {(prefix+str(i)):[] for i in range(num_group)}
+                                name_to_id = {grad.name: i for i, grad in enumerate(grads)}
+                                for grad in grads:
+                                    found = False
+                                    for i, names in enumerate(self._fuse_common_names):
+                                        if found: break
+                                        for name in names:
+                                            if name in grad.name:
+                                                groups[prefix + str(i)].append(grad)
+                                                found = True
+                                                break
+                                    if not found: 
+                                        groups[grad.name] = [grad]
+                            else:
+                                groups = {name:[] for name in self._fuse_common_names}
+                                name_to_id = {grad.name: i for i, grad in enumerate(grads)}
+                                for grad in grads:
+                                    found = False
+                                    for name in self._fuse_common_names:
+                                        if name in grad.name:
+                                            groups[name].append(grad)
+                                            found = True
+                                            break
+                                    if not found: 
+                                        groups[grad.name] = [grad]
                             if local_rank() == 0:
                                 print('==== BytePS Fusion Group Log (S) ====')
                                 for common_name in groups:
@@ -565,7 +589,7 @@ if hasattr(tf, 'GradientTape'):
                             each_group_res = {}
                             for common_name in groups:
                                 grad_list = groups[common_name]
-                                if groups[common_name] is None: continue
+                                if len(groups[common_name]) == 0: continue
                                 group_res = _group_push_pull_grads(grad_list, scope, device_dense=self._device_dense,
                                                         device_sparse=self._device_sparse, compression=self._compression, 
                                                         common_name=common_name)
