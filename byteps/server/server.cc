@@ -1326,8 +1326,10 @@ void BytePSServer::InitEnv() {
   if (direct_response_str) p2p_direct_response_ = atoi(direct_response_str);
 
   auto gdr_sync_str = getenv("BYTEPS_SERVER_GDR_LAZY_SYNC");
-  gdr_lazy_sync_ = gdr_sync_str ? atoi(gdr_sync_str) : true;
-  LOG(INFO) << "BYTEPS_SERVER_GDR_LAZY_SYNC set to " << (gdr_lazy_sync_ ? "enabled" : "disabled");
+  gdr_lazy_sync_ = gdr_sync_str ? atoi(gdr_sync_str) : false;
+  if (gdr_lazy_sync_) {
+    LOG(INFO) << "BYTEPS_SERVER_GDR_LAZY_SYNC set to enabled.";
+  }
 
   auto num_worker_str = getenv("DMLC_NUM_WORKER");
   CHECK(num_worker_str);

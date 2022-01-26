@@ -255,9 +255,9 @@ void BytePSGlobal::Init() {
     }
 #endif
     _gdr_phase1_tensor_threshold = getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH") 
-                            ? atoi(getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH")) : 1024;
+                            ? atoi(getenv("BYTEPS_GDR_PHASE1_TENSOR_THRESH")) : 102400;
     _gdr_phase2_tensor_threshold = getenv("BYTEPS_GDR_PHASE2_TENSOR_THRESH") 
-                            ? atoi(getenv("BYTEPS_GDR_PHASE2_TENSOR_THRESH")) : 128000;
+                            ? atoi(getenv("BYTEPS_GDR_PHASE2_TENSOR_THRESH")) : 1024000;
     if (_gdr_allreduce_level == GPU2GPU) {
       BPS_CHECK_LT(_gdr_phase1_tensor_threshold, _gdr_phase2_tensor_threshold) 
           << "BYTEPS_GDR_PHASE1_TENSOR_THRESH must be smaller than BYTEPS_GDR_PHASE2_TENSOR_THRESH";
