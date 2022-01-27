@@ -1410,7 +1410,7 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
     queue_list->push_back(ALLGATHER);
   }
 
-  if (BytePSGlobal::IsDistributed()) {
+  if (BytePSGlobal::GetPhyNodeNum() > 1) {
     // TODO: ALLGATHER_COPYD2H can be parallel with ALLGATHER_PULL
     if (!BytePSGlobal::IsGDRAllgather()) {
       queue_list->push_back(ALLGATHER_COPYD2H);
@@ -1439,7 +1439,7 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
 std::shared_ptr<std::vector<QueueType>> GetAllgatherResponseQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 #if BYTEPS_BUILDING_CUDA == 1
-  if (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
+  if (BytePSGlobal::GetPhyNodeNum() > 1 && BytePSGlobal::IsRootDevice()) {
     if (BytePSGlobal::IsP2PAckDisabled()) {
       queue_list->push_back(ALLGATHER_PULL_RESPONSE);
     } else {
