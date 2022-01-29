@@ -540,6 +540,22 @@ void BytePSGlobal::Init() {
                  << " size=" << _size << " local_size=" << _local_size
                  << " worker_id=" << _worker_id << " pid=" << getpid();
 
+  // init barrier: ensure that non-roots all wait for the root device
+  if (_is_root_device) {
+    BPS_LOG(DEBUG) << "[Init barrier] Root broadcasts barrier signal, rank" << _local_rank;
+    struct BytePSCommMsg barrier_msg;
+    barrier_msg.src = _local_rank;
+    barrier_msg.signal = BARRIER;
+    _basic_comm->broadcastSignal((void*)&barrier_msg, sizeof(BytePSCommMsg));
+  } else {
+    struct BytePSCommMsg barrier_msg;
+    _basic_comm->recvSignalFromRoot((void*)&barrier_msg, sizeof(BytePSCommMsg));
+    BPS_LOG(DEBUG) << "[Init barrier] Non-Root receives barrier signal, rank=" << _local_rank;
+  }
+  
+  // should launch this after barrier
+  _basic_comm->startListen();
+
   if (getenv("BYTEPS_DEBUG_SAMPLE_TENSOR")) {
     _should_sample = true;
     _sample_key = strtoull(getenv("BYTEPS_DEBUG_SAMPLE_TENSOR"), nullptr, 0);

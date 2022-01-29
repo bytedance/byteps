@@ -61,7 +61,8 @@ enum BytePSCommSignal {
   DO_ALLGATHER_BCAST,
   ALLGATHER_BCAST_READY,
   ALLGATHER_COPY_D2H_READY,
-  DO_ALLGATHER_COPYH2D
+  DO_ALLGATHER_COPYH2D, 
+  BARRIER
 };
 
 const std::vector<std::string>
@@ -105,6 +106,7 @@ class BytePSComm {
   virtual int recvSignal(int* source, void* data, int max_len) = 0;
   virtual int recvSignalFromRoot(void* data, int max_len) = 0;
   virtual int broadcastSignal(void* data, int len) = 0;
+  virtual void startListen() = 0;
 
   virtual int getRank() { return _rank; }
   virtual int getSize() { return _size; }
@@ -167,6 +169,8 @@ class BytePSCommSocket : public BytePSComm {
 
   int getSendFd() { return _send_fd; }
   int getRecvFd() { return _recv_fd; }
+
+  void startListen();
 
   std::string getSendPath() { return _send_path; }
   std::string getRecvPath() { return _recv_path; }

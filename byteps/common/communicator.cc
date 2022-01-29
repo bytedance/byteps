@@ -133,20 +133,17 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
   _send_fd = initSocket(_local_rank, _send_path);
   _recv_fd = initSocket(_local_rank, _recv_path);
 
-  // init socket comm
-  _listen_thread =
-        new std::thread(&BytePSCommSocket::startListenThread, this);
-
-  // Just in case launching root earlier than non-root
-  // TODO: use retry instead of sleep
-  // if (_local_size > 1)
-  // std::this_thread::sleep_for(std::chrono::microseconds(1000000));
 
   BPS_LOG(DEBUG) << "This is " << (is_root ? "ROOT" : "WORKER")
                  << " device, local_rank=" << _local_rank
                  << ", rank=" << _rank
                  << ", local_root=" << _root
                  << ", all sockets create successfully";
+}
+
+void BytePSCommSocket::startListen() {
+  // init socket comm
+  _listen_thread = new std::thread(&BytePSCommSocket::startListenThread, this);
 }
 
 int BytePSCommSocket::initSocket(int rank, const std::string& path) {
