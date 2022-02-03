@@ -44,6 +44,11 @@
 #include <signal.h>
 #include "../server/common.h"
 
+#if BYTEPS_BUILDING_CUDA
+using gpuEvent_t = cudaEvent_t;
+using gpuStream_t = cudaStream_t;
+#endif
+
 namespace byteps {
 namespace common {
 namespace compressor {
@@ -52,6 +57,9 @@ typedef BPSTensor tensor_t;
 class Compressor;
 class ErrorFeedback;
 }  // namespace compressor
+
+// BytePS knobs
+#define BYTEPS_ENABLE_XLA_OPS "BYTEPS_ENABLE_XLA_OPS"
 
 // Device ID used for CPU.
 #define CPU_DEVICE_ID (-1)
@@ -68,13 +76,14 @@ enum DataType {
   BYTEPS_INT8 = 5,
   BYTEPS_INT64 = 6,
   // below are not in mshadow, should avoid using these
-  // BYTEPS_UINT16 = 7,
-  // BYTEPS_INT16 = 8,
+  BYTEPS_UINT16 = 7,
+  BYTEPS_INT16 = 8,
   BYTEPS_BOOL = 9,
   // BYTEPS_BYTE = 10,
 };
 
 const std::string& DataType_Name(DataType value);
+std::size_t DataType_Size(DataType value);
 
 // List of supported frameworks.
 enum Framework { TENSORFLOW, PYTORCH, MXNET };
@@ -174,6 +183,16 @@ enum GDRLevel {
   GPU2CPU, GPU2GPU
 };
 
+struct Event {
+  Event() = default;
+#if BYTEPS_BUILDING_CUDA
+  Event(std::shared_ptr<gpuEvent_t> event, gpuStream_t stream) :
+    event(event), stream(stream) {};
+  std::shared_ptr<gpuEvent_t> event;
+  gpuStream_t stream = nullptr;
+#endif
+};
+
 class Status {
  public:
   Status();
@@ -188,6 +207,7 @@ class Status {
   bool in_progress() const;
   StatusType type() const;
   const std::string& reason() const;
+  Event event;
 
  private:
   StatusType type_ = StatusType::OK;
@@ -197,6 +217,8 @@ class Status {
 
 class TensorShape {
  public:
+  TensorShape() : shape_() {}
+  TensorShape(std::vector<int64_t> vec) : shape_(vec) {}
   void AddDim(int64_t dim);
   void AppendShape(TensorShape& other);
 

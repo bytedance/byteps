@@ -64,6 +64,34 @@ const std::string& DataType_Name(DataType value) {
   }
 }
 
+std::size_t DataType_Size(DataType value) {
+  switch (value) {
+    case BYTEPS_UINT8:
+      return sizeof(u_int8_t);
+    case BYTEPS_INT8:
+      return sizeof(int8_t);
+    case BYTEPS_UINT16:
+      return sizeof(u_int16_t);
+    case BYTEPS_INT16:
+      return sizeof(int16_t);
+    case BYTEPS_INT32:
+      return sizeof(int32_t);
+    case BYTEPS_INT64:
+      return sizeof(int64_t);
+    case BYTEPS_FLOAT16:
+      return 2;
+    case BYTEPS_FLOAT32:
+      return sizeof(float);
+    case BYTEPS_FLOAT64:
+      return sizeof(double);
+    case BYTEPS_BOOL:
+      return sizeof(bool);
+    default:
+      throw std::logic_error("Type " + DataType_Name(value) +
+                             " is not supported.");
+  }
+}
+
 Status::Status() = default;
 
 Status::Status(StatusType type, std::string reason) {

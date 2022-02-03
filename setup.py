@@ -434,6 +434,24 @@ def build_server(build_ext, options):
     build_ext.build_extension(server_lib)
 
 
+def parse_version(version_str):
+    if "dev" in version_str:
+        return 9999999999
+    m = re.match('^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?', version_str)
+    if m is None:
+        return None
+
+    # turn version string to long integer
+    version = int(m.group(1)) * 10 ** 9
+    if m.group(2) is not None:
+        version += int(m.group(2)) * 10 ** 6
+    if m.group(3) is not None:
+        version += int(m.group(3)) * 10 ** 3
+    if m.group(4) is not None:
+        version += int(m.group(4))
+    return version
+
+
 def check_tf_version():
     try:
         import tensorflow as tf
@@ -448,6 +466,13 @@ def check_tf_version():
         # This means that tf.__version__ was not exposed, which makes it *REALLY* old.
         raise DistutilsPlatformError(
             'Your TensorFlow version is outdated. BytePS requires tensorflow>=1.1.0')
+
+    # parse version
+    version = parse_version(tf.__version__)
+    if version is None:
+        raise DistutilsPlatformError(
+            'Unable to determine tensorflow version from the version string \'%s\'' % torch.__version__)
+    return version
 
 
 def get_tf_include_dirs():
@@ -546,24 +571,33 @@ def get_tf_flags(build_ext, cpp_flags):
         return compile_flags, link_flags
 
 
-def build_tf_extension(build_ext, options):
-    check_tf_version()
+def build_tf_extension(build_ext, options, tf_version):
+    import copy
+    options = copy.deepcopy(options)
+    options['COMPILE_FLAGS'] = ["-std=c++14" if flag == "-std=c++11"
+                             else flag for flag in options['COMPILE_FLAGS']]
     tf_compile_flags, tf_link_flags = get_tf_flags(
         build_ext, options['COMPILE_FLAGS'])
+
+    tf_link_flags += ['-L' + get_tf_lib_dirs()[0] + '/python/'] + \
+               ['-l:_pywrap_tensorflow_internal.so']
 
     # We assume we have CUDA
     if use_cuda():
         cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
             build_ext, options['COMPILE_FLAGS'])
-        options['MACROS'] += [('HAVE_CUDA', '1')]
+        options['MACROS'] += [('HAVE_CUDA', '1'), ('BYTEPS_BUILDING_CUDA', '1')]
         options['INCLUDES'] += cuda_include_dirs
         options['LIBRARY_DIRS'] += cuda_lib_dirs
         options['LIBRARIES'] += ['cudart', 'nvToolsExt']
 
+    options['MACROS'] += [('TENSORFLOW_VERSION', str(tf_version))]
+
     tensorflow_lib.define_macros = options['MACROS']
-    tensorflow_lib.include_dirs = options['INCLUDES']
+    tensorflow_lib.include_dirs = options['INCLUDES'] + ['3rdparty/flatbuffers/include']
     tensorflow_lib.sources = options['SOURCES'] + \
         ['byteps/tensorflow/ops.cc',
+         'byteps/tensorflow/xla_ops.cc',
          'byteps/tensorflow/memory_visitor.cc']
     tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags
     tensorflow_lib.library_dirs = options['LIBRARY_DIRS']
@@ -845,24 +879,6 @@ def dummy_import_torch():
         pass
 
 
-def parse_version(version_str):
-    if "dev" in version_str:
-        return 9999999999
-    m = re.match('^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?', version_str)
-    if m is None:
-        return None
-
-    # turn version string to long integer
-    version = int(m.group(1)) * 10 ** 9
-    if m.group(2) is not None:
-        version += int(m.group(2)) * 10 ** 6
-    if m.group(3) is not None:
-        version += int(m.group(3)) * 10 ** 3
-    if m.group(4) is not None:
-        version += int(m.group(4))
-    return version
-
-
 def check_torch_version():
     try:
         import torch
@@ -1134,7 +1150,8 @@ class custom_build_ext(build_ext):
 
         if tensorflow_lib in self.extensions:
             try:
-                build_tf_extension(self, options)
+                tf_version = check_tf_version()
+                build_tf_extension(self, options, tf_version)
                 built_plugins.append(True)
                 print('INFO: Tensorflow extension is built successfully.')
             except:
@@ -1189,6 +1206,9 @@ class custom_build_ext(build_ext):
 # Where the magic happens:
 if not os.path.exists('3rdparty/ps-lite/src'):
     msg = "Missing ./3rdparty/ps-lite, ps-lite is required to build BytePS."
+    raise ValueError(msg)
+if not os.path.exists('3rdparty/flatbuffers/include/flatbuffers/flatbuffers.h'):
+    msg = "Missing ./3rdparty/flatbuffers, flatbuffers is required to build BytePS."
     raise ValueError(msg)
 
 if os.path.exists('launcher/launch.py'):

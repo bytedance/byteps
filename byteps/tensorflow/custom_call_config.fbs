@@ -1,0 +1,48 @@
+// Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+// Modifications copyright (C) 2017 Uber Technologies, Inc.
+// Modifications copyright Microsoft
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
+namespace byteps.common.wire;
+
+// Supported data types.
+enum DataType:byte {
+    BYTEPS_UINT8 = 0,
+    BYTEPS_INT8 = 1,
+    BYTEPS_UINT16 = 2,
+    BYTEPS_INT16 = 3,
+    BYTEPS_INT32 = 4,
+    BYTEPS_INT64 = 5,
+    BYTEPS_FLOAT16 = 6,
+    BYTEPS_FLOAT32 = 7,
+    BYTEPS_FLOAT64 = 8,
+    BYTEPS_BOOL = 9
+}
+
+namespace byteps.xla.wire;
+
+table TensorShape {
+    dims:[long];
+}
+
+table CustomCallConfig {
+    tensor_name:string;
+    tensor_type:common.wire.DataType;
+    input_shapes:[TensorShape];
+    output_shapes:[TensorShape];
+
+    // Reduce op.
+    reduce_op:int;
+}

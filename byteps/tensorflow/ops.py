@@ -150,8 +150,12 @@ def _push_pull(tensor, scope='', name=None, op=Average):
       A tensor of the same shape and type as `tensor`, summed across all
       processes.
     """
-    if name is None and not _executing_eagerly():
+    if _executing_eagerly():
+        pass
+    elif name is None:
         name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+    else:
+        name = 'BytePSPushPull_%s' % _normalize_name(name)
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -486,7 +490,7 @@ def _alltoall_gpu2cpu_group_grad(op, *outputs):
     results = _alltoall_cpu2gpu(grads, splits=recv_splits, recv_splits=splits, name=name)
     return list(results) + [None, None] 
 
-@ops.RegisterGradient('BytePSPushPull')
+@ops.RegisterGradient('BytepsPushPull')
 def _push_pull_grad(op, grad):
     """Gradient for push_pull op.
     Args:
@@ -564,7 +568,7 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
                                       op=op, tensor_key=key)
 
 
-@ops.RegisterGradient('BytePSBroadcast')
+@ops.RegisterGradient('BytepsBroadcast')
 def _broadcast_grad(op, grad):
     """Gradient for broadcast op.
     Args:
