@@ -551,6 +551,16 @@ if hasattr(tf, 'GradientTape'):
                         else:
                             assert all(isinstance(x, str) for x in self._fuse_common_names) \
                                     or all(isinstance(x, list) for x in self._fuse_common_names)                            
+                            # prepare non-empty grads
+                            all_grads = list(grads)
+                            grads = []
+                            not_none_idxes = []
+                            for i, grad in enumerate(all_grads):
+                                if grad is not None: 
+                                    assert hasattr(grad, 'name')
+                                    grads.append(grad)
+                                    not_none_idxes.append(i)
+                            # hierarchical 
                             is_hierarchical_group = isinstance(self._fuse_common_names[0], list) 
                             if is_hierarchical_group:
                                 num_group = len(self._fuse_common_names)
@@ -598,9 +608,9 @@ if hasattr(tf, 'GradientTape'):
                                     grad_id = name_to_id[grad_list[i].name]
                                     each_group_res[grad_id] = group_res[i]
                             assert len(each_group_res) == len(name_to_id)
-                            res = []
+                            res = [None for _ in all_grads]
                             for i in range(len(name_to_id)):
-                                res.append(each_group_res[i])
+                                res[not_none_idxes[i]] = each_group_res[i]
                             return res
                     else:
                         return [push_pull(grad, scope, device_dense=self._device_dense,

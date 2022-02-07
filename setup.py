@@ -560,12 +560,19 @@ def build_tf_extension(build_ext, options):
     tensorflow_lib.sources = options['SOURCES'] + \
         ['byteps/tensorflow/ops.cc',
          'byteps/tensorflow/memory_visitor.cc']
-    tensorflow_lib.extra_compile_args = options['COMPILE_FLAGS'] + \
-        tf_compile_flags
     tensorflow_lib.extra_link_args = options['LINK_FLAGS'] + tf_link_flags
     tensorflow_lib.library_dirs = options['LIBRARY_DIRS']
     tensorflow_lib.libraries = options['LIBRARIES']
     tensorflow_lib.extra_objects = options['EXTRA_OBJECTS']
+    
+    # use c++14 for tf>=2.7.0
+    import tensorflow as tf
+    if LooseVersion(tf.__version__) >= LooseVersion('2.7.0'):
+        tmp_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
+                                else flag for flag in options['COMPILE_FLAGS']]
+        tensorflow_lib.extra_compile_args = tmp_compile_flags + tf_compile_flags
+    else:
+        tensorflow_lib.extra_compile_args = options['COMPILE_FLAGS'] + tf_compile_flags
 
     build_ext.build_extension(tensorflow_lib)
 
