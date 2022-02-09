@@ -502,10 +502,10 @@ void BytePSGlobal::Init() {
 
   // check potential conflicts
   if (_is_gdr_allreduce) {
-    BPS_CHECK(!_is_using_reduce) << "BYTEPS_USE_GDR_ALLREDUCE cannot be used with BYTEPS_REDUCE_ROOTS";
     BPS_CHECK(!_is_cross_pcie_switch) << "BYTEPS_USE_GDR_ALLREDUCE cannot be used with BYTEPS_PCIE_SWITCH_SIZE";
     // TODO: we may not need this constraint
     BPS_CHECK(_is_joint) << "BYTEPS_USE_GDR_ALLREDUCE should be used in joint mode for now";
+    if (_is_using_reduce) BPS_LOG(INFO) << "GDR local reduce roots set to " << std::string(roots_cstr);
   }
 
   // Create CUDA streams for GPU-CPU copies

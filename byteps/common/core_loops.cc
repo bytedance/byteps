@@ -1180,7 +1180,9 @@ bool RunGDRv2PushPullLoopOnce() {
   int dtype = task->tensor->dtype();
   auto unit_len = tensor->size() / tensor->shape().num_elements();
   auto num_elem_per_gpu = len / local_size / unit_len;
-  bool is_phase1_small_tensor = (len <= BytePSGlobal::GetGDRPhase1Threshold());
+  
+  // If BYTEPS_REDUCE_ROOTS is specified, we skip phase-1
+  bool is_phase1_small_tensor = (len <= BytePSGlobal::GetGDRPhase1Threshold() && !BytePSGlobal::IsUsingReduce());
   if (is_phase1_small_tensor) {
     int global_reduce_root = BytePSGlobal::Hash_DJB2(task->key) % BytePSGlobal::GetSize();
     auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, global_reduce_root);
@@ -1218,6 +1220,19 @@ bool RunGDRv2PushPullLoopOnce() {
     // zpush and the associated reduce stage
     BPS_CHECK(BytePSGlobal::IsRootDevice()); 
     comm_len += left_elem * unit_len;
+  }
+
+  if (BytePSGlobal::IsUsingReduce()) {
+    lrs_offset = 0;
+    comm_len = len;
+    if (local_rank != BytePSGlobal::GetReduceRootByKey(task->key)) {
+      // non reduce-root ranks skip this stage directly
+      for (int k = 0; k < BytePSGlobal::GetPhyNodeNum(); ++k) {
+        BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
+      }
+      FinishOrProceed(task);
+      return true;
+    }
   }
 
   char* data = (char*)(tensor->data()) + offset + lrs_offset;

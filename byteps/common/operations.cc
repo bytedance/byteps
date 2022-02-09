@@ -603,8 +603,9 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
     if (task->device != CPU_DEVICE_ID && BytePSGlobal::GetPhyNodeNum() > 1
-        && BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu() 
-        && task->len <= BytePSGlobal::GetGDRPhase1Threshold()) {
+        && BytePSGlobal::IsGDR() && BytePSGlobal::IsGDRGpu2Gpu()
+        && task->len <= BytePSGlobal::GetGDRPhase1Threshold()
+        && !BytePSGlobal::IsUsingReduce()) {
       task->queue_list.clear();
       task->queue_list.push_back(GDR_V2_PUSH_PULL);
     }
