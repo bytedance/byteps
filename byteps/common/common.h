@@ -91,51 +91,57 @@ enum StatusType {
 
 enum DeviceType { CPU, GPU };
 
+#define BPS_FOREACH_QUEUE_NAME(ACTION)                                        \
+  ACTION(COORDINATE_REDUCE)                                                   \
+  ACTION(REDUCE)                                                              \
+  ACTION(COPYD2H)                                                             \
+  ACTION(PCIE_REDUCE)                                                         \
+  ACTION(COORDINATE_PUSH)                                                     \
+  ACTION(COMPRESS)                                                            \
+  ACTION(PUSH)                                                                \
+  ACTION(PULL)                                                                \
+  ACTION(GDR_V1_PUSH_PULL)                                                    \
+  ACTION(GDR_V2_PUSH_PULL)                                                    \
+  ACTION(GDR_WAIT_PUSH_PULL)                                                  \
+  ACTION(DECOMPRESS)                                                          \
+  ACTION(COPYH2D)                                                             \
+  ACTION(COORDINATE_BROADCAST)                                                \
+  ACTION(BROADCAST)                                                           \
+  /** for peer-to-peer send */                                                \
+  ACTION(SEND)                                                                \
+  /** for peer-to-peer recv */                                                \
+  ACTION(RECV)                                                                \
+  /** for alltoall recv when the recv split is unknown */                     \
+  /** it waits for the entire group of data before starting to copy */        \
+  ACTION(P2P_GROUP_COPYH2D)                                                   \
+  /** for alltoall pull */                                                    \
+  ACTION(P2P_PULL)                                                            \
+  /** for alltoall pull response */                                           \
+  ACTION(P2P_PULL_RESPONSE)                                                   \
+  /** for alltoall notification that the pull response is received */         \
+  ACTION(P2P_WAIT_ACK)                                                        \
+  /** for pure CPU allreduce */                                               \
+  ACTION(CPU_COPY)                                                            \
+  ACTION(CPU_REDUCE)                                                          \
+  /** for pure CPU allreduce */                                               \
+  ACTION(CPU_BCAST)                                                           \
+  ACTION(CPU_BCAST_FINISH)                                                    \
+  /** for allgather pull */                                                   \
+  ACTION(ALLGATHER)                                                           \
+  ACTION(COORDINATE_ALLGATHER)                                                \
+  ACTION(ALLGATHER_PULL)                                                      \
+  ACTION(ALLGATHER_PULL_RESPONSE)                                             \
+  ACTION(ALLGATHER_BCAST)                                                     \
+  ACTION(COORDINATE_ALLGATHER_BCAST)                                          \
+  ACTION(ALLGATHER_P2P_WAIT_ACK)                                              \
+  ACTION(ALLGATHER_COPYD2H)                                                   \
+  ACTION(ALLGATHER_COPYH2D)
+
+#define BPS_DEFINE_QUEUE_TYPE(name) name,
+#define BPS_DEFINE_QUEUE_LOGSTR(name) #name,
+
 enum QueueType {
-  COORDINATE_REDUCE,
-  REDUCE,
-  COPYD2H,
-  PCIE_REDUCE,
-  COORDINATE_PUSH,
-  COMPRESS,
-  PUSH,
-  PULL,
-  GDR_V1_PUSH_PULL,
-  GDR_V2_PUSH_PULL,
-  GDR_WAIT_PUSH_PULL,
-  DECOMPRESS,
-  COPYH2D,
-  COORDINATE_BROADCAST,
-  BROADCAST,
-  // for peer-to-peer send
-  SEND,
-  // for peer-to-peer recv
-  RECV,
-  // for alltoall recv when the recv split is unknown
-  // it waits for the entire group of data before starting to copy
-  P2P_GROUP_COPYH2D,
-  // for alltoall pull 
-  P2P_PULL,
-  // for alltoall pull response
-  P2P_PULL_RESPONSE,
-  // for alltoall notification that the pull response is received
-  P2P_WAIT_ACK,
-  // for pure CPU allreduce
-  CPU_COPY,
-  CPU_REDUCE,
-  // for pure CPU allreduce
-  CPU_BCAST,
-  CPU_BCAST_FINISH,
-  // for allgather pull
-  ALLGATHER,
-  COORDINATE_ALLGATHER,
-  ALLGATHER_PULL,
-  ALLGATHER_PULL_RESPONSE,
-  ALLGATHER_BCAST,
-  COORDINATE_ALLGATHER_BCAST,
-  ALLGATHER_P2P_WAIT_ACK,
-  ALLGATHER_COPYD2H,
-  ALLGATHER_COPYH2D,
+  BPS_FOREACH_QUEUE_NAME(BPS_DEFINE_QUEUE_TYPE)
   QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST
 };
 
@@ -160,41 +166,9 @@ enum ReduceOp {
 const int QueueNum =
     (int)QUEUE_NUM_AND_NOT_A_REAL_QUEUE_TYPE_AND_MUST_BE_THE_LAST;
 
-const std::vector<std::string> LogStrings = {"COORDINATE_REDUCE",
-                                             "REDUCE",
-                                             "COPYD2H",
-                                             "PCIE_REDUCE",
-                                             "COORDINATE_PUSH",
-                                             "COMPRESS",
-                                             "PUSH",
-                                             "PULL",
-                                             "GDR_V1_PUSH_PULL",
-                                             "GDR_V2_PUSH_PULL",
-                                             "GDR_WAIT_PUSH_PULL",
-                                             "GDR_WAIT_ACK",
-                                             "DECOMPRESS",
-                                             "COPYH2D",
-                                             "COORDINATE_BROADCAST",
-                                             "BROADCAST",
-                                             "SEND",
-                                             "RECV",
-                                             "P2P_GROUP_COPYH2D",
-                                             "P2P_PULL",
-                                             "P2P_PULL_RESPONSE",
-                                             "P2P_WAIT_ACK",
-                                             "CPU_COPY",
-                                             "CPU_REDUCE",
-                                             "CPU_BCAST",
-                                             "CPU_BCAST_FINISH",
-                                             "ALLGATHER",
-                                             "COORDINATE_ALLGATHER",
-                                             "ALLGATHER_PULL",
-                                             "ALLGATHER_PULL_RESPONSE",
-                                             "ALLGATHER_BCAST",
-                                             "COORDINATE_ALLGATHER_BCAST",
-                                             "ALLGATHER_P2P_WAIT_ACK",
-                                             "ALLGATHER_COPYD2H",
-                                             "ALLGATHER_COPYH2D"};
+const std::vector<std::string> LogStrings = {
+  BPS_FOREACH_QUEUE_NAME(BPS_DEFINE_QUEUE_LOGSTR)
+};
 
 enum GDRLevel {
   GPU2CPU, GPU2GPU
