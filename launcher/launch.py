@@ -14,6 +14,10 @@ class PropagatingThread(threading.Thread):
     """ propagate exceptions to the parent's thread
     refer to https://stackoverflow.com/a/31614591/9601110
     """
+    def __init__(self, callback=None, idx=-1, **kwargs):
+        super().__init__(**kwargs)
+        self.callback = callback
+        self.idx = idx
 
     def run(self):
         self.exc = None
@@ -27,6 +31,8 @@ class PropagatingThread(threading.Thread):
                 self.ret = self._target(*self._args, **self._kwargs)
         except BaseException as e:
             self.exc = e
+        if self.callback is not None:
+            self.callback(self.idx)
 
     def join(self):
         super(PropagatingThread, self).join()
@@ -245,6 +251,27 @@ def parse_num_range(core_list):
         ret.append([list(a) for a in temp])
     return ret
 
+cv = threading.Condition(lock=threading.Lock())
+done_threads = []
+
+def done_callback(idx):
+    with cv:
+        done_threads.append(idx)
+        cv.notify()
+
+def join_threads(threads):
+    count = 0
+    num = len(threads)
+    while count < num:
+        with cv:
+            while not done_threads:
+                cv.wait()
+            idx = done_threads[-1]
+            done_threads.pop()
+        threads[idx].join()
+        print("BytePS launcher: joined local rank ", idx)
+        count += 1
+
 def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
     sys.stdout.flush()
@@ -271,16 +298,16 @@ def launch_bps():
         for i in range(local_size):
             command = ' '.join(sys.argv[1:])
             if bind_to_cores:
-                t[i] = PropagatingThread(target=worker_fn, args=[
-                    i, local_size, command, allocations[i]])
+                t[i] = PropagatingThread(idx=i, callback=done_callback,
+                    target=worker_fn,
+                    args=[i, local_size, command, allocations[i]])
             else:
-                t[i] = PropagatingThread(target=worker_fn, args=[
-                    i, local_size, command])
+                t[i] = PropagatingThread(idx=i, callback=done_callback,
+                    target=worker_fn, args=[i, local_size, command])
             t[i].daemon = True
             t[i].start()
 
-        for i in range(local_size):
-            t[i].join()
+        join_threads(t)
         return
 
     if os.environ.get("BYTEPS_FORCE_DISTRIBUTED", "0") == "0" and \
