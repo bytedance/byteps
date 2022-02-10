@@ -13,7 +13,7 @@ exclude 3rdparty/ps-lite/tests/test_ipc_benchmark
 exclude 3rdparty/ps-lite/tests/test_ipc_benchmark.d
 exclude 3rdparty/ps-lite/tests/test_benchmark_stress
 exclude 3rdparty/ps-lite/tests/test_benchmark_stress.d
-graft 3rdparty/flatbuffers
+graft 3rdparty/flatbuffers/include
 recursive-exclude * .git __pycache__ *.log
 
 include pre_setup.py pre_setup_local.py zeromq-4.1.4.tar.gz ucx.tar.gz
