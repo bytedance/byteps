@@ -1207,9 +1207,6 @@ class custom_build_ext(build_ext):
 if not os.path.exists('3rdparty/ps-lite/src'):
     msg = "Missing ./3rdparty/ps-lite, ps-lite is required to build BytePS."
     raise ValueError(msg)
-if not os.path.exists('3rdparty/flatbuffers/include/flatbuffers/flatbuffers.h'):
-    msg = "Missing ./3rdparty/flatbuffers, flatbuffers is required to build BytePS."
-    raise ValueError(msg)
 
 if os.path.exists('launcher/launch.py'):
     if not os.path.exists('bin'):
@@ -1245,6 +1242,10 @@ if sys.argv[1].startswith('develop'):
         extensions_to_exclude.add(pytorch_lib)
 
 extensions_to_build = [x for x in extensions_to_build if x not in extensions_to_exclude]
+
+if tensorflow_lib in [extensions_to_build] and not os.path.exists('3rdparty/flatbuffers/include/flatbuffers/flatbuffers.h'):
+    msg = "Missing ./3rdparty/flatbuffers, flatbuffers is required to build the BytePS extension for TensorFlow."
+    raise ValueError(msg)
 
 class sdist(sdist_orig):
     def run(self):
