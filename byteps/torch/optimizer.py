@@ -196,11 +196,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         "accumulate gradients locally.")
             assert not p.grad.requires_grad
             assert self._push_pull_delay[p] > 0
-            handle, ctx = None, None
+            handle, ctx, name = None, None, None
             self._push_pull_delay[p] -= 1
             if self._push_pull_delay[p] == 0:
                 handle, ctx, name = self._push_pull_grad_async(p)
-            # FIXME: ``name`` may be undefined
             self._handles[p] = (handle, ctx, name)
 
         def stale_hook(*ignore):
