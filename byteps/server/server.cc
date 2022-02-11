@@ -1403,6 +1403,7 @@ void BytePSServer::Init(int rank) {
       engine_threads_.push_back(t);
     }
     if (BytePSGlobal::IsGDR()) {
+      CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
       for (size_t i = 0; i < engine_thread_num_; ++i) {
         auto q = new PriorityQueue(enable_schedule_);
         gdr_engine_queues_.push_back(q);

@@ -230,6 +230,50 @@ void BytePSGlobal::Init() {
                 << " is_gdr_allgather=" << _is_gdr_allgather
                 << " err_handling=" << _enable_err_handling;
 
+  _basic_comm = std::make_shared<BytePSCommSocket>();
+  _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
+                    &_my_role, &_num_phy_node, &_phy_node_id);
+
+  _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
+
+#if BYTEPS_BUILDING_CUDA == 1
+  auto bps_visible_device = getenv("BYTEPS_VISIBLE_DEVICE");
+  auto visible_device = getenv("CUDA_VISIBLE_DEVICES");
+  if (bps_visible_device) {
+    _visible_device = atoi(bps_visible_device);
+  } else if (visible_device) {
+    auto visible_device_str = std::string(visible_device);
+    std::unordered_set<int> device_set;
+    size_t pos_begin = 0;
+    for (size_t i = 1; i < visible_device_str.size(); i++) {
+      if (visible_device_str[i] == ',') {
+        size_t pos_end = i;
+        auto last_device = visible_device_str.substr(pos_begin, pos_end);
+        if (last_device.size()) {
+          auto curr_device = atoi(last_device.c_str());
+          device_set.insert(curr_device);
+        }
+        pos_begin = i + 1;
+      }
+    }
+    auto last_device = visible_device_str.substr(pos_begin);
+    if (last_device.size()) {
+      auto curr_device = atoi(last_device.c_str());
+      device_set.insert(curr_device);
+    }
+    int num_devices = device_set.size();
+    BPS_CHECK(num_devices > 0) << num_devices;
+    _visible_device = _local_rank % num_devices;
+  }
+
+  // Set to associated GPU with a default value with local rank/size
+  if (_visible_device == -1) {
+    _visible_device = _local_rank % _local_size;
+  }
+  // Set to associated GPU
+  CUDA_CALL(cudaSetDevice(_visible_device));
+#endif
+
   if (_is_gdr_allreduce) {
     BPS_CHECK(gdr_allreduce_level == 0 || gdr_allreduce_level == 1)
         << "BYTEPS_GDR_ALLREDUCE_LEVEL should be 0 or 1";
@@ -268,12 +312,6 @@ void BytePSGlobal::Init() {
       BPS_LOG(INFO) << "GDR Allreduce level set to GPU2CPU";
     }
   }
-
-  _basic_comm = std::make_shared<BytePSCommSocket>();
-  _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
-                    &_my_role, &_num_phy_node, &_phy_node_id);
-
-  _is_root_device = (_my_role == LOCAL_ROOT) ? true : false;
 
   if (getenv("BYTEPS_WORKER_LOCAL_ROOT")) {
     _worker_local_root = atoi(getenv("BYTEPS_WORKER_LOCAL_ROOT"));
@@ -370,42 +408,6 @@ void BytePSGlobal::Init() {
 
   // Init NCCL
 #if BYTEPS_BUILDING_CUDA == 1
-  auto bps_visible_device = getenv("BYTEPS_VISIBLE_DEVICE");
-  auto visible_device = getenv("CUDA_VISIBLE_DEVICES");
-  if (bps_visible_device) {
-    _visible_device = atoi(bps_visible_device);
-  } else if (visible_device) {
-    auto visible_device_str = std::string(visible_device);
-    std::unordered_set<int> device_set;
-    size_t pos_begin = 0;
-    for (size_t i = 1; i < visible_device_str.size(); i++) {
-      if (visible_device_str[i] == ',') {
-        size_t pos_end = i;
-        auto last_device = visible_device_str.substr(pos_begin, pos_end);
-        if (last_device.size()) {
-          auto curr_device = atoi(last_device.c_str());
-          device_set.insert(curr_device);
-        }
-        pos_begin = i + 1;
-      }
-    }
-    auto last_device = visible_device_str.substr(pos_begin);
-    if (last_device.size()) {
-      auto curr_device = atoi(last_device.c_str());
-      device_set.insert(curr_device);
-    }
-    int num_devices = device_set.size();
-    BPS_CHECK(num_devices > 0) << num_devices;
-    _visible_device = _local_rank % num_devices;
-  }
-
-  // Set to associated GPU with a default value with local rank/size
-  if (_visible_device == -1) {
-    _visible_device = _local_rank % _local_size;
-  }
-  // Set to associated GPU
-  CUDA_CALL(cudaSetDevice(_visible_device));
-
   _nccl_manager = std::make_shared<NcclManager>(_basic_comm);
   _is_cross_pcie_switch = (_local_size > _nccl_manager->GetSize());
   // Bind to NUMA node
