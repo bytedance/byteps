@@ -17,6 +17,7 @@
 import torch
 from byteps.torch.compression import Compression
 from byteps.torch.ops import push_pull_async_inplace as byteps_push_pull
+from byteps.torch.ops import delay_compensation_, dc_adam_
 from byteps.torch.ops import push_pull, allgather
 from byteps.torch.ops import batched_fuse_, batched_unfuse_, batched_zero_
 from byteps.torch.ops import byteps_torch_set_num_grads

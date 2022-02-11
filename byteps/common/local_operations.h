@@ -27,6 +27,24 @@ namespace common {
 void MemcpyInFusionBuffer(std::vector<std::shared_ptr<Tensor>>& src, char *dst, cudaStream_t stream);
 void MemcpyOutFusionBuffer(char *src, std::vector<std::shared_ptr<Tensor>>& dst, cudaStream_t stream);
 void ZeroOutTensors(std::vector<std::shared_ptr<Tensor>>& dst, cudaStream_t stream);
+void CompensateGrads(std::vector<std::shared_ptr<Tensor>>& params, 
+                     std::vector<std::shared_ptr<Tensor>>& grads,
+                     std::vector<std::shared_ptr<Tensor>>& prev_params,
+                     float lambda,
+                     cudaStream_t stream);
+void DCAdamLocalOp(std::vector<std::shared_ptr<Tensor>>& params,
+                   std::vector<std::shared_ptr<Tensor>>& grads,
+                   std::vector<std::shared_ptr<Tensor>>& prev_params,
+                   float lambda,
+                   std::vector<std::shared_ptr<Tensor>>& exp_avgs,
+                   std::vector<std::shared_ptr<Tensor>>& exp_avg_sqs,
+                   std::vector<int64_t>& steps,
+                   float lr,
+                   float eps,
+                   float weight_decay,
+                   float beta1,
+                   float beta2,
+                   cudaStream_t stream);
 #endif
 
 }  // namespace common

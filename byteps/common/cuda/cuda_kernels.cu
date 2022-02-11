@@ -19,8 +19,126 @@
 #include <stdexcept>
 #include <cuda_fp16.h>
 
+
+
 namespace byteps {
 namespace common {
+
+// begin of DC cuda kernel section
+// template<bool is_half, typename T>
+// __device__ float to_float(T& val){
+//   if (is_half){
+//     return __half2float(val);
+//   } else {
+//     return val;
+//   }
+// }
+
+// template<bool is_half, typename T>
+// __device__ T to_type(double& val) {
+//   float v = static_cast<float>(val);
+//   if (is_half){
+//     return __float2half(v);
+//   } else {
+//     return v;
+//   }
+// }
+
+template<typename T>
+__global__ void byte_dc_adam_kernel(DCAdamParams dcadam_params) {
+
+    T *param      = reinterpret_cast<T**>(dcadam_params.params)[blockIdx.x];
+    T *grad       = reinterpret_cast<T**>(dcadam_params.grads)[blockIdx.x];
+    T *prev_param = reinterpret_cast<T**>(dcadam_params.prev_params)[blockIdx.x];
+    int64_t len   = dcadam_params.sizes[blockIdx.x];
+    float lambda  = dcadam_params.lambda;
+
+    float *exp_avgs     = dcadam_params.exp_avgs[blockIdx.x];
+    float *exp_avg_sqs  = dcadam_params.exp_avg_sqs[blockIdx.x];
+    int64_t step        = dcadam_params.steps[blockIdx.x];
+    float lr            = dcadam_params.lr;
+    float eps           = dcadam_params.eps;
+    float weight_decay  = dcadam_params.weight_decay;
+    float beta1         = dcadam_params.beta1;
+    float beta2         = dcadam_params.beta2;
+
+    int32_t tid = threadIdx.x;
+
+    for (int32_t i = blockIdx.y * blockDim.x + tid; i < len; i += blockDim.x * gridDim.y) {
+      float p_val           = static_cast<float>(param[i]);
+      float g_val           = static_cast<float>(grad[i]);
+      float prev_p_val      = static_cast<float>(prev_param[i]);
+      float exp_avg_val     = exp_avgs[i];
+      float exp_avg_sq_val  = exp_avg_sqs[i];
+
+      prev_param[i]   = static_cast<T>(p_val);          // store current param into prev_param
+
+      // delay compensation using diagonal approximation
+      g_val += lambda * g_val * g_val * (p_val - prev_p_val);
+
+      // adam implementation
+      exp_avg_val = exp_avg_val * beta1 + (1 - beta1) * g_val;
+      exp_avg_sq_val = exp_avg_sq_val * beta2 + (1 - beta2) * g_val * g_val;
+      float denorm = sqrt(exp_avg_sq_val) + eps;
+      float bias_correction1 = 1 - pow(beta1, step);
+      float bias_correction2 = 1 - powf(beta2, step);
+      float step_size = lr * sqrt(bias_correction2) / bias_correction1;
+      if (weight_decay != 0.0) {
+        p_val -= weight_decay * lr * p_val;
+      }
+      p_val -= step_size * exp_avg_val / denorm;
+
+      param[i]        = static_cast<T>(p_val);
+      exp_avgs[i]     = exp_avg_val;
+      exp_avg_sqs[i]  = exp_avg_sq_val;
+      grad[i]         = static_cast<T>(g_val);          // store delay compensated grad
+    }
+}
+
+
+template<typename T>
+__global__ void byte_dc_cuda_kernel(DCParams dc_params) {
+
+    T *param      = reinterpret_cast<T**>(dc_params.params)[blockIdx.x];
+    T *grad       = reinterpret_cast<T**>(dc_params.grads)[blockIdx.x];
+    T *prev_param = reinterpret_cast<T**>(dc_params.prev_params)[blockIdx.x];
+    int64_t len   = dc_params.sizes[blockIdx.x];
+    float lambda = dc_params.lambda;
+
+    int32_t tid   = threadIdx.x;
+
+    for (int32_t i = blockIdx.y * blockDim.x + tid; i < len; i += blockDim.x * gridDim.y) {
+      float p_val      = static_cast<float>(param[i]);
+      float g_val      = static_cast<float>(grad[i]);
+      float prev_p_val = static_cast<float>(prev_param[i]);
+
+      // delay compensation using diagonal approximation
+      g_val += lambda * g_val * g_val * (p_val - prev_p_val);
+
+      prev_param[i] = static_cast<T>(p_val);          // store current param into prev_param
+      grad[i]       = static_cast<T>(g_val);          // store delay compensated grad
+    }
+}
+
+// template <typename T>
+void DCCudaImpl(DCParams& dc_params, int count, cudaStream_t stream, DataType data_type){
+  // bool is_half = (data == DataType::BYTEPS_FLOAT16) ? true : false;
+  // byte_dc_cuda_kernel<half><<<dim3(count, DC_GRID_SIZE, 1), DC_BLOCK_SIZE, 0, stream>>>(dc_params);
+  if (data_type == DataType::BYTEPS_FLOAT16){
+    byte_dc_cuda_kernel<half><<<dim3(count, DC_GRID_SIZE, 1), DC_BLOCK_SIZE, 0, stream>>>(dc_params);
+  } else {
+    byte_dc_cuda_kernel<float><<<dim3(count, DC_GRID_SIZE, 1), DC_BLOCK_SIZE, 0, stream>>>(dc_params);
+  }
+}
+
+void DCAdamCudaWrapper(DCAdamParams& dcadam_params, size_t count, cudaStream_t stream, DataType data_type){
+  if (data_type == DataType::BYTEPS_FLOAT16){
+    byte_dc_adam_kernel<half><<<dim3(count, DC_GRID_SIZE, 1), DC_BLOCK_SIZE, 0, stream>>>(dcadam_params);
+  } else {
+    byte_dc_adam_kernel<float><<<dim3(count, DC_GRID_SIZE, 1), DC_BLOCK_SIZE, 0, stream>>>(dcadam_params);
+  }
+}
+
 
 template<typename T, int blocks_per_copy>
 __device__ void batched_memcpy_d(size_t idx, const void* in, void* out, size_t size) {

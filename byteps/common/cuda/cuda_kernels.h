@@ -18,6 +18,7 @@
 #define BYTEPS_CUDA_KERNELS_H
 
 #include <cuda_runtime.h>
+#include "cuda_fp16.h"
 
 #include "../common.h"
 #include "../logging.h"
@@ -27,8 +28,37 @@
 #define BATCHED_ZO_CAPACITY 160
 #define BATCHED_ZO_PADDING 16
 
+#define DC_BLOCK_SIZE 512
+#define DC_GRID_SIZE 32
+#define DC_GROUP_SIZE 64
+
 namespace byteps {
 namespace common {
+
+struct DCAdamParams {
+  void* params[DC_GROUP_SIZE];
+  void* grads[DC_GROUP_SIZE];
+  void* prev_params[DC_GROUP_SIZE];
+  float lambda;
+  size_t sizes[DC_GROUP_SIZE];
+
+  float* exp_avgs[DC_GROUP_SIZE];
+  float* exp_avg_sqs[DC_GROUP_SIZE];
+  int64_t steps[DC_GROUP_SIZE];
+  float lr;
+  float eps;
+  float weight_decay;
+  float beta1;
+  float beta2;
+};
+
+struct DCParams {
+  void* params[DC_GROUP_SIZE];
+  void* grads[DC_GROUP_SIZE];
+  void* prev_params[DC_GROUP_SIZE];
+  size_t sizes[DC_GROUP_SIZE];
+  float lambda;
+};
 
 struct BatchedD2DParams {
   void* out[BATCHED_D2D_CAPACITY];
@@ -40,6 +70,14 @@ struct BatchedZOParams {
   void* out[BATCHED_ZO_CAPACITY];
   size_t sizes[BATCHED_ZO_CAPACITY];
 };
+
+// Delay compensation + Adam
+void DCAdamCudaWrapper(DCAdamParams& dcadam_params, size_t count, cudaStream_t stream, DataType data_type);
+
+// Delay compensation using diagonal approximation
+// template <typename T>
+void DCCudaImpl(DCParams& dc_params, int count, cudaStream_t stream, DataType data_type);
+
 
 // Performs a batched d2d memcopy
 void BatchedD2DMemcpyCudaImpl(BatchedD2DParams& params, int num_copies, cudaStream_t stream);

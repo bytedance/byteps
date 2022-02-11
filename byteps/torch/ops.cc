@@ -20,6 +20,10 @@
 #include <memory>
 #include <thread>
 
+#include <c10/cuda/CUDAStream.h>
+#include <caffe2/core/common_gpu.h>
+#include <ATen/cuda/CUDAContext.h>
+
 #include "../common/operations.h"
 #include "../common/local_operations.h"
 #include "../common/logging.h"
@@ -28,6 +32,10 @@
 #include "cuda_util.h"
 #include "handle_manager.h"
 #include "ready_event.h"
+
+#define DC_BLOCK_SIZE (256)
+#define DC_GRID_SIZE (32)
+#define DC_GROUP_SIZE (64)
 
 #if TORCH_VERSION < 1005000000
 #if HAVE_CUDA
@@ -445,7 +453,62 @@ int BatchedZeroOut(std::vector<::torch::Tensor> output_tensors) {
   ZeroOutTensors(dst, curr_stream_t);
   return 0;
 }
+
+
+int DelayCompensation(std::vector<::torch::Tensor> params, std::vector<::torch::Tensor> grads,
+                      std::vector<::torch::Tensor> prev_params, float lambda) {
+  std::vector<std::shared_ptr<Tensor>> d_params, d_grads, d_prev_params;
+
+  for (size_t i = 0; i < params.size(); i++) {
+    auto bps_param = std::make_shared<TorchTensor>(params[i]);
+    d_params.push_back(std::move(bps_param));
+    auto bps_grad = std::make_shared<TorchTensor>(grads[i]);
+    d_grads.push_back(std::move(bps_grad));
+    auto bps_prev_param = std::make_shared<TorchTensor>(prev_params[i]);
+    d_prev_params.push_back(std::move(bps_prev_param));
+  }
+
+#if TORCH_VERSION >= 1005000000
+  auto curr_stream = c10::cuda::getCurrentCUDAStream();
+  cudaStream_t curr_stream_t = curr_stream.stream();
+#else
+  auto curr_stream_t = THCState_getCurrentStream(state);
 #endif
+  CompensateGrads(d_params, d_grads, d_prev_params, lambda, curr_stream_t);
+  return 0;
+}
+
+
+int DCAdam(std::vector<::torch::Tensor> params, std::vector<::torch::Tensor> grads,
+           std::vector<::torch::Tensor> prev_params, float dc_lambda,
+           std::vector<::torch::Tensor> exp_avgs, std::vector<::torch::Tensor> exp_avg_sqs, std::vector<int64_t> steps,
+           float lr, float eps, float weight_decay, float beta1, float beta2) {
+             
+  std::vector<std::shared_ptr<Tensor>> d_params, d_grads, d_prev_params;
+  std::vector<std::shared_ptr<Tensor>> d_exp_avgs, d_exp_avg_sqs;
+
+  for (size_t i = 0; i < params.size(); i++) {
+    d_params.push_back(std::make_shared<TorchTensor>(params[i]));
+    d_grads.push_back(std::make_shared<TorchTensor>(grads[i]));
+    d_prev_params.push_back(std::make_shared<TorchTensor>(prev_params[i]));
+
+    d_exp_avgs.push_back(std::make_shared<TorchTensor>(exp_avgs[i]));
+    d_exp_avg_sqs.push_back(std::make_shared<TorchTensor>(exp_avg_sqs[i]));
+  }
+
+#if TORCH_VERSION >= 1005000000
+  auto curr_stream = c10::cuda::getCurrentCUDAStream();
+  cudaStream_t curr_stream_t = curr_stream.stream();
+#else
+  auto curr_stream_t = THCState_getCurrentStream(state);
+#endif
+  DCAdamLocalOp(d_params, d_grads, d_prev_params, dc_lambda,
+                  d_exp_avgs, d_exp_avg_sqs, steps, lr, eps, weight_decay,
+                  beta1, beta2, curr_stream_t);
+  return 0;
+}
+#endif
+
 
 PYBIND11_MODULE(c_lib, m) {
   // push_pull
@@ -534,12 +597,33 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_batched_zero_out_async_torch_cuda_FloatTensor", &BatchedZeroOut);
   m.def("byteps_torch_batched_zero_out_async_torch_cuda_DoubleTensor", &BatchedZeroOut);
 
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_ByteTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_IntTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_LongTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_HalfTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_FloatTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_DoubleTensor", &DelayCompensation);
+
+  m.def("byteps_torch_dc_adam_async_torch_cuda_ByteTensor", &DCAdam);
+  m.def("byteps_torch_dc_adam_async_torch_cuda_IntTensor", &DCAdam);
+  m.def("byteps_torch_dc_adam_async_torch_cuda_LongTensor", &DCAdam);
+  m.def("byteps_torch_dc_adam_async_torch_cuda_HalfTensor", &DCAdam);
+  m.def("byteps_torch_dc_adam_async_torch_cuda_FloatTensor", &DCAdam);
+  m.def("byteps_torch_dc_adam_async_torch_cuda_DoubleTensor", &DCAdam);
+
   m.def("byteps_torch_allgather_async_torch_cuda_ByteTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_IntTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_LongTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_HalfTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_FloatTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_DoubleTensor", &DoAllgather);
+  
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_ByteTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_IntTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_LongTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_HalfTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_FloatTensor", &DelayCompensation);
+  m.def("byteps_torch_delay_compensation_async_torch_cuda_DoubleTensor", &DelayCompensation);
 #endif
 
   // basics

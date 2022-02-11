@@ -24,6 +24,8 @@
 #include "cuda/cuda_kernels.h"
 #endif
 
+#include <iostream>
+
 namespace byteps {
 namespace common {
 
@@ -106,6 +108,84 @@ void ZeroOutTensors(std::vector<std::shared_ptr<Tensor>>& dst, cudaStream_t stre
     }
   }
 }
+
+
+void CompensateGrads(std::vector<std::shared_ptr<Tensor>>& params,
+                     std::vector<std::shared_ptr<Tensor>>& grads,
+                     std::vector<std::shared_ptr<Tensor>>& prev_params,
+                     float lambda,
+                     cudaStream_t stream){
+    int idx = 0;
+    int count = 0;
+
+    auto& bps_param = params[0];
+    auto data_type = bps_param->dtype();
+
+    DCParams dc_params;
+    dc_params.lambda = lambda;
+    for (size_t i = 0; i < params.size(); i++) {
+      dc_params.params[idx % DC_GROUP_SIZE]       = (void*) params[i]->data(); // Tensor::data() returns const void *
+      dc_params.grads[idx % DC_GROUP_SIZE]        = (void*) grads[i]->data();
+      dc_params.prev_params[idx % DC_GROUP_SIZE]  = (void*) prev_params[i]->data();
+      dc_params.sizes[idx % DC_GROUP_SIZE]        = params[i]->shape().num_elements();
+
+      idx++;
+      count++;
+
+      if (idx % DC_GROUP_SIZE == 0 || idx == (int) params.size()) {
+        DCCudaImpl(dc_params, count, stream, data_type);
+        count = 0;
+      }
+    }
+}
+
+
+void DCAdamLocalOp(std::vector<std::shared_ptr<Tensor>>& params,
+                   std::vector<std::shared_ptr<Tensor>>& grads,
+                   std::vector<std::shared_ptr<Tensor>>& prev_params,
+                   float lambda,
+                   std::vector<std::shared_ptr<Tensor>>& exp_avgs,
+                   std::vector<std::shared_ptr<Tensor>>& exp_avg_sqs,
+                   std::vector<int64_t>& steps,
+                   float lr,
+                   float eps,
+                   float weight_decay,
+                   float beta1,
+                   float beta2,
+                   cudaStream_t stream) {
+
+    size_t idx = 0;
+    size_t count = 0;
+
+    auto data_type = params[0]->dtype();
+
+    DCAdamParams dcadam_params;
+    dcadam_params.lambda = lambda;
+    dcadam_params.lr = lr;
+    dcadam_params.eps = eps;
+    dcadam_params.weight_decay = weight_decay;
+    dcadam_params.beta1 = beta1;
+    dcadam_params.beta2 = beta2;
+
+    for (size_t i = 0; i < params.size(); i++) {
+      dcadam_params.params[idx % DC_GROUP_SIZE]       = (void*) params[i]->data(); // Tensor::data() returns const void *
+      dcadam_params.grads[idx % DC_GROUP_SIZE]        = (void*) grads[i]->data();
+      dcadam_params.prev_params[idx % DC_GROUP_SIZE]  = (void*) prev_params[i]->data();
+      dcadam_params.sizes[idx % DC_GROUP_SIZE]        = params[i]->shape().num_elements();
+      dcadam_params.exp_avgs[idx % DC_GROUP_SIZE]     = (float*) exp_avgs[i]->data();
+      dcadam_params.exp_avg_sqs[idx % DC_GROUP_SIZE]  = (float*) exp_avg_sqs[i]->data();
+      dcadam_params.steps[idx % DC_GROUP_SIZE]        = steps[i];
+
+      idx++;
+      count++;
+
+      if (idx % DC_GROUP_SIZE == 0 || idx == params.size()) {
+        DCAdamCudaWrapper(dcadam_params, count, stream, data_type);
+        count = 0;
+      }
+    }
+}
+
 #endif
 
 }  // namespace common

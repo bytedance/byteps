@@ -82,6 +82,12 @@ def _batched_unfuse_function_factory(tensor):
 def _batched_zero_out_function_factory(tensor):
     return 'byteps_torch_batched_zero_out_async_' + tensor.type().replace('.', '_')
 
+def _delay_compensation_function_factory(tensor):
+    return 'byteps_torch_delay_compensation_async_' + tensor.type().replace('.', '_')
+
+def _dc_adam_function_factory(tensor):
+    return 'byteps_torch_dc_adam_async_' + tensor.type().replace('.', '_')
+
 def _allgather_function_factory(tensor):
     return 'byteps_torch_allgather_async_' + tensor.type().replace('.', '_')
 
@@ -447,6 +453,65 @@ def batched_zero_(tensors):
     else:
         for item in tensors:
             item.zero_()
+        return 0
+
+@torch.no_grad()
+def delay_compensation_(params, grads, prev_params, dc_lambda):
+    """
+    Update grads according to delay compensation using diagonal approximation.
+    See reference https://arxiv.org/abs/1609.08326 for details.
+    Arguments:
+        params: A list of tensors, each of which is a parameter.
+        grads: A list of tensors, each of which is the grad associated with parameters.
+        prev_params: A list of tensors, each of which is params from previous iteration.
+        dc_lambda: A scalar.
+    Returns:
+        0
+    """
+    from byteps.torch import c_lib
+    assert isinstance(params, list), type(tensors)
+    assert isinstance(grads, list), type(tensors)
+    assert isinstance(prev_params, list), type(tensors)
+    if params[0].is_cuda:
+        function = _check_function(_delay_compensation_function_factory, params[0])
+        getattr(c_lib, function)(params, grads, prev_params, dc_lambda)
+        return 0
+    else:
+        for p, g, prev_p in zip(params, grads, prev_params):
+            g += dc_lambda * g * g * (p - prev_p)
+        
+        for prev_p, p in zip(prev_params, params):
+            prev_p.copy_(p)
+        return 0
+
+@torch.no_grad()
+def dc_adam_(params, grads, prev_params, dc_lambda, exp_avgs, exp_avg_sqs, steps, lr, eps, weight_decay, beta1, beta2):
+    """
+    Update grads according to delay compensation using diagonal approximation.
+    Arguments:
+        params: A list of tensors, each of which is a parameter.
+        grads: A list of tensors, each of which is the grad associated with parameters.
+        prev_params: A list of tensors, each of which is params from previous iteration.
+        dc_lambda: A scalar.
+    Returns:
+        0
+    """
+    from byteps.torch import c_lib
+    assert isinstance(params, list), type(tensors)
+    assert isinstance(grads, list), type(tensors)
+    assert isinstance(prev_params, list), type(tensors)
+    if params[0].is_cuda:
+        function = _check_function(_dc_adam_function_factory, params[0])
+        getattr(c_lib, function)(params, grads, prev_params, dc_lambda, exp_avgs, exp_avg_sqs, steps, lr, eps, weight_decay, beta1, beta2)
+        return 0
+    else:
+        # TODO add python implementation of DC-ADAM
+        raise NotImplementedError
+        # for p, g, prev_p in zip(params, grads, prev_params):
+        #     g += dc_lambda * g * g * (p - prev_p)
+        
+        # for prev_p, p in zip(prev_params, params):
+        #     prev_p.copy_(p)
         return 0
 
 
