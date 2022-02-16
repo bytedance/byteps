@@ -174,7 +174,7 @@ def get_mpi_flags():
 
 def get_cpp_flags(build_ext):
     last_err = None
-    use_x8664 = int(os.environ.get('BYTEPS_CPPFLAGS_MARCH_X8664', '0'))
+    use_x8664 = int(os.environ.get('BYTEPS_CPPFLAGS_MARCH_X8664', '1'))
     march = 'x86-64' if use_x8664 else 'native'
     default_flags = ['-std=c++11', '-fPIC', '-Ofast', '-Wall', '-march=' + march]
     if int(os.environ.get('BYTEPS_WERROR', '0')):
