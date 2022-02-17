@@ -143,11 +143,17 @@ BytePSScheduledQueue::BytePSScheduledQueue(QueueType type, bool lockless) : _sps
       BPS_LOG(WARNING) << "Please build BytePS with BYTEPS_WITH_GPU=1";
 #endif
       break;
-    case ALLGATHER_PULL_RESPONSE:
-      _rt = BytePSGlobal::GetAllgatherPullResponseTable();
+    case ALLGATHER_PULL_RESP:
+      _rt = BytePSGlobal::GetAllgatherPullRespTable();
       break;
-    case ALLGATHER_P2P_WAIT_ACK:
-      _rt = BytePSGlobal::GetAllgatherAckTable();
+    case ALLGATHER_PULL_ACK:
+      _rt = BytePSGlobal::GetAllgatherPullAckTable();
+      break;
+    case ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP:
+      _rt = BytePSGlobal::GetAllgatherPullWorkerLocalRootRespTable();
+      break;
+    case ALLGATHER_PULL_WORKER_LOCAL_ROOT_ACK:
+      _rt = BytePSGlobal::GetAllgatherPullWorkerLocalRootAckTable();
       break;
     case ALLGATHER_COPYH2D:
       if (!BytePSGlobal::IsRootDevice()) {

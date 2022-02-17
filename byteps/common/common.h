@@ -139,12 +139,15 @@ enum DeviceType { CPU, GPU };
   ACTION(ALLGATHER)                                                           \
   ACTION(COORDINATE_ALLGATHER)                                                \
   ACTION(ALLGATHER_PULL)                                                      \
-  ACTION(ALLGATHER_PULL_RESPONSE)                                             \
+  ACTION(ALLGATHER_PULL_RESP)                                                 \
   ACTION(ALLGATHER_BCAST)                                                     \
   ACTION(COORDINATE_ALLGATHER_BCAST)                                          \
-  ACTION(ALLGATHER_P2P_WAIT_ACK)                                              \
+  ACTION(ALLGATHER_PULL_ACK)                                                  \
   ACTION(ALLGATHER_COPYD2H)                                                   \
-  ACTION(ALLGATHER_COPYH2D)
+  ACTION(ALLGATHER_COPYH2D)                                                   \
+  ACTION(ALLGATHER_PULL_WORKER_LOCAL_ROOT)                                    \
+  ACTION(ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP)                               \
+  ACTION(ALLGATHER_PULL_WORKER_LOCAL_ROOT_ACK)
 
 #define BPS_DEFINE_QUEUE_TYPE(name) name,
 #define BPS_DEFINE_QUEUE_LOGSTR(name) #name,
@@ -163,7 +166,7 @@ enum OperationType {
   // alltoall operations
   ALLTOALL_OP,
   // allgather operations
-  ALLGATHER_OP,
+  ALLGATHER_OP
 };
 
 enum ReduceOp {
@@ -280,6 +283,7 @@ typedef struct BytePSContext {
   bool profile_flag = false;
   int step_cnt = 0;
   int local_rank = 0;
+  int worker_local_root = 0;
   std::unordered_map<uint64_t, std::unordered_map<int, std::queue<BPSCommTime*>>> part_comm_time;
   // Compressor list
   std::vector<std::shared_ptr<compressor::Compressor>> compressor_list;
@@ -398,6 +402,10 @@ struct P2PTensorTableEntry : TensorTableEntry {
   std::vector<int> offset_list;
   // list of involved keys
   std::vector<uint64_t> key_list;
+  // list of allgatherv tensors
+  std::vector<int> shape_list;
+  // list of worker local root
+  std::vector<int> worker_local_root_list;
   // counter of alltoall send operations
   std::shared_ptr<std::atomic_int> request_counter;
   // the output device id. In some cases, it may be different

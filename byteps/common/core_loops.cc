@@ -236,7 +236,7 @@ inline void PostNcclCalls(
     std::shared_ptr<byteps::common::TensorTableEntry> task, QueueType this_op) {
   BPS_CHECK(this_op == REDUCE || this_op == BROADCAST || 
             this_op == ALLGATHER || this_op == ALLGATHER_BCAST)
-      << "Only REDUCE, BROADCAST, ALLGATHER and ALLGATHER_BCAST use NCCL.";
+      << "Only REDUCE, BROADCAST, ALLGATHER, and ALLGATHER_BCAST use NCCL.";
   auto tensor = (this_op == REDUCE || this_op == ALLGATHER) ? task->tensor : task->output;
   BPS_CHECK(tensor);
   BPS_CHECK_EQ(0, tensor->size() % tensor->shape().num_elements());
@@ -275,77 +275,102 @@ inline void PostNcclCalls(
                    << " rank=" << BytePSGlobal::GetLocalRank();
   }
 
-  if (this_op == ALLGATHER) {
-    auto out_p = (char *)(task->output->data());
-    if (BytePSGlobal::IsGDRAllgather() && BytePSGlobal::IsRootDevice()) {
-      int phy_id = BytePSGlobal::GetPhyNodeID();
-      int local_size = BytePSGlobal::GetLocalSize();
-      out_p += phy_id * local_size * len;
-    }
+  switch (this_op) {
+    case REDUCE: {
+      // We reduce to task->output except that it is a CPU tensor
+      auto out_p = (char *)(task->output->data()) + offset;
+      if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
+        out_p = p;
+      }
 
-    NCCLCHECK(ncclAllGather(
-        (const void *)p, (void *)out_p, 
-        (size_t)len / unit_len, (ncclDataType_t)nccl_dtype,
-        (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
-
-    return;
-  } else if (this_op == ALLGATHER_BCAST) {
-    int num_ranks = BytePSGlobal::GetSize();
-    NCCLCHECK(ncclBroadcast(
-        (const void *)p, (void *)p,
-        (size_t)num_ranks * len / unit_len, (ncclDataType_t)nccl_dtype,
-        (int)nccl_root, (ncclComm_t)nccl_comm,
-        (cudaStream_t)nccl_stream));
-
-    return;
-  }
-
-  if (this_op == REDUCE) {
-    // We reduce to task->output except that it is a CPU tensor
-    auto out_p = (char *)(task->output->data()) + offset;
-    if (task->device == CPU_DEVICE_ID && task->tensor == task->output) {
-      out_p = p;
-    }
-
-    if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() == 1) {
-      NCCLCHECK(ncclAllReduce(
-          (const void *)p,
-          (void *)out_p,
-          (size_t)(len/unit_len), (ncclDataType_t)nccl_dtype,
-          (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
-          (cudaStream_t)nccl_stream));
-    } else {
-      if (num_elem_per_gpu) {
-        NCCLCHECK(ncclReduceScatter(
+      if (BytePSGlobal::IsGDR() && BytePSGlobal::GetPhyNodeNum() == 1) {
+        NCCLCHECK(ncclAllReduce(
             (const void *)p,
-            (void *)(out_p + nccl_rank * num_elem_per_gpu * unit_len),
-            (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
+            (void *)out_p,
+            (size_t)(len/unit_len), (ncclDataType_t)nccl_dtype,
             (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
             (cudaStream_t)nccl_stream));
+      } else {
+        if (num_elem_per_gpu) {
+          NCCLCHECK(ncclReduceScatter(
+              (const void *)p,
+              (void *)(out_p + nccl_rank * num_elem_per_gpu * unit_len),
+              (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
+              (ncclRedOp_t)ncclSum, (ncclComm_t)nccl_comm,
+              (cudaStream_t)nccl_stream));
+        }
+        if (left_elem) {
+          NCCLCHECK(ncclReduce(
+              (const void *)(p + len - left_elem * unit_len),
+              (void *)(out_p + len - left_elem * unit_len),
+              (size_t)left_elem, (ncclDataType_t)nccl_dtype,
+              (ncclRedOp_t)ncclSum, (int)nccl_root,
+              (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+        }
       }
-      if (left_elem) {
-        NCCLCHECK(ncclReduce(
-            (const void *)(p + len - left_elem * unit_len),
-            (void *)(out_p + len - left_elem * unit_len),
-            (size_t)left_elem, (ncclDataType_t)nccl_dtype,
-            (ncclRedOp_t)ncclSum, (int)nccl_root,
+      break;
+    }
+    case BROADCAST: {
+      if (num_elem_per_gpu) {
+        NCCLCHECK(ncclAllGather(
+            (const void *)(p + nccl_rank * num_elem_per_gpu * unit_len),
+            (void *)p, (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
             (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
       }
+      if (left_elem) {
+        NCCLCHECK(ncclBroadcast((const void *)(p + len - left_elem * unit_len),
+                                (void *)(p + len - left_elem * unit_len),
+                                (size_t)left_elem, (ncclDataType_t)nccl_dtype,
+                                (int)nccl_root, (ncclComm_t)nccl_comm,
+                                (cudaStream_t)nccl_stream));
+      }
+      break;
     }
-  } else {
-    if (num_elem_per_gpu) {
-      NCCLCHECK(ncclAllGather(
-          (const void *)(p + nccl_rank * num_elem_per_gpu * unit_len),
-          (void *)p, (size_t)num_elem_per_gpu, (ncclDataType_t)nccl_dtype,
-          (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+    case ALLGATHER: {
+      auto t = reinterpret_cast<P2PTensorTableEntry*>(task.get());
+      auto out_p = (char *)(t->output->data());
+      if (t->shape_list.empty()) {
+        int phy_id = BytePSGlobal::GetPhyNodeID();
+        int local_size = BytePSGlobal::GetLocalSize();
+        out_p += phy_id * local_size * len;
+
+        NCCLCHECK(ncclAllGather(
+            (const void *)p, (void *)out_p, 
+            (size_t)len / unit_len, (ncclDataType_t)nccl_dtype,
+            (ncclComm_t)nccl_comm, (cudaStream_t)nccl_stream));
+      } else {
+        // for allgatherv
+        // similar as NCCLAllgather: https://github.com/horovod/horovod/blob/master/horovod/common/ops/nccl_operations.cc#L700
+        BPS_CHECK((int)t->offset_list.size() == BytePSGlobal::GetSize() + 1);
+        int phy_id = BytePSGlobal::GetPhyNodeID();
+        int local_size = BytePSGlobal::GetLocalSize();
+        for (int i = 0; i < local_size; ++i) {
+          int index = phy_id * local_size + i;
+          size_t num_elem = t->offset_list[index + 1] - t->offset_list[index];
+          void* new_out_p = out_p + t->offset_list[index] * unit_len;
+          NCCLCHECK(ncclBroadcast((const void *)(p),
+                                  (void *)(new_out_p),
+                                  (size_t)num_elem, (ncclDataType_t)nccl_dtype,
+                                  (int)i, (ncclComm_t)nccl_comm,
+                                  (cudaStream_t)nccl_stream));
+        }
+      }
+      break;
     }
-    if (left_elem) {
-      NCCLCHECK(ncclBroadcast((const void *)(p + len - left_elem * unit_len),
-                              (void *)(p + len - left_elem * unit_len),
-                              (size_t)left_elem, (ncclDataType_t)nccl_dtype,
-                              (int)nccl_root, (ncclComm_t)nccl_comm,
-                              (cudaStream_t)nccl_stream));
+    case ALLGATHER_BCAST: {
+      if (BytePSGlobal::IsGDRAllgather()) {
+        nccl_root = nccl->GetSignalComm()->getRoot();
+      }
+      
+      NCCLCHECK(ncclBroadcast(
+          (const void *)p, (void *)p,
+          (size_t)tensor->shape().num_elements(), (ncclDataType_t)nccl_dtype,
+          (int)nccl_root, (ncclComm_t)nccl_comm,
+          (cudaStream_t)nccl_stream));
+      break;
     }
+    default:
+      BPS_CHECK(false) << "nccl op not supported";
   }
 }
 
@@ -356,7 +381,8 @@ bool RunRootNcclLoopOnce() {
   BPS_CHECK_EQ(rank, root);
 
   int nccl_size = BytePSGlobal::GetNccl()->GetSize();
-  QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER, ALLGATHER_BCAST};
+  QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER, 
+                          ALLGATHER_BCAST};
 
   auto nccl_entry = std::make_shared<NcclGroupEntry>();
   auto &tasks = nccl_entry->tasks;
@@ -787,9 +813,12 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
 bool RunAllgatherCopyDevice2HostLoopOnce() {
   QueueType this_op = ALLGATHER_COPYD2H;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
-  auto task = q->getTask();
+  auto t = q->getTask();
+  auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
 
   if (task) {
+    BPS_CHECK(task->tensor) << task->tensor_name
+                    << ": input tensor is empty, size=" << task->len;
     BPS_CHECK(task->output) << task->tensor_name
                     << ": output tensor is empty, size=" << task->len;
     BPS_CHECK(task->cpubuff) << task->tensor_name
@@ -799,30 +828,53 @@ bool RunAllgatherCopyDevice2HostLoopOnce() {
     auto nccl = BytePSGlobal::GetNccl();
     auto nccl_root = nccl->GetRoot(key, this_op);
     auto nccl_rank = nccl->GetRank(key, this_op);
-    int copy_len = 0;
-    if (BytePSGlobal::IsUsingReduce())
-      copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ? 
-                  BytePSGlobal::GetLocalSize() * task->len : 0;
-    else
-      // can change to if BytePSGlobal::GetNccl()->IsSignalRoot(), then copy ?
-      copy_len = (nccl_rank == nccl_root) ?
-                  BytePSGlobal::GetLocalSize() * task->len : 0;
-
-    if (copy_len) {
+    
+    auto cal_len_offset = [&](int& copy_len, int& copy_offset) {
+      copy_len = 0;
+      copy_offset = 0;
+      auto len = task->len;
+      auto unit_len = task->tensor->size() / task->tensor->shape().num_elements();
+      const auto& shape_list = task->shape_list;
+      const auto& offset_list = task->offset_list;
       int phy_id = BytePSGlobal::GetPhyNodeID();
       int local_size = BytePSGlobal::GetLocalSize();
-      int offset = phy_id * local_size * task->len;
+      if (!shape_list.empty()) {
+        BPS_CHECK((int)offset_list.size() == BytePSGlobal::GetSize() + 1);
+        int rank_offset = phy_id * local_size;
+        copy_len = (offset_list[rank_offset + local_size] - offset_list[rank_offset]) * unit_len;
+        copy_offset = offset_list[rank_offset] * unit_len;
+      } else {
+        copy_len = BytePSGlobal::GetLocalSize() * len;
+        copy_offset = phy_id * local_size * len;
+      }
+    };
+
+    int copy_len = 0;   
+    int copy_offset = 0; 
+    if (BytePSGlobal::IsUsingReduce()) {
+      if (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) {
+        cal_len_offset(copy_len, copy_offset);
+      }
+    } else {
+      // TODO: make every gpu to participate in copy
+      if (nccl_rank == nccl_root) {
+        cal_len_offset(copy_len, copy_offset);
+      }
+    }
+
+    if (copy_len) {
       auto copy_d2h_Stream = BytePSGlobal::GetAllgatherCopyDevice2HostStream();
       CUDA_CALL(cudaMemcpyAsync(
-          (void *)((char*)task->cpubuff + offset), (const void *)task->output->data(),
+          (void *)((char*)task->cpubuff + copy_offset), (const void *)((char*)task->output->data() + copy_offset),
           (size_t)copy_len, (cudaMemcpyKind)cudaMemcpyDeviceToHost,
           (cudaStream_t)*copy_d2h_Stream));
       CUDA_CALL(cudaStreamSynchronize(*copy_d2h_Stream));
 
+      // TODO: change to IsRootDevice()
       if (BytePSGlobal::GetNccl()->IsSignalRoot()) {
         for (auto key : task->context->key_list) {
           if (key != task->key) {
-            BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(key);
+            BytePSGlobal::GetAllgatherPullRespTable()->AddReadyCount(key);
           }
         }
       }
@@ -838,7 +890,7 @@ bool RunAllgatherCopyDevice2HostLoopOnce() {
       }
     }
 
-    FinishOrProceed(task);
+    FinishOrProceed(t);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
   }
@@ -856,14 +908,17 @@ void AllgatherCopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> 
   auto nccl = BytePSGlobal::GetNccl();
   auto nccl_root = nccl->GetRoot(key, this_op);
   auto nccl_rank = nccl->GetRank(key, this_op);
+
   int copy_len = 0;
   if (BytePSGlobal::IsUsingReduce()) {
-    copy_len = (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) ?
-                BytePSGlobal::GetSize() * task->len : 0;
+    if (BytePSGlobal::GetReduceRootByKey(key) == nccl_rank) {
+      copy_len = task->output->size();
+    }
   } else {
-    // can change to if BytePSGlobal::GetNccl()->IsSignalRoot(), then copy ?
-    copy_len = (nccl_rank == nccl_root) ?
-                BytePSGlobal::GetSize() * task->len : 0;
+    // TODO: make every gpu to participate in copy
+    if (nccl_rank == nccl_root) {
+      copy_len = task->output->size();
+    }
   }
 
   if (copy_len) {
@@ -2142,7 +2197,7 @@ inline void AllgatherPullRespTableUpdate(QueueType op, uint64_t key, const std::
       BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) {
     for (auto k : key_list) {
       if (k != key) {
-        BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(k);
+        BytePSGlobal::GetAllgatherPullRespTable()->AddReadyCount(k);
       }
     }
   }
@@ -2160,35 +2215,57 @@ bool RunAllgatherPullLoopOnce() {
     int local_size = BytePSGlobal::GetLocalSize();
     int phy_id = BytePSGlobal::GetPhyNodeID();
     int num_phy_node = BytePSGlobal::GetPhyNodeNum();
+    
+    auto len = task->len;
+    auto unit_len = task->tensor->size() / task->tensor->shape().num_elements();
+
+    const auto& shape_list = task->shape_list;
+    const auto& offset_list = task->offset_list;
+    if (!shape_list.empty())
+      BPS_CHECK((int)offset_list.size() == BytePSGlobal::GetSize() + 1);
+
+    auto& worker_local_root_list = task->worker_local_root_list;
+    BPS_CHECK((int)worker_local_root_list.size() == num_phy_node);
 
     for (int r = 0; r < num_phy_node; ++r) {
       int i = (phy_id + r + 1) % num_phy_node;
       if (i == phy_id) continue;
 
-      i *= local_size;
-      int receiver = i + BytePSGlobal::GetWorkerLocalRoot();
-      auto len = task->len;
+      int rank_offset = i * local_size;
+      int receiver = rank_offset + worker_local_root_list[i];
+
       if (len == 0)
         continue;
       else {
+        // TODO: len is correct here ?
         auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
         int cmd = server::GetCommandType(server::RequestType::kAllgatherPull, 
                                          dtype, device_type);
-        int ack_cmd = server::GetCommandType(server::RequestType::kAllgatherAckSignal,
+        int ack_cmd = server::GetCommandType(server::RequestType::kAllgatherPullAck,
                                              dtype, device_type);
 
         char* output = nullptr;
         if (BytePSGlobal::IsGDRAllgather()) {
-          output = (char*)task->output->data() + i * len;
+          if (shape_list.empty()) {
+            output = (char*)task->output->data() + rank_offset * len;
+          } else {
+            output = (char*)task->output->data() + offset_list[rank_offset] * unit_len;
+          }
         } else {
           BPS_CHECK(task->cpubuff) << task->tensor_name
               << ": CPU buffer not initialized, size=" << task->len;
-          output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + i * len);
+          if (shape_list.empty()) {
+            output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + rank_offset * len);
+          } else {
+            output = const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset_list[rank_offset] * unit_len);
+          }
         }
         BPS_CHECK(output) << task->tensor_name
             << ": output buffer not initialized, size=" << task->len;
 
-        auto vals = new ps::SArray<char>(output, local_size * len, false);
+        int pull_len = shape_list.empty() ? 
+            local_size * len : (offset_list[rank_offset + local_size] - offset_list[rank_offset]) * unit_len;
+        auto vals = new ps::SArray<char>(output, pull_len, false);
         BytePSGlobal::GetPS()
           ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [receiver, vals, task, t, ack_cmd]() {
             if (!BytePSGlobal::IsP2PAckDisabled()) {
@@ -2216,25 +2293,113 @@ bool RunAllgatherPullLoopOnce() {
   return true;
 }
 
-bool RunAllgatherPullResponseOnce() {
-  QueueType this_op = ALLGATHER_PULL_RESPONSE;
+bool RunAllgatherPullRespLoopOnce() {
+  QueueType this_op = ALLGATHER_PULL_RESP;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
+    BPS_CHECK(task->tensor);
+    BPS_CHECK(task->output);
+
     int phy_id = BytePSGlobal::GetPhyNodeID();
     int local_size = BytePSGlobal::GetLocalSize();
+    int rank_offset = phy_id * local_size;
 
-    char* tensor = nullptr;
+    int len = task->len;
+    int unit_len = task->tensor->size() / task->tensor->shape().num_elements();
+
+    const auto& shape_list = task->shape_list;
+    const auto& offset_list = task->offset_list;
+    if (!shape_list.empty())
+      BPS_CHECK((int)offset_list.size() == BytePSGlobal::GetSize() + 1);
+
+    char* data = nullptr;
     if (BytePSGlobal::IsGDRAllgather()) {
-      tensor = (char*) task->output->data() + phy_id * local_size * task->len;
+      if (task->shape_list.empty()) {
+        data = (char*) task->output->data() + rank_offset * len;
+      } else {
+        data = (char*) task->output->data() + offset_list[rank_offset] * unit_len;
+      }
     } else {
       BPS_CHECK(task->cpubuff) << task->tensor_name
-          << ": CPU buffer not initialized, size=" << task->len;
-      tensor = const_cast<char *>(static_cast<const char *>(task->cpubuff) + phy_id * local_size * task->len);
+          << ": CPU buffer not initialized, size=" << len;
+      if (shape_list.empty()) {
+        data = const_cast<char *>(static_cast<const char *>(task->cpubuff) + rank_offset * len);
+      } else {
+        data = const_cast<char *>(static_cast<const char *>(task->cpubuff) + offset_list[rank_offset] * unit_len);
+      }
     }
 
-    server::BytePSServer::SendAllgatherPullResponse(task->key, tensor, local_size * task->len);
+    int resp_len = shape_list.empty() ? 
+        local_size * len : (offset_list[rank_offset + local_size] - offset_list[rank_offset]) * unit_len;
+    server::BytePSServer::SendAllgatherPullResponse(task->key, data, resp_len);
+    FinishOrProceedLite(task);
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunAllgatherPullWorkerLocalRootLoopOnce() {
+  QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto t = q->getTask();
+  if (t) {
+    auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
+    const int dtype = task->tensor->dtype();
+    const int device_type = (task->device == CPU_DEVICE_ID) ? CPU : GPU;
+
+    int local_size = BytePSGlobal::GetLocalSize();
+    int phy_id = BytePSGlobal::GetPhyNodeID();
+    int num_phy_node = BytePSGlobal::GetPhyNodeNum();
+
+    task->worker_local_root_list.resize(num_phy_node, BytePSGlobal::GetWorkerLocalRoot());
+
+    int len = sizeof(int);
+    for (int r = 0; r < num_phy_node; ++r) {
+      int i = (phy_id + r + 1) % num_phy_node;
+      if (i == phy_id) continue;
+
+      int receiver = i * local_size;
+      auto pskv = BytePSGlobal::EncodeP2PKey(task->key, len, receiver);
+      int cmd = server::GetCommandType(server::RequestType::kAllgatherPullWorkerLocalRoot, 
+                                       dtype, device_type);
+      int ack_cmd = server::GetCommandType(server::RequestType::kAllgatherPullWorkerLocalRootAck,
+                                           dtype, device_type);
+
+      int* output = new int;
+      auto vals = new ps::SArray<char>((char*)output, len, false);
+      BytePSGlobal::GetPS()
+        ->ZPull(pskv.keys, vals, &pskv.lens, cmd, [receiver, vals, task, t, ack_cmd, i, output]() {
+          if (!BytePSGlobal::IsP2PAckDisabled()) {
+            char* cpubuff = const_cast<char*>(task->context->tensor_name.c_str());
+            ps::SArray<char> ack_vals(cpubuff, 1, false);
+            auto pskv = BytePSGlobal::EncodeP2PKey(task->key, 1, receiver);
+            BytePSGlobal::GetPS()->ZPush(pskv.keys, ack_vals, pskv.lens, ack_cmd);
+          }
+
+          task->worker_local_root_list[i] = *output;
+
+          delete output;
+          delete vals;
+          FinishOrProceed(t);
+        });
+    }
+  } else {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+  }
+  return true;
+}
+
+bool RunAllgatherPullWorkerLocalRootRespLoopOnce() {
+  QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  auto t = q->getTaskLite();
+  if (t) {
+    auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
+    int len = 4;
+    server::BytePSServer::SendAllgatherPullWorkerLocalRootResp(task->key, (char*)&task->context->worker_local_root, len);
     FinishOrProceedLite(task);
   } else {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -2252,21 +2417,35 @@ void AllgatherPullLoop() {
   BytePSGlobal::ReportThreadFinish();
 };
 
-void AllgatherPullResponseLoop() {
-  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
-                 << gettid();
+void AllgatherPullRespLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
-  while (RunAllgatherPullResponseOnce() &&
+  while (RunAllgatherPullRespLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
 }
 
-void AllgatherP2PAckLoop() {
-  BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
-                 << gettid();
+void AllgatherPullAckLoop() {
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
-  while (RunP2PAckLoopOnce(ALLGATHER_P2P_WAIT_ACK) &&
+  // TODO: call RunP2PAckLoopOnce twice will cause low performance ?
+  while (RunP2PAckLoopOnce(ALLGATHER_PULL_ACK) &&
+         RunP2PAckLoopOnce(ALLGATHER_PULL_WORKER_LOCAL_ROOT_ACK) &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+}
+
+void AllgatherPullWorkerLocalRootLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherPullWorkerLocalRootLoopOnce() &&
+         !BytePSGlobal::ShouldShutdown()) {
+  }
+  BytePSGlobal::ReportThreadFinish();
+};
+
+void AllgatherPullWorkerLocalRootRespLoop() {
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  while (RunAllgatherPullWorkerLocalRootRespLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();

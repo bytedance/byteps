@@ -38,7 +38,9 @@ enum class RequestType {
   // valid data (i.e. empty)
   kEmptyGroupSend,
   kAllgatherPull,
-  kAllgatherAckSignal,
+  kAllgatherPullAck,
+  kAllgatherPullWorkerLocalRoot,
+  kAllgatherPullWorkerLocalRootAck,
 };
 
 struct DataHandleType {

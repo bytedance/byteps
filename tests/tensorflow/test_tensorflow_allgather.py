@@ -33,6 +33,9 @@ if gpus:
 config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
 config.gpu_options.visible_device_list = str(0)
+
+same_shape = True
+
 class TensorFlowTests():
     """
     Tests for ops in byteps.tensorflow.
@@ -56,14 +59,14 @@ class TensorFlowTests():
             return tf.random_uniform(*args, **kwargs)
 
     def validate_allgather(self, gathered, shape, minval, maxval, dtype):
-        golden = [self.random_uniform(shape, minval, maxval, seed=i, dtype=dtype)
-            for i in range(self.size)]
+        golden = [self.random_uniform(shape if same_shape else [shape[0] + i] + shape[1:], 
+            minval, maxval, seed=i, dtype=dtype) for i in range(self.size)]
         golden = tf.concat(golden, 0)
         max_difference = tf.reduce_max(tf.abs(gathered - golden))
         threshold = 0
 
         assert max_difference <= threshold, "bps.allgather produced incorrect results"
-        print(f"bps.allgather test success!")
+        print(f"bps.allgather test success!", flush=True)
 
     def test_byteps_allgather(self):
         """Test on GPU that the allgather correctly runs on 1D, 2D, 3D tensors."""
@@ -78,15 +81,14 @@ class TensorFlowTests():
                     shape = [10] * dim
                     minval = -100
                     maxval = 100
-                    tensor = self.random_uniform(
-                        shape, minval, maxval, seed=self.rank, dtype=dtype)
-                    gathered = bps.allgather(tensor,
+                    tensor = self.random_uniform(shape if same_shape else [shape[0] + self.rank] + shape[1:], 
+                        minval, maxval, seed=self.rank, dtype=dtype)
+                    gathered = bps.allgather(tensor, same_shape=same_shape,
                         name=f'allgather_{dtype.name}_{dim}_{device.strip("/").replace(":", "_")}')
                     self.validate_allgather(gathered, shape, minval, maxval, dtype=dtype)
 
     def validate_allreduce(self, reduced, shape, minval, maxval, dtype):
-        golden = [self.random_uniform(shape, minval, maxval, seed=i, dtype=dtype)
-            for i in range(self.size)]
+        golden = [self.random_uniform(shape, minval, maxval, seed=i, dtype=dtype) for i in range(self.size)]
         golden = tf.reduce_sum(golden, 0)
         max_difference = tf.reduce_max(tf.abs(reduced - golden))
 
@@ -100,12 +102,12 @@ class TensorFlowTests():
             threshold = 5e-4
 
         assert max_difference <= threshold, "bps.allreduce produced incorrect results"
-        print(f"bps.allreduce test success!")
+        print(f"bps.allreduce test success!", flush=True)
 
-    @tf.function
+    # @tf.function
     def mix_allgather_allreduce(self, allgather_input, allreduce_input, device, allgather_name, allreduce_name):
         with tf.device(device):
-            gathered = bps.allgather(allgather_input, name=allgather_name)
+            gathered = bps.allgather(allgather_input, same_shape=same_shape, name=allgather_name)
 
         with tf.device(device):
             reduced = bps.push_pull(allreduce_input, average=False, name=allreduce_name)
@@ -123,10 +125,9 @@ class TensorFlowTests():
                     shape = [10] * dim
                     minval = -100
                     maxval = 100
-                    allgather_input = self.random_uniform(
-                        shape, minval, maxval, seed=self.rank, dtype=dtype)
-                    allreduce_input = self.random_uniform(
-                        shape, minval, maxval, seed=self.rank, dtype=dtype)
+                    allgather_input = self.random_uniform(shape if same_shape else [shape[0] + self.rank] + shape[1:],
+                        minval, maxval, seed=self.rank, dtype=dtype)
+                    allreduce_input = self.random_uniform(shape, minval, maxval, seed=self.rank, dtype=dtype)
 
                     allgather_name = f'allgather_{dtype.name}_{dim}_{device.strip("/").replace(":", "_")}_iter_{iter}'
                     allreduce_name = f'allreduce_{dtype.name}_{dim}_{device.strip("/").replace(":", "_")}_iter_{iter}'
@@ -136,14 +137,22 @@ class TensorFlowTests():
                     self.validate_allreduce(reduced, shape, minval, maxval, dtype=dtype)
     
     def validate_allgather_autograd(self, grad, shape, minval, maxval, dtype):
-        golden = [self.random_uniform(shape, minval, maxval, seed=i, dtype=dtype)
-            for i in range(self.size)]
+        golden = [self.random_uniform(shape if same_shape else [shape[0] + i] + shape[1:], 
+            minval, maxval, seed=i, dtype=dtype) for i in range(self.size)]
         golden = tf.concat(golden, 0) * 2.0
-        golden = golden[self.rank * shape[0] : (self.rank + 1) * shape[0]]
+        if same_shape:
+            golden = golden[self.rank * shape[0] : (self.rank + 1) * shape[0]]
+        else:
+            offset = 0
+            for i in range(self.rank):
+                offset += shape[0] + i
+            golden = golden[offset : offset + shape[0] + self.rank]
+            
         max_difference = tf.reduce_max(tf.abs(grad - golden))
         threshold = 5e-4
+
         assert max_difference <= threshold, "bps.allgather autograd produced incorrect results"
-        print(f"bps.allgather autograd test success!")
+        print(f"bps.allgather autograd test success!", flush=True)
 
     def test_allgather_autograd(self):
         """Test of allgather autograd."""
@@ -154,17 +163,25 @@ class TensorFlowTests():
                 shape = [10]
                 minval = -100
                 maxval = 100
-                tensor = self.random_uniform(
-                    shape, minval, maxval, seed=self.rank, dtype=dtype)
+                tensor = self.random_uniform(shape if same_shape else [shape[0] + self.rank] + shape[1:],
+                    minval, maxval, seed=self.rank, dtype=dtype)
                 x = tf.Variable(tensor)
                 name = f'allgather_{device.strip("/").replace(":", "_")}_iter_{iter}'
                 with tf.GradientTape() as tape:
-                    y = bps.allgather(x, name=name)
+                    y = bps.allgather(x, same_shape=same_shape, name=name)
                     loss = y * y
                 grad = tape.gradient(loss, x)
                 self.validate_allgather_autograd(grad, shape, minval, maxval, dtype=dtype)
 
 tests = TensorFlowTests()
-tests.test_byteps_allgather()
-tests.test_byteps_mix_allgather_allreduce()
-tests.test_allgather_autograd()
+for i in range(2):
+    print(f"Test allgaher, same_shape is ", same_shape, flush=True)
+    tests.test_byteps_allgather()
+    tests.test_byteps_mix_allgather_allreduce()
+    tests.test_allgather_autograd()
+    same_shape = False
+
+# same_shape = False
+# tests.test_byteps_allgather()
+# # tests.test_byteps_mix_allgather_allreduce()
+# # tests.test_allgather_autograd()

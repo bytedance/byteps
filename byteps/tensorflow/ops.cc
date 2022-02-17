@@ -1119,21 +1119,23 @@ void StartAllgatherTask(::tensorflow::OpKernelContext* context,
                         ::tensorflow::AsyncOpKernel::DoneCallback done,
                         std::string node_name, std::shared_ptr<TFTensor> byteps_input,
                         std::shared_ptr<TFTensor> byteps_output,
+                        const std::vector<int>& shape_list,
                         std::shared_ptr<common::ReadyEvent> ready_event) {
   auto& byteps_context = common::GetContextFromName(node_name);
   auto device = GetDeviceID(context);
-  auto size = byteps_input->size();
+  auto input_size = byteps_input->size();
   auto dtype = byteps_input->dtype();
   void* cpubuff = (device == CPU_DEVICE_ID)
                       ? const_cast<void*>(byteps_input->data())
                       : nullptr;
-  common::InitTensorAllgather(byteps_context, size, dtype, cpubuff);
+  auto output_size = byteps_output->size();
+  common::InitTensorAllgather(byteps_context, input_size, output_size, dtype, cpubuff);
 
   // TODO: assign priority based on topological sort
   // TODO: why -byteps_context.declared_key 
   auto enqueue_result =
       EnqueueAllgatherTensor(byteps_context, byteps_input, byteps_output, ready_event,
-                             device, -byteps_context.declared_key, 0,
+                             device, -byteps_context.declared_key, 0, shape_list,
                              [context, done](const common::Status& status) {
                                context->SetStatus(ConvertStatus(status));
                                done();
@@ -1146,6 +1148,7 @@ class BytePSAllgatherOp : public ::tensorflow::AsyncOpKernel {
      std::string input_tensor_name;
      std::string op;
      int tensor_key;
+     std::vector<int> shape_list;
 
  public:
   explicit BytePSAllgatherOp(::tensorflow::OpKernelConstruction* context)
@@ -1158,13 +1161,25 @@ class BytePSAllgatherOp : public ::tensorflow::AsyncOpKernel {
                     DoneCallback done) override {
     OP_REQUIRES_OK_ASYNC(context, ConvertStatus(common::CheckInitialized()),
                          done);
-
     auto tensor = context->input(0);
+
+    const auto shape_tensor = context->input(1);
+    std::vector<int32_t> shape_list;
+    GetIntList(shape_tensor, &shape_list);
+    if (std::equal(shape_list.begin(), shape_list.end(), shape_list.rbegin())) {
+      shape_list.clear();
+    }
+
     ::tensorflow::Tensor* output;
     ::tensorflow::TensorShape result_shape;
-    int num_ranks = common::byteps_size();
-    CHECK(tensor.shape().dims());
-    result_shape.AddDim(num_ranks * tensor.shape().dim_size(0));
+    if (shape_list.empty()) {
+      int num_ranks = common::byteps_size();
+      CHECK(tensor.shape().dims());
+      result_shape.AddDim(num_ranks * tensor.shape().dim_size(0));
+    } else {
+      int first_dim_size = std::accumulate(shape_list.begin(), shape_list.end(), 0);;
+      result_shape.AddDim(first_dim_size);
+    }
     for (int i = 1; i < tensor.shape().dims(); ++i) {
       result_shape.AddDim(tensor.shape().dim_size(i));
     }
@@ -1189,9 +1204,9 @@ class BytePSAllgatherOp : public ::tensorflow::AsyncOpKernel {
 
     auto& bps_context = common::GetContextFromName(tmp_name);
     if (bps_context.initialized) {
-      StartAllgatherTask(context, done, tmp_name, bps_input, bps_output, ready_event);
+      StartAllgatherTask(context, done, tmp_name, bps_input, bps_output, shape_list, ready_event);
     } else {
-      std::thread t(StartAllgatherTask, context, done, tmp_name, bps_input, bps_output,
+      std::thread t(StartAllgatherTask, context, done, tmp_name, bps_input, bps_output, shape_list,
                     ready_event);
       t.detach();
     }
@@ -1200,7 +1215,8 @@ class BytePSAllgatherOp : public ::tensorflow::AsyncOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_CPU),
                         BytePSAllgatherOp);
-REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_GPU)
+                        .HostMemory("shape_list"),
                         BytePSAllgatherOp);
 
 REGISTER_OP("BytepsAllgather")
@@ -1208,6 +1224,7 @@ REGISTER_OP("BytepsAllgather")
     .Attr("input_name: string = 'default_tensor_name'")
     .Attr("tensor_key: int")
     .Input("tensor: T")
+    .Input("shape_list: int32")
     .Output("output: T")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       ::tensorflow::shape_inference::ShapeHandle output;

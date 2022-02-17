@@ -134,9 +134,19 @@ void byteps_lazy_init() {
 #if BYTEPS_BUILDING_CUDA == 1
   if (BytePSGlobal::IsJoint() && !BytePSGlobal::IsGpuAllgatherDisabled()) {
     if (BytePSGlobal::IsDistributed()) {
-      func.push_back(AllgatherPullLoop);
-      func.push_back(AllgatherPullResponseLoop);
-      func.push_back(AllgatherP2PAckLoop);
+      if (BytePSGlobal::IsRootDevice()) {
+        func.push_back(AllgatherPullWorkerLocalRootLoop);
+        func.push_back(AllgatherPullLoop);
+        func.push_back(AllgatherPullRespLoop);
+      }
+      
+      if (BytePSGlobal::GetLocalRank() == 0) {
+        func.push_back(AllgatherPullWorkerLocalRootRespLoop);
+      }
+
+      if (BytePSGlobal::IsRootDevice() || BytePSGlobal::GetLocalRank() == 0) {
+        func.push_back(AllgatherPullAckLoop);
+      }
 
       if (!BytePSGlobal::IsGDRAllgather()) {
         func.push_back(AllgatherCopyDevice2HostLoop);
@@ -638,7 +648,7 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
                               std::shared_ptr<Tensor> output,
                               std::shared_ptr<ReadyEvent> ready_event, const int device,
                               const int priority, const int version,
-                              StatusCallback callback) {
+                              const std::vector<int>& shape_list, StatusCallback callback) {
   if (BytePSGlobal::ShouldShutdown()) {
     return Status::OK();
   }
@@ -662,10 +672,26 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
   BPS_CHECK_EQ((int)context.key_list.size(), num_phy_node) << "key_list is equal to num_phy_node";
 
   std::shared_ptr<std::atomic_int> counter_ptr(new std::atomic_int(0));
-  // 1 is for req, num_phy_node - 1 is for resp,
-  // so, total_partnum = 1 + num_phy_node - 1 = num_phy_node
-  int total_partnum = (BytePSGlobal::IsDistributed() && BytePSGlobal::IsRootDevice()) ?
+  int total_partnum = BytePSGlobal::IsDistributed() && 
+                      (BytePSGlobal::GetLocalRank() == 0 || BytePSGlobal::IsRootDevice()) ? 
                       num_phy_node : 1;
+  
+  std::vector<int> offset_list;
+  if (shape_list.size() > 0) {
+    int remaining_dims = 1;
+    auto in_shape = input->shape();
+    auto ndims = in_shape.dims();
+    for (int i = 1; i < ndims; ++i) {
+      BPS_CHECK(in_shape.dim_size(i)) << in_shape.dim_size(i);
+      remaining_dims *= in_shape.dim_size(i);
+    }
+
+    int rank_num = BytePSGlobal::GetSize();
+    offset_list.resize(rank_num + 1);
+    for (int i = 1; i <= rank_num; ++i){
+      offset_list[i] = offset_list[i - 1] + shape_list[i - 1] * remaining_dims;
+    }
+  }
 
   req_task->cpubuff = context.cpubuff;
   req_task->tensor_name = context.tensor_name;
@@ -676,6 +702,8 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
   req_task->counter_ptr = counter_ptr;
   req_task->request_counter = std::make_shared<std::atomic_int>(num_phy_node - 1);
   req_task->key = context.key_list[phy_id]; 
+  req_task->shape_list = shape_list;
+  req_task->offset_list = offset_list;
   req_task->total_partnum = total_partnum;
 
   resp_task.cpubuff = context.cpubuff;
@@ -685,6 +713,8 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
   resp_task.output = output;
   resp_task.len = resp_task.tensor->size();
   resp_task.counter_ptr = counter_ptr;
+  resp_task.shape_list = shape_list;
+  resp_task.offset_list = offset_list;
   resp_task.total_partnum = total_partnum;
 
   // add for profiling
@@ -1123,14 +1153,15 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
                  << ", parts=" << key_list.size();
 }
 
-void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpubuff) {
+void InitTensorAllgather(BPSContext &context, size_t input_size, size_t output_size, int dtype, void *cpubuff) {
   std::lock_guard<std::mutex> lock(context.init_mutex);
   if (context.initialized) {
     return;
   }
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
 
-  BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
+  BPS_CHECK_GT(input_size, 0) << "input tensor size not larger than 0";
+  BPS_CHECK_GT(output_size, 0) << "output tensor size not larger than 0";
 
   // Add for timeline
   BytePSGlobal::SetProfileFlag(&context);
@@ -1157,10 +1188,12 @@ void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpub
       context.key_list.push_back(key);
   }
 
+  context.worker_local_root = BytePSGlobal::GetWorkerLocalRoot();
+
   // shared memory is not necessary, just for convenience
   if (!BytePSGlobal::IsGDRAllgather()) {
     auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
-    size_t aligned_size = Align(BytePSGlobal::GetSize() * size, dtype);
+    size_t aligned_size = Align(output_size, dtype);
     auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
     context.cpubuff = shm_obj->openSharedMemory(shm_prefix, context.key_list[0], aligned_size, true);
     BPS_LOG(TRACE) << context.tensor_name << ": open shared memory size " << aligned_size;
@@ -1173,7 +1206,7 @@ void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpub
 
   context.initialized = true;
 
-  BPS_LOG(TRACE) << "Finish Init Allgather " << context.tensor_name << ", size=" << size;
+  BPS_LOG(TRACE) << "Finish Init Allgather " << context.tensor_name << ", size=" << input_size;
 }
 
 BPSContext &GetContextFromName(const std::string &name) {
@@ -1412,12 +1445,15 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
   }
 
   if (BytePSGlobal::GetPhyNodeNum() > 1) {
-    // TODO: ALLGATHER_COPYD2H can be parallel with ALLGATHER_PULL
+    // TODO: ALLGATHER_COPYD2H can be parallel with ALLGATHER_PULL, 
+    // when root_device and reduce_root are the same, they're parallel,
+    // otherwise, they're not
     if (!BytePSGlobal::IsGDRAllgather()) {
       queue_list->push_back(ALLGATHER_COPYD2H);
     }
     
     if (BytePSGlobal::IsRootDevice()) {
+      queue_list->push_back(ALLGATHER_PULL_WORKER_LOCAL_ROOT);
       queue_list->push_back(ALLGATHER_PULL);
     }
 
@@ -1440,12 +1476,24 @@ std::shared_ptr<std::vector<QueueType>> GetAllgatherRequestQueueList() {
 std::shared_ptr<std::vector<QueueType>> GetAllgatherResponseQueueList() {
   auto queue_list = std::make_shared<std::vector<QueueType>>();
 #if BYTEPS_BUILDING_CUDA == 1
-  if (BytePSGlobal::GetPhyNodeNum() > 1 && BytePSGlobal::IsRootDevice()) {
-    if (BytePSGlobal::IsP2PAckDisabled()) {
-      queue_list->push_back(ALLGATHER_PULL_RESPONSE);
-    } else {
-      queue_list->push_back(ALLGATHER_PULL_RESPONSE);
-      queue_list->push_back(ALLGATHER_P2P_WAIT_ACK);
+  if (BytePSGlobal::GetPhyNodeNum() > 1) {
+    // TODO: can be parallel with ALLGATHER_PULL_RESP
+    if (BytePSGlobal::GetLocalRank() == 0) {
+      if (BytePSGlobal::IsP2PAckDisabled()) {
+        queue_list->push_back(ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP);
+      } else {
+        queue_list->push_back(ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP);
+        queue_list->push_back(ALLGATHER_PULL_WORKER_LOCAL_ROOT_ACK);
+      }
+    }
+
+    if (BytePSGlobal::IsRootDevice()) {
+      if (BytePSGlobal::IsP2PAckDisabled()) {
+        queue_list->push_back(ALLGATHER_PULL_RESP);
+      } else {
+        queue_list->push_back(ALLGATHER_PULL_RESP);
+        queue_list->push_back(ALLGATHER_PULL_ACK);
+      }
     }
   }
 #endif

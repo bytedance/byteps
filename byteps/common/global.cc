@@ -728,6 +728,21 @@ void BytePSGlobal::Shutdown() {
     _p2p_copy_table = NULL;
   }
 
+  if (_allgather_table) {
+    delete _allgather_table;
+    _allgather_table = NULL;
+  }
+
+  if (_allgather_bcast_table) {
+    delete _allgather_bcast_table;
+    _allgather_bcast_table = NULL;
+  }
+
+  if (_allgather_copy_h2d_table) {
+    delete _allgather_copy_h2d_table;
+    _allgather_copy_h2d_table = NULL;
+  }
+
   _basic_comm.reset();
   _shm_obj.reset();
   _cpu_reducer.reset();
@@ -1178,12 +1193,20 @@ int BytePSGlobal::IsDirectResponse() {
   return server::BytePSServer::IsP2PDirectResponse();
 }
 
-ReadyTable* BytePSGlobal::GetAllgatherPullResponseTable() {
-  return server::BytePSServer::GetAllgatherPullResponseTable();
+ReadyTable* BytePSGlobal::GetAllgatherPullRespTable() {
+  return server::BytePSServer::GetAllgatherPullRespTable();
 }
 
-ReadyTable* BytePSGlobal::GetAllgatherAckTable() {
-  return server::BytePSServer::GetAllgatherAckTable();
+ReadyTable* BytePSGlobal::GetAllgatherPullAckTable() {
+  return server::BytePSServer::GetAllgatherPullAckTable();
+}
+
+ReadyTable* BytePSGlobal::GetAllgatherPullWorkerLocalRootRespTable() {
+  return server::BytePSServer::GetAllgatherPullWorkerLocalRootRespTable();
+}
+
+ReadyTable* BytePSGlobal::GetAllgatherPullWorkerLocalRootAckTable() {
+  return server::BytePSServer::GetAllgatherPullWorkerLocalRootAckTable();
 }
 
 }  // namespace common

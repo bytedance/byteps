@@ -182,8 +182,10 @@ class BytePSGlobal {
 
   static ReadyTable* GetAllgatherTable() { return _allgather_table; }
   static ReadyTable* GetAllgatherBcastTable() { return _allgather_bcast_table; }
-  static ReadyTable* GetAllgatherPullResponseTable();
-  static ReadyTable* GetAllgatherAckTable();
+  static ReadyTable* GetAllgatherPullRespTable();
+  static ReadyTable* GetAllgatherPullAckTable();
+  static ReadyTable* GetAllgatherPullWorkerLocalRootRespTable();
+  static ReadyTable* GetAllgatherPullWorkerLocalRootAckTable();
   // for non-root
   static ReadyTable* GetAllgatherCopyH2DTable() { return _allgather_copy_h2d_table; }
 

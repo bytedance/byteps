@@ -71,8 +71,10 @@ void CpuBcastFinishLoop();
 
 // allgather loop
 void AllgatherPullLoop();
-void AllgatherPullResponseLoop();
-void AllgatherP2PAckLoop();
+void AllgatherPullRespLoop();
+void AllgatherPullAckLoop();
+void AllgatherPullWorkerLocalRootLoop();
+void AllgatherPullWorkerLocalRootRespLoop();
 void AllgatherCopyDevice2HostLoop();
 void AllgatherRootCopyHost2DeviceLoop();
 void AllgatherNonRootCopyHost2DeviceLoop();

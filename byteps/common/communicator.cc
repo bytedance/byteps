@@ -240,7 +240,7 @@ void BytePSCommSocket::startListenThread() {  // only root starts this in
         BytePSGlobal::GetAllgatherBcastTable()->AddReadyCount(message.key);
         break;
       case ALLGATHER_COPY_D2H_READY:
-        BytePSGlobal::GetAllgatherPullResponseTable()->AddReadyCount(message.key);
+        BytePSGlobal::GetAllgatherPullRespTable()->AddReadyCount(message.key);
         break;
       case DO_ALLGATHER_COPYH2D:
         BytePSGlobal::GetAllgatherCopyH2DTable()->AddReadyCount(message.key);

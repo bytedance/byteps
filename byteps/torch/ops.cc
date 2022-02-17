@@ -168,16 +168,18 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
 }
 
 void StartAllgatherTask(::torch::Tensor tensor, ::torch::Tensor output,
+                        const std::vector<int>& shape_list,
                         const std::string tensor_name, int version, 
                         int priority, int handle) {
   auto& context = common::GetContextFromName(tensor_name);                       
   auto device = GetDeviceID(tensor);
   auto byteps_input = std::make_shared<TorchTensor>(tensor);
   auto byteps_output = std::make_shared<TorchTensor>(output);
-  size_t size = byteps_input->size();
+  size_t input_size = byteps_input->size();
   auto dtype = byteps_input->dtype();
-  
-  common::InitTensorAllgather(context, size, dtype,
+  size_t output_size = byteps_output->size();
+
+  common::InitTensorAllgather(context, input_size, output_size, dtype,
                              (device == CPU_DEVICE_ID)
                              ? const_cast<void*>(byteps_input->data())
                              : nullptr);
@@ -186,7 +188,7 @@ void StartAllgatherTask(::torch::Tensor tensor, ::torch::Tensor output,
   auto enqueue_result = 
     common::EnqueueAllgatherTensor(
       context, byteps_input, byteps_output, ready_event, device, priority, 
-      version,
+      version, shape_list,
       [handle, tensor, output](const Status& status) mutable {
         handle_manager.MarkDone(handle, status);
       });
@@ -257,8 +259,8 @@ int DoPushPull(::torch::Tensor tensor, ::torch::Tensor output, int average,
   return handle;
 }
 
-int DoAllgather(::torch::Tensor tensor, ::torch::Tensor output, const std::string& name, 
-                int version, int priority, int staleness) {
+int DoAllgather(::torch::Tensor tensor, ::torch::Tensor output, const std::vector<int>& shape_list, 
+                const std::string& name, int version, int priority, int staleness) {
   ThrowIfError(common::CheckInitialized());
 
   auto handle = handle_manager.AllocateHandle();
@@ -271,9 +273,9 @@ int DoAllgather(::torch::Tensor tensor, ::torch::Tensor output, const std::strin
   }
   auto& context = common::GetContextFromName(tensor_name);
   if (context.initialized) {
-    StartAllgatherTask(tensor, output, tensor_name, version, priority, handle);
+    StartAllgatherTask(tensor, output, shape_list, tensor_name, version, priority, handle);
   } else {
-    std::thread t(StartAllgatherTask, tensor, output, tensor_name, version, priority, handle);
+    std::thread t(StartAllgatherTask, tensor, output, shape_list, tensor_name, version, priority, handle);
     t.detach();
   }
   return handle;

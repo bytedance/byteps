@@ -107,7 +107,7 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
                               std::shared_ptr<Tensor> output,
                               std::shared_ptr<ReadyEvent> ready_event, const int device,
                               const int priority, const int version,
-                              StatusCallback callback);
+                              const std::vector<int>& shape_list, StatusCallback callback);
 
 // shape: input tensor shape
 // tensor_key: the 32-bit tensor_key returned from declare_alltoall_tensor
@@ -142,7 +142,7 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
 void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
                    int sender, int receiver, bool recv_on_gpu = false);
 
-void InitTensorAllgather(BPSContext &context, size_t size, int dtype, void *cpubuff);
+void InitTensorAllgather(BPSContext &context, size_t input_size, size_t output_size, int dtype, void *cpubuff);
 
 // Only call these in Framework plugins for the best performance
 // declare the operation name with a provided key. -1 means no key is provided.

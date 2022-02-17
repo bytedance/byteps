@@ -365,7 +365,7 @@ def _alltoall_gpu2cpu(tensor, scope='', name=None, splits=None, recv_splits=None
         recved_size = recv_splits
     return tensor_decompressed, recved_size
 
-def _allgather(tensor, scope='', name=None):
+def _allgather(tensor, same_shape=True, scope='', name=None):
     if name is None and not _executing_eagerly():
         name = 'BytePSAllgather_%s' % _normalize_name(tensor.name)
     if scope == '' and not _executing_eagerly():
@@ -380,9 +380,19 @@ def _allgather(tensor, scope='', name=None):
     full_name = scope + _normalize_name(name)
     if not full_name:
         full_name = "empty_name_" + randomString()
+
+    d = tf.shape(tensor)
+    d = tf.reshape(d[0], [1])
+    shape_list = tf.tile(d, [size()])
+    if same_shape == False:
+        name += "_V"
+        full_name += "_V"
+
+        shape_list = _allgather(d, True, scope, name=name + "_shape_list")
+
     key = _declare_allgather_tensor(full_name)
-    return C_LIB.byteps_allgather(tensor, name=name, input_name=full_name,
-                                  tensor_key=key)
+    return C_LIB.byteps_allgather(tensor, shape_list=shape_list, name=name, 
+                                  input_name=full_name, tensor_key=key)
 
 @ops.RegisterGradient('BytepsAlltoall')
 def _alltoall_grad(op, grad, recv_bytes):
@@ -516,9 +526,9 @@ def _allgather_grad(op, grad):
     if size() == local_size() and os.getenv("BYTEPS_FORCE_DISTRIBUTED", "0") != "1":
         _div = tf.div if hasattr(tf, 'div') else tf.math.divide
         grad = _div(grad, size())
-    # TODO: support tensors of variable lengths
-    splits = tf.split(grad, num_or_size_splits=size(), axis=0)
-    return splits[rank()]
+    shape_list = op.inputs[1]
+    splits = tf.split(grad, num_or_size_splits=shape_list, axis=0)
+    return [splits[rank()], None]
 
 
 def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):

@@ -210,11 +210,14 @@ if _global_variables is not None:
 
         return broadcast_variables(_global_variables(), root_rank)
 
-def allgather(tensor, scope='', name=None):
+def allgather(tensor, same_shape=True, scope='', name=None):
     """An op which concatenates the input tensor with the same input tensor on
     all other BytePS processes.
     Arguments:
         tensor: A tensor to distribute with allgather.
+        same_shape: Whether the tensor is with the same shape over all ranks or not.
+                    If true, the performance will be better, but user should make sure
+                    all tensors are with the same shape.
         scope: the graph name scope
         name: A name of the allgather operation.
 
@@ -224,8 +227,7 @@ def allgather(tensor, scope='', name=None):
         the first dimension, which may be greater and is the sum of all first
         dimensions of the tensors in different allgather processes.
     """
-
-    results = _allgather(tensor, scope, name=name)
+    results = _allgather(tensor, same_shape, scope, name=name)
     return results
 
 def broadcast_variables(variables, root_rank, scope=''):
