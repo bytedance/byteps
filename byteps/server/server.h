@@ -50,6 +50,9 @@ using ps::KVServer;
 using ps::KVWorker;
 using common::ReadyTable;
 using BytePSGlobal=byteps::common::BytePSGlobal;
+#if HAVE_CUDA == 1
+using common::CudaReducer;
+#endif
 
 enum BytePSEngineOperation {
   SUM_RECV, SUM_LOCAL_COPY, COPY_FIRST, ALL_RECV, COPY_D2H, COPY_H2D, TERMINATE,
@@ -302,6 +305,11 @@ class BytePSServer {
                                        int dtype, bool do_copy);
     static void ThreadSafeInitCudaBuffer(uint64_t key, size_t len);
 
+#if HAVE_CUDA == 1
+    static std::shared_ptr<CudaReducer> GetCudaReducer(int i) { return cuda_reducers_[i]; }
+    static cudaStream_t* GetCudaReducerStream(int i) { return cuda_reducer_streams_[i]; }
+#endif
+
   private:
     // functions
     static void P2PHandler(const ps::KVMeta& req_meta,
@@ -395,6 +403,11 @@ class BytePSServer {
     static GDRCopyManager* gdr_copy_mngr_;
     static std::mutex gdr_push_buffer_mu_;
     static std::unordered_map<uint64_t, std::unordered_map<int, BytePSArray>> gdr_push_buffer_;
+
+#if HAVE_CUDA == 1
+    static std::vector<std::shared_ptr<CudaReducer>> cuda_reducers_;
+    static std::vector<cudaStream_t*> cuda_reducer_streams_;
+#endif
 
     // byteps handler
     static std::mutex handle_mu_;

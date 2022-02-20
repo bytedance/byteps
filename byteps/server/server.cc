@@ -21,6 +21,10 @@
 #include "queue.h"
 #include "../common/error.h"
 
+#if HAVE_CUDA == 1
+#include "../common/cuda/cuda_kernels.h"
+#endif
+
 namespace byteps {
 namespace server {
 
@@ -137,6 +141,11 @@ std::unordered_map<uint64_t, bool> SmallTensorMngr::small_tensor_map_;
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
 
 bool BytePSServer::gdr_lazy_sync_;
+
+#if HAVE_CUDA == 1
+std::vector<std::shared_ptr<CudaReducer>> BytePSServer::cuda_reducers_;
+std::vector<cudaStream_t*> BytePSServer::cuda_reducer_streams_;
+#endif
 
 // TODO: remove Postoffice API calls
 uint64_t DecodeKey(ps::Key key) {
@@ -523,6 +532,11 @@ inline void BytePSServer::SendGDRBufferedPullResponse(int i, BytePSEngineMessage
 }
 
 void BytePSServer::BytePSServerGDREngineThread(int i) {
+#if HAVE_CUDA == 1
+  CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+  cudaStream_t* stream = GetCudaReducerStream(i);
+  auto cuda_reducer = GetCudaReducer(i);
+#endif
   auto& q = gdr_engine_queues_[i];
   while (true) {
     BytePSEngineMessage msg;
@@ -537,8 +551,6 @@ void BytePSServer::BytePSServerGDREngineThread(int i) {
       // intentionally go to next without break
       case GPU_SUM_RECV: {
         auto stored = GetStore(msg.key);
-        auto cuda_reducer = BytePSGlobal::GetCudaReducer(i);
-        cudaStream_t* stream = BytePSGlobal::GetCudaReducerStream(i);
         CHECK_EQ(stored->len, msg.len) << stored->len << " " << msg.len;
         CHECK(msg.src);
         CHECK(stored->tensor);
@@ -1132,6 +1144,7 @@ void BytePSServer::ThreadSafeInitCudaBuffer(uint64_t key, size_t len) {
   auto& merged = GetUpdateBuf(key)->merged;
   auto stored = GetStore(key);
   if (!merged.tensor) {
+    CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
     CUDA_CALL(cudaMalloc(&(merged.tensor), len));
     CUDA_CALL(cudaMalloc(&(stored->tensor), len));
     merged.len = len;
@@ -1172,6 +1185,7 @@ void BytePSServer::BytePSGDRv2Handler(const ps::KVMeta& req_meta,
       ps::SArray<ps::Key> keys;
       ps::SArray<char> vals;
       ps::SArray<int> lens;
+      CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
       CUDA_CALL(cudaMalloc(&(pbuff->tensor), len));
       keys.push_back(req_data.keys[0]);
       vals.reset((char*) pbuff->tensor, len * sizeof(char), [](void *){});
@@ -1257,11 +1271,12 @@ void BytePSServer::EnqueueLocalGpuSumTask(uint64_t key, char* input,
                                           int dtype, bool do_copy) {
 #if HAVE_CUDA == 1
   auto tid = GetThreadID(key, len);
-  auto cuda_reducer = BytePSGlobal::GetCudaReducer(tid);
+  auto cuda_reducer = GetCudaReducer(tid);
+  auto stream = GetCudaReducerStream(tid);
   if (do_copy && input != output) {
     // TODO: remove this copy 
-    cuda_reducer->CopyD2D(output, input, len, /*sync*/false);
-    cuda_reducer->Sync();
+    cuda_reducer->CopyD2DAsync(output, input, len, stream);
+    CUDA_CALL(cudaStreamSynchronize(*stream));
   } 
   ThreadSafeInitCudaBuffer(key, len);
   BytePSEngineMessage msg;
@@ -1448,7 +1463,27 @@ void BytePSServer::Init(int rank) {
       engine_threads_.push_back(t);
     }
     if (BytePSGlobal::IsGDR()) {
+#if HAVE_CUDA == 1
       CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
+      for (size_t i = 0; i < engine_thread_num_; ++i) {
+        // create stream
+        int greatest_priority;
+        cudaStream_t* stream = (cudaStream_t*) malloc(sizeof(cudaStream_t));
+        cudaError_t e1 = cudaDeviceGetStreamPriorityRange(NULL, &greatest_priority);
+        BPS_CHECK(e1 == cudaSuccess || e1 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e1);  
+        cudaError_t e2 = cudaStreamCreateWithPriority(stream, cudaStreamNonBlocking, greatest_priority);
+        BPS_CHECK(e2 == cudaSuccess || e2 == cudaErrorCudartUnloading) << "CUDA: " << cudaGetErrorString(e2);   
+        CUDA_CALL(cudaStreamSynchronize(*stream));
+        cuda_reducer_streams_.push_back(stream);
+        // cuda reducer
+        int num_block = getenv("BYTEPS_CUDA_REDUCER_NUM_BLOCK") 
+                      ? atoi(getenv("BYTEPS_CUDA_REDUCER_NUM_BLOCK")) : 512;
+        int num_thread = getenv("BYTEPS_CUDA_REDUCER_NUM_THREAD") 
+                      ? atoi(getenv("BYTEPS_CUDA_REDUCER_NUM_THREAD")) : 256;
+        auto cuda_reducer = std::make_shared<byteps::common::CudaReducer>(num_block, num_thread);
+        cuda_reducers_.push_back(cuda_reducer);
+      }
+#endif      
       for (size_t i = 0; i < engine_thread_num_; ++i) {
         auto q = new PriorityQueue(enable_schedule_);
         gdr_engine_queues_.push_back(q);
@@ -1546,6 +1581,10 @@ void BytePSServer::Init(int rank) {
     if (buf && it.second.merged.device == common::GPU) {
       CUDA_CALL(cudaFree(buf));
     }
+  }
+  for (auto& stream : cuda_reducer_streams_) {
+    CUDA_CALL(cudaStreamDestroy(*stream));
+    free(stream);
   }
 #endif
 
