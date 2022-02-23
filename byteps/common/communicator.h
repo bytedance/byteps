@@ -42,50 +42,39 @@ namespace byteps {
 namespace common {
 enum BytePSRole { LOCAL_ROOT, LOCAL_WORKER };
 
+#define BPS_FOREACH_SIGNAL_NAME(ACTION)                                       \
+  ACTION(REDUCE_READY)                                                        \
+  ACTION(PCIE_REDUCE_READY)                                                   \
+  ACTION(BCAST_READY)                                                         \
+  ACTION(PUSH_READY)                                                          \
+  ACTION(DO_REDUCE)                                                           \
+  ACTION(DO_BROADCAST)                                                        \
+  ACTION(DO_GROUP)                                                            \
+  ACTION(DO_COPYH2D)                                                          \
+  ACTION(CPU_REDUCE_READY)                                                    \
+  ACTION(DO_CPU_REDUCE)                                                       \
+  ACTION(CPU_BCAST_READY)                                                     \
+  ACTION(DO_CPU_BCAST)                                                        \
+  ACTION(CPU_BCAST_DONE)                                                      \
+  ACTION(DO_ALLGATHER)                                                        \
+  ACTION(ALLGATHER_REDAY)                                                     \
+  ACTION(DO_ALLGATHER_BCAST)                                                  \
+  ACTION(ALLGATHER_BCAST_READY)                                               \
+  ACTION(ALLGATHER_COPY_D2H_READY)                                            \
+  ACTION(DO_ALLGATHER_COPYH2D)                                                \
+  ACTION(BARRIER)
+
+#define BPS_DEFINE_SIGNAL(name) name,
+#define BPS_DEFINE_SIGNAL_LOGSTR(name) #name,
+
 enum BytePSCommSignal {
-  REDUCE_READY,
-  PCIE_REDUCE_READY,
-  BCAST_READY,
-  PUSH_READY,
-  DO_REDUCE,
-  DO_BROADCAST,
-  DO_GROUP,
-  DO_COPYH2D,
-  CPU_REDUCE_READY,
-  DO_CPU_REDUCE,
-  CPU_BCAST_READY,
-  DO_CPU_BCAST,
-  CPU_BCAST_DONE,
-  DO_ALLGATHER,
-  ALLGATHER_REDAY,
-  DO_ALLGATHER_BCAST,
-  ALLGATHER_BCAST_READY,
-  ALLGATHER_COPY_D2H_READY,
-  DO_ALLGATHER_COPYH2D, 
-  BARRIER
+  BPS_FOREACH_SIGNAL_NAME(BPS_DEFINE_SIGNAL)
+  SIGNAL_NUM_AND_NOT_A_REAL_SIGNAL_AND_MUST_BE_THE_LAST
 };
 
 const std::vector<std::string>
 SigLogStrings = {
-  "REDUCE_READY",
-  "PCIE_REDUCE_READY",
-  "BCAST_READY",
-  "PUSH_READY",
-  "DO_REDUCE",
-  "DO_BROADCAST",
-  "DO_GROUP",
-  "DO_COPYH2D",
-  "CPU_REDUCE_READY",
-  "DO_CPU_REDUCE",
-  "CPU_BCAST_READY",
-  "DO_CPU_BCAST",
-  "CPU_BCAST_DONE",
-  "DO_ALLGATHER",
-  "ALLGATHER_REDAY",
-  "DO_ALLGATHER_BCAST",
-  "ALLGATHER_BCAST_READY",
-  "ALLGATHER_COPY_D2H_READY",
-  "DO_ALLGATHER_COPYH2D"
+  BPS_FOREACH_SIGNAL_NAME(BPS_DEFINE_SIGNAL_LOGSTR)
 };
 
 struct BytePSCommMsg {

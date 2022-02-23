@@ -87,6 +87,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   const char* fname_;
   int line_;
   LogLevel severity_;
+  bool unbuffered_ = false;
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -114,6 +115,7 @@ class LogMessageFatal : public LogMessage {
 
 LogLevel MinLogLevelFromEnv();
 bool LogTimeFromEnv();
+bool LogUnbufferedFromEnv();
 
 }  // namespace common
 }  // namespace byteps

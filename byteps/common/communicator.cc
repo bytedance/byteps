@@ -305,8 +305,11 @@ int BytePSCommSocket::recvSignal(int* source, void* data, int max_len) {
   auto message = *(BytePSCommMsg*)data;
   *source = message.src;
 
+  std::string signame = (REDUCE_READY <= message.signal &&
+                         message.signal < SIGNAL_NUM_AND_NOT_A_REAL_SIGNAL_AND_MUST_BE_THE_LAST) ?
+                        SigLogStrings[message.signal] : std::string("NOT_A_SIGNAL");
   BPS_LOG(TRACE) << "non-root socket recved: src=" << message.src
-                 << ", signal=" << message.signal << ", key=" << message.key
+                 << ", signal=" << message.signal << "(" << signame << ")" << ", key=" << message.key
                  << ", myrank=" << _local_rank;
 
   return rc;

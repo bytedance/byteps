@@ -24,11 +24,14 @@ namespace byteps {
 namespace common {
 
 LogMessage::LogMessage(const char* fname, int line, LogLevel severity)
-    : fname_(fname), line_(line), severity_(severity) {}
+    : fname_(fname), line_(line), severity_(severity) {
+      unbuffered_ = LogUnbufferedFromEnv();
+}
 
 void LogMessage::GenerateLogMessage(bool log_time) {
   bool use_cout =
       static_cast<int>(severity_) <= static_cast<int>(LogLevel::INFO);
+  use_cout = (use_cout && !unbuffered_);
   std::ostream& os = use_cout ? std::cout : std::cerr;
   if (log_time) {
     auto now = std::chrono::system_clock::now();
@@ -102,6 +105,15 @@ LogLevel MinLogLevelFromEnv() {
 
 bool LogTimeFromEnv() {
   const char* env_var_val = getenv("BYTEPS_LOG_HIDE_TIME");
+  if (env_var_val != nullptr && std::strtol(env_var_val, nullptr, 10) > 0) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+bool LogUnbufferedFromEnv() {
+  const char* env_var_val = getenv("BYTEPS_LOG_UNBUFFERED");
   if (env_var_val != nullptr && std::strtol(env_var_val, nullptr, 10) > 0) {
     return false;
   } else {
