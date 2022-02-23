@@ -328,9 +328,15 @@ void DeclareTensorAllgather(const std::string& name, int staleness) {
 }
 
 void WaitAndClear(int handle, bool busy_waiting) {
-  while (!handle_manager.PollHandle(handle)) {
-    if (!busy_waiting) {
-      std::this_thread::sleep_for(std::chrono::microseconds(1));
+  while (true) {
+    if (handle_manager.PollHandle(handle)) break;
+    {
+      py::gil_scoped_release release_python_gil;
+      if (!busy_waiting) {
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
+      } else {
+        std::this_thread::yield();
+      }
     }
   }
   auto status = handle_manager.ReleaseHandle(handle);
