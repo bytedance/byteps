@@ -2383,7 +2383,11 @@ bool RunAllgatherPullWorkerLocalRootLoopOnce() {
 
           delete output;
           delete vals;
-          FinishOrProceed(t);
+          
+          int v = task->allgather_pull_local_root_counter.get()->fetch_sub(1);
+          if (v == 1) {
+            FinishOrProceed(t);
+          }
         });
     }
   } else {

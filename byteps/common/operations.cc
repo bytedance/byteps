@@ -701,6 +701,7 @@ Status EnqueueAllgatherTensor(BPSContext &context, std::shared_ptr<Tensor> input
   req_task->len = req_task->tensor->size();
   req_task->counter_ptr = counter_ptr;
   req_task->request_counter = std::make_shared<std::atomic_int>(num_phy_node - 1);
+  req_task->allgather_pull_local_root_counter = std::make_shared<std::atomic_int>(num_phy_node - 1);
   req_task->key = context.key_list[phy_id]; 
   req_task->shape_list = shape_list;
   req_task->offset_list = offset_list;

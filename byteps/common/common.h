@@ -406,8 +406,10 @@ struct P2PTensorTableEntry : TensorTableEntry {
   std::vector<int> shape_list;
   // list of worker local root
   std::vector<int> worker_local_root_list;
-  // counter of alltoall send operations
+  // counter of alltoall send operations (or for allgather pull)
   std::shared_ptr<std::atomic_int> request_counter;
+  // counter of allgather pull local root operations
+  std::shared_ptr<std::atomic_int> allgather_pull_local_root_counter;
   // the output device id. In some cases, it may be different
   // from the input device id (e.g. cpu-gpu alltoall)
   int output_device = CPU_DEVICE_ID;
