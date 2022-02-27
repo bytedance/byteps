@@ -61,8 +61,7 @@ opt = bps.DistributedOptimizer(opt)
 # uses bps.DistributedOptimizer() to compute gradients.
 mnist_model.compile(loss=tf.losses.SparseCategoricalCrossentropy(),
                     optimizer=opt,
-                    metrics=['accuracy'],
-                    experimental_run_tf_function=False)
+                    metrics=['accuracy'])
 
 callbacks = [
     # byteps: broadcast initial variable states from rank 0 to all other processes.
