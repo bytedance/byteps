@@ -835,6 +835,13 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
 def build_torch_extension(build_ext, options, torch_version):
     pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
                              else flag for flag in options['COMPILE_FLAGS']]
+    cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
+            build_ext, options['COMPILE_FLAGS'])
+    options['INCLUDES'] += cuda_include_dirs
+    options['LIBRARY_DIRS'] += cuda_lib_dirs
+    # options['MACROS'] += [('HAVE_CUDA', '1')]
+    # options['LIBRARIES'] += ['cudart']
+
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
                               extra_compile_args=pytorch_compile_flags)
     if not have_cuda and check_macro(options['MACROS'], 'HAVE_CUDA'):
