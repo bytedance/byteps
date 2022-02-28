@@ -83,7 +83,7 @@ class TorchTests(unittest.TestCase):
             skip_or_fail_gpu_test(self, "No GPUs available")
 
     def test_byteps_sync_batch_norm(self):
-        """Tests byteps version of SyncBatchNorm."""
+        """Test the byteps version of SyncBatchNorm."""
         if not torch.cuda.is_available():
             self.skipTest("No GPUs available")
         if test_cpu_only:
