@@ -260,7 +260,9 @@ class BytePSGlobal {
   static uint64_t Hash_BuiltIn(uint64_t key);
   static uint64_t Hash_SDBM(uint64_t key);
   static uint64_t Hash_Mixed_Mode(uint64_t key);
-  
+
+  static CondVarStore* GetCondVarStore() {return &_cond_var_store; }
+
   // error handling
   static bool EnableErrHandling() { return _enable_err_handling; }
 
@@ -442,6 +444,8 @@ class BytePSGlobal {
   static std::hash<std::string> _built_in_hash_fn;
   static unsigned int _built_in_hash_coefficient;
   static volatile bool _mixed_mode;
+
+  static CondVarStore _cond_var_store;
 };
 
 

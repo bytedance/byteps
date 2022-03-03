@@ -29,6 +29,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <condition_variable>
 
 // Add for profiling communication events
 #include <stdio.h>
@@ -448,7 +449,57 @@ struct P2PTensorTableEntry : TensorTableEntry {
   }
 };
 
+struct CondVar {
+  std::mutex _mutex;
+  std::condition_variable _cv;
+  int _has_task = 0;
+  std::string _name;
+  uint64_t _wait_round = 0;
+  uint64_t _notify_round = 0;
 
+  CondVar(){}
+  CondVar(std::string name) : _name(name) { }
+
+  void notify_all() {
+    std::unique_lock<std::mutex> lock(_mutex);
+    _has_task++;
+    _notify_round++;
+    lock.unlock();
+    _cv.notify_all();
+  }
+
+  void wait() {
+    std::unique_lock<std::mutex> lock(_mutex);
+    _cv.wait(lock, [this]{ return _has_task > 0; });
+  }
+
+  void dec_by_one();
+  bool is_empty_on_paper();
+};
+
+struct CondVarStore {
+  std::mutex _mutex;
+  std::vector<CondVar *> _cv_store;
+
+  void insert(CondVar *cond_var) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cv_store.push_back(cond_var);
+  }
+
+  void notify_all() {
+    std::lock_guard<std::mutex> lock(_mutex);
+    for (auto cond_var : _cv_store) {
+      cond_var->notify_all();
+    }
+  }
+
+  ~CondVarStore() {
+    std::lock_guard<std::mutex> lock(_mutex);
+    for (auto cond_var : _cv_store) {
+      delete cond_var;
+    }
+  }
+};
 
 #if BYTEPS_BUILDING_CUDA == 1
 ncclDataType_t getNcclDataType(DataType dtype);

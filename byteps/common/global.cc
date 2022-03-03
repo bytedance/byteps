@@ -157,6 +157,8 @@ uint64_t BytePSGlobal::_sample_key = std::numeric_limits<uint64_t>::max();
 bool BytePSGlobal::_should_sample = false;
 std::atomic_int BytePSGlobal::joined_thread_cnt;
 int BytePSGlobal::_p2p_copy_group_size;
+CondVarStore BytePSGlobal::_cond_var_store;
+
 BytePSScheduledQueue* BytePSGlobal::GetScheduledQueue(QueueType queueType) {
   return (BytePSScheduledQueue*)_queues[queueType];
 }
@@ -610,6 +612,7 @@ void BytePSGlobal::Shutdown() {
                  << " (rank=" << _local_rank << ")";
   _should_shutdown = true;
   _shutdown_cv.notify_all();
+  _cond_var_store.notify_all();
 
   int total_thread_num = _threads.size();
 

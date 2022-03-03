@@ -81,6 +81,11 @@ class BytePSScheduledQueue {
   void reset(uint64_t key, int cnt);
   // get the map of task meta of pending tasks
   void getPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* results);
+  void notify_all();
+  void wait();
+  void dec_by_one();
+  bool is_empty_on_paper();
+  void subscribe(CondVar *cond_var);
 
  private:
   template <typename T>
@@ -100,6 +105,8 @@ class BytePSScheduledQueue {
   std::vector<TensorTableEntry*> _sq_lite;
 
   std::mutex _mutex;
+  std::condition_variable _cv_shared;
+  std::condition_variable _cv_lite;
   uint64_t _credits;
   bool _is_scheduled;
   QueueType _qt;
@@ -113,6 +120,7 @@ class BytePSScheduledQueue {
   // the lockless implementation only supports TensorTableEntry*
   void addTaskLiteLockless(TensorTableEntry*);
   TensorTableEntry* getTaskLiteLockless();
+  CondVar *_cond_var = nullptr;
 
 };
 

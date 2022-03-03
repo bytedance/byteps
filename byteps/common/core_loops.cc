@@ -171,6 +171,8 @@ bool RunCoordinateLoopOnce() {
                      COORDINATE_ALLGATHER_BCAST};
   for (auto this_op : ops) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->wait();
+
     auto task = q->getTask();
     if (task) {
       int rank = BytePSGlobal::GetLocalRank();
@@ -222,7 +224,8 @@ bool RunCoordinateLoopOnce() {
 
       BPS_CHECK(task->tensor_name != "");
       BPS_LOG(TRACE) << task->tensor_name << " send coordinate info: "
-                    << "Signal=" << sig << ", rank=" << rank << ", key=" << key;
+                     << "Signal=" << sig << "(" << SigLogStrings[sig] << ")"
+                     << ", rank=" << rank << ", key=" << task->key;
 
     } else {
       std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -383,6 +386,8 @@ bool RunRootNcclLoopOnce() {
   int nccl_size = BytePSGlobal::GetNccl()->GetSize();
   QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER, 
                           ALLGATHER_BCAST};
+  auto q = BytePSGlobal::GetScheduledQueue(nccl_ops[0]);
+  q->wait();
 
   auto nccl_entry = std::make_shared<NcclGroupEntry>();
   auto &tasks = nccl_entry->tasks;
@@ -501,6 +506,7 @@ bool RunNonRootNcclLoopOnce() {
 }
 
 bool RunSyncNcclOnce() {
+  BytePSGlobal::GetNccl()->wait();
   auto nccl_entry = BytePSGlobal::GetNccl()->DequeueGroup();
   if (nccl_entry) {
     nccl_entry->BusyWaitEvents();
@@ -518,6 +524,7 @@ bool RunSyncNcclOnce() {
 bool RunCopyDevice2HostLoopOnce() {
   QueueType this_op = COPYD2H;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
 
   if (task) {
@@ -639,6 +646,7 @@ bool RunPcieReduceLoopOnce() {
 bool RunCompressLoopOnce() {
   QueueType this_op = COMPRESS;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (task) {
     BPS_CHECK(BytePSGlobal::IsRootDevice())
@@ -679,6 +687,7 @@ bool RunCompressLoopOnce() {
 bool RunDecompressLoopOnce() {
   QueueType this_op = DECOMPRESS;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (task) {
     BPS_CHECK(BytePSGlobal::IsRootDevice())
@@ -755,6 +764,7 @@ void CopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> task) {
 bool RunRootCopyHost2DeviceLoopOnce() {
   QueueType this_op = COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
 
   if (task) {
@@ -799,6 +809,7 @@ bool RunNonRootCopyListenLoopOnce() {
 bool RunNonRootCopyHost2DeviceLoopOnce() {
   QueueType this_op = COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
 
   if (task) {
@@ -813,6 +824,7 @@ bool RunNonRootCopyHost2DeviceLoopOnce() {
 bool RunAllgatherCopyDevice2HostLoopOnce() {
   QueueType this_op = ALLGATHER_COPYD2H;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTask();
   auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
 
@@ -934,6 +946,7 @@ void AllgatherCopyHost2Device(std::shared_ptr<byteps::common::TensorTableEntry> 
 bool RunAllgatherRootCopyHost2DeviceLoopOnce() {
   QueueType this_op = ALLGATHER_COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
 
   if (task) {
@@ -954,6 +967,7 @@ bool RunAllgatherRootCopyHost2DeviceLoopOnce() {
 bool RunAllgatherNonRootCopyHost2DeviceLoopOnce() {
   QueueType this_op = ALLGATHER_COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
 
   if (task) {
@@ -968,6 +982,17 @@ bool RunAllgatherNonRootCopyHost2DeviceLoopOnce() {
 void CoordinateLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType ops[] = {COORDINATE_REDUCE, COORDINATE_BROADCAST, 
+                     COORDINATE_PUSH, COORDINATE_ALLGATHER,
+                     COORDINATE_ALLGATHER_BCAST};
+  for (auto this_op : ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->subscribe(cond_var);
+  }
+
   while (RunCoordinateLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
   }
@@ -977,6 +1002,13 @@ void CoordinateLoop() {
 void PcieReduceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = PCIE_REDUCE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunPcieReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -986,6 +1018,16 @@ void PcieReduceLoop() {
 void RootNcclLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType nccl_ops[] = {REDUCE, BROADCAST, ALLGATHER, 
+                          ALLGATHER_BCAST};
+  for (auto this_op : nccl_ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->subscribe(cond_var);
+  }
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootNcclLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1013,6 +1055,13 @@ void SyncNcclLoop() {
 void CopyDevice2HostLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = COPYD2H;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunCopyDevice2HostLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1022,6 +1071,13 @@ void CopyDevice2HostLoop() {
 void CompressLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = COMPRESS;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunCompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1030,6 +1086,13 @@ void CompressLoop() {
 void DecompressLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = DECOMPRESS;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunDecompressLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1038,6 +1101,13 @@ void DecompressLoop() {
 void RootCopyHost2DeviceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRootCopyHost2DeviceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1056,6 +1126,13 @@ void NonRootCopyListenLoop() {
 void NonRootCopyHost2DeviceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunNonRootCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1066,6 +1143,13 @@ void NonRootCopyHost2DeviceLoop() {
 void AllgatherCopyDevice2HostLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_COPYD2H;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherCopyDevice2HostLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -1076,6 +1160,13 @@ void AllgatherCopyDevice2HostLoop() {
 void AllgatherRootCopyHost2DeviceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherRootCopyHost2DeviceLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -1086,6 +1177,13 @@ void AllgatherRootCopyHost2DeviceLoop() {
 void AllgatherNonRootCopyHost2DeviceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherNonRootCopyHost2DeviceLoopOnce() && 
          !BytePSGlobal::ShouldShutdown()) {
@@ -1098,6 +1196,7 @@ void AllgatherNonRootCopyHost2DeviceLoop() {
 bool RunPushLoopOnce() {
   QueueType this_op = PUSH;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (task) {
     BPS_CHECK(BytePSGlobal::IsRootDevice())
@@ -1150,6 +1249,7 @@ bool RunPushLoopOnce() {
 bool RunGDRv1PushPullLoopOnce() {
   QueueType this_op = GDR_V1_PUSH_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (task) {
     BPS_CHECK_NE(task->device, CPU_DEVICE_ID); // must be GPU tensor
@@ -1221,6 +1321,7 @@ bool RunGDRv1PushPullLoopOnce() {
 bool RunGDRv2PushPullLoopOnce() {
   QueueType this_op = GDR_V2_PUSH_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (!task) {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -1368,6 +1469,7 @@ bool RunGDRv2PushPullLoopOnce() {
 bool RunPullLoopOnce() {
   QueueType this_op = PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (task) {
     BPS_CHECK(BytePSGlobal::IsRootDevice())
@@ -1406,6 +1508,7 @@ bool RunGDRWaitLoopOnce() {
   QueueType wait_ops[] = { GDR_WAIT_PUSH_PULL };
   for (auto this_op : wait_ops) {
     auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->wait();
     auto task = q->getTask();
     if (task) {
       FinishOrProceed(task);
@@ -1419,6 +1522,13 @@ bool RunGDRWaitLoopOnce() {
 void PushLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = PUSH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunPushLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1428,6 +1538,13 @@ void PushLoop() {
 void GDRv1PushPullLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = GDR_V1_PUSH_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunGDRv1PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1437,6 +1554,15 @@ void GDRv1PushPullLoop() {
 void GDRWaitLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType wait_ops[] = { GDR_WAIT_PUSH_PULL };
+  for (auto this_op : wait_ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->subscribe(cond_var);
+  }
+
   while (RunGDRWaitLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1446,6 +1572,13 @@ void GDRWaitLoop() {
 void GDRv2PushPullLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = GDR_V2_PUSH_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunGDRv2PushPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1455,6 +1588,13 @@ void GDRv2PushPullLoop() {
 void PullLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunPullLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -1545,14 +1685,17 @@ void P2PCopyGroup(std::vector<P2PTensorTableEntry*>& tasks) {
 bool RunRecvLoopOnce() {
   QueueType this_op = RECV;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   std::vector<P2PTensorTableEntry*> alltoall_tasks;
   std::vector<std::shared_ptr<TensorTableEntry>> p2p_tasks;
   for (int i = 0; i < BytePSGlobal::GetP2PCopyGroupSize(); ++i) {
+    BPS_LOG(TRACE) << "recv loop about to gettasklite";
     auto task = q->getTaskLite();
     if (!task) break;
     alltoall_tasks.push_back(reinterpret_cast<P2PTensorTableEntry*>(task));
   }
   for (int i = 0; i < BytePSGlobal::GetP2PCopyGroupSize(); ++i) {
+    BPS_LOG(TRACE) << "recv loop about to gettask";
     auto task = q->getTask();
     if (!task) break;
     p2p_tasks.push_back(task);
@@ -1583,6 +1726,7 @@ bool RunRecvLoopOnce() {
 bool RunP2PGroupCopyHost2DeviceLoopOnce() {
   QueueType this_op = P2P_GROUP_COPYH2D;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
@@ -1803,7 +1947,9 @@ bool RunSendLoopOnce() {
   // this loop is shared with alltoall and send/recv op
   QueueType this_op = SEND;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   // get the send/recv or alltoall task
+  BPS_LOG(TRACE) << "send loop about to gettask";
   auto task = q->getTask();
   if (task) {
     if (task->context->op_type == ALLTOALL_OP) {
@@ -1822,6 +1968,7 @@ bool RunSendLoopOnce() {
 bool RunP2PPullLoopOnce() {
   QueueType this_op = P2P_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTask();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
@@ -1876,6 +2023,7 @@ bool RunP2PPullLoopOnce() {
 bool RunP2PPullResponseOnce() {
   QueueType this_op = P2P_PULL_RESPONSE;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
@@ -1921,6 +2069,7 @@ bool RunP2PPullResponseOnce() {
 
 bool RunP2PAckLoopOnce(QueueType this_op) {
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTaskLite();
   if (task) {
     FinishOrProceedLite(task);
@@ -1933,6 +2082,13 @@ bool RunP2PAckLoopOnce(QueueType this_op) {
 void P2PPullLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = P2P_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1943,6 +2099,13 @@ void P2PPullLoop() {
 void P2PPullResponseLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = P2P_PULL_RESPONSE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PPullResponseOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1953,6 +2116,12 @@ void P2PPullResponseLoop() {
 void P2PAckLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  auto q = BytePSGlobal::GetScheduledQueue(P2P_WAIT_ACK);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PAckLoopOnce(P2P_WAIT_ACK) &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1963,6 +2132,13 @@ void P2PAckLoop() {
 void RecvLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = RECV;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunRecvLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1972,6 +2148,13 @@ void RecvLoop() {
 void P2PGroupCopyHost2DeviceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = P2P_GROUP_COPYH2D;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunP2PGroupCopyHost2DeviceLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -1982,6 +2165,13 @@ void P2PGroupCopyHost2DeviceLoop() {
 void SendLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = SEND;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunSendLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
@@ -1991,6 +2181,7 @@ void SendLoop() {
 bool RunCpuCopyLoopOnce() {
   QueueType this_op = CPU_COPY;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (!task) {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -2025,6 +2216,13 @@ bool RunCpuCopyLoopOnce() {
 void CpuCopyLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = CPU_COPY;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunCpuCopyLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2034,6 +2232,7 @@ void CpuCopyLoop() {
 bool RunCpuReduceLoopOnce() {
   QueueType this_op = CPU_REDUCE;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (!task) {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -2109,6 +2308,13 @@ bool RunCpuReduceLoopOnce() {
 void CpuReduceLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = CPU_REDUCE;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunCpuReduceLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2118,6 +2324,7 @@ void CpuReduceLoop() {
 bool RunCpuBcastLoopOnce() {
   QueueType this_op = CPU_BCAST;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (!task) {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -2164,6 +2371,13 @@ bool RunCpuBcastLoopOnce() {
 void CpuBcastLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = CPU_BCAST;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunCpuBcastLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2173,6 +2387,7 @@ void CpuBcastLoop() {
 bool RunCpuBcastFinishLoopOnce() {
   QueueType this_op = CPU_BCAST_FINISH;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto task = q->getTask();
   if (!task) {
     std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
@@ -2186,6 +2401,13 @@ bool RunCpuBcastFinishLoopOnce() {
 void CpuBcastFinishLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = CPU_BCAST_FINISH;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   while (RunCpuBcastFinishLoopOnce() && !BytePSGlobal::ShouldShutdown()) {
   }
   BytePSGlobal::ReportThreadFinish();
@@ -2206,6 +2428,7 @@ inline void AllgatherPullRespTableUpdate(QueueType op, uint64_t key, const std::
 bool RunAllgatherPullLoopOnce() {
   QueueType this_op = ALLGATHER_PULL;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTask();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
@@ -2296,6 +2519,7 @@ bool RunAllgatherPullLoopOnce() {
 bool RunAllgatherPullRespLoopOnce() {
   QueueType this_op = ALLGATHER_PULL_RESP;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
@@ -2344,6 +2568,7 @@ bool RunAllgatherPullRespLoopOnce() {
 bool RunAllgatherPullWorkerLocalRootLoopOnce() {
   QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTask();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t.get());
@@ -2399,6 +2624,7 @@ bool RunAllgatherPullWorkerLocalRootLoopOnce() {
 bool RunAllgatherPullWorkerLocalRootRespLoopOnce() {
   QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP;
   auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->wait();
   auto t = q->getTaskLite();
   if (t) {
     auto task = reinterpret_cast<P2PTensorTableEntry*>(t);
@@ -2414,6 +2640,14 @@ bool RunAllgatherPullWorkerLocalRootRespLoopOnce() {
 void AllgatherPullLoop() {
   BPS_LOG(DEBUG) << "Started thread: " << __PRETTY_FUNCTION__ << " thread_id: "
                  << gettid();
+
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_PULL;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2422,6 +2656,13 @@ void AllgatherPullLoop() {
 };
 
 void AllgatherPullRespLoop() {
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_PULL_RESP;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullRespLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2430,6 +2671,15 @@ void AllgatherPullRespLoop() {
 }
 
 void AllgatherPullAckLoop() {
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType ack_ops[] = { ALLGATHER_PULL_ACK,
+                          ALLGATHER_PULL_WORKER_LOCAL_ROOT_ACK, };
+  for (auto this_op : ack_ops) {
+    auto q = BytePSGlobal::GetScheduledQueue(this_op);
+    q->subscribe(cond_var);
+  }
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   // TODO: call RunP2PAckLoopOnce twice will cause low performance ?
   while (RunP2PAckLoopOnce(ALLGATHER_PULL_ACK) &&
@@ -2440,6 +2690,13 @@ void AllgatherPullAckLoop() {
 }
 
 void AllgatherPullWorkerLocalRootLoop() {
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullWorkerLocalRootLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {
@@ -2448,6 +2705,13 @@ void AllgatherPullWorkerLocalRootLoop() {
 };
 
 void AllgatherPullWorkerLocalRootRespLoop() {
+
+  auto cond_var = new CondVar(__PRETTY_FUNCTION__);
+  BytePSGlobal::GetCondVarStore()->insert(cond_var);
+  QueueType this_op = ALLGATHER_PULL_WORKER_LOCAL_ROOT_RESP;
+  auto q = BytePSGlobal::GetScheduledQueue(this_op);
+  q->subscribe(cond_var);
+
   CUDA_CALL(cudaSetDevice(BytePSGlobal::GetVisibleDevice()));
   while (RunAllgatherPullWorkerLocalRootRespLoopOnce() &&
          !BytePSGlobal::ShouldShutdown()) {

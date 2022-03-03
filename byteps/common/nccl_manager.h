@@ -76,6 +76,10 @@ class NcclManager {
   int GetSize() { return _nccl_size; }
   std::shared_ptr<BytePSComm> GetSignalComm() { return _signal_comm; }
   bool IsSignalRoot();
+  void notify_all();
+  void wait();
+  bool is_empty_on_paper();
+  void dec_by_one();
 
  protected:
   void InitGlobalEnv();
@@ -99,6 +103,8 @@ class NcclManager {
 
   std::shared_ptr<BytePSComm> _signal_comm;
   std::shared_ptr<BytePSComm> _global_comm;
+
+  CondVar *_cond_var = nullptr;
 };
 
 class NcclManagerExpr : public NcclManager {

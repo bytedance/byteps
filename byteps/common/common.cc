@@ -244,5 +244,17 @@ DataType P2PTensorTableEntry::output_dtype() const {
   }
 }
 
+void CondVar::dec_by_one() {
+  std::lock_guard<std::mutex> lock(_mutex);
+  BPS_CHECK(_has_task > 0) << "_has_task must be larger than or equal to 0";
+  _has_task--;
+}
+
+bool CondVar::is_empty_on_paper() {
+  std::lock_guard<std::mutex> lock(_mutex);
+  BPS_CHECK(_has_task >= 0) << "_has_task must be larger than or equal to 0";
+  return _has_task == 0;
+}
+
 }  // namespace common
 }  // namespace byteps

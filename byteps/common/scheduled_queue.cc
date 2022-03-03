@@ -184,7 +184,7 @@ void BytePSScheduledQueue::addTask(TensorTableEntry* entry) {
 
 template <typename T>
 void BytePSScheduledQueue::doAddTask(T& entry, std::vector<T>& sq) {
-  std::lock_guard<std::mutex> lock(_mutex);
+  std::unique_lock<std::mutex> lock(_mutex);
   sq.push_back(entry);
   if (_is_scheduled) {
     // TODO: below can be optimized to O(n) using insertion sort
@@ -202,6 +202,8 @@ void BytePSScheduledQueue::doAddTask(T& entry, std::vector<T>& sq) {
                  << " addTask: " << entry->tensor_name << " key: " << entry->key
                  << " rank: " << BytePSGlobal::GetLocalRank()
 		             << " worker_id: " << BytePSGlobal::GetWorkerID();
+  lock.unlock();
+  notify_all();
   return;
 }
 
@@ -240,7 +242,9 @@ TensorTableEntry* BytePSScheduledQueue::getTaskLite() {
 
 template <typename T>
 T BytePSScheduledQueue::doGetTask(std::vector<T>& sq) {
-  std::lock_guard<std::mutex> lock(_mutex);
+  if (is_empty_on_paper()) return nullptr;
+
+  std::unique_lock<std::mutex> lock(_mutex);
   T task;
   // TODO: below can be optimized -- if we take task from the tail, erase() can
   // be faster
@@ -274,8 +278,17 @@ T BytePSScheduledQueue::doGetTask(std::vector<T>& sq) {
     task->ready_event = nullptr;
     // Add for profiling communication traces
     doRecordTs(task);
+    lock.unlock();
+    dec_by_one();
     return task;
   }
+  lock.unlock();
+  BPS_LOG(TRACE) << "Queue " << LogStrings[_qt]
+                 << " getTask got no ready task"
+                 << " _sq_shared.size() " << _sq_shared.size()
+                 << " _sq_lite.size() " << _sq_lite.size()
+                 << " rank: " << BytePSGlobal::GetLocalRank()
+                 << " worker_id: " << BytePSGlobal::GetWorkerID();
   return nullptr;
 }
 
@@ -287,7 +300,9 @@ template <typename T>
 T BytePSScheduledQueue::doGetTask(uint64_t key, std::vector<T>& sq) {
   BPS_CHECK(!_is_scheduled);
   BPS_CHECK(!_lockless);
-  std::lock_guard<std::mutex> lock(_mutex);
+  if (is_empty_on_paper()) return nullptr;
+
+  std::unique_lock<std::mutex> lock(_mutex);
   T task;
   for (auto it = sq.begin(); it != sq.end(); ++it) {
     if ((*it)->ready_event) {
@@ -307,8 +322,11 @@ T BytePSScheduledQueue::doGetTask(uint64_t key, std::vector<T>& sq) {
     task->ready_event = nullptr;
     // Add for profiling communication traces
     doRecordTs(task);
+    lock.unlock();
+    dec_by_one();
     return task;
   }
+  lock.unlock();
   return nullptr;
 }
 
@@ -351,6 +369,35 @@ void BytePSScheduledQueue::getPendingTasks(std::unordered_map<uint64_t, TaskMeta
   for (auto& task : _sq_lite) {
     TaskMeta::addPendingTask(task, results);
   }
+}
+
+void BytePSScheduledQueue::notify_all() {
+  if (_cond_var != nullptr) {
+    _cond_var->notify_all();
+  }
+}
+
+void BytePSScheduledQueue::wait() {
+  if (_cond_var != nullptr) {
+    _cond_var->wait();
+  }
+}
+
+void BytePSScheduledQueue::dec_by_one() {
+  if (_cond_var != nullptr) {
+    _cond_var->dec_by_one();
+  }
+}
+
+bool BytePSScheduledQueue::is_empty_on_paper() {
+  if (_cond_var != nullptr) {
+    return _cond_var->is_empty_on_paper();
+  }
+  return false;
+}
+
+void BytePSScheduledQueue::subscribe(CondVar* cond_var) {
+  _cond_var = cond_var;
 }
 
 }  // namespace common

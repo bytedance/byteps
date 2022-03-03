@@ -47,6 +47,8 @@ NcclManager::NcclManager(std::shared_ptr<BytePSComm> comm) {
   _global_comm = comm;
   InitGlobalEnv();
   ConstructRings();
+  _cond_var = new CondVar("__PRETTY_FUNCTION__");
+  BytePSGlobal::GetCondVarStore()->insert(_cond_var);
   return;
 }
 
@@ -164,18 +166,25 @@ void NcclManager::InitGlobalEnv() {  // init all global env/param here
 }
 
 void NcclManager::EnqueueGroup(std::shared_ptr<NcclGroupEntry> e) {
-  std::lock_guard<std::mutex> lock(_nccl_mutex);
+  std::unique_lock<std::mutex> lock(_nccl_mutex);
   _nccl_pipeline.push(e);
+  lock.unlock();
+  notify_all();
   return;
 }
 
 std::shared_ptr<NcclGroupEntry> NcclManager::DequeueGroup() {
-  std::lock_guard<std::mutex> lock(_nccl_mutex);
+  if (is_empty_on_paper()) return nullptr;
+
+  std::unique_lock<std::mutex> lock(_nccl_mutex);
   if (!_nccl_pipeline.size()) {
+    lock.unlock();
     return nullptr;
   }
   auto r = _nccl_pipeline.front();
   _nccl_pipeline.pop();
+  lock.unlock();
+  dec_by_one();
   return r;
 }
 
@@ -194,6 +203,37 @@ void NcclManager::GetPendingTasks(std::unordered_map<uint64_t, TaskMetaMap>* res
       TaskMeta::addPendingTask(task.get(), results);
     }
     entries.pop();
+  }
+}
+
+void NcclManager::notify_all() {
+  if (_cond_var != nullptr) {
+    _cond_var->notify_all();
+    BPS_LOG(TRACE) << "NcclManager called notify_all";
+  } else {
+    BPS_LOG(TRACE) << "NcclManager didn't call notify_all";
+  }
+}
+
+void NcclManager::wait() {
+  if (_cond_var != nullptr) {
+    BPS_LOG(TRACE) << "NcclManager called cv.wait";
+    _cond_var->wait();
+  }
+}
+
+bool NcclManager::is_empty_on_paper() {
+  if (_cond_var != nullptr) {
+    BPS_LOG(TRACE) << "NcclManager called cv.is_empty_on_paper";
+    return _cond_var->is_empty_on_paper();
+  }
+  return false;
+}
+
+void NcclManager::dec_by_one() {
+  if (_cond_var != nullptr) {
+    BPS_LOG(TRACE) << "NcclManager called cv.dec_by_one";
+    _cond_var->dec_by_one();
   }
 }
 
