@@ -479,6 +479,25 @@ def check_tf_version():
     if version is None:
         raise DistutilsPlatformError(
             'Unable to determine tensorflow version from the version string \'%s\'' % torch.__version__)
+
+    # download missing gpu-related header files for tf1
+    if LooseVersion(tf.__version__) < LooseVersion('2.0.0'):
+        tf_gpu_path = tf.sysconfig.get_include() + '/tensorflow/core/common_runtime/gpu/'
+        tf_version = tf.__version__
+        wget_cmd = f'mkdir -p {tf_gpu_path} && ' + \
+                   f'wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_util.h -P {tf_gpu_path} && ' + \
+                   f'wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_process_state.h -P {tf_gpu_path}'
+        wget_process = subprocess.Popen(wget_cmd,
+                                        cwd='.',
+                                        stdout=sys.stdout,
+                                        stderr=sys.stderr,
+                                        env=os.environ.copy(),
+                                        shell=True)
+        wget_process.communicate()
+        if wget_process.returncode:
+            raise DistutilsSetupError('An ERROR occured while wget tensorflow header files. '
+                                        'Exit code: {0}'.format(wget_process.returncode))
+
     return version
 
 

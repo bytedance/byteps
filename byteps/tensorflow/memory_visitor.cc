@@ -28,11 +28,8 @@
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 
-// the memory visitor header is only available since TF2
-#if TF_MAJOR_VERSION >= 2 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif
 
 using namespace byteps;
 
@@ -42,7 +39,6 @@ namespace tensorflow {
 class MemoryVistor {
  public:
   MemoryVistor() {
-#if TF_MAJOR_VERSION >= 2
 #if BYTEPS_BUILDING_CUDA == 1
     auto add_visitor = getenv("BYTEPS_PIN_MEMORY");
     ::tensorflow::SubAllocator::Visitor gpu_alloc_visitor = [](void* ptr, int gpu_id,
@@ -59,7 +55,6 @@ class MemoryVistor {
     } else {
       BPS_LOG(DEBUG) << "BytePS pinned memory visitor for GPU NOT enabled";
     }
-#endif
 #endif
     auto add_visitor_cpu = getenv("BYTEPS_PIN_MEMORY_CPU");
     if (add_visitor_cpu && atoi(add_visitor_cpu)) {
