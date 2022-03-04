@@ -138,7 +138,9 @@ std::mutex SmallTensorMngr::small_tensor_mu_;
 std::unordered_map<uint64_t, bool> SmallTensorMngr::small_tensor_map_;
 
 // compression
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 std::unordered_map<uint64_t, std::unique_ptr<common::compressor::Compressor>> BytePSServer::compressor_map_;
+#endif
 
 bool BytePSServer::gdr_lazy_sync_;
 
@@ -336,6 +338,7 @@ void BytePSServer::BytePSServerEngineThread(int i) {
     CHECK(msg.dst);
     CHECK(msg.src);
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
     auto iter = compressor_map_.find(msg.key);
     if (iter != compressor_map_.end()) {
       // compress
@@ -364,6 +367,15 @@ void BytePSServer::BytePSServerEngineThread(int i) {
         bps_reducer_->copy(updates->merged.tensor, msg.dst, msg.len);
       }
     }
+#else
+    if (msg.ops == ALL_RECV) {
+      // 2. no compress
+      auto updates = GetUpdateBuf(msg.key);
+      updates->merged.len = msg.len;
+      // add a copy to avoid push/pull data pollution
+      bps_reducer_->copy(updates->merged.tensor, msg.dst, msg.len);
+    }
+#endif
 
     bool is_debug = (debug_mode_ && (debug_key_ == msg.key));
     switch (msg.ops) {
@@ -850,6 +862,7 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
     }
   }
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
   // register compressor
   if (type.requestType == RequestType::kCompressedPushPull) {
     if (compressor_map_.find(key) == compressor_map_.end()) {
@@ -881,6 +894,7 @@ void BytePSServer::BytePSHandler(const ps::KVMeta& req_meta,
     updates->request.clear();
     return;
   }
+#endif
 
   if (req_meta.push) {  // push request
     CHECK_EQ(req_data.lens.size(), (size_t)1);

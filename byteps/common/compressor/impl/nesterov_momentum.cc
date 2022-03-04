@@ -19,6 +19,7 @@
 namespace byteps {
 namespace common {
 namespace compressor {
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 namespace {
 CompressorRegistry::Register reg(
     "nesterov_momentum",
@@ -47,7 +48,7 @@ void NesterovMomentumCompressor::UpdateGradient(tensor_t grad) {
   this->_cpu_reducer->sum(grad.data, _mom.get(), grad.size,
                           static_cast<DataType>(grad.dtype), _mu);
 }
-
+#endif
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

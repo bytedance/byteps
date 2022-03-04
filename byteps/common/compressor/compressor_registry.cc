@@ -19,6 +19,8 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
+
 CompressorRegistry::map_t CompressorRegistry::_ctor_map;
 
 CompressorRegistry::Register::Register(std::string name, ctor_t ctor) {
@@ -54,6 +56,8 @@ std::unique_ptr<Compressor> CompressorRegistry::Create(const kwargs_t& kwargs,
 
   return nullptr;
 }
+
+#endif
 
 }  // namespace compressor
 }  // namespace common

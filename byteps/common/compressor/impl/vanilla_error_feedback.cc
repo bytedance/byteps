@@ -24,6 +24,7 @@
 namespace byteps {
 namespace common {
 namespace compressor {
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 namespace {
 CompressorRegistry::Register reg(
     "vanilla_ef",
@@ -62,7 +63,7 @@ void VanillaErrorFeedbackCompressor::UpdateGradient(tensor_t grad) {
                           (_pre_lr / _cur_lr));
   _pre_lr = _cur_lr;
 }
-
+#endif
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

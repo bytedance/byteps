@@ -256,6 +256,10 @@ def use_ucx():
     byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', '1'))
     return byteps_with_ucx
 
+def use_compress():
+    byteps_with_compress = int(os.environ.get('BYTEPS_WITH_COMPRESS', 0))
+    return byteps_with_compress
+
 def with_pre_setup():
     return int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)) == 0
 
@@ -338,6 +342,9 @@ def get_common_options(build_ext):
     else:
         COMPILE_FLAGS = cpp_flags
         LINK_FLAGS = link_flags
+
+    if use_compress():
+        COMPILE_FLAGS += ['-DBYTEPS_BUILDING_COMPRESSOR=1']
 
     LIBRARY_DIRS = []
     LIBRARIES = []

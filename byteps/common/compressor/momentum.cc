@@ -19,6 +19,7 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 tensor_t Momentum::Compress(tensor_t grad) {
   // 1. m_t = \mu * m_{t-1} + g_t
   UpdateMom(grad);
@@ -34,6 +35,7 @@ tensor_t Momentum::Decompress(tensor_t compressed) {
   // directly forward to internal compressor
   return _cptr->Decompress(compressed);
 }
+#endif
 
 }  // namespace compressor
 }  // namespace common

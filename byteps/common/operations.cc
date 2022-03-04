@@ -1121,12 +1121,14 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       ps->Wait(ps->ZPush(pskv.keys, vals, pskv.lens, cmd));
       BPS_LOG(TRACE) << "registered with server, key=" << key;
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
       // register
       if (!context.kwargs.empty()) {
         auto compressor_ptr = compressor::CompressorRegistry::Create(
             context.kwargs, Align(len, dtype), static_cast<DataType>(dtype));
         context.compressor_list.push_back(std::move(compressor_ptr));
       }
+#endif
     }
     accumulated += len;
     ++i;

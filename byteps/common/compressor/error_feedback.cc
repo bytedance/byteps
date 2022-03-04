@@ -19,6 +19,8 @@ namespace byteps {
 namespace common {
 namespace compressor {
 
+#if BYTEPS_BUILDING_COMPRESSOR == 1
+
 tensor_t ErrorFeedback::Compress(tensor_t grad) {
   // 1. grad <- grad + error
   UpdateGradient(grad);
@@ -41,6 +43,8 @@ void ErrorFeedback::UpdateError(tensor_t corrected, tensor_t compressed) {
   tensor_t error{_error.get(), _size, corrected.dtype};
   _cptr->FastUpdateError(error, corrected, compressed);
 }
+
+#endif
 
 }  // namespace compressor
 }  // namespace common

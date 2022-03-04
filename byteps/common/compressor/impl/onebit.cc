@@ -21,6 +21,7 @@
 namespace byteps {
 namespace common {
 namespace compressor {
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 namespace {
 CompressorRegistry::Register reg("onebit_compressor", [](const kwargs_t& kwargs,
                                                          size_t size,
@@ -138,6 +139,7 @@ void OnebitCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                 corrected.data, compressed.data,
                                 compressed.size);
 }
+#endif
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps

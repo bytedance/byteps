@@ -22,6 +22,7 @@
 namespace byteps {
 namespace common {
 namespace compressor {
+#if BYTEPS_BUILDING_COMPRESSOR == 1
 namespace {
 CompressorRegistry::Register reg(
     "topk_compressor",
@@ -135,6 +136,7 @@ void TopkCompressor::FastUpdateError(tensor_t error, tensor_t corrected,
                                 corrected.data, compressed.data,
                                 compressed.size);
 }
+#endif
 }  // namespace compressor
 }  // namespace common
 }  // namespace byteps
