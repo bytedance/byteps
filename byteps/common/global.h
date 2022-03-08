@@ -83,7 +83,7 @@ class BytePSGlobal {
   static int GetVisibleDevice() { return _visible_device; }
   static bool IsRootDevice() { return _is_root_device; }
   static bool IsDistributed() { return _is_distributed_job; }
-  static std::string GetUUID() { return _uuid; }
+  static std::string GetJobId() { return _job_id; }
   // BytePS is launched in joint mode
   static bool IsJoint() { return _is_joint; }
   static bool IsSkipH2D() { return _skip_h2d; }
@@ -429,7 +429,7 @@ class BytePSGlobal {
   static int _pagesize;
   // unique identifier for the current application to avoid resource conflict
   // (e.g. shared memory name, socket name, etc)
-  static std::string _uuid;
+  static std::string _job_id;
   static size_t DivUp(size_t x, size_t y) { return (x + y - 1) / y; }
   static size_t RoundUp(size_t x, size_t y) { return DivUp(x, y) * y; }
 

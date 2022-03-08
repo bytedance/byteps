@@ -38,7 +38,7 @@ export BYTEPS_UCX_SHORT_THRESH=0
 # Note: updated BYTEPS_SOCKET_PATH for cpu allreduce
 export BYTEPS_PHY_NODE_ID=$((RANK / BYTEPS_LOCAL_SIZE))
 export BYTEPS_SOCKET_PATH=/tmp/node-${BYTEPS_PHY_NODE_ID}
-export BYTEPS_UUID=${BYTEPS_UUID}-${BYTEPS_PHY_NODE_ID}
+export BYTEPS_JOB_ID=${BYTEPS_JOB_ID}-${BYTEPS_PHY_NODE_ID}
 mkdir -p $BYTEPS_SOCKET_PATH
 
 if [ $1 == "scheduler" ]; then

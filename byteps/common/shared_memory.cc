@@ -29,7 +29,10 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
                                            uint64_t key, size_t len,
                                            bool reg_for_cuda) {
   std::string shm_name(prefix);
-  shm_name += std::to_string(key);
+  std::stringstream stream;
+  stream << std::hex << key;
+
+  shm_name += stream.str();
   auto size = BytePSGlobal::RoundUpToPageSize(len);
   int shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
   BPS_CHECK_GE(shm_fd, 0) << "shm_open failed for " << shm_name << " " << strerror(errno);
@@ -39,7 +42,7 @@ void* BytePSSharedMemory::openSharedMemory(const std::string& prefix,
   void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   CHECK_NE(ptr, (void*)-1) << strerror(errno)
     << "mmap failed. prefix = " << prefix
-    << ", key = " << key << ", size = " << size;
+    << ", key = " << key << "(0x" << stream.str() << "), size = " << size;
 
 #if BYTEPS_BUILDING_CUDA == 1
   if (reg_for_cuda) {

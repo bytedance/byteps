@@ -840,7 +840,7 @@ void InitTensorAlltoall(BPSContext &context, std::vector<int> &request_size_list
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
   // use a different prefix for p2p tensors
   std::string wid = "_" + std::to_string(BytePSGlobal::GetWorkerID()) + "_";
-  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetUUID() + wid;
+  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetJobId() + wid;
   context.cpubuff = nullptr;
   auto my_rank = BytePSGlobal::GetRank();
   CHECK(BytePSGlobal::IsDistributed());
@@ -955,7 +955,7 @@ void InitTensorP2P(BPSContext &context, size_t size, int dtype, void *cpubuff,
   auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
   // use a different prefix for p2p tensors
   std::string wid = "_" + std::to_string(BytePSGlobal::GetWorkerID()) + "_";
-  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetUUID() + wid;
+  std::string shm_name = std::string("BytePS_P2P_ShM_") + BytePSGlobal::GetJobId() + wid;
   accumulated = 0;
   context.cpubuff = nullptr;
   auto my_rank = BytePSGlobal::GetRank();
@@ -1064,14 +1064,14 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   if (BytePSGlobal::IsCrossPcieSwitch()) {
     BPS_CHECK(BytePSGlobal::IsCpuAllreduceDisabled() || cpubuff == nullptr)
       << "CPU allreduce does not support cross PCIe switch";
-    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetUUID();
+    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetJobId();
     context.pcie_cpubuff =
         shm_obj->openPcieSharedMemory(shm_prefix, key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
     if (cpubuff) {
       int byteps_root = BytePSGlobal::GetBasicComm()->getRoot();
-      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID();
+      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetJobId() + "_";
       for (int i = 0; i < BytePSGlobal::GetLocalSize(); i++) {
         std::string prefix_i = shm_prefix;
         if (i != byteps_root) {
@@ -1081,7 +1081,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
       }
       context.cpubuff = context.numa_cpubuff[BytePSGlobal::GetLocalRank()];
     } else if (!BytePSGlobal::IsGDR()) {
-      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID();
+      auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetJobId() + "_";
       context.cpubuff = shm_obj->openSharedMemory(shm_prefix, key_list[0], aligned_size, true);
     }
   }
@@ -1197,7 +1197,7 @@ void InitTensorAllgather(BPSContext &context, size_t input_size, size_t output_s
   if (!BytePSGlobal::IsGDRAllgather()) {
     auto shm_obj = BytePSGlobal::GetSharedMemoryObj();
     size_t aligned_size = Align(output_size, dtype);
-    auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetUUID() + "_";
+    auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetJobId() + "_";
     context.cpubuff = shm_obj->openSharedMemory(shm_prefix, context.key_list[0], aligned_size, true);
     BPS_LOG(TRACE) << context.tensor_name << ": open shared memory size " << aligned_size;
   }
