@@ -9,7 +9,7 @@ import byteps as bps
 from byteps.torch.compression import Compression
 from torch.cuda._utils import _get_device_index
 import os
-from byteps.torch.grad_fusion import _GradFusion
+from byteps.torch.grad_fusion import _GradFusion, _find_tensors, find_parameters
 import collections
 
 class DistributedDataParallel(Module):
@@ -125,6 +125,7 @@ class DistributedDataParallel(Module):
             broadcast_buffers=True,
             compression=Compression.none,
             bucket_cap_mb=25,
+            find_unused_parameters=False,
             *args, **kwargs
             ):
         super(DistributedDataParallel, self).__init__()
@@ -196,14 +197,17 @@ class DistributedDataParallel(Module):
         self._enable_tensor_fusion = False
         self._grad_fusion = None
         named_params = self.module.named_parameters()
+        self._trainable_params = [p for _, p in named_params if p.requires_grad]
+        named_params = self.module.named_parameters()
         self._num_grads = sum(p.requires_grad for _, p in named_params)
-        if size() > 1 and bucket_cap_mb > 0:
-            self._enable_tensor_fusion = True
-            os.environ['BYTEPS_BUCKET_SIZE_BYTES'] = str(bucket_cap_mb * 1024 * 1024)
-            self._grad_fusion = _GradFusion(module, self)
-            self._num_grads = self._grad_fusion.size()
-        # print(f'xxxx self._enable_tensor_fusion { self._enable_tensor_fusion}, bucket_cap_mb {bucket_cap_mb}', flush=True)
         if size() > 1:
+            if bucket_cap_mb > 0:
+                self._enable_tensor_fusion = True
+                os.environ['BYTEPS_BUCKET_SIZE_BYTES'] = str(bucket_cap_mb * 1024 * 1024)
+                self._grad_fusion = _GradFusion(module, self)
+                self._num_grads = self._grad_fusion.size()
+            elif find_unused_parameters:
+                self.register_forward_hook(self._model_post_fwd_hook)
             self._register_hooks()
             byteps_torch_set_num_grads(self._num_grads)
 
@@ -220,6 +224,8 @@ class DistributedDataParallel(Module):
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
 
         print("Using the BytePS DistributedDataParallel Module")
+        self._step = -1
+        self._empty_cache = os.getenv("BYTEPS_TORCH_CUDA_EMPTY_CACHE") in ["1"]
 
     def _get_param_name(self, p):
         """Get the name of a parameter."""
@@ -255,6 +261,11 @@ class DistributedDataParallel(Module):
             self._require_backward_grad_sync = old_require_backward_grad_sync
 
     def forward(self, *inputs, **kwargs):
+        if self._empty_cache:
+            torch.cuda.empty_cache()
+        self._step += 1
+        num_handles = len(self._handles)
+        assert num_handles == 0, f'step {self._step} num_handles is {num_handles}'
         torch.cuda.nvtx.range_push("byteps.DistributedDataParallel.forward")
         if self.require_forward_param_sync:
             self._sync_params()
@@ -325,9 +336,23 @@ class DistributedDataParallel(Module):
                     self._synchronize()
         return hook
 
+    def _model_post_fwd_hook(self, module, _inputs, outputs):
+        ''' post model forward hook. '''
+        if not module.training:
+            return
+
+        out_tensors = list(_find_tensors(outputs))
+        params_in_graph, _ = find_parameters(out_tensors)
+        self._num_grads = len(set(params_in_graph) & set(self._trainable_params))
+        byteps_torch_set_num_grads(self._num_grads)
+
     def _normal_synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
         for p in missing_p:
+            if type(p.grad) == type(None):
+                continue
+
+            assert False, "This should never be reached."
             handle, ctx, grad_count = self._push_pull_grad_group_sync(p, self._num_grads)
             self._handles[p] = (handle, ctx)
 
@@ -336,9 +361,12 @@ class DistributedDataParallel(Module):
             if handle is None:
                 handle, ctx, grad_count = self._push_pull_grad_group_sync(p)
                 self._handles[p] = (handle, ctx)
-        for p, (handle, _) in self._handles.items():
+        for p, (handle, ctx) in self._handles.items():
             output = synchronize(handle)
             if not self._enable_async:
+                if type(p.grad) == type(None):
+                    assert False, "This should never be reached."
+                    continue
                 p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
 
