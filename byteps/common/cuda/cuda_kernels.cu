@@ -563,6 +563,12 @@ void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len,
     case BYTEPS_INT64:
       _SumKernel<long><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(long));
       break;
+    case BYTEPS_UINT8:
+      _SumKernel<uint8_t><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(uint8_t));
+      break;
+    case BYTEPS_INT8:
+      _SumKernel<int8_t><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(int8_t));
+      break;
     default:
       BPS_CHECK(0) << "Unsupported data type for Cuda Reducer: " << dtype;
   }
@@ -585,6 +591,12 @@ void CudaReducer::SumAsync(void* dst, const void* src1, const void* src2, size_t
       break;
     case BYTEPS_INT64:
       _SumKernel<long><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(long));
+      break;
+    case BYTEPS_UINT8:
+      _SumKernel<uint8_t><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(uint8_t));
+      break;
+    case BYTEPS_INT8:
+      _SumKernel<int8_t><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(int8_t));
       break;
     default:
       BPS_CHECK(0) << "Unsupported data type for Cuda Reducer: " << dtype;
