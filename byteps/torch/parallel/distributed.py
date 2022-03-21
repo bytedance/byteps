@@ -130,10 +130,13 @@ class DistributedDataParallel(Module):
             ):
         super(DistributedDataParallel, self).__init__()
 
-        assert device_ids and len(device_ids) == 1, (
-                "DistributedDataParallel device_ids contain exactlyone entry,"
-                " but got {}.").format(device_ids)
-        self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
+        if devices_ids is None:
+            self.device_ids = None
+        else:
+            assert device_ids and len(device_ids) == 1, (
+                    "DistributedDataParallel device_ids contain exactlyone entry,"
+                    " but got {}.").format(device_ids)
+            self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
         self.broadcast_buffers = broadcast_buffers
         self.require_forward_param_sync = broadcast_buffers
