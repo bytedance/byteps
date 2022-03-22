@@ -608,7 +608,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
   }
   context.op_count = Telemetry::RecordStart(context.base_tensor_name);
 
-  unsigned int accumulated = 0;
+  size_t accumulated = 0;
   for (size_t i = 0; i < partitions.size(); ++i) {
     auto task = partitions[i];
     task->key = context.key_list[i];  // assign the key now
@@ -635,7 +635,7 @@ Status EnqueueTensor(BPSContext &context, std::shared_ptr<Tensor> input,
 
   auto tensor = (e->tensor ? e->tensor : e->output);
   BPS_CHECK(tensor);
-  BPS_CHECK_EQ(accumulated, tensor->size())
+  BPS_CHECK_EQ(accumulated, (size_t) (tensor->size()))
       << "accumulated partition size not equal to original tensor size";
 
   BPS_LOG(TRACE) << "EnqueueTensor finished: " << name
@@ -1000,7 +1000,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   BPS_CHECK_GT(size, 0) << "init tensor size not larger than 0";
   // Get metadata
-  auto bound = BytePSGlobal::GetPartitionBound();
+  size_t bound = BytePSGlobal::GetPartitionBound();
   auto &name = context.tensor_name;
   size_t accumulated = 0;
 
@@ -1041,8 +1041,7 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
   auto key_list = context.key_list;
 
   BPS_CHECK_GT(key_list.size(), 0) << name;
-  BPS_CHECK_EQ(key_list.size(),
-               (unsigned int)(size + bound - 1) / bound)  // round up
+  BPS_CHECK_EQ(key_list.size(), (size + bound - 1) / bound)  // round up
       << key_list.size() << ", size=" << size << ", bound=" << bound;
 
   BPS_LOG(TRACE) << "Begin init " << name << " size=" << size
