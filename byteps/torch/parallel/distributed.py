@@ -130,7 +130,7 @@ class DistributedDataParallel(Module):
             ):
         super(DistributedDataParallel, self).__init__()
 
-        if devices_ids is None:
+        if device_ids is None:
             self.device_ids = None
         else:
             assert device_ids and len(device_ids) == 1, (
