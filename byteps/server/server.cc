@@ -1359,7 +1359,7 @@ void BytePSServer::InitAllgatherTable() {
 
 void BytePSServer::InitEnv() {
   // enable to print key profile
-  log_key_info_ = GetEnv("BYTEPS_PS_KEY_LOG", false);
+  log_key_info_ = GetEnv("BYTEPS_PS_KEY_LOG", 0);
   std::string role_str = GetEnv("DMLC_ROLE", "unk");
   // Just compare with "scheduler" here, the env var may be "joint", "server", "scheduler"
   role_ = ps::GetRole(role_str);
@@ -1372,12 +1372,12 @@ void BytePSServer::InitEnv() {
   ps_instance_size_ = ps_instance_size_str ? atoi(ps_instance_size_str) : 1;
 
   // enable engine block mode (default: non-blocking)
-  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", false);
+  is_engine_blocking_ = GetEnv("BYTEPS_SERVER_ENGINE_BLOCKING", 0);
   if (is_engine_blocking_)
     LOG(INFO) << "Enable blocking mode of the server engine";
 
   // sync or async training
-  sync_mode_ = !GetEnv("BYTEPS_ENABLE_ASYNC", false);
+  sync_mode_ = !GetEnv("BYTEPS_ENABLE_ASYNC", 0);
   if (!sync_mode_)
     LOG(INFO) << "BytePS server is enabled asynchronous training";
 
@@ -1393,7 +1393,7 @@ void BytePSServer::InitEnv() {
   CHECK_GE(engine_thread_num_, 1);
 
   // enable scheduling for server engine
-  enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", false);
+  enable_schedule_ = GetEnv("BYTEPS_SERVER_ENABLE_SCHEDULE", 0);
   if (enable_schedule_) LOG(INFO) << "Enable engine scheduling for BytePS server";
 
   auto direct_response_str = getenv("BYTEPS_SERVER_DIRECT_RESPONSE");
