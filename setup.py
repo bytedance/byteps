@@ -761,7 +761,8 @@ def get_cuda_dirs(build_ext, cpp_flags):
     cuda_home = os.environ.get('BYTEPS_CUDA_HOME')
     if cuda_home:
         cuda_include_dirs += ['%s/include' % cuda_home]
-        cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
+        cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home,
+                          '%s/lib64/stubs' % cuda_home]
 
     cuda_include = os.environ.get('BYTEPS_CUDA_INCLUDE')
     if cuda_include:
@@ -774,7 +775,8 @@ def get_cuda_dirs(build_ext, cpp_flags):
     if not cuda_include_dirs and not cuda_lib_dirs:
         # default to /usr/local/cuda
         cuda_include_dirs += ['/usr/local/cuda/include']
-        cuda_lib_dirs += ['/usr/local/cuda/lib', '/usr/local/cuda/lib64']
+        cuda_lib_dirs += ['/usr/local/cuda/lib', '/usr/local/cuda/lib64',
+                          '/usr/local/cuda/lib64/stubs']
 
     try:
         test_compile(build_ext, 'test_cuda', libraries=['cudart'], include_dirs=cuda_include_dirs,
