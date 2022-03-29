@@ -27,6 +27,7 @@ if gpus:
     try:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
+        tf.config.experimental.set_visible_devices(gpus[bps.local_rank()], 'GPU')
     except RuntimeError as e:
         print(e)
         exit()
@@ -54,7 +55,7 @@ class TensorFlowTests:
         dim_1 = 2
         idx_dtype = tf.int32
         rng = np.random.default_rng(size)
-        tf.random.set_seed(size)
+        tf.compat.v1.random.set_random_seed(size)
         total_niter = 1
         for dtype in dtypes:
             niter = 0
@@ -97,7 +98,7 @@ class TensorFlowTests:
         tf.compat.v1.disable_eager_execution()
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
-        config.gpu_options.visible_device_list = str(0)
+        config.gpu_options.visible_device_list = str(bps.local_rank())
 
         rank = self.rank
         size = self.size
@@ -106,7 +107,7 @@ class TensorFlowTests:
         dim_1 = 2
         idx_dtype = tf.int32
         rng = np.random.default_rng(size)
-        tf.random.set_seed(size)
+        tf.compat.v1.random.set_random_seed(size)
         total_niter = 1
         for dtype in dtypes:
             niter = 0
@@ -142,9 +143,9 @@ class TensorFlowTests:
                     cur_mse = self.mse(ground_truth[i], received_vars[i])
                     if cur_mse > 0.01:
                         failed += 1
-                        print(f"Failed to broadcast variable to rank {bps.rank()}: "
-                              f"expecting: {ground_truth[i]} got: "
-                              f"{my_vars[i]} with mse {cur_mse}.")
+                        print(f"Failed to broadcast variable {i} to rank {bps.rank()}: "
+                              f"expecting:\n{ground_truth[i]} got:\n"
+                              f"{received_vars[i]} with mse {cur_mse}.")
                     else:
                         succeded += 1
                 print(f"iter {niter}/{total_niter} Broadcast global variables to rank: "
