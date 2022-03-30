@@ -46,6 +46,9 @@ class TorchTests:
             return torch.device('cpu')
 
     def random(self, seed, size, dtype, device, requires_grad=False):
+        if dtype == torch.bool:
+            return torch.ones(size=size, dtype=dtype, device=device, requires_grad=requires_grad)
+
         torch.manual_seed(seed)
         return torch.rand(size=size, dtype=dtype, device=device, requires_grad=requires_grad)
 
@@ -53,7 +56,10 @@ class TorchTests:
         golden = [self.random(i, shape if same_shape else [shape[0] + i] + shape[1:], dtype, device)
             for i in range(self.size)]
         golden = torch.cat(golden, 0)
-        max_difference = torch.max(torch.abs(gathered - golden))
+        if dtype == torch.bool:
+            max_difference = torch.max(torch.abs(gathered ^ golden))
+        else:
+            max_difference = torch.max(torch.abs(gathered - golden))
         threshold = 0
 
         assert max_difference <= threshold, "bps.allgather produced incorrect results"
@@ -61,7 +67,7 @@ class TorchTests:
 
     def test_byteps_allgather(self):
         """Test on GPU that the allgather correctly runs on 1D, 2D, 3D tensors."""
-        dtypes = [torch.float32]
+        dtypes = [torch.bool, torch.float32]
         dims = [1, 2, 3]
         device = self.current_context()
 
@@ -120,7 +126,6 @@ class TorchTests:
             for i in range(self.rank):
                 offset += shape[0] + i
             golden = golden[offset : offset + shape[0] + self.rank]
-            
         max_difference = torch.max(torch.abs(grad - golden))
         threshold = 5e-4
         assert max_difference <= threshold, "bps.allgather autograd produced incorrect results"
@@ -129,17 +134,18 @@ class TorchTests:
     def test_allgather_autograd(self):
         """Test of allgather autograd."""
         device = self.current_context()
-        dtype = torch.float32
+        dtypes = [torch.float32]
         for iter in range(args.iter):
-            shape = [10]
-            x = self.random(self.rank, shape if same_shape else [shape[0] + self.rank] + shape[1:], dtype, device, requires_grad=True)
-            name = f'allgather_{device}_iter_{iter}'
-            y = bps.allgather(x, same_shape=same_shape, name=name)
-            loss = y * y
-            loss_grad = torch.ones(loss.shape, dtype=dtype, device=device)
-            # loss.sum().backward()
-            loss.backward(loss_grad)
-            self.validate_allgather_autograd(x.grad, shape, dtype, device)
+            for dtype in dtypes:
+                shape = [10]
+                x = self.random(self.rank, shape if same_shape else [shape[0] + self.rank] + shape[1:], dtype, device, requires_grad=True)
+                name = f'allgather_{device}_iter_{iter}'
+                y = bps.allgather(x, same_shape=same_shape, name=name)
+                loss = y * y
+                loss_grad = torch.ones(loss.shape, dtype=dtype, device=device)
+                # loss.sum().backward()
+                loss.backward(loss_grad)
+                self.validate_allgather_autograd(x.grad, shape, dtype, device)
 
 tests = TorchTests()
 for i in range(2):
@@ -148,9 +154,3 @@ for i in range(2):
     tests.test_byteps_mix_allgather_allreduce()
     tests.test_allgather_autograd()
     same_shape = False
-
-# same_shape = False
-# tests = TorchTests()
-# tests.test_byteps_allgather()
-# tests.test_byteps_mix_allgather_allreduce()
-# tests.test_allgather_autograd()

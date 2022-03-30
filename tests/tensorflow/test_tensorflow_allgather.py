@@ -3,6 +3,10 @@ import numpy as np
 import os
 import itertools
 from byteps.tensorflow.util import _executing_eagerly
+from distutils.version import LooseVersion
+
+if LooseVersion(tf.__version__) < LooseVersion('2.0.0'):
+    tf.compat.v1.enable_eager_execution()
 
 import argparse
 parser = argparse.ArgumentParser(description='Tensorflow tests')

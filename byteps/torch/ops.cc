@@ -549,6 +549,7 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_push_pull_group_sync_torch_DoubleTensor", &DoPushPullGroupSync);
 
   m.def("byteps_torch_allgather_async_torch_ByteTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_BoolTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_IntTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_LongTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_HalfTensor", &DoAllgather);
@@ -620,6 +621,7 @@ PYBIND11_MODULE(c_lib, m) {
   m.def("byteps_torch_dc_adam_async_torch_cuda_DoubleTensor", &DCAdam);
 
   m.def("byteps_torch_allgather_async_torch_cuda_ByteTensor", &DoAllgather);
+  m.def("byteps_torch_allgather_async_torch_cuda_BoolTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_IntTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_LongTensor", &DoAllgather);
   m.def("byteps_torch_allgather_async_torch_cuda_HalfTensor", &DoAllgather);

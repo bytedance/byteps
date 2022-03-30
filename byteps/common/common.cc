@@ -177,6 +177,7 @@ ncclDataType_t getNcclDataType(DataType dtype) {
       return ncclFloat64;
     case BYTEPS_FLOAT16:
       return ncclFloat16;
+    case BYTEPS_BOOL:
     case BYTEPS_UINT8:
       return ncclUint8;
     case BYTEPS_INT32:
@@ -194,6 +195,7 @@ ncclDataType_t getNcclDataType(DataType dtype) {
 
 int getDataTypeLength(int dtype) {
   switch (dtype) {
+    case BYTEPS_BOOL:
     case BYTEPS_INT8:
     case BYTEPS_UINT8:
       return 1;
