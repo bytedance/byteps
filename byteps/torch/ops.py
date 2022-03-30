@@ -375,6 +375,9 @@ def allgather(tensor, same_shape=True, name=None, version=0, priority=0):
     if name == None:
         raise AssertionError("To manually call allgather, you must specify a name by name=...")
     
+    if len(tensor.shape) == 0:
+        tensor = torch.unsqueeze(tensor, 0)
+
     shape_list = []
     if same_shape == False:
         name += "_V"
