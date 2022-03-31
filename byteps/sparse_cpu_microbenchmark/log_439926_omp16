@@ -1,0 +1,84 @@
+dense rows: 439926, node: 2, sparsity: 0.001, sparse_tensor_rows: 439
+sparse to dense time: 1426us, dense to sparse time: 33us
+sparse to dense throughput: 2.52194Gbps, dense to sparse time: 108.978Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.005, sparse_tensor_rows: 2199
+sparse to dense time: 4495us, dense to sparse time: 120us
+sparse to dense throughput: 4.00761Gbps, dense to sparse time: 150.118Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.01, sparse_tensor_rows: 4399
+sparse to dense time: 7286us, dense to sparse time: 635us
+sparse to dense throughput: 4.94601Gbps, dense to sparse time: 56.7506Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.02, sparse_tensor_rows: 8798
+sparse to dense time: 11562us, dense to sparse time: 487us
+sparse to dense throughput: 6.23363Gbps, dense to sparse time: 147.994Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.05, sparse_tensor_rows: 21996
+sparse to dense time: 24217us, dense to sparse time: 1178us
+sparse to dense throughput: 7.44069Gbps, dense to sparse time: 152.964Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.1, sparse_tensor_rows: 43992
+sparse to dense time: 41502us, dense to sparse time: 2458us
+sparse to dense throughput: 8.6835Gbps, dense to sparse time: 146.616Gbps
+
+dense rows: 439926, node: 2, sparsity: 0.2, sparse_tensor_rows: 87985
+sparse to dense time: 58192us, dense to sparse time: 4706us
+sparse to dense throughput: 12.3861Gbps, dense to sparse time: 153.16Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.001, sparse_tensor_rows: 439
+sparse to dense time: 1076us, dense to sparse time: 25us
+sparse to dense throughput: 3.34228Gbps, dense to sparse time: 143.852Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.005, sparse_tensor_rows: 2199
+sparse to dense time: 3401us, dense to sparse time: 118us
+sparse to dense throughput: 5.29674Gbps, dense to sparse time: 152.663Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.01, sparse_tensor_rows: 4399
+sparse to dense time: 5965us, dense to sparse time: 166us
+sparse to dense throughput: 6.04134Gbps, dense to sparse time: 217.088Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.02, sparse_tensor_rows: 8798
+sparse to dense time: 10320us, dense to sparse time: 367us
+sparse to dense throughput: 6.98384Gbps, dense to sparse time: 196.385Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.05, sparse_tensor_rows: 21996
+sparse to dense time: 20230us, dense to sparse time: 1226us
+sparse to dense throughput: 8.90713Gbps, dense to sparse time: 146.975Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.1, sparse_tensor_rows: 43992
+sparse to dense time: 22175us, dense to sparse time: 2638us
+sparse to dense throughput: 16.2517Gbps, dense to sparse time: 136.612Gbps
+
+dense rows: 439926, node: 4, sparsity: 0.2, sparse_tensor_rows: 87984
+sparse to dense time: 33512us, dense to sparse time: 4886us
+sparse to dense throughput: 21.5077Gbps, dense to sparse time: 147.516Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.001, sparse_tensor_rows: 439
+sparse to dense time: 1041us, dense to sparse time: 32us
+sparse to dense throughput: 3.45465Gbps, dense to sparse time: 112.384Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.005, sparse_tensor_rows: 2199
+sparse to dense time: 3274us, dense to sparse time: 137us
+sparse to dense throughput: 5.5022Gbps, dense to sparse time: 131.491Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.01, sparse_tensor_rows: 4399
+sparse to dense time: 5564us, dense to sparse time: 237us
+sparse to dense throughput: 6.47674Gbps, dense to sparse time: 152.053Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.02, sparse_tensor_rows: 8798
+sparse to dense time: 9344us, dense to sparse time: 806us
+sparse to dense throughput: 7.71332Gbps, dense to sparse time: 89.4209Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.05, sparse_tensor_rows: 21996
+sparse to dense time: 13558us, dense to sparse time: 983us
+sparse to dense throughput: 13.2904Gbps, dense to sparse time: 183.307Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.1, sparse_tensor_rows: 43992
+sparse to dense time: 18259us, dense to sparse time: 2840us
+sparse to dense throughput: 19.7373Gbps, dense to sparse time: 126.895Gbps
+
+dense rows: 439926, node: 8, sparsity: 0.2, sparse_tensor_rows: 87984
+sparse to dense time: 20964us, dense to sparse time: 4192us
+sparse to dense throughput: 34.3811Gbps, dense to sparse time: 171.938Gbps
+

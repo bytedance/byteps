@@ -1,0 +1,387 @@
+size: 2^10
+[RandomK] size: 1024, compress time: 16 us, compress throughput: 2.048 Gbps, decompress time: 7 us, decompress throughput: 4.68114 Gbps
+size: 2^11
+[RandomK] size: 2048, compress time: 17 us, compress throughput: 3.85506 Gbps, decompress time: 7 us, decompress throughput: 9.36229 Gbps
+size: 2^12
+[RandomK] size: 4096, compress time: 20 us, compress throughput: 6.5536 Gbps, decompress time: 7 us, decompress throughput: 18.7246 Gbps
+size: 2^13
+[RandomK] size: 8192, compress time: 26 us, compress throughput: 10.0825 Gbps, decompress time: 9 us, decompress throughput: 29.1271 Gbps
+size: 2^14
+[RandomK] size: 16384, compress time: 72 us, compress throughput: 7.28178 Gbps, decompress time: 9 us, decompress throughput: 58.2542 Gbps
+size: 2^15
+[RandomK] size: 32768, compress time: 64 us, compress throughput: 16.384 Gbps, decompress time: 14 us, decompress throughput: 74.8983 Gbps
+size: 2^16
+[RandomK] size: 65536, compress time: 110 us, compress throughput: 19.065 Gbps, decompress time: 22 us, decompress throughput: 95.3251 Gbps
+size: 2^17
+[RandomK] size: 131072, compress time: 212 us, compress throughput: 19.7845 Gbps, decompress time: 37 us, decompress throughput: 113.36 Gbps
+size: 2^18
+[RandomK] size: 262144, compress time: 430 us, compress throughput: 19.5084 Gbps, decompress time: 66 us, decompress throughput: 127.1 Gbps
+size: 2^19
+[RandomK] size: 524288, compress time: 672 us, compress throughput: 24.9661 Gbps, decompress time: 118 us, decompress throughput: 142.18 Gbps
+size: 2^20
+[RandomK] size: 1048576, compress time: 1236 us, compress throughput: 27.1476 Gbps, decompress time: 285 us, decompress throughput: 117.735 Gbps
+size: 2^21
+[RandomK] size: 2097152, compress time: 2421 us, compress throughput: 27.7195 Gbps, decompress time: 531 us, decompress throughput: 126.382 Gbps
+size: 2^22
+[RandomK] size: 4194304, compress time: 4816 us, compress throughput: 27.8691 Gbps, decompress time: 903 us, decompress throughput: 148.635 Gbps
+size: 2^23
+[RandomK] size: 8388608, compress time: 9632 us, compress throughput: 27.8691 Gbps, decompress time: 3652 us, decompress throughput: 73.5037 Gbps
+size: 2^24
+[RandomK] size: 16777216, compress time: 21112 us, compress throughput: 25.4297 Gbps, decompress time: 10068 us, decompress throughput: 53.3245 Gbps
+size: 2^25
+[RandomK] size: 33554432, compress time: 43156 us, compress throughput: 24.8805 Gbps, decompress time: 18968 us, decompress throughput: 56.6081 Gbps
+size: 2^26
+[RandomK] size: 67108864, compress time: 92372 us, compress throughput: 23.2482 Gbps, decompress time: 38427 us, decompress throughput: 55.8848 Gbps
+size: 2^10
+[DGC] size: 1024, compress time: 13 us, compress throughput: 2.52062 Gbps, decompress time: 4 us, decompress throughput: 8.192 Gbps
+size: 2^11
+[DGC] size: 2048, compress time: 15 us, compress throughput: 4.36907 Gbps, decompress time: 4 us, decompress throughput: 16.384 Gbps
+size: 2^12
+[DGC] size: 4096, compress time: 19 us, compress throughput: 6.89853 Gbps, decompress time: 4 us, decompress throughput: 32.768 Gbps
+size: 2^13
+[DGC] size: 8192, compress time: 28 us, compress throughput: 9.36229 Gbps, decompress time: 5 us, decompress throughput: 52.4288 Gbps
+size: 2^14
+[DGC] size: 16384, compress time: 46 us, compress throughput: 11.3976 Gbps, decompress time: 6 us, decompress throughput: 87.3813 Gbps
+size: 2^15
+[DGC] size: 32768, compress time: 79 us, compress throughput: 13.2731 Gbps, decompress time: 9 us, decompress throughput: 116.508 Gbps
+size: 2^16
+[DGC] size: 65536, compress time: 150 us, compress throughput: 13.981 Gbps, decompress time: 14 us, decompress throughput: 149.797 Gbps
+size: 2^17
+[DGC] size: 131072, compress time: 287 us, compress throughput: 14.6143 Gbps, decompress time: 27 us, decompress throughput: 155.345 Gbps
+size: 2^18
+[DGC] size: 262144, compress time: 585 us, compress throughput: 14.3395 Gbps, decompress time: 52 us, decompress throughput: 161.319 Gbps
+size: 2^19
+[DGC] size: 524288, compress time: 1139 us, compress throughput: 14.7298 Gbps, decompress time: 102 us, decompress throughput: 164.483 Gbps
+size: 2^20
+[DGC] size: 1048576, compress time: 2312 us, compress throughput: 14.5132 Gbps, decompress time: 211 us, decompress throughput: 159.026 Gbps
+size: 2^21
+[DGC] size: 2097152, compress time: 4547 us, compress throughput: 14.7589 Gbps, decompress time: 424 us, decompress throughput: 158.276 Gbps
+size: 2^22
+[DGC] size: 4194304, compress time: 9307 us, compress throughput: 14.4212 Gbps, decompress time: 1900 us, decompress throughput: 70.6409 Gbps
+size: 2^23
+[DGC] size: 8388608, compress time: 17000 us, compress throughput: 15.7903 Gbps, decompress time: 4517 us, decompress throughput: 59.4278 Gbps
+size: 2^24
+[DGC] size: 16777216, compress time: 32924 us, compress throughput: 16.3064 Gbps, decompress time: 9645 us, decompress throughput: 55.6631 Gbps
+size: 2^25
+[DGC] size: 33554432, compress time: 65359 us, compress throughput: 16.4284 Gbps, decompress time: 18731 us, decompress throughput: 57.3243 Gbps
+size: 2^26
+[DGC] size: 67108864, compress time: 134170 us, compress throughput: 16.0057 Gbps, decompress time: 38245 us, decompress throughput: 56.1507 Gbps
+size: 2^10
+[EFSignSGD] size: 1024, compress time: 16 us, compress throughput: 2.048 Gbps, decompress time: 5 us, decompress throughput: 6.5536 Gbps
+size: 2^11
+[EFSignSGD] size: 2048, compress time: 17 us, compress throughput: 3.85506 Gbps, decompress time: 5 us, decompress throughput: 13.1072 Gbps
+size: 2^12
+[EFSignSGD] size: 4096, compress time: 19 us, compress throughput: 6.89853 Gbps, decompress time: 6 us, decompress throughput: 21.8453 Gbps
+size: 2^13
+[EFSignSGD] size: 8192, compress time: 22 us, compress throughput: 11.9156 Gbps, decompress time: 8 us, decompress throughput: 32.768 Gbps
+size: 2^14
+[EFSignSGD] size: 16384, compress time: 32 us, compress throughput: 16.384 Gbps, decompress time: 11 us, decompress throughput: 47.6625 Gbps
+size: 2^15
+[EFSignSGD] size: 32768, compress time: 50 us, compress throughput: 20.9715 Gbps, decompress time: 17 us, decompress throughput: 61.6809 Gbps
+size: 2^16
+[EFSignSGD] size: 65536, compress time: 81 us, compress throughput: 25.8908 Gbps, decompress time: 27 us, decompress throughput: 77.6723 Gbps
+size: 2^17
+[EFSignSGD] size: 131072, compress time: 148 us, compress throughput: 28.3399 Gbps, decompress time: 52 us, decompress throughput: 80.6597 Gbps
+size: 2^18
+[EFSignSGD] size: 262144, compress time: 375 us, compress throughput: 22.3696 Gbps, decompress time: 124 us, decompress throughput: 67.6501 Gbps
+size: 2^19
+[EFSignSGD] size: 524288, compress time: 555 us, compress throughput: 30.2292 Gbps, decompress time: 187 us, decompress throughput: 89.7177 Gbps
+size: 2^20
+[EFSignSGD] size: 1048576, compress time: 1094 us, compress throughput: 30.6713 Gbps, decompress time: 359 us, decompress throughput: 93.4664 Gbps
+size: 2^21
+[EFSignSGD] size: 2097152, compress time: 2161 us, compress throughput: 31.0545 Gbps, decompress time: 712 us, decompress throughput: 94.254 Gbps
+size: 2^22
+[EFSignSGD] size: 4194304, compress time: 4298 us, compress throughput: 31.2279 Gbps, decompress time: 1428 us, decompress throughput: 93.99 Gbps
+size: 2^23
+[EFSignSGD] size: 8388608, compress time: 8585 us, compress throughput: 31.268 Gbps, decompress time: 2862 us, decompress throughput: 93.793 Gbps
+size: 2^24
+[EFSignSGD] size: 16777216, compress time: 17353 us, compress throughput: 30.9382 Gbps, decompress time: 5853 us, decompress throughput: 91.7258 Gbps
+size: 2^25
+[EFSignSGD] size: 33554432, compress time: 34964 us, compress throughput: 30.7099 Gbps, decompress time: 11816 us, decompress throughput: 90.8719 Gbps
+size: 2^26
+[EFSignSGD] size: 67108864, compress time: 71289 us, compress throughput: 30.1236 Gbps, decompress time: 24972 us, decompress throughput: 85.9957 Gbps
+size: 2^10
+[Onebit] size: 1024, compress time: 19 us, compress throughput: 1.72463 Gbps, decompress time: 4 us, decompress throughput: 8.192 Gbps
+size: 2^11
+[Onebit] size: 2048, compress time: 20 us, compress throughput: 3.2768 Gbps, decompress time: 5 us, decompress throughput: 13.1072 Gbps
+size: 2^12
+[Onebit] size: 4096, compress time: 22 us, compress throughput: 5.95782 Gbps, decompress time: 6 us, decompress throughput: 21.8453 Gbps
+size: 2^13
+[Onebit] size: 8192, compress time: 28 us, compress throughput: 9.36229 Gbps, decompress time: 8 us, decompress throughput: 32.768 Gbps
+size: 2^14
+[Onebit] size: 16384, compress time: 38 us, compress throughput: 13.7971 Gbps, decompress time: 13 us, decompress throughput: 40.3298 Gbps
+size: 2^15
+[Onebit] size: 32768, compress time: 59 us, compress throughput: 17.7725 Gbps, decompress time: 20 us, decompress throughput: 52.4288 Gbps
+size: 2^16
+[Onebit] size: 65536, compress time: 91 us, compress throughput: 23.0456 Gbps, decompress time: 32 us, decompress throughput: 65.536 Gbps
+size: 2^17
+[Onebit] size: 131072, compress time: 155 us, compress throughput: 27.06 Gbps, decompress time: 52 us, decompress throughput: 80.6597 Gbps
+size: 2^18
+[Onebit] size: 262144, compress time: 288 us, compress throughput: 29.1271 Gbps, decompress time: 100 us, decompress throughput: 83.8861 Gbps
+size: 2^19
+[Onebit] size: 524288, compress time: 556 us, compress throughput: 30.1748 Gbps, decompress time: 190 us, decompress throughput: 88.3011 Gbps
+size: 2^20
+[Onebit] size: 1048576, compress time: 1099 us, compress throughput: 30.5318 Gbps, decompress time: 375 us, decompress throughput: 89.4785 Gbps
+size: 2^21
+[Onebit] size: 2097152, compress time: 2218 us, compress throughput: 30.2565 Gbps, decompress time: 742 us, decompress throughput: 90.4432 Gbps
+size: 2^22
+[Onebit] size: 4194304, compress time: 4478 us, compress throughput: 29.9727 Gbps, decompress time: 1456 us, decompress throughput: 92.1825 Gbps
+size: 2^23
+[Onebit] size: 8388608, compress time: 8956 us, compress throughput: 29.9727 Gbps, decompress time: 3089 us, decompress throughput: 86.9004 Gbps
+size: 2^24
+[Onebit] size: 16777216, compress time: 17846 us, compress throughput: 30.0835 Gbps, decompress time: 6330 us, decompress throughput: 84.8137 Gbps
+size: 2^25
+[Onebit] size: 33554432, compress time: 35053 us, compress throughput: 30.632 Gbps, decompress time: 12223 us, decompress throughput: 87.846 Gbps
+size: 2^26
+[Onebit] size: 67108864, compress time: 73655 us, compress throughput: 29.156 Gbps, decompress time: 26167 us, decompress throughput: 82.0684 Gbps
+
+randomk
+3, 4, 6, 11, 21, 36, 68, 132, 308, 538, 1041, 2071, 4905, 8109, 16333, 35766, 
+10.9227, 16.384, 21.8453, 23.8313, 24.9661, 29.1271, 30.8405, 31.775, 27.2357, 31.1844, 32.2329, 32.4041, 27.3635, 33.1034, 32.8703, 30.0213, 
+1, 1, 1, 2, 3, 6, 12, 23, 47, 93, 188, 381, 1176, 4447, 9257, 18585, 
+32.768, 65.536, 131.072, 131.072, 174.763, 174.763, 174.763, 182.361, 178.481, 180.4, 178.481, 176.139, 114.131, 60.3633, 57.9962, 57.7746, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+dgc
+7, 9, 13, 23, 41, 77, 145, 290, 579, 1158, 2262, 4415, 8954, 16192, 32082, 64990, 
+4.68114, 7.28178, 10.0825, 11.3976, 12.7875, 13.6179, 14.4631, 14.4631, 14.4881, 14.4881, 14.834, 15.2002, 14.9897, 16.5783, 16.7343, 16.5216, 
+1, 2, 2, 2, 3, 6, 12, 23, 48, 95, 191, 393, 1553, 4654, 9233, 18471, 
+32.768, 32.768, 65.536, 131.072, 174.763, 174.763, 174.763, 182.361, 174.763, 176.602, 175.678, 170.76, 86.4248, 57.6784, 58.147, 58.1312, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+efsignSGD
+7, 8, 10, 14, 22, 40, 73, 140, 273, 580, 1080, 2195, 4438, 8653, 17293, 34495, 
+4.68114, 8.192, 13.1072, 18.7246, 23.8313, 26.2144, 28.7281, 29.9593, 30.7275, 28.9262, 31.0689, 30.5735, 30.2428, 31.0222, 31.0456, 31.1275, 
+1, 2, 2, 4, 7, 13, 24, 46, 92, 196, 365, 738, 1488, 3032, 6020, 12180, 
+32.768, 32.768, 65.536, 65.536, 74.8983, 80.6597, 87.3813, 91.1805, 91.1805, 85.598, 91.9299, 90.9334, 90.2001, 88.5341, 89.1812, 88.1561, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+onebit
+14, 15, 17, 21, 29, 46, 80, 148, 280, 550, 1085, 2390, 5012, 8833, 17731, 35544, 
+2.34057, 4.36907, 7.71012, 12.483, 18.0789, 22.7951, 26.2144, 28.3399, 29.9593, 30.504, 30.9257, 28.079, 26.7793, 30.3901, 30.2787, 30.2088, 
+3, 3, 4, 6, 9, 15, 25, 47, 91, 176, 342, 746, 1611, 2774, 5768, 11465, 
+10.9227, 21.8453, 32.768, 43.6907, 58.2542, 69.9051, 83.8861, 89.2405, 92.1825, 95.3251, 98.1124, 89.9583, 83.3133, 96.7684, 93.0775, 93.6539, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+randomk
+4, 5, 6, 11, 22, 35, 68, 134, 312, 528, 1056, 2071, 4938, 8187, 16659, 35920, 
+8.192, 13.1072, 21.8453, 23.8313, 23.8313, 29.9593, 30.8405, 31.3008, 26.8866, 31.775, 31.775, 32.4041, 27.1806, 32.788, 32.2271, 29.8926, 
+1, 1, 1, 2, 4, 6, 12, 23, 47, 94, 195, 391, 1222, 4617, 9812, 20275, 
+32.768, 65.536, 131.072, 131.072, 131.072, 174.763, 174.763, 182.361, 178.481, 178.481, 172.074, 171.634, 109.834, 58.1407, 54.7157, 52.9589, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+dgc
+12, 14, 19, 28, 46, 80, 148, 285, 572, 1135, 2256, 4525, 9159, 16214, 33532, 65372, 
+2.73067, 4.68114, 6.89853, 9.36229, 11.3976, 13.1072, 14.1699, 14.7169, 14.6654, 14.7817, 14.8734, 14.8307, 14.6542, 16.5558, 16.0107, 16.4251, 
+4, 4, 4, 5, 6, 8, 14, 25, 50, 101, 202, 413, 934, 4063, 9811, 18864, 
+8.192, 16.384, 32.768, 52.4288, 87.3813, 131.072, 149.797, 167.772, 167.772, 166.111, 166.111, 162.491, 143.702, 66.0683, 54.7213, 56.9202, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+efsignSGD
+15, 15, 18, 22, 30, 48, 80, 148, 283, 617, 1090, 2180, 4450, 8933, 18544, 34653, 
+2.18453, 4.36907, 7.28178, 11.9156, 17.4763, 21.8453, 26.2144, 28.3399, 29.6417, 27.1916, 30.7839, 30.7839, 30.1613, 30.0499, 28.9512, 30.9855, 
+4, 4, 6, 7, 10, 17, 27, 54, 105, 198, 371, 745, 1482, 2996, 6434, 12131, 
+8.192, 16.384, 21.8453, 37.4491, 52.4288, 61.6809, 77.6723, 77.6723, 79.8915, 84.7334, 90.4432, 90.079, 90.5653, 89.5979, 83.4428, 88.5122, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+onebit
+16, 17, 20, 24, 32, 50, 83, 149, 283, 557, 1088, 2200, 5852, 8840, 17320, 36524, 
+2.048, 3.85506, 6.5536, 10.9227, 16.384, 20.9715, 25.2669, 28.1497, 29.6417, 30.1207, 30.8405, 30.504, 22.9354, 30.366, 30.9972, 29.3983, 
+4, 4, 5, 7, 9, 16, 27, 50, 91, 177, 343, 689, 1894, 2736, 5654, 11762, 
+8.192, 16.384, 26.2144, 37.4491, 58.2542, 65.536, 77.6723, 83.8861, 92.1825, 94.7865, 97.8263, 97.4004, 70.8647, 98.1124, 94.9542, 91.2891, 
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+randomk
+[6525, 2356, 882, 3567, 3253, 3820, 2381, 8407, 506, 1529, 1251, 4074, 8896, 9277, 19929, 41320, ]
+0.00502192, 0.0278166, 0.148608, 0.0734914, 0.161171, 0.274496, 0.880786, 0.498906, 16.5783, 10.9727, 26.8221, 16.4725, 15.0874, 28.9356, 26.9392, 25.986, ]
+9, 6, 7, 10, 14, 23, 32, 46, 96, 188, 844, 1839, 3030, 6557, 13533, 22044, ]
+3.64089, 10.9227, 18.7246, 26.2144, 37.4491, 45.5903, 65.536, 91.1805, 87.3813, 89.2405, 39.7564, 36.492, 44.2963, 40.9388, 39.6712, 48.709, ]
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+dgc
+[4505, 4574, 6140, 3182, 1185, 1048, 2377, 2481, 2555, 3102, 5492, 8236, 18156, 28450, 58420, 111588, ]
+0.0072737, 0.0143279, 0.0213472, 0.0823834, 0.442437, 1.00055, 0.882268, 1.69057, 3.28321, 5.40852, 6.10969, 8.14824, 7.39247, 9.43534, 9.18985, 9.62238, ]
+5, 6, 10, 5, 7, 7, 13, 36, 70, 237, 702, 1321, 3033, 4788, 10821, 24433, ]
+6.5536, 10.9227, 13.1072, 52.4288, 74.8983, 149.797, 161.319, 116.508, 119.837, 70.7899, 47.7983, 50.8016, 44.2525, 56.0642, 49.6138, 43.9464, ]
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+efsignSGD
+[2540, 2521, 2584, 1661, 47, 1824, 7909, 4148, 1242, 3061, 1799, 3370, 4883, 11063, 17627, 38359, ]
+0.0129008, 0.025996, 0.0507245, 0.157823, 11.1551, 0.574877, 0.26516, 1.01116, 6.75411, 5.48096, 18.6517, 19.9136, 27.4867, 24.2643, 30.4573, 27.9919, ]
+7, 10, 9, 14, 26, 44, 32, 63, 122, 199, 526, 941, 1872, 3821, 5914, 13468, ]
+4.68114, 6.5536, 14.5636, 18.7246, 20.1649, 23.8313, 65.536, 66.5763, 68.7591, 84.3076, 63.7917, 71.3165, 71.6975, 70.2527, 90.7797, 79.7254, ]
+size: 2^10
+size: 2^11
+size: 2^12
+size: 2^13
+size: 2^14
+size: 2^15
+size: 2^16
+size: 2^17
+size: 2^18
+size: 2^19
+size: 2^20
+size: 2^21
+size: 2^22
+size: 2^23
+size: 2^24
+size: 2^25
+onebit
+[3253, 1377, 25, 2605, 226, 2260, 3685, 6135, 4548, 644, 1967, 3408, 6390, 10301, 19451, 35744, ]
+0.0100732, 0.0475933, 5.24288, 0.100631, 2.31986, 0.463972, 0.569105, 0.683668, 1.84446, 26.0516, 17.0587, 19.6916, 21.0043, 26.0592, 27.6012, 30.0398, ]
+3, 10, 11, 11, 23, 30, 32, 44, 109, 191, 375, 816, 1601, 2868, 6715, 11598, ]
+10.9227, 6.5536, 11.9156, 23.8313, 22.7951, 34.9525, 65.536, 95.3251, 76.9597, 87.8388, 89.4785, 82.2413, 83.8337, 93.5967, 79.951, 92.5799, ]

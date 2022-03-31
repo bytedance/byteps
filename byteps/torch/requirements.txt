@@ -1,0 +1,7 @@
+tensorboardX
+numpy
+cupy-cuda111
+tqdm
+requests
+scipy
+six
