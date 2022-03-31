@@ -14,15 +14,16 @@
 // limitations under the License.
 // =============================================================================
 
+#if HAVE_CUDA
+#include <c10/cuda/CUDAStream.h>
+#include <c10/cuda/CUDAException.h>
+#endif
+
 #include <torch/extension.h>
 #include <torch/torch.h>
 #include <chrono>
 #include <memory>
 #include <thread>
-
-#include <c10/cuda/CUDAStream.h>
-#include <caffe2/core/common_gpu.h>
-#include <ATen/cuda/CUDAContext.h>
 
 #include "../common/operations.h"
 #include "../common/local_operations.h"
@@ -36,12 +37,6 @@
 #define DC_BLOCK_SIZE (256)
 #define DC_GRID_SIZE (32)
 #define DC_GROUP_SIZE (64)
-
-#if TORCH_VERSION < 1005000000
-#if HAVE_CUDA
-extern THCState* state;
-#endif
-#endif
 
 namespace byteps {
 namespace torch {
@@ -149,13 +144,11 @@ void StartTask(::torch::Tensor tensor, ::torch::Tensor output, int average,
       [handle, average, tensor, output](const Status& status) mutable {
         // Will execute in the `device` context.
         if (average) {
-#if TORCH_VERSION >= 1005000000
           if (isIntegralType(output.scalar_type())) {
             output.floor_divide_(byteps_size());
             handle_manager.MarkDone(handle, status);
             return;
           }
-#endif
           output.div_(byteps_size());
         }
         handle_manager.MarkDone(handle, status);
@@ -401,11 +394,7 @@ int BatchedFuse(const std::vector<::torch::Tensor> input_tensors,
     std::cerr << "!!!!! total_len " << total_len << " dst_len " << dst_len << std::endl;
     raise(SIGSEGV);
   }
-#if TORCH_VERSION >= 1005000000
   auto curr_stream = c10::cuda::getCurrentCUDAStream();
-#else
-  auto curr_stream = THCState_getCurrentStream(state);
-#endif
   MemcpyInFusionBuffer(src, dst, curr_stream);
   return 0;
 }
@@ -430,12 +419,8 @@ int BatchedUnfuse(const ::torch::Tensor fused_input_tensor,
     std::cerr << "!!!!! total_len " << total_len << " src_len " << src_len << std::endl;
     raise(SIGSEGV);
   }
-#if TORCH_VERSION >= 1005000000
   auto curr_stream = c10::cuda::getCurrentCUDAStream();
   cudaStream_t curr_stream_t = curr_stream.stream();
-#else
-  auto curr_stream_t = THCState_getCurrentStream(state);
-#endif
   MemcpyOutFusionBuffer(src, dst, curr_stream_t);
   return 0;
 }
@@ -452,12 +437,8 @@ int BatchedZeroOut(std::vector<::torch::Tensor> output_tensors) {
     dst.push_back(std::move(bps_dst));
   }
 
-#if TORCH_VERSION >= 1005000000
   auto curr_stream = c10::cuda::getCurrentCUDAStream();
   cudaStream_t curr_stream_t = curr_stream.stream();
-#else
-  auto curr_stream_t = THCState_getCurrentStream(state);
-#endif
   ZeroOutTensors(dst, curr_stream_t);
   return 0;
 }
@@ -476,12 +457,8 @@ int DelayCompensation(std::vector<::torch::Tensor> params, std::vector<::torch::
     d_prev_params.push_back(std::move(bps_prev_param));
   }
 
-#if TORCH_VERSION >= 1005000000
   auto curr_stream = c10::cuda::getCurrentCUDAStream();
   cudaStream_t curr_stream_t = curr_stream.stream();
-#else
-  auto curr_stream_t = THCState_getCurrentStream(state);
-#endif
   CompensateGrads(d_params, d_grads, d_prev_params, lambda, curr_stream_t);
   return 0;
 }
@@ -504,12 +481,8 @@ int DCAdam(std::vector<::torch::Tensor> params, std::vector<::torch::Tensor> gra
     d_exp_avg_sqs.push_back(std::make_shared<TorchTensor>(exp_avg_sqs[i]));
   }
 
-#if TORCH_VERSION >= 1005000000
   auto curr_stream = c10::cuda::getCurrentCUDAStream();
   cudaStream_t curr_stream_t = curr_stream.stream();
-#else
-  auto curr_stream_t = THCState_getCurrentStream(state);
-#endif
   DCAdamLocalOp(d_params, d_grads, d_prev_params, dc_lambda,
                   d_exp_avgs, d_exp_avg_sqs, steps, lr, eps, weight_decay,
                   beta1, beta2, curr_stream_t);

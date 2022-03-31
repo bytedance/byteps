@@ -17,12 +17,6 @@
 #ifndef BYTEPS_TORCH_OPS_H
 #define BYTEPS_TORCH_OPS_H
 
-#include <TH/TH.h>
-
-#if HAVE_CUDA
-#include <THC/THC.h>
-#endif
-
 #include "../common/operations.h"
 
 namespace byteps {
@@ -35,64 +29,6 @@ std::mutex mutex_;
 size_t num_grads_;
 /* number of push-pulls that have been triggered */
 size_t grad_count_;
-
-#define PUSHPULL_H(torch_Tensor, THTensor)                         \
-  extern "C" int byteps_torch_push_pull_async_##torch_Tensor(      \
-      THTensor* tensor, THTensor* output, int average, char* name, \
-      int version, int priority);
-
-#define SEND_H(torch_Tensor, THTensor)                         \
-  extern "C" int byteps_torch_send_async_##torch_Tensor(      \
-      THTensor* tensor, int sender, int receiver, char* name, \
-      int version, int priority);
-
-#define RECV_H(torch_Tensor, THTensor)                         \
-  extern "C" int byteps_torch_recv_async_##torch_Tensor(      \
-      THTensor* tensor, int sender, int receiver, char* name, \
-      int version, int priority);
-
-#define ALLGATHER_H(torch_Tensor, THTensor)                         \
-  extern "C" int byteps_torch_allgather_async_##torch_Tensor(      \
-      THTensor* tensor, THTensor* output, int average, char* name, \
-      int version, int priority);
-
-PUSHPULL_H(torch_ByteTensor, THByteTensor)
-PUSHPULL_H(torch_IntTensor, THIntTensor)
-PUSHPULL_H(torch_LongTensor, THLongTensor)
-PUSHPULL_H(torch_FloatTensor, THFloatTensor)
-PUSHPULL_H(torch_DoubleTensor, THDoubleTensor)
-
-SEND_H(torch_FloatTensor, THFloatTensor)
-SEND_H(torch_LongTensor, THLongTensor)
-SEND_H(torch_BoolTensor, THBoolTensor)
-RECV_H(torch_FloatTensor, THFloatTensor)
-RECV_H(torch_LongTensor, THLongTensor)
-RECV_H(torch_BoolTensor, THBoolTensor)
-
-ALLGATHER_H(torch_ByteTensor, THByteTensor)
-ALLGATHER_H(torch_BoolTensor, THBoolTensor)
-ALLGATHER_H(torch_IntTensor, THIntTensor)
-ALLGATHER_H(torch_LongTensor, THLongTensor)
-ALLGATHER_H(torch_FloatTensor, THFloatTensor)
-ALLGATHER_H(torch_DoubleTensor, THDoubleTensor)
-
-#if HAVE_CUDA
-PUSHPULL_H(torch_cuda_ByteTensor, THCudaByteTensor)
-PUSHPULL_H(torch_cuda_IntTensor, THCudaIntTensor)
-PUSHPULL_H(torch_cuda_LongTensor, THCudaLongTensor)
-PUSHPULL_H(torch_cuda_FloatTensor, THCudaTensor)
-PUSHPULL_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
-
-SEND_H(torch_cuda_FloatTensor, THCudaTensor)
-RECV_H(torch_cuda_FloatTensor, THCudaTensor)
-
-ALLGATHER_H(torch_cuda_ByteTensor, THCudaByteTensor)
-ALLGATHER_H(torch_cuda_BoolTensor, THCudaBoolTensor)
-ALLGATHER_H(torch_cuda_IntTensor, THCudaIntTensor)
-ALLGATHER_H(torch_cuda_LongTensor, THCudaLongTensor)
-ALLGATHER_H(torch_cuda_FloatTensor, THCudaTensor)
-ALLGATHER_H(torch_cuda_DoubleTensor, THCudaDoubleTensor)
-#endif
 
 extern "C" int byteps_torch_poll(int handle);
 extern "C" void byteps_torch_wait_and_clear(int handle, bool busy_wait);

@@ -58,11 +58,7 @@ const TensorShape TorchTensor::shape() const {
 const void* TorchTensor::data() const { return tensor_.data_ptr(); }
 
 int64_t TorchTensor::size() const {
-#if TORCH_VERSION >= 1001000000
   return tensor_.element_size() * tensor_.numel();
-#else
-  return tensor_.type().elementSizeInBytes() * tensor_.numel();
-#endif
 }
 
 void TorchTensor::resize(const common::TensorShape&) {

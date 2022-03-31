@@ -15,7 +15,10 @@ torch.backends.cudnn.deterministic = True
 torch.manual_seed(0) # sets the seed for generating random numbers.
 torch.cuda.manual_seed(0) # Sets the seed for generating random numbers for the current GPU. It’s safe to call this function if CUDA is not available; in that case, it is silently ignored.
 torch.cuda.manual_seed_all(0) # Sets the seed for generating random numbers on all GPUs. It’s safe to call this function if CUDA is not available; in that case, it is silently ignored.
-torch.set_deterministic(True)
+try:
+    torch.use_deterministic_algorithms(True)
+except AttributeError:
+    torch.set_deterministic(True)
 
 class LeNet5(nn.Module):
    def __init__(self):

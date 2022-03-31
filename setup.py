@@ -432,6 +432,7 @@ def build_server(build_ext, options):
     if use_cuda():
         cuda_include_dirs, cuda_lib_dirs = get_cuda_dirs(
             build_ext, options['COMPILE_FLAGS'])
+        # server_lib.define_macros += [('HAVE_CUDA', '1'), ('BYTEPS_BUILDING_CUDA', '1')]
         server_lib.define_macros += [('HAVE_CUDA', '1')]
         server_lib.include_dirs += cuda_include_dirs
         server_lib.library_dirs += cuda_lib_dirs
@@ -931,7 +932,7 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
         from torch.utils.cpp_extension import include_paths
         test_compile(build_ext, 'test_torch_cuda', include_dirs=include_dirs + include_paths(cuda=True),
                      extra_compile_preargs=extra_compile_args, code=textwrap.dedent('''\
-            #include <THC/THC.h>
+            // #include <THC/THC.h>
             void test() {
             }
             '''))
@@ -944,6 +945,7 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
 def build_torch_extension(build_ext, options, torch_version):
     pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
                              else flag for flag in options['COMPILE_FLAGS']]
+    pytorch_compile_flags += ['-Wno-error=terminate']
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
                               extra_compile_args=pytorch_compile_flags)
     if not have_cuda and check_macro(options['MACROS'], 'HAVE_CUDA'):
@@ -962,8 +964,8 @@ def build_torch_extension(build_ext, options, torch_version):
 
     # Export TORCH_VERSION equal to our representation of torch.__version__. Internally it's
     # used for backwards compatibility checks.
-    updated_macros = set_macro(
-       updated_macros, 'TORCH_VERSION', str(torch_version))
+    # updated_macros = set_macro(
+    #    updated_macros, 'TORCH_VERSION', str(torch_version))
 
     # Always set _GLIBCXX_USE_CXX11_ABI, since PyTorch can only detect whether it was set to 1.
     import torch
