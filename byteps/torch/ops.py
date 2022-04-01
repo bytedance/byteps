@@ -420,6 +420,10 @@ def batched_fuse_(src_tensors, dst_tensor):
     Returns:
         0
     """
+    src_tensors = [item for item in src_tensors if item is not None]
+    if not src_tensors:
+        return 0
+
     from byteps.torch import c_lib
     if dst_tensor.is_cuda:
         function = _check_function(_batched_fuse_function_factory, dst_tensor)
@@ -448,6 +452,10 @@ def batched_unfuse_(src_tensor, dst_tensors):
     Returns:
         0
     """
+    dst_tensors = [item for item in dst_tensors if item is not None]
+    if not dst_tensors:
+        return 0
+
     from byteps.torch import c_lib
     if src_tensor.is_cuda:
         function = _check_function(_batched_unfuse_function_factory, src_tensor)
@@ -470,6 +478,10 @@ def batched_zero_(tensors):
     Returns:
         0
     """
+    tensors = [item for item in tensors if item is not None]
+    if not tensors:
+        return 0
+
     from byteps.torch import c_lib
     assert isinstance(tensors, list), type(tensors)
     if tensors[0].is_cuda:

@@ -415,7 +415,7 @@ int BatchedUnfuse(const ::torch::Tensor fused_input_tensor,
   auto bps_src = std::make_shared<TorchTensor>(fused_input_tensor);
   size_t src_len = bps_src->size();
   src = (char *) bps_src->data();
-  if ((int) total_len < (int) src_len) {
+  if ((int) total_len > (int) src_len) {
     std::cerr << "!!!!! total_len " << total_len << " src_len " << src_len << std::endl;
     raise(SIGSEGV);
   }
