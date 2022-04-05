@@ -485,9 +485,9 @@ def check_tf_version():
     if LooseVersion(tf.__version__) < LooseVersion('2.0.0'):
         tf_gpu_path = tf.sysconfig.get_include() + '/tensorflow/core/common_runtime/gpu/'
         tf_version = tf.__version__
-        wget_cmd = f'mkdir -p {tf_gpu_path} && ' + \
-                   f'wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_util.h -P {tf_gpu_path} && ' + \
-                   f'wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_process_state.h -P {tf_gpu_path}'
+        wget_cmd = f'sudo mkdir -p {tf_gpu_path} && ' + \
+                   f'sudo wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_util.h -P {tf_gpu_path} && ' + \
+                   f'sudo wget https://raw.githubusercontent.com/tensorflow/tensorflow/v{tf_version}/tensorflow/core/common_runtime/gpu/gpu_process_state.h -P {tf_gpu_path}'
         wget_process = subprocess.Popen(wget_cmd,
                                         cwd='.',
                                         stdout=sys.stdout,
