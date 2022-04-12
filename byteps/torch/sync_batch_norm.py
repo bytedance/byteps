@@ -15,7 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from byteps.torch.ops import push_pull_async, size, rank, synchronize
+from byteps.torch.ops import allgather_async, push_pull_async, size, rank, synchronize
 
 from distutils.version import LooseVersion
 
@@ -97,42 +97,60 @@ class SyncBatchNorm(_BatchNorm):
         else:
             return self._maybe_run_sync_bn(input)
 
+    @classmethod
+    def convert_sync_batchnorm(cls, module):
+        '''
+        Recursively traverse module and its children to replace all instances of
+        ``torch.nn.modules.batchnorm._BatchNorm`` with :class:`bps.parallel.SyncBatchNorm`.
+        All ``torch.nn.BatchNorm*N*d`` wrap around
+        ``torch.nn.modules.batchnorm._BatchNorm``, so this function lets you easily switch
+        to use sync BN.
+        Args:
+            module (torch.nn.Module): input module
+        Example::
+            >>> # model is an instance of torch.nn.Module
+            >>> import byteps.torch as bps
+            >>> sync_bn_model = bps.SyncBatchNorm.convert_sync_batchnorm(model)
+        '''
+        mod = module
+        if isinstance(module, torch.nn.modules.instancenorm._InstanceNorm):
+            return module
+        if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+            mod = cls(module.num_features,
+                                module.eps,
+                                module.momentum,
+                                module.affine,
+                                module.track_running_stats)
+            mod.running_mean = module.running_mean
+            mod.running_var = module.running_var
+            mod.num_batches_tracked = module.num_batches_tracked
+            if module.affine:
+                mod.weight.data = module.weight.data.clone().detach()
+                mod.bias.data = module.bias.data.clone().detach()
+        for name, child in module.named_children():
+            mod.add_module(name, cls.convert_sync_batchnorm(child))
+        # TODO(jie) should I delete model explicitly?
+        del module
+        return mod
 
 class _SyncBatchNorm(Function):
     @staticmethod
     def forward(self, input, weight, bias, running_mean, running_var, eps, momentum):
         input = input.contiguous()
-        weight = weight.contiguous()
 
         my_size = input.numel() // input.size(1)
-        blown_up_size = [0] * size()
-        blown_up_size[rank()] = my_size
-        count = torch.tensor(blown_up_size)
+        count = torch.tensor([my_size]).cuda()
 
         # calculate mean/invstd for input.
         mean, invstd = torch.batch_norm_stats(input, eps)
-        blown_up_mean = []
-        for i in range(size()):
-            if i == rank():
-                blown_up_mean.append(mean)
-            else:
-                blown_up_mean.append(torch.zeros_like(mean))
-        mean = torch.stack(blown_up_mean, dim=0)
 
-        blown_up_invstd = []
-        for i in range(size()):
-            if i == rank():
-                blown_up_invstd.append(invstd)
-            else:
-                blown_up_invstd.append(torch.zeros_like(invstd))
-        invstd = torch.stack(blown_up_invstd, dim=0)
-
+        shape_list = []
         name_count = 'sync_batch_norm.count.' + str(torch.numel(count)) + '.' + str(count.dtype)
         name_mean = 'sync_batch_norm.mean.' + str(torch.numel(mean)) + '.' + str(mean.dtype)
         name_invstd = 'sync_batch_norm.invstd.' + str(torch.numel(invstd)) + '.' + str(invstd.dtype)
-        count_handle = push_pull_async(count, average=False, name=name_count)
-        mean_handle = push_pull_async(mean.unsqueeze(0), average=False, name=name_mean)
-        invstd_handle = push_pull_async(invstd.unsqueeze(0), average=False, name=name_invstd)
+        count_handle = allgather_async(count, shape_list=shape_list, name=name_count)
+        mean_handle = allgather_async(mean.unsqueeze(0), shape_list=shape_list, name=name_mean)
+        invstd_handle = allgather_async(invstd.unsqueeze(0), shape_list=shape_list, name=name_invstd)
         # wait on the async communication to finish
         count_all = synchronize(count_handle)
         mean_all = synchronize(mean_handle)
@@ -144,8 +162,6 @@ class _SyncBatchNorm(Function):
             # backwards compatibility
             counts_for_bngswc = count_all.view(-1).tolist()
 
-        mean_all = mean_all.squeeze()
-        invstd_all = invstd_all.squeeze()
         # calculate global mean & invstd
         mean, invstd = torch.batch_norm_gather_stats_with_counts(
             input,
@@ -158,7 +174,6 @@ class _SyncBatchNorm(Function):
             counts_for_bngswc
         )
 
-        # self.save_for_backward(input, weight, mean, invstd, count_all.to(torch.int32))
         self.save_for_backward(input, weight, mean, invstd, count_all)
 
         # apply element-wise normalization
