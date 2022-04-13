@@ -121,6 +121,7 @@ class DistributedDataParallel(Module):
 
         >>> net = torch.nn.DistributedDataParallel(model, device_ids=[2])
     """
+    _idx = 0
     def __init__(self, module, device_ids=None,
             broadcast_buffers=True,
             compression=Compression.none,
@@ -129,6 +130,8 @@ class DistributedDataParallel(Module):
             *args, **kwargs
             ):
         super(DistributedDataParallel, self).__init__()
+        self._idx = DistributedDataParallel._idx
+        DistributedDataParallel._idx += 1
 
         if device_ids is None:
             self.device_ids = None
@@ -140,6 +143,8 @@ class DistributedDataParallel(Module):
         self.module = module
         self.broadcast_buffers = broadcast_buffers
         self.require_forward_param_sync = broadcast_buffers
+        if os.getenv('BYTEPS_SKIP_SYNC_PARAMS', '0') in ['1']:
+            self.require_forward_param_sync = False
         self._handles = {}
         self._grad_accs = []
         self._requires_update = set()
@@ -203,10 +208,15 @@ class DistributedDataParallel(Module):
         self._trainable_params = [p for _, p in named_params if p.requires_grad]
         named_params = self.module.named_parameters()
         self._num_grads = sum(p.requires_grad for _, p in named_params)
+        self._bucket_cap_mb = bucket_cap_mb
+        bucket_cap_mb_override = os.getenv('BYTEPS_BUCKET_CAP_MB', '').strip()
+        if len(bucket_cap_mb_override):
+            self._bucket_cap_mb = int(bucket_cap_mb_override)
+
         if size() > 1:
-            if bucket_cap_mb > 0:
+            if self._bucket_cap_mb > 0:
                 self._enable_tensor_fusion = True
-                os.environ['BYTEPS_BUCKET_SIZE_BYTES'] = str(bucket_cap_mb * 1024 * 1024)
+                os.environ['BYTEPS_BUCKET_SIZE_BYTES'] = str(self._bucket_cap_mb * 1024 * 1024)
                 self._grad_fusion = _GradFusion(module, self)
                 self._num_grads = self._grad_fusion.size()
             elif find_unused_parameters:
@@ -224,11 +234,24 @@ class DistributedDataParallel(Module):
         # broadcast model state
         module_states = list(self.module.state_dict().values())
         if len(module_states) > 0:
-            bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
+            bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0, prefix=f'idx.{self._idx}.state_dict.')
 
         print("Using the BytePS DistributedDataParallel Module")
         self._step = -1
         self._empty_cache = os.getenv("BYTEPS_TORCH_CUDA_EMPTY_CACHE") in ["1"]
+        if broadcast_buffers and not self.require_forward_param_sync and local_rank() == 0:
+            print(f'The following model buffers will NOT be broadcast:')
+            self._print_named_buffers()
+
+    def _print_named_buffers(self):
+        print(f"named buffers in model idx {self._idx}")
+        for name, buf in self.module.named_buffers():
+            print(f'  {name}')
+
+    def _print_module_names(self):
+        print(f"layers in model idx {self._idx}")
+        for midx, m in enumerate(self.module.modules()):
+            print('  ', midx, '->', m)
 
     def _get_param_name(self, p):
         """Get the name of a parameter."""
@@ -283,7 +306,7 @@ class DistributedDataParallel(Module):
             if self.broadcast_buffers and len(self.modules_buffers[0]) > 0:
                 # Synchronize buffers across processes.
                 # The process with rank 0 is considered the authoritative copy.
-                bps.torch.broadcast_parameters(list(self.module.named_buffers()), root_rank=0)
+                bps.torch.broadcast_parameters(list(self.module.named_buffers()), root_rank=0, prefix=f'idx.{self._idx}.sync_params.')
         torch.cuda.nvtx.range_pop()
 
     def _register_hooks(self):
@@ -308,7 +331,7 @@ class DistributedDataParallel(Module):
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
             handle, grad_count = byteps_push_pull_group(tensor_compressed, average=True,
-                    name="Gradient."+name)
+                    name=f"idx.{self._idx}.Gradient."+name)
         return handle, ctx, grad_count
 
     def _push_pull_grad_async(self, p):
@@ -335,7 +358,7 @@ class DistributedDataParallel(Module):
                 handle, ctx, grad_count = self._push_pull_grad_group_sync(p, num_grads)
                 self._handles[p] = (handle, ctx)
                 # sync if we have processed all gradients
-                if grad_count == self._num_grads:
+                if len(self._handles) == self._num_grads:
                     self._synchronize()
         return hook
 
@@ -351,13 +374,8 @@ class DistributedDataParallel(Module):
 
     def _normal_synchronize(self):
         missing_p = self._requires_update - set(self._handles.keys())
-        for p in missing_p:
-            if type(p.grad) == type(None):
-                continue
-
-            assert False, "This should never be reached."
-            handle, ctx, grad_count = self._push_pull_grad_group_sync(p, self._num_grads)
-            self._handles[p] = (handle, ctx)
+        assert len(self._handles.keys()) == self._num_grads, \
+                f'model_idx {self._idx}, num_handles {len(self._handles.keys())}, _num_grads {self._num_grads}'
 
         for p, value in self._handles.items():
             handle, ctx = value

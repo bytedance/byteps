@@ -106,10 +106,13 @@ class Bucket:
                 len(self.ready_param_idx) == len(self.param_idx))
 
 class _GradFusion:
+    _idx = 0
     ''' implements gradient fusion during gradients reduction'''
     def __init__(self, model, optimizer):
         self._optim = optimizer
         self._init_tensor_fusion(model)
+        self._idx = _GradFusion._idx
+        _GradFusion._idx += 1
 
     def _init_tensor_fusion(self, model, **kwargs):
         self._fwd_handle = model.register_forward_hook(self._model_post_fwd_hook)
@@ -223,7 +226,7 @@ class _GradFusion:
         for i, bucket in enumerate(self.buckets):
             for param_idx in bucket.param_idx:
                 self.param_bucket_info[param_idx][0] = i
-            bucket.name = "Bucket.{}.step.{}".format(i, self.num_successful_step)
+            bucket.name = "idx.{}.Bucket.{}.step.{}".format(self._idx, i, self.num_successful_step)
             declare(bucket.name) # declare tensors
         if rank() == 0:
             print("=================")
@@ -318,7 +321,7 @@ class _GradFusion:
         name = "reorder_idx." + str(self.num_successful_step)
         if torch.cuda.is_available():
             idx_tensor = idx_tensor.to(device='cuda')
-        bcast_param_indices([(name, idx_tensor)], root_rank=0, prefix="Reorder_params.")
+        bcast_param_indices([(name, idx_tensor)], root_rank=0, prefix=f"idx.{self._idx}.Reorder_params.")
         idx_tensor = idx_tensor.to(device='cpu')
         if rank() != 0:
             param_idx = idx_tensor.tolist()
