@@ -198,7 +198,7 @@ def send_async(tensor, receiver, name=None, version=0, priority=0):
     """
     return _do_send_async(tensor, receiver, name, version, priority)
 
-def allgather_async(tensor, shape_list=None, name=None, version=0, priority=0):
+def allgather_async(input, output=None, shape_list=None, name=None, version=0, priority=0):
     """
     A function that asynchronously concatenates the input tensor over all 
     the BytePS processes. The input tensor is not modified. If name is not 
@@ -209,20 +209,23 @@ def allgather_async(tensor, shape_list=None, name=None, version=0, priority=0):
     to be different. The allgather will not start until all processes are ready 
     to send and receive the tensor.
     Arguments:
-        tensor: A tensor to allgather.
+        input: A tensor to allgather.
+        output: A tensor of output provided by the user.
         name: A name of the allgather operation.
     Returns:
         A handle to the allgather operation that can be used with `poll()` or
         `synchronize()`.
     """
-    shape = list(tensor.shape)
+    shape = list(input.shape)
     if not shape_list:
         shape[0] *= size()
     else:
         shape[0] = sum(shape_list)
 
-    output = tensor.new(torch.Size(shape))
-    return _do_allgather_async(tensor, output, shape_list, name, version, priority, staleness=0)
+    if output is None:
+        output = input.new(torch.Size(shape))
+
+    return _do_allgather_async(input, output, shape_list, name, version, priority, staleness=0)
 
 class BytePSPushPull(torch.autograd.Function):
     """An autograd function that performs push_pull on a tensor."""
@@ -324,13 +327,13 @@ class BytePSAllgather(torch.autograd.Function):
     """An autograd function that performs allgather on a tensor."""
 
     @staticmethod
-    def forward(ctx, tensor, shape_list, name, version, priority):
-        ctx.dim = tensor.shape[0]
+    def forward(ctx, input, output, shape_list, name, version, priority):
+        ctx.dim = input.shape[0]
         ctx.shape_list = shape_list
         ctx.name = name
         ctx.version = version
         ctx.priority = priority
-        handle = allgather_async(tensor, shape_list, name, version, priority)
+        handle = allgather_async(input, output, shape_list, name, version, priority)
         return synchronize(handle)
 
     @staticmethod
@@ -344,10 +347,10 @@ class BytePSAllgather(torch.autograd.Function):
         else:
             offset = sum(ctx.shape_list[0:r])
 
-        return grad_reduced.narrow(0, offset, ctx.dim), None, None, None, None
+        return grad_reduced.narrow(0, offset, ctx.dim), None, None, None, None, None
 
 
-def allgather(tensor, same_shape=True, name=None, version=0, priority=0):
+def allgather(input, output=None, same_shape=True, name=None, version=0, priority=0):
     """
     A function that asynchronously concatenates the input tensor over all 
     the BytePS processes. The input tensor is not modified. The name must be provided.  
@@ -360,7 +363,8 @@ def allgather(tensor, same_shape=True, name=None, version=0, priority=0):
     tensor requires gradients, then callings this function will allow gradients
     to be computed and backpropagated.
     Arguments:
-        tensor: A tensor to allgather.
+        input: A tensor to allgather.
+        output: A tensor of output provided by the user.
         same_shape: Whether the tensor is with the same shape over all ranks or not.
         name: A name of the allgather operation.
         compression: Compression algorithm used during allgather to reduce the amount
@@ -375,21 +379,21 @@ def allgather(tensor, same_shape=True, name=None, version=0, priority=0):
     if name == None:
         raise AssertionError("To manually call allgather, you must specify a name by name=...")
     
-    if len(tensor.shape) == 0:
-        tensor = torch.unsqueeze(tensor, 0)
+    if len(input.shape) == 0:
+        input = torch.unsqueeze(input, 0)
 
     shape_list = []
     if same_shape == False:
         name += "_V"
 
-        d = torch.tensor([tensor.shape[0]], device=torch.device('cuda'))
-        shape_list = BytePSAllgather.apply(d, shape_list, name + "_shape_list", version, priority).tolist()
+        d = torch.tensor([input.shape[0]], device=torch.device('cuda'))
+        shape_list = BytePSAllgather.apply(d, None, shape_list, name + "_shape_list", version, priority).tolist()
 
         is_equal = not shape_list or shape_list.count(shape_list[0]) == len(shape_list)
         if is_equal:
             shape_list = []
 
-    return BytePSAllgather.apply(tensor, shape_list, name, version, priority)
+    return BytePSAllgather.apply(input, output, shape_list, name, version, priority)
 
 def poll(handle):
     """

@@ -78,6 +78,22 @@ class TorchTests:
                 gathered = bps.allgather(tensor, same_shape=same_shape, name=f'allgather_{dtype}_{dim}_{device}_iter_{iter}')
                 self.validate_allgather(gathered, shape, dtype, device)
 
+    def test_byteps_allgather_with_output(self):
+        """Test on GPU that the allgather_with_output correctly runs on 1D, 2D, 3D tensors."""
+        dtypes = [torch.bool, torch.float32]
+        dims = [1, 2, 3]
+        device = self.current_context()
+
+        for iter in range(args.iter):
+            for dtype, dim in itertools.product(dtypes, dims):
+                shape = [10] * dim
+                output = [torch.zeros(shape if same_shape else [shape[0] + i] + shape[1:], dtype=dtype, device=device)
+                    for i in range(self.size)]
+                output = torch.cat(output, 0)
+                input = self.random(self.rank, shape if same_shape else [shape[0] + self.rank] + shape[1:], dtype, device)
+                bps.allgather(input, output, same_shape=same_shape, name=f'allgather_with_output_{dtype}_{dim}_{device}_iter_{iter}')
+                self.validate_allgather(output, shape, dtype, device)
+
     def validate_allreduce(self, reduced, shape, dtype, device):
         golden = [self.random(i, shape, dtype, device)
             for i in range(self.size)]
@@ -147,10 +163,12 @@ class TorchTests:
                 loss.backward(loss_grad)
                 self.validate_allgather_autograd(x.grad, shape, dtype, device)
 
+
 tests = TorchTests()
 for i in range(2):
     print(f"Test allgaher, same_shape is ", same_shape, flush=True)
     tests.test_byteps_allgather()
+    tests.test_byteps_allgather_with_output()
     tests.test_byteps_mix_allgather_allreduce()
     tests.test_allgather_autograd()
     same_shape = False
