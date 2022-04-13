@@ -89,6 +89,8 @@ std::vector<std::thread*> BytePSGlobal::_threads;
 std::unique_ptr<std::thread> BytePSGlobal::_server_thread;
 // features
 bool BytePSGlobal::_disable_p2p = false;
+bool BytePSGlobal::_disable_send_recv = false;
+bool BytePSGlobal::_disable_compress = true;
 bool BytePSGlobal::_disable_cpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allreduce = false;
 bool BytePSGlobal::_disable_gpu_allgather = false;
@@ -201,6 +203,8 @@ void BytePSGlobal::Init() {
   _is_alltoall_use_pull = ParseEnv("BYTEPS_ALL2ALL_USE_PULL", false);
   _monitor_interval = getenv("BYTEPS_MONITOR_INTERVAL") ? atoi(getenv("BYTEPS_MONITOR_INTERVAL")) : 300;
   _disable_p2p = ParseEnv("BYTEPS_DISABLE_P2P", false);
+  _disable_send_recv = ParseEnv("BYTEPS_DISABLE_SEND_RECV", false);
+  _disable_compress = ParseEnv("BYTEPS_DISABLE_COMPRESS", true);
   _disable_cpu_allreduce = ParseEnv("BYTEPS_DISABLE_CPU_ALLREDUCE", false);
   _disable_gpu_allreduce = ParseEnv("BYTEPS_DISABLE_GPU_ALLREDUCE", false);
   _disable_gpu_allgather = ParseEnv("BYTEPS_DISABLE_GPU_ALLGATHER", false);
@@ -222,6 +226,7 @@ void BytePSGlobal::Init() {
                 << " disable_gpu_allreduce=" << _disable_gpu_allreduce
                 << " disable_gpu_allgather=" << _disable_gpu_allgather
                 << " disable_p2p=" << _disable_p2p
+                << " disable_send_recv=" << _disable_send_recv
                 << " is_gdr_allreduce=" << _is_gdr_allreduce
                 << " is_gdr_allgather=" << _is_gdr_allgather
                 << " err_handling=" << _enable_err_handling;

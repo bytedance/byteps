@@ -61,18 +61,23 @@ void byteps_lazy_init() {
   if (BytePSGlobal::IsDistributed()) {
     // p2p operations are only available in joint mode
     if (BytePSGlobal::IsJoint() && !BytePSGlobal::IsP2PDisabled()) {
-      func.push_back(RecvLoop);
-      func.push_back(SendLoop);
+      if (!BytePSGlobal::IsSendRecvDisabled()) {
+        func.push_back(RecvLoop);
+        func.push_back(SendLoop);
+      }
       if (BytePSGlobal::IsAlltoallUsePull()) {
         func.push_back(P2PPullLoop);
         func.push_back(P2PPullResponseLoop);
         func.push_back(P2PAckLoop);
+      } else {
+        func.push_back(P2PGroupCopyHost2DeviceLoop);
       }
-      func.push_back(P2PGroupCopyHost2DeviceLoop);
     }
     if (BytePSGlobal::IsRootDevice()) {
-      func.push_back(PullLoop);
-      func.push_back(DecompressLoop);
+      if (!BytePSGlobal::IsCpuAllreduceDisabled() || 
+          (!BytePSGlobal::IsGpuAllreduceDisabled() && !BytePSGlobal::IsGDR())) {
+        func.push_back(PullLoop);
+      }
     }
   }
 
@@ -85,17 +90,27 @@ void byteps_lazy_init() {
 
   // Copy between GPU and CPU
   if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
-    func.push_back(CopyDevice2HostLoop);
-    if (BytePSGlobal::IsRootDevice()) {
-      // PUSH can be a real push in distributed mode
-      // Or a dummy barrier in cross-pcie-switch mode
-      func.push_back(PushLoop);
+    if (!BytePSGlobal::IsCpuAllreduceDisabled() || 
+        (!BytePSGlobal::IsGpuAllreduceDisabled() && !BytePSGlobal::IsGDR())) {
+      func.push_back(CopyDevice2HostLoop);
+      if (BytePSGlobal::IsRootDevice()) {
+        // PUSH can be a real push in distributed mode
+        // Or a dummy barrier in cross-pcie-switch mode
+        func.push_back(PushLoop);
+        func.push_back(RootCopyHost2DeviceLoop);
+      } else {
+        func.push_back(NonRootCopyHost2DeviceLoop);
+      }
+    }
+  }
+
+  // compress loops are disabled by default
+  if (BytePSGlobal::IsRootDevice() && !BytePSGlobal::IsCompressDisabled()) {
+    if (BytePSGlobal::IsDistributed()) {
+      func.push_back(DecompressLoop);
+    }
+    if (BytePSGlobal::IsCrossPcieSwitch() || BytePSGlobal::IsDistributed()) {
       func.push_back(CompressLoop);
-      func.push_back(RootCopyHost2DeviceLoop);
-    } else {
-      func.push_back(NonRootCopyHost2DeviceLoop);
-      // DO_COPYH2D handling moved to commsocket listen thread
-      // func.push_back(NonRootCopyListenLoop);
     }
   }
 

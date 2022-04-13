@@ -241,6 +241,8 @@ class BytePSGlobal {
   // feature
   static bool IsCpuAllreduceDisabled() { return _disable_cpu_allreduce; }
   static bool IsP2PDisabled() { return _disable_p2p; }
+  static bool IsCompressDisabled() { return _disable_compress; }
+  static bool IsSendRecvDisabled() { return _disable_send_recv; }
   static bool IsGpuAllreduceDisabled() { return _disable_gpu_allreduce; }
 
   static bool IsGpuAllgatherDisabled() { return _disable_gpu_allgather; }
@@ -291,6 +293,8 @@ class BytePSGlobal {
   static bool _disable_cpu_allreduce;
   static bool _disable_gpu_allreduce;
   static bool _disable_p2p;
+  static bool _disable_send_recv;
+  static bool _disable_compress;
 
   static bool _disable_gpu_allgather;
   static bool _is_gdr_allgather;
