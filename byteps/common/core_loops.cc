@@ -1426,6 +1426,7 @@ bool RunGDRv2PushPullLoopOnce() {
             task->key, input, output, grs_len, dtype, /*do_copy*/(local_size==1));
       } else {
         BPS_CHECK(is_phase2_small_tensor);
+        BytePSGlobal::GetGDRPushPullTable()->AddReadyCount(task->key);
       }
       if (is_phase2_small_tensor) break;
       continue;
