@@ -72,6 +72,7 @@ class BytePSGlobal {
   }
   static bool IsRootDevice() { return _is_root_device; }
   static bool IsDistributed() { return _is_distributed_job; }
+  static std::string GetJobId() { return _job_id; }
   static bool IsCrossPcieSwitch() { return _is_cross_pcie_switch; }
   static BytePSRole GetMyRole() { return _my_role; }
   static std::shared_ptr<BytePSComm> GetBasicComm() { return _basic_comm; }
@@ -209,6 +210,9 @@ class BytePSGlobal {
   }
 
   static int _pagesize;
+  // unique identifier for the current application to avoid resource conflict
+  // (e.g. shared memory name, socket name, etc)
+  static std::string _job_id;
   static size_t DivUp(size_t x, size_t y) { return (x + y - 1) / y; }
   static size_t RoundUp(size_t x, size_t y) { return DivUp(x, y) * y; }
 

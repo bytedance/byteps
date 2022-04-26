@@ -102,8 +102,9 @@ void BytePSCommSocket::init(int* rank, int* size, int* local_rank,
     _recv_path = std::string(getenv("BYTEPS_SOCKET_PATH")) +
                  std::string("/socket_recv_");
   } else {
-    _send_path = std::string(DEFAULT_BASE_SOCKET_PATH_SEND);
-    _recv_path = std::string(DEFAULT_BASE_SOCKET_PATH_RECV);
+    auto job_id = BytePSGlobal::GetJobId();
+    _send_path = std::string(DEFAULT_BASE_SOCKET_PATH_SEND) + job_id + "_";
+    _recv_path = std::string(DEFAULT_BASE_SOCKET_PATH_RECV) + job_id + "_";
   }
 
   _send_fd = initSocket(_local_rank, _send_path);

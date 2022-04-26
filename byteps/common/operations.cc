@@ -344,11 +344,13 @@ void InitTensor(BPSContext &context, size_t size, int dtype, void *cpubuff) {
 
   size_t aligned_size = Align(size, dtype);
   if (BytePSGlobal::IsCrossPcieSwitch()) {
+    auto shm_prefix = std::string("BytePS_Pcie_") + BytePSGlobal::GetJobId();
     context.pcie_cpubuff =
-        shm_obj->openPcieSharedMemory(key_list[0], aligned_size);
+        shm_obj->openPcieSharedMemory(shm_prefix, key_list[0], aligned_size);
     context.cpubuff = context.pcie_cpubuff.back();
   } else {
-    context.cpubuff = shm_obj->openSharedMemory(std::string("BytePS_ShM_"),
+    auto shm_prefix = std::string("BytePS_ShM_") + BytePSGlobal::GetJobId() + "_";
+    context.cpubuff = shm_obj->openSharedMemory(shm_prefix,
                                                 key_list[0], aligned_size);
   }
   BPS_LOG(TRACE) << name << ": open shared memory size " << aligned_size;

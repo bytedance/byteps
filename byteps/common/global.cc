@@ -80,6 +80,7 @@ unsigned int next_key_ = 0;
 cudaStream_t* BytePSGlobal::_copy_device2host_stream = NULL;
 cudaStream_t* BytePSGlobal::_copy_host2device_stream = NULL;
 std::shared_ptr<NcclManager> BytePSGlobal::_nccl_manager;
+std::string BytePSGlobal::_job_id = "0";
 std::shared_ptr<CpuReducer> BytePSGlobal::_cpu_reducer;
 std::shared_ptr<ThreadPool> BytePSGlobal::_thread_pool;
 
@@ -123,6 +124,7 @@ void BytePSGlobal::Init() {
                    ? std::string(getenv("BYTEPS_TRACE_DIR"))
                    : "./trace";
 
+  _job_id = getenv("BYTEPS_JOB_ID") ? std::string(getenv("BYTEPS_JOB_ID")) : "0";
   _basic_comm = std::make_shared<BytePSCommSocket>();
 
   _basic_comm->init(&_rank, &_size, &_local_rank, &_local_size, &_worker_id,
