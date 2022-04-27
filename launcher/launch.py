@@ -228,7 +228,6 @@ def worker_fn(local_rank, local_size, command, allocation=None):
 def server_fn(local_rank, local_size, command, allocation=None):
     my_env = os.environ.copy()
     my_env["BYTEPS_LOCAL_RANK"] = str(local_rank)
-    my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
     my_env["DMLC_RANK"] = "-1"
