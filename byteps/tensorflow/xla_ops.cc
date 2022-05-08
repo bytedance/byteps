@@ -81,11 +81,9 @@ common::DataType GetBPSType(::xla::PrimitiveType type) {
 // ops. Flatbuffer is used to serialize the config into string to conform to the
 // XLA CustomCall interface.
 class CustomCallConfig {
-public:
+ public:
   std::string SerializeToString();
   void ParseFromString(std::string);
-
-public:
   std::string tensor_name_;
   common::DataType tensor_type_;
   std::vector<std::vector<int64_t>> input_shapes_;
@@ -152,10 +150,11 @@ void CustomCallConfig::ParseFromString(std::string input) {
 // HLO custom-calls, whose implementations are also provided through dynamic
 // registration in this file.
 class BPSPushPullOp : public XlaOpKernel {
-public:
+ public:
   explicit BPSPushPullOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_name", &input_tensor_name));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("op", &op));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_key", &tensor_key));
     if (op == std::string("average")) {
       reduce_op_ = common::REDUCE_OP_AVERAGE;
     } else if (op == std::string("sum")) {
@@ -179,6 +178,8 @@ public:
     } else {
       tmp_name = input_tensor_name;
     }
+    
+    common::DeclareTensor(tmp_name, tensor_key);
 
     // Generate below HLOs:
     //     start = custom-call(in), custom_call_target="CallbackBPSPushPull"
@@ -203,7 +204,7 @@ public:
     return;
   }
 
-private:
+ private:
   ::xla::StatusOr<::xla::XlaOp> BuildPushPullCustomCall(
       ::xla::XlaBuilder* b, absl::Span<const ::xla::XlaOp> operands,
       bool is_start,
@@ -211,7 +212,6 @@ private:
                                  std::pair<int64, ::xla::ShapeIndex>>>
           output_operand_aliasing = {});
 
-private:
   std::string node_name_;
   std::string tmp_name;
   std::string input_tensor_name;
@@ -219,6 +219,7 @@ private:
   std::string op;
   // Using float since TF does not support double OP attributes
   bool ignore_name_scope_ = false;
+  int tensor_key;
 };
 
 // Implements a customized registrar so that the registration is an opt-in,
@@ -235,7 +236,7 @@ private:
                    -> ::tensorflow::OpKernel* { return new OP(context); });
 
 class BPSXlaOpRegistrar {
-public:
+ public:
   BPSXlaOpRegistrar(string op_name,
                     ::tensorflow::XlaOpRegistry::Factory factory) {
     bool enable_xla_ops = !!common::ParseEnv(BYTEPS_ENABLE_XLA_OPS, 1);
@@ -246,7 +247,7 @@ public:
     }
   }
 
-private:
+ private:
   XlaOpRegistrar* xla_op_registrar_;
 };
 
@@ -291,7 +292,7 @@ uint64 GetRendezvousKeyHash(const string& key) {
 
 // Implements a rendezvous to coordinate the `start` and `end` HLO callbacks.
 class BPSCustomCallRendezvous {
-public:
+ public:
   struct Payload {
     std::shared_ptr<gpuEvent_t> event;
   };
@@ -363,7 +364,7 @@ public:
     delete payload;
   }
 
-private:
+ private:
   // This method is not thread-safe.
   void InitQueue(uint64 key_hash) {
     auto it = table_.find(key_hash);
@@ -372,7 +373,6 @@ private:
     }
   }
 
-private:
   // `nullptr` denotes non-readiness of the payload.
   typedef std::deque<Payload*> Queue;
   // maps a hash value to queue. We will use tensor_names to generate the hash
@@ -389,7 +389,7 @@ private:
 }
 
 class XLAReadyEvent : public common::ReadyEvent {
-public:
+ public:
   XLAReadyEvent(cudaStream_t stream) : stream_(stream) {
     CUDA_CALL(cudaEventCreate(&event_));
     CUDA_CALL(cudaEventRecord(event_, stream));
@@ -402,13 +402,13 @@ public:
   }
   gpuEvent_t event() { return event_; }
 
-private:
+ private:
   cudaStream_t stream_; // Not Owned.
   cudaEvent_t event_;   // Owned.
 };
 
 class XLATensor : public common::Tensor {
-public:
+ public:
   XLATensor(common::DataType type, common::TensorShape shape, void* buffer)
       : type_(type), shape_(std::move(shape)), buffer_(buffer) {}
 
@@ -421,7 +421,7 @@ public:
   virtual void resize(const common::TensorShape&) override;
   virtual int device() const override;
 
-protected:
+ protected:
   common::DataType type_;
   common::TensorShape shape_;
   void* buffer_; // Not owned.
@@ -429,6 +429,7 @@ protected:
 
 void XLATensor::resize(const common::TensorShape& shape) {
 }
+
 int XLATensor::device() const {
   return -5;
 }
