@@ -83,6 +83,11 @@ class BytePSBasics(object):
         """A function that shuts BytePS down."""
         return self.C_LIB_CTYPES.byteps_shutdown()
 
+    def is_initialized(self):
+        """Returns True if BytePS is initialized"""
+        is_initialized = self.C_LIB_CTYPES.byteps_is_initialized()
+        return bool(is_initialized)
+
     def suspend(self):
         """A function that suspends BytePS for elastic training."""
         return self.C_LIB_CTYPES.byteps_suspend()

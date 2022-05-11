@@ -36,6 +36,7 @@ from byteps.torch.compression import Compression
 # import basic methods
 init = _basics.init
 shutdown = _basics.shutdown
+is_initialized = _basics.is_initialized
 suspend = _basics.suspend
 resume = _basics.resume
 size = _basics.size

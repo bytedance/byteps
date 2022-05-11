@@ -25,7 +25,7 @@ import warnings
 
 from byteps.tensorflow.compression import Compression
 from byteps.tensorflow.ops import broadcast, _push_pull
-from byteps.tensorflow.ops import init, shutdown, suspend, resume, get_pushpull_speed
+from byteps.tensorflow.ops import init, shutdown, is_initialized, suspend, resume, get_pushpull_speed
 from byteps.tensorflow.ops import _alltoall, _alltoall_cpu2gpu, _alltoall_gpu2cpu, _allgather
 from byteps.tensorflow.ops import send_async, recv_async
 from byteps.tensorflow.ops import size, local_size, rank, local_rank

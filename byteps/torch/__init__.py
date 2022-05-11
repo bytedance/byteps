@@ -22,7 +22,7 @@ from byteps.torch.ops import push_pull, allgather
 from byteps.torch.ops import batched_fuse_, batched_unfuse_, batched_zero_
 from byteps.torch.ops import byteps_torch_set_num_grads
 from byteps.torch.ops import poll, synchronize, declare
-from byteps.torch.ops import init, shutdown, suspend, resume
+from byteps.torch.ops import init, shutdown, is_initialized, suspend, resume
 from byteps.torch.ops import size, local_size, rank, local_rank
 from byteps.torch.ops import send_async, recv_async
 from byteps.torch.optimizer import DistributedOptimizer

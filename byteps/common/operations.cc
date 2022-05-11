@@ -185,6 +185,10 @@ void byteps_shutdown() {
   return;
 }
 
+int byteps_is_initialized() {
+  return CheckInitialized().ok();
+}
+
 void byteps_resume(int num_workers, int num_servers) {
   // set ps, worker numbers
   BPS_LOG(DEBUG) << "Resume worker number: " << num_workers
