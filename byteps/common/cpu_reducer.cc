@@ -289,6 +289,9 @@ int CpuReducer::sum(void* dst, const void* src, size_t len, DataType dtype,
     case BYTEPS_INT64:
       return _sum(reinterpret_cast<int64_t*>(dst),
                   reinterpret_cast<const int64_t*>(src), len, alpha);
+    case BYTEPS_BFLOAT16:
+      // TODO(ymjiang): implement efficient cpu reducer for bf16 
+      BPS_CHECK(0) << "Not implemented data type: " << dtype;
     default:
       BPS_CHECK(0) << "Unsupported data type: " << dtype;
   }

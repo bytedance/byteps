@@ -19,6 +19,9 @@
 
 #include <cuda_runtime.h>
 #include "cuda_fp16.h"
+#if CUDART_VERSION >= 11000
+#include "cuda_bf16.h"
+#endif
 
 #include "../common.h"
 #include "../logging.h"

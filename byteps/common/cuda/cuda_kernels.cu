@@ -17,9 +17,6 @@
 #include "cuda_kernels.h"
 
 #include <stdexcept>
-#include <cuda_fp16.h>
-
-
 
 namespace byteps {
 namespace common {
@@ -519,20 +516,49 @@ __global__ void _SumKernel(void* dst, const void* src1, const void* src2, size_t
   T* s2 = (T*) src2;
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   int total_threads = blockDim.x * gridDim.x;
-  for(; tid < len; tid += total_threads) {
+  for (; tid < len; tid += total_threads) {
     d[tid] = __ldg(&s1[tid]) + __ldg(&s2[tid]);
   }
 }
 
 __global__ void _SumKernelFloat16(void* dst, const void* src1, const void* src2, size_t len) {
-  __half* d = (__half*) dst;
-  __half* s1 = (__half*) src1;
-  __half* s2 = (__half*) src2;
+  __half2* d = (__half2*) dst;
+  __half2* s1 = (__half2*) src1;
+  __half2* s2 = (__half2*) src2;
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   int total_threads = blockDim.x * gridDim.x;
-  for(; tid < len; tid += total_threads) {
-    d[tid] = __hadd(__ldg(&s1[tid]), __ldg(&s2[tid]));
+  for (; tid < len/2; tid += total_threads) {
+    d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
   }
+  // the last thread processes the remaining one element
+  tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if ((tid == total_threads-1) && (len%2 != 0)) {
+    __half* ld = (__half*) dst + len - 1;
+    __half* ls1 = (__half*) src1 + len - 1;
+    __half* ls2 = (__half*) src2 + len - 1;
+    *ld = __hadd(*ls1, *ls2);
+  }
+}
+
+__global__ void _SumKernelBFloat16(void* dst, const void* src1, const void* src2, size_t len) {
+#if __CUDA_ARCH__ >= 800
+  __nv_bfloat162* d = (__nv_bfloat162*) dst;
+  __nv_bfloat162* s1 = (__nv_bfloat162*) src1;
+  __nv_bfloat162* s2 = (__nv_bfloat162*) src2;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int total_threads = blockDim.x * gridDim.x;
+  for (; tid < len/2; tid += total_threads) {
+    d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
+  }
+  // the last thread processes the remaining one element
+  tid = threadIdx.x + blockIdx.x * blockDim.x;
+  if ((tid == total_threads-1) && (len%2 != 0)) {
+    __nv_bfloat16* ld = (__nv_bfloat16*) dst + len - 1;
+    __nv_bfloat16* ls1 = (__nv_bfloat16*) src1 + len - 1;
+    __nv_bfloat16* ls2 = (__nv_bfloat16*) src2 + len - 1;
+    *ld = __hadd(*ls1, *ls2);
+  }
+#endif
 }
 
 __global__ void _CopyKernel(void* dst, const void* src, size_t len) {
@@ -550,6 +576,9 @@ void CudaReducer::Sum(void* dst, const void* src1, const void* src2, size_t len,
   switch (dtype) {
     case BYTEPS_FLOAT16:
       _SumKernelFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/2);
+      break;
+    case BYTEPS_BFLOAT16:
+      _SumKernelBFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/2);
       break;
     case BYTEPS_FLOAT32:
       _SumKernel<float><<< _kernel_block_num, _kernel_thread_num, 0, *_stream >>>(dst, src1, src2, len/sizeof(float));
@@ -579,6 +608,9 @@ void CudaReducer::SumAsync(void* dst, const void* src1, const void* src2, size_t
   switch (dtype) {
     case BYTEPS_FLOAT16:
       _SumKernelFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/2);
+      break;
+    case BYTEPS_BFLOAT16:
+      _SumKernelBFloat16<<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/2);
       break;
     case BYTEPS_FLOAT32:
       _SumKernel<float><<< _kernel_block_num, _kernel_thread_num, 0, *stream >>>(dst, src1, src2, len/sizeof(float));

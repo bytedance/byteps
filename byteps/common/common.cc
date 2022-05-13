@@ -58,6 +58,9 @@ const std::string& DataType_Name(DataType value) {
     // case BYTEPS_BYTE:
     //   static const std::string byte_("byte");
     //   return byte_;
+    case BYTEPS_BFLOAT16:
+      static const std::string bfloat16("bfloat16");
+      return bfloat16;
     default:
       static const std::string unknown("<unknown>");
       return unknown;
@@ -79,6 +82,8 @@ std::size_t DataType_Size(DataType value) {
     case BYTEPS_INT64:
       return sizeof(int64_t);
     case BYTEPS_FLOAT16:
+      return 2;
+    case BYTEPS_BFLOAT16:
       return 2;
     case BYTEPS_FLOAT32:
       return sizeof(float);
@@ -177,6 +182,10 @@ ncclDataType_t getNcclDataType(DataType dtype) {
       return ncclFloat64;
     case BYTEPS_FLOAT16:
       return ncclFloat16;
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BYTEPS_BFLOAT16:    
+      return ncclBfloat16;
+#endif
     case BYTEPS_BOOL:
     case BYTEPS_UINT8:
       return ncclUint8;
@@ -200,6 +209,7 @@ int getDataTypeLength(int dtype) {
     case BYTEPS_UINT8:
       return 1;
     case BYTEPS_FLOAT16:
+    case BYTEPS_BFLOAT16:
       return 2;
     case BYTEPS_INT32:
     case BYTEPS_FLOAT32:

@@ -65,6 +65,8 @@ common::DataType GetBPSType(::xla::PrimitiveType type) {
     return common::BYTEPS_INT64;
   case ::xla::F16:
     return common::BYTEPS_FLOAT16;
+  case ::xla::BF16:
+    return common::BYTEPS_BFLOAT16;
   case ::xla::F32:
     return common::BYTEPS_FLOAT32;
   case ::xla::F64:

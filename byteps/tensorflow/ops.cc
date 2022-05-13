@@ -113,6 +113,8 @@ const common::DataType ConvertDType(int dtype) {
       return common::BYTEPS_FLOAT32;
     case ::tensorflow::DT_DOUBLE:
       return common::BYTEPS_FLOAT64;
+    case ::tensorflow::DT_BFLOAT16:
+      return common::BYTEPS_BFLOAT16;
     // case ::tensorflow::DT_BOOL:
     //   return common::BYTEPS_BOOL;
     default:
@@ -328,7 +330,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsPushPull").Device(::tensorflow::DEVICE_GPU),
 
 
 REGISTER_OP("BytepsPushPull")
-    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("T: {int32, int64, float16, float32, float64, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'")
     .Attr("op: string = 'average'")
     .Attr("tensor_key: int")
@@ -852,7 +854,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoall").Device(::tensorflow::DEVICE_GPU)
 
 REGISTER_OP("BytepsAlltoall")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Input("tensor: T")
     .Input("splits: int32")
@@ -891,7 +893,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGroup").Device(::tensorflow::DEVICE_
 
 REGISTER_OP("BytepsAlltoallGroup")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Attr("N: int >=1")
     .Input("tensors: N * T")
@@ -932,7 +934,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallCputogpu").Device(::tensorflow::DEVI
 
 REGISTER_OP("BytepsAlltoallCputogpu")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Input("tensor: T")
     .Input("splits: int32")
@@ -969,7 +971,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallCputogpuGroup").Device(::tensorflow:
 
 REGISTER_OP("BytepsAlltoallCputogpuGroup")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Attr("N: int >=1")
     .Input("tensors: N * T")
@@ -1010,7 +1012,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpu").Device(::tensorflow::DEVI
 
 REGISTER_OP("BytepsAlltoallGputocpu")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Input("tensor: T")
     .Input("splits: int32")
@@ -1047,7 +1049,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAlltoallGputocpuGroup").Device(::tensorflow:
 
 REGISTER_OP("BytepsAlltoallGputocpuGroup")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'") 
     .Attr("N: int >=1")
     .Input("tensors: N * T")
@@ -1081,7 +1083,7 @@ Output
 
 
 REGISTER_OP("BytepsSend")
-    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("T: {int32, int64, float16, float32, float64, bfloat16}")
     .Input("tensor: T")
     .Attr("sender: int")
     .Attr("receiver: int")
@@ -1097,7 +1099,7 @@ Output
 )doc");
 
 REGISTER_OP("BytepsRecv")
-    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("T: {int32, int64, float16, float32, float64, bfloat16}")
     .Input("tensor: T")
     .Attr("sender: int")
     .Attr("receiver: int")
@@ -1220,7 +1222,7 @@ REGISTER_KERNEL_BUILDER(Name("BytepsAllgather").Device(::tensorflow::DEVICE_GPU)
                         BytePSAllgatherOp);
 
 REGISTER_OP("BytepsAllgather")
-    .Attr("T: {int32, int64, float16, float32, float64}")
+    .Attr("T: {int32, int64, float16, float32, float64, bfloat16}")
     .Attr("input_name: string = 'default_tensor_name'")
     .Attr("tensor_key: int")
     .Input("tensor: T")
