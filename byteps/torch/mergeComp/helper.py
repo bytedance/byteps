@@ -2,6 +2,7 @@ import sys, os
 from .communicator.DDPbackend import DDPBackend
 
 def byteps_from_params(params):
+    model = params.get('model', 'none')
     comp = params.get('compressor', 'none')
     mem = params.get('memory', 'none')
     comm = params.get('communicator', 'byteps')
@@ -15,14 +16,14 @@ def byteps_from_params(params):
         sys.exit("No model parameters for grace_from_params()")
     momentum = params.get('momentum', 0.9)
     qsgd_quantum = params.get('quantum', 64)
-    print("[Compression Setup] compressor: {}\n\tmemory: {}\n\tcommunicator: {}\n\tsparsity ratio: {}\n\tscheduler file: {}\n\tscheduler type: {}".format(
-        comp,
-        mem,
-        comm,
-        ratio,
-        scheduler_file,
-        scheduler_type
-    ))
+
+    if comm == "byteps":
+        print("[Training Setup] communicator: BytePS")
+    else:
+        output_string = f"[Compression Setup] compressor: {comp}\n\tmemory: {mem}\n\tcommunicator: {comm}"
+        if comp in ("randomk", "dgc"):
+            output_string += f"\n\tsparsity ratio: {ratio}"
+        print(output_string)
 
     if comp == 'dgc':
         from .compressor.pooldgc import PoolDgcCompressor
@@ -83,32 +84,51 @@ def byteps_from_params(params):
 
     scheduler_threshold = int(os.getenv('BYTEPS_SCHEDULER_THRES', 1024*256))
 
-    if comm == "bytecomp":
+    ddp = DDPBackend()
+    if comm == "espresso":
         from .communicator.pool_bytecomp import ByteComp
-        ddp = DDPBackend()
         from .compressor.poolfp16 import PoolFP16Compressor
         from .scheduler.scheduler import Scheduler
+        scheduler_type = -1
+        return ByteComp(PoolFP16Compressor(), compressor, memory, ddp, Scheduler(scheduler_file, scheduler_type, scheduler_threshold))
+    elif comm == "byteps":
+        from .communicator.pool_bytecomp import ByteComp
+        from .compressor.poolfp16 import PoolFP16Compressor
+        from .scheduler.scheduler import Scheduler
+        scheduler_type = 0
+        return ByteComp(PoolFP16Compressor(), compressor, memory, ddp, Scheduler(scheduler_file, scheduler_type, scheduler_threshold))
+    elif comm == "byteps-compress":
+        from .communicator.pool_bytecomp import ByteComp
+        from .compressor.poolfp16 import PoolFP16Compressor
+        from .scheduler.scheduler import Scheduler
+        scheduler_type = 5
+        if model == "resnet101":
+            scheduler_threshold = 1024 * 16
         return ByteComp(PoolFP16Compressor(), compressor, memory, ddp, Scheduler(scheduler_file, scheduler_type, scheduler_threshold))
     elif comm == "allgather":
         from .communicator.ddp_allgather import DDPAllgather
-        ddp = DDPBackend()
         from .compressor.poolfp16 import PoolFP16Compressor
         return DDPAllgather(PoolFP16Compressor(), compressor, memory, ddp, profile)
     elif comm == "fp16":
         from .communicator.ddp_fp16 import DDPFP16
-        ddp = DDPBackend()
         from .compressor.poolfp16 import PoolFP16Compressor
         return DDPFP16(PoolFP16Compressor(), memory, ddp, profile)
     elif comm == "hitopkcomm":
         from .communicator.ddp_allgather_twolayer import DDPAllgatherTwolayer
-        ddp = DDPBackend()
         from .compressor.poolfp16 import PoolFP16Compressor
-        return DDPAllgatherTwolayer(PoolFP16Compressor(), compressor, memory, ddp, profile)
+        thresholds = {"bert": 512, "gpt2": 1024*32, "ugatit": 128, "vgg16": 1024*16, "LSTM": 1024*16, "resnet101": 1024*16}
+        threshold = 512
+        if model in thresholds:
+            threshold = thresholds[model]
+        return DDPAllgatherTwolayer(PoolFP16Compressor(), compressor, memory, ddp, threshold, profile)
     elif comm == "hipress":
-        from .communicator.ddp_hipress import DDPHiPress
-        ddp = DDPBackend()
         from .compressor.poolfp16 import PoolFP16Compressor
-        return DDPHiPress(PoolFP16Compressor(), compressor, memory, ddp, profile)
+        if "resnet" in model:
+            from .communicator.ddp_hipress_resnet import DDPHiPressResNet
+            return DDPHiPressResNet(PoolFP16Compressor(), compressor, memory, ddp, threshold=1024*1024, profile=profile)
+        else:
+            from .communicator.ddp_hipress import DDPHiPress
+            return DDPHiPress(PoolFP16Compressor(), compressor, memory, ddp, threshold=1024*1024*16, profile=profile)
     else:
         raise NotImplementedError(comm)
 
@@ -120,6 +140,8 @@ def add_parser_arguments(parser):
                         help='use adasum algorithm to do reduction')
     parser.add_argument('--gradient-predivide-factor', type=float, default=1.0,
                         help='apply gradient predivide factor in optimizer (default: 1.0)')
+    parser.add_argument('--model-name', type=str, default="",
+                        help='model name')                    
     parser.add_argument('--fp16', action='store_true', default=False,
                         help='use fp16 compression during allreduce')
     parser.add_argument('--compress', action='store_true', default=False,
@@ -158,6 +180,7 @@ def wrap_compress_optimizer_named(model, optimizer, args):
         comm: allreduce, allgather, ps
         """
         params = {
+            'model': args.model_name,
             'compressor': args.compressor,
             'memory': args.memory,
             'communicator': args.comm,

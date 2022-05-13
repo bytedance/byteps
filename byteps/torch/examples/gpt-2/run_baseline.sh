@@ -3,41 +3,30 @@
 path="`dirname $0`"
 set -x
 
+# set DMLC_PS_ROOT_URI with the IP address of the root GPU machine and ifname with the NIC name
+ifname="eth2"
+export DMLC_PS_ROOT_URI="10.188.138.20"
+
 compress_ratio=0.01
 gpus=0,1,2,3,4,5,6,7
 export DMLC_ENABLE_RDMA=${DMLC_ENABLE_RDMA:-0}
-export DMLC_INTERFACE="eth0"
+export DMLC_INTERFACE=${ifname}
 export NCCL_IB_DISABLE=1 
 export NCCL_IB_GID_INDEX=3 
 export NCCL_IB_HCA=mlx5_0 
-export NCCL_SOCKET_IFNAME=eth0
+export NCCL_SOCKET_IFNAME=${ifname}
 export DMLC_NUM_WORKER=$1
 export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
-export DMLC_PS_ROOT_URI="$(host ${ARNOLD_WORKER_0_HOST} | head -1 | awk -F' ' '{print $NF}')"
-export DMLC_NODE_HOST="$(/sbin/ip -o -4 addr list eth0 | awk '{print $4}' | cut -d/ -f1)"
+export DMLC_NODE_HOST="$(/sbin/ip -o -4 addr list ${ifname} | awk '{print $4}' | cut -d/ -f1)"
 export DMLC_PS_ROOT_PORT=${DMLC_PS_ROOT_PORT:-12213}
 export NVIDIA_VISIBLE_DEVICES=${gpus}
-export BYTEPS_FORCE_DISTRIBUTED=1
+export BYTEPS_FORCE_DISTRIBUTED=0
+export BYTEPS_COMPRESSOR_ERROR_FEEDBACK="test"
 export OMP_NUM_THREADS=4
-# export NCCL_P2P_DISABLE=1
-#export BYTEPS_PARTITION_BYTES=4096000
-#export BYTEPS_SERVER_ENGINE_THREAD=4
-#export BYTEPS_LOG_LEVEL=${BYTEPS_LOG_LEVEL:-DEBUG}
-#export BYTEPS_LOG_LEVEL=${BYTEPS_LOG_LEVEL:-TRACE}
-#export BYTEPS_LOG_LEVEL=${BYTEPS_LOG_LEVEL:-INFO}
-export PS_VERBOSE=${PS_VERBOSE:-0}
 export TEST_TYPE=${TEST_TYPE:=torch}
-# export NCCL_DEBUG=DEBUG
+export NCCL_DEBUG=VERSION
 # Ensure the NCCL_BUFFSIZE is larger than the message size of the compressed tensors 
 export NCCL_BUFFSIZE=16777216
-#export BYTEPS_ENABLE_GDB=1
-# export BYTEPS_TRACE_ON=1
-# export BYTEPS_TRACE_END_STEP=40
-# export BYTEPS_TRACE_START_STEP=20
-# export BYTEPS_TRACE_DIR=./traces
-
-#export GDB=" gdb -ex run --args "
-#export GDB=" "
 export DMLC_WORKER_ID=$2
 
 IFS=', ' read -ra a <<< $gpus; 
@@ -53,41 +42,38 @@ export TEST_FILE=${TRAIN_FILE:-$DATA_DIR/wikitext-2-raw/wiki.test.raw}
 export DISTRIBUTED_FRAMEWORK=${DISTRIBUTED_FRAMEWORK:-byteps}
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-cd ~ 
 cd $THIS_DIR/gpt-2/examples
 
 GPT2_ARGS="--train_data_file=$TRAIN_FILE --output_dir=output --model_type=gpt2 --model_name_or_path=gpt2 --do_train --save_steps 1000000 --overwrite_output_dir --num_train_epochs 3 --per_gpu_train_batch_size 4 --per_gpu_eval_batch_size 4"
+export NCCL_P2P_DISABLE=0
+pkill -9 python3
 
 
-for pcie in 0 1
-do 
-    export NCCL_P2P_DISABLE=${pcie}
+# FP32
+echo "FP32 baseline"
+BENCHMARK_ARGS="--compress --comm byteps"
+python3 -m torch.distributed.launch ${DISTRIBUTED_ARGS} run_lm_finetuning_bytecomp.py ${GPT2_ARGS} $BENCHMARK_ARGS
+sleep 5
+
+
+# BytePS-Compress
+echo "BytePS-Compress"
+for compressor in "efsignsgd"
+do
     pkill -9 python3
-    # run FP32 with BytePS
-    python3 -m torch.distributed.launch $DISTRIBUTED_ARGS $path/main.py --model ${model} --epochs 1 --batch-size 32
+    export BYTEPS_INTER_COMPRESSOR=${compressor}
+    BENCHMARK_ARGS="--compress --compressor ${compressor} --memory efsignsgd --comm byteps-compress --model-name ${model}"
+    python3 -m torch.distributed.launch ${DISTRIBUTED_ARGS} run_lm_finetuning_bytecomp.py ${GPT2_ARGS} $BENCHMARK_ARGS
+    sleep 5
 done
 
 
-for pcie in 0 1
-do 
-    export NCCL_P2P_DISABLE=${pcie}
-    for communicator in "allgather" "hitopkcomm" "hipress"
-    do
-        for compressor in "randomk" "dgc"
-        do
-            pkill -9 python3
-            BENCHMARK_ARGS="--compress --compressor ${compressor} --memory topk --comm ${communicator} --compress-ratio ${compress_ratio} --scheduler-file none --scheduler-type 0"
-            python3 -m torch.distributed.launch ${DISTRIBUTED_ARGS} run_lm_finetuning_bytecomp.py ${GPT2_ARGS} $BENCHMARK_ARGS | tee -a ../../bytecomp_logs/pcie_${pcie}_${compressor}_${DMLC_NUM_WORKER}
-            sleep 5
-        done
-
-        for compressor in "onebit" "efsignsgd" 
-        do
-            pkill -9 python3
-            
-            BENCHMARK_ARGS="--compress --compressor ${compressor} --memory efsignsgd --comm ${communicator} --compress-ratio ${compress_ratio} --scheduler-file none --scheduler-type -1"
-            python3 -m torch.distributed.launch ${DISTRIBUTED_ARGS} run_lm_finetuning_bytecomp.py ${GPT2_ARGS} $BENCHMARK_ARGS | tee -a ../../bytecomp_logs/pcie_${pcie}_${compressor}_${DMLC_NUM_WORKER}
-            sleep 5
-        done
-    done
+# Hitopkcomm
+echo "Hitopkcomm"
+for compressor in "efsignsgd"
+do
+    pkill -9 python3
+    BENCHMARK_ARGS="--compress --compressor ${compressor} --memory efsignsgd --comm hitopkcomm --model-name ${model}"
+    python3 -m torch.distributed.launch ${DISTRIBUTED_ARGS} run_lm_finetuning_bytecomp.py ${GPT2_ARGS} $BENCHMARK_ARGS
+    sleep 5
 done

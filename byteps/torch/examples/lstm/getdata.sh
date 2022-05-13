@@ -2,7 +2,6 @@ echo "=== Acquiring datasets ==="
 echo "---"
 mkdir -p save
 
-mkdir ~/data
 cd ~/data
 
 echo "- Downloading WikiText-2 (WT2)"

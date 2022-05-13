@@ -7,13 +7,13 @@ from mergeComp import Communicator
 
 
 class DDPAllgatherTwolayer(Communicator):
-    def __init__(self, fp16_compressor, compressor, memory, DDPbackend, profile=False):
+    def __init__(self, fp16_compressor, compressor, memory, DDPbackend, threshold=512, profile=False):
         super().__init__(fp16_compressor, compressor, memory)
         self.intra_allgather = DDPbackend.intra_allgather
         self.inter_allgather = DDPbackend.allgather
         self.reduce_scatter = DDPbackend.intra_reduce_scatter
         self.allreduce = DDPbackend.global_allreduce
-        self.threshold = 1024 * 16
+        self.threshold = threshold
         self.name = "DDPAllgatherTwolayer"
         self.local_rank = bps.local_rank()
         self.local_size = bps.local_size()
@@ -86,8 +86,7 @@ class DDPAllgatherTwolayer(Communicator):
         tensor = tensor.flatten()
         numel = tensor.numel()
 
-        # with torch.cuda.stream(self.comm_stream):
-        if True:
+        with torch.cuda.stream(self.comm_stream):
             # we don't compress extremely small tensors
             if numel < self.threshold or numel % bps.local_size() != 0:
                 self.handles[name] = self.allreduce(tensor), None, numel
@@ -122,8 +121,7 @@ class DDPAllgatherTwolayer(Communicator):
 
 
     def decompress_tensor(self, name):
-        # with torch.cuda.stream(self.comm_stream):
-        if True:
+        with torch.cuda.stream(self.comm_stream):
             tensors_compressed, ctx, numel = self.handles[name]
             if ctx is None:
                 return tensors_compressed
@@ -133,5 +131,5 @@ class DDPAllgatherTwolayer(Communicator):
     def wait_receive(self, handle, ctx):
         name = ctx[0]
         tensor = self.decompress_tensor(name)
-        # torch.cuda.current_stream().wait_stream(self.comm_stream)
+        torch.cuda.current_stream().wait_stream(self.comm_stream)
         return tensor.reshape(self.shapes[name])

@@ -1,0 +1,2 @@
+opencv-python==3.3.1.11
+torchvision==0.3.0

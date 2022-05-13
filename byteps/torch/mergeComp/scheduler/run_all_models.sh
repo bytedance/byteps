@@ -1,13 +1,6 @@
-for model in "vgg16" "resnet101" "bert" "gpt2" "lstm"
-do
-    for compressor in "randomk" "dgc" "efsignsgd" "onebit"
-    do
-        for cpu in "" "--cpu"
-        do
-            python simulator.py --model=${model} --compressor ${compressor} --nvlink ${cpu}
-            python simulator.py --model=${model} --compressor ${compressor} ${cpu}
-            python simulator.py --model=${model} --compressor ${compressor} --nvlink ${cpu} --two-level
-            python simulator.py --model=${model} --compressor ${compressor} ${cpu} --two-level
-        done
-    done
-done
+python3 simulator_espresso.py --model vgg16 --node 4 --compressor randomk --cpu --two-level --profile
+python3 simulator_espresso.py --model resnet101 --node 4 --compressor dgc --cpu --two-level --profile
+python3 simulator_espresso.py --model ugatit --node 4 --compressor dgc --cpu --profile
+python3 simulator_espresso.py --model bert --node 4 --compressor randomk --cpu --profile
+python3 simulator_espresso.py --model gpt2 --node 4 --compressor efsignsgd --cpu --profile
+python3 simulator_espresso.py --model lstm --node 4 --compressor efsignsgd --cpu --two-level --profile

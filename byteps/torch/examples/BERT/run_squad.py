@@ -133,6 +133,7 @@ class InputFeatures(object):
 
 def read_squad_examples(input_file, is_training, version_2_with_negative):
     """Read a SQuAD json file into a list of SquadExample."""
+    print(input_file)
     with open(input_file, "r", encoding='utf-8') as reader:
         input_data = json.load(reader)["data"]
 
@@ -213,7 +214,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                                  doc_stride, max_query_length, examples_limit, is_training):
     """Loads a data file into a list of `InputBatch`s."""
 
-    unique_id = 1000000000
+    unique_id = 10000000
 
     features = []
     for (example_index, example) in enumerate(examples):
@@ -1085,10 +1086,10 @@ def main():
                     step_time = total_time / args.log_freq
                     total_time = 0
                     iter_speed = round(1.0 / step_time, 2)
-                    dllogger.log(step=(epoch, global_step,), data={"step_loss": final_loss,
-                                                                   "learning_rate": optimizer.param_groups[0]['lr'],
+                    dllogger.log(step=(epoch, global_step,), data={"learning_rate": optimizer.param_groups[0]['lr'],
                                                                    "step_time_ms": round(step_time*1000, 1),
-                                                                   "speed_iter_per_sec": iter_speed})
+                                                                   "speed_iter_per_sec": iter_speed,
+                                                                   "token_per_sec": iter_speed * 1024 * bps.size()})
 
         time_to_train = time.time() - train_start
 

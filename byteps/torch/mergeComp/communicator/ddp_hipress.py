@@ -7,13 +7,13 @@ from mergeComp import Communicator
 
 
 class DDPHiPress(Communicator):
-    def __init__(self, fp16_compressor, compressor, memory, DDPbackend, profile=False):
+    def __init__(self, fp16_compressor, compressor, memory, DDPbackend, threshold=1024 * 128 * 8, profile=False):
         super().__init__(fp16_compressor, compressor, memory)
         self.intra_allgather = DDPbackend.intra_allgather
         self.inter_allgather = DDPbackend.allgather
         self.reduce_scatter = DDPbackend.intra_reduce_scatter
         self.allreduce = DDPbackend.global_allreduce
-        self.threshold = 1024 * 256
+        self.threshold = threshold
         self.name = "DDPHiPress"
         self.local_rank = bps.local_rank()
         self.local_size = bps.local_size()
@@ -71,7 +71,6 @@ class DDPHiPress(Communicator):
         numel = tensor.numel()
 
         with torch.cuda.stream(self.comm_stream):
-            # we don't compress extremely small tensors
             if numel < self.threshold or numel % bps.local_size() != 0:
                 self.handles[name] = self.allreduce(tensor)
                 return [-1], (name,)

@@ -122,8 +122,8 @@ class Simulator():
             self._thresholds[3] = 2**23
         else:
             # for BERT, self._thresholds[2] = 2**19
-            self._thresholds[2] = 2**20
-            self._thresholds[3] = 2**22
+            self._thresholds[2] = 2**19
+            self._thresholds[3] = 2**21
 
 
     def set_final_comm(self, options=None):
@@ -505,7 +505,7 @@ def parse_args():
                         help='True for sparsification and false for quantization')
     parser.add_argument('--comp-ratio', type=float, default=0.01,
                         help='the compression ratio')
-    parser.add_argument('--bandwidth', type=int, default=25,
+    parser.add_argument('--bandwidth', type=int, default=20,
                         help='network bandwidth for inter-node communication')
     parser.add_argument('--nodes', type=int, default=2,
                         help='the number of nodes')
@@ -543,6 +543,8 @@ def init_simulator(args):
         return Simulator(bert_tensor_sizes, bert_time_gap, None, comp_overhead, bert_embedding_tensors, args)
     elif model_name == "lstm":
         return Simulator(LSTM_tensor_sizes, LSTM_time_gap, None, comp_overhead, [], args)
+    elif model_name == "ugatit":
+        return Simulator(ugatit_tensor_sizes, ugatit_time_gap, None, comp_overhead, [], args)
     else:
         print("The model info of {} is not profiled yet".format(model_name))
         sys.exit()
@@ -573,7 +575,7 @@ def json_load_scheduler_file(filename):
 
 """
 usage example: 
-   python simulator.py --model=vgg16 --nvlink --cpu --compressor randomk
+   python3 simulator.py --model=ugatit --nvlink --cpu --compressor dgc --nodes 4
 """
 def main():
     args = parse_args()

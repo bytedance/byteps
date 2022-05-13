@@ -1,7 +1,7 @@
 {
   "model": "lstm",
   "compressor": "efsignsgd",
-  "nodes": 2,
+  "nodes": 4,
   "gpus_per_node": 8,
   "comp_ratio": 0.03125,
   "hierarchical comm": true,
@@ -33,8 +33,8 @@
   ],
   "options": [
     0,
-    6,
-    6,
+    1,
+    1,
     0,
     0,
     6,

@@ -19,10 +19,10 @@ from mergeComp import Communicator
 @comm_type: Communication type
 0: FP32
 1: FP16
-2: intra-node FP16 + inter-node compression + gather + broadcast
-3: intra-node FP16 + inter-node compression + alltoall + allgather
-4: intra-node FP16 + inter-node compression + allgather
-5: intra-node FP16 + CPU compression
+2: inter-node compression + gather + broadcast
+3: inter-node compression + alltoall + allgather
+4: inter-node compression + allgather
+5: CPU compression
 6: intra-node compression + intra-node alltoall + inter-node compression + gather + broadcast + intra-node allgather
 7: intra-node compression + intra-node alltoall + inter-node compression + alltoall + allgather + intra-node allgather
 8: intra-node compression + intra-node gather + inter-node compression + allgather + intra-node broadcast
@@ -99,7 +99,7 @@ class ByteComp(Communicator):
     def comm_type_2(self, tensor, name):
         # inter-node comm: gather + broadcast
         with torch.cuda.stream(self.comm_stream):
-            tensor, intra_ctx = self.get_FP16_intra_comm(tensor, name)
+            tensor, intra_ctx = self.get_FP32_intra_comm(tensor)
             self.intra_ctx[name] = intra_ctx
 
             tensor_compressed, ctx = self.compress(tensor, name, memory_id=1)
@@ -114,16 +114,13 @@ class ByteComp(Communicator):
             tensor_compressed_broadcast = self.inter_comm_comp.broadcast(tensor_compressed)
             # decompress the messages and allgather among all GPUs in the same machine
             intra_comm_tensor = self.inter_comm_comp.broadcast_decompress(tensor_compressed_broadcast, ctx)
-            if self.is_signsgd_like():
-                # convert FP32 to FP16 for intra-node communication
-                intra_comm_tensor = intra_comm_tensor.type(torch.float16)
             self.handles[name] = self.intra_comm_comp.allgather([intra_comm_tensor])
 
 
     def comm_type_3(self, tensor, name):
         # inter-node comm: alltoall + allgather
         with torch.cuda.stream(self.comm_stream):
-            tensor, intra_ctx = self.get_FP16_intra_comm(tensor, name)
+            tensor, intra_ctx = self.get_FP32_intra_comm(tensor)
             self.intra_ctx[name] = intra_ctx
 
             tensor_compressed, ctx = self.compress(tensor, name, memory_id=1, alltoall_nodes=self.worker_num)
@@ -134,24 +131,18 @@ class ByteComp(Communicator):
             tensor_compressed_allgather = self.inter_comm_comp.allgather(tensor_compressed)
             # decompress the messages and allgather among all GPUs in the same machine
             intra_comm_tensor = self.inter_comm_comp.alltoall_allgather_decompress(tensor_compressed_allgather, ctx, self.is_topk_like())
-            if self.is_signsgd_like():
-                # convert FP32 to FP16 for intra-node communication
-                intra_comm_tensor = intra_comm_tensor.type(torch.float16)
             self.handles[name] = self.intra_comm_comp.allgather([intra_comm_tensor])
 
 
     def comm_type_4(self, tensor, name):
         # inter-node comm: allgather
         with torch.cuda.stream(self.comm_stream):
-            tensor, intra_ctx = self.get_FP16_intra_comm(tensor, name)
+            tensor, intra_ctx = self.get_FP32_intra_comm(tensor)
             self.intra_ctx[name] = intra_ctx
 
             tensor_compressed, ctx = self.compress(tensor, name, memory_id=1)
             tensors = self.inter_comm_comp.allgather(tensor_compressed)
             intra_comm_tensor = self.inter_comm_comp.allgather_decompress(tensors, ctx, self.is_topk_like())
-            if self.is_signsgd_like():
-                # convert FP32 to FP16 for intra-node communication
-                intra_comm_tensor = intra_comm_tensor.type(torch.float16)
             self.handles[name] = self.intra_comm_comp.allgather([intra_comm_tensor])
 
 
@@ -328,12 +319,21 @@ class ByteComp(Communicator):
                 tensor_fp16, ctx = tensor.type(torch.float16), None
                 self.handles[name], self.intra_ctx[name] = self.global_comm_comp.allreduce(tensor_fp16), ctx
                 return 
-            elif comm_type == 5:
-                # cpu compression: intra-node communication with FP16 and compress the tensors with CPU for inter-node comm
-                tensor_fp16, ctx = self.fp16_compressor.compress(tensor, name)
-                handle = cpu_compress_async(tensor_fp16[0], average=True, name=name)
-                self.handles[name], self.intra_ctx[name] = handle, ctx
-                return
+
+        if comm_type == 5:
+            # cpu compression: intra-node communication with FP16 and compress the tensors with CPU for inter-node comm
+            tensor_fp16, ctx = self.fp16_compressor.compress(tensor, name)
+            handle = cpu_compress_async(tensor_fp16[0], average=True, name=name)
+            self.handles[name], self.intra_ctx[name] = handle, ctx
+            return
+        elif comm_type == 13:
+            # FP16
+            tensor_fp16, ctx = tensor.type(torch.float16), None
+            self.handles[name], self.intra_ctx[name] = byteps_push_pull(tensor_fp16, average=True, name="FP16."+name), ctx
+            return 
+        elif comm_type == 14:
+            self.handles[name], self.intra_ctx[name] = byteps_push_pull(tensor, average=True, name="FP32."+name), ctx
+            return 
 
         self.comm_synchronize(tensor, name, comm_type)
 
@@ -344,7 +344,7 @@ class ByteComp(Communicator):
             self.tensors_comm_type[name] = self.get_comm_type(name, tensor.numel())
         comm_type = self.tensors_comm_type[name]
         
-        if comm_type not in (0, 1):
+        if comm_type not in (0, 1, 13, 14):
             tensor = tensor.flatten() 
 
         self.comm_comp(tensor, name)
@@ -359,10 +359,17 @@ class ByteComp(Communicator):
         #     # FP16
         #     tensor = synchronize(self.handles[name])
         #     return tensor.type(torch.float32)
-        # if comm_type == 5:
-        #     # CPU compression
-        #     tensor = synchronize(self.handles[name])
-        #     return tensor.type(torch.float32)
+        if comm_type == 5:
+            # CPU compression
+            tensor = synchronize(self.handles[name])
+            return tensor.type(torch.float32)
+        elif comm_type == 13:
+            # FP16
+            tensor = synchronize(self.handles[name])
+            return tensor.type(torch.float32)
+        elif comm_type == 14:
+            # FP32
+            return synchronize(self.handles[name])
 
         with torch.cuda.stream(self.comm_stream):
             tensor = self.handles[name]
@@ -372,17 +379,9 @@ class ByteComp(Communicator):
             elif comm_type == 1:
                 # FP16
                 return tensor.type(torch.float32)
-            elif comm_type == 5:
-                # CPU compression
-                tensor = synchronize(tensor)
-                ctx = self.intra_ctx[name]
-                return tensor.type(torch.float32)
 
             if comm_type in (2, 3, 4):
-                # FP16
-                # return tensor[0]
-                ctx = self.intra_ctx[name]
-                return tensor[0].type(torch.float32)
+                return tensor[0]
             elif comm_type in (6, 7):
                 # intra-node compression + intra-node alltoall + inter-node compression
                 ctx = self.intra_ctx[name]
@@ -410,6 +409,6 @@ class ByteComp(Communicator):
         
         tensor = self.decompress_tensor(name, comm_type)
         torch.cuda.current_stream().wait_stream(self.comm_stream)
-        if comm_type not in (0, 1):
+        if comm_type not in (0, 1, 13, 14):
             tensor = tensor.reshape(self.shapes[name])
         return tensor

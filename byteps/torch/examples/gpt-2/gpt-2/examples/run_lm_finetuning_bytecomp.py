@@ -558,10 +558,11 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 epoch_iterator.close()
                 break
         if bps.local_rank() == 0:
-            print("Iterations: {}\tTime: {:.2f} s\tTraining speed: {:.2f} it/s".format(
+            print("Iterations: {}\tTime: {:.2f} s\tTraining speed: {:.2f} it/s\tTraining speed: {:.2f} token/s".format(
                 len(epoch_iterator),
                 end_time - start_time,
-                (end_idx - start_idx + 1)/(end_time - start_time)
+                (end_idx - start_idx + 1)/(end_time - start_time),
+                (end_idx - start_idx + 1)/(end_time - start_time) * 80 * bps.size()
             ))
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()

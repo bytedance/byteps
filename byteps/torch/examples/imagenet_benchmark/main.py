@@ -221,12 +221,12 @@ def train(epoch):
             epoch,
             len(train_loader),
             (end_time - start_time)/(end_idx - start_idx + 1),
-            (end_idx - start_idx + 1)*args.batch_size/(end_time - start_time)
+            (end_idx - start_idx + 1)*args.batch_size/(end_time - start_time)*bps.size()
         ))
 
-    if log_writer:
-        log_writer.add_scalar('train/loss', train_loss.avg, epoch)
-        log_writer.add_scalar('train/accuracy', train_accuracy.avg, epoch)
+    # if log_writer:
+    #     log_writer.add_scalar('train/loss', train_loss.avg, epoch)
+    #     log_writer.add_scalar('train/accuracy', train_accuracy.avg, epoch)
 
 
 def validate(epoch):
