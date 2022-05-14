@@ -521,42 +521,66 @@ __global__ void _SumKernel(void* dst, const void* src1, const void* src2, size_t
   }
 }
 
+// __global__ void _SumKernelFloat16(void* dst, const void* src1, const void* src2, size_t len) {
+//   __half2* d = (__half2*) dst;
+//   __half2* s1 = (__half2*) src1;
+//   __half2* s2 = (__half2*) src2;
+//   int tid = threadIdx.x + blockIdx.x * blockDim.x;
+//   int total_threads = blockDim.x * gridDim.x;
+//   for (; tid < len/2; tid += total_threads) {
+//     d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
+//   }
+//   // the last thread processes the remaining one element
+//   tid = threadIdx.x + blockIdx.x * blockDim.x;
+//   if ((tid == total_threads-1) && (len%2 != 0)) {
+//     __half* ld = (__half*) dst + len - 1;
+//     __half* ls1 = (__half*) src1 + len - 1;
+//     __half* ls2 = (__half*) src2 + len - 1;
+//     *ld = __hadd(*ls1, *ls2);
+//   }
+// }
+
+// __global__ void _SumKernelBFloat16(void* dst, const void* src1, const void* src2, size_t len) {
+// #if __CUDA_ARCH__ >= 800
+//   __nv_bfloat162* d = (__nv_bfloat162*) dst;
+//   __nv_bfloat162* s1 = (__nv_bfloat162*) src1;
+//   __nv_bfloat162* s2 = (__nv_bfloat162*) src2;
+//   int tid = threadIdx.x + blockIdx.x * blockDim.x;
+//   int total_threads = blockDim.x * gridDim.x;
+//   for (; tid < len/2; tid += total_threads) {
+//     d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
+//   }
+//   // the last thread processes the remaining one element
+//   tid = threadIdx.x + blockIdx.x * blockDim.x;
+//   if ((tid == total_threads-1) && (len%2 != 0)) {
+//     __nv_bfloat16* ld = (__nv_bfloat16*) dst + len - 1;
+//     __nv_bfloat16* ls1 = (__nv_bfloat16*) src1 + len - 1;
+//     __nv_bfloat16* ls2 = (__nv_bfloat16*) src2 + len - 1;
+//     *ld = __hadd(*ls1, *ls2);
+//   }
+// #endif
+// }
+
 __global__ void _SumKernelFloat16(void* dst, const void* src1, const void* src2, size_t len) {
-  __half2* d = (__half2*) dst;
-  __half2* s1 = (__half2*) src1;
-  __half2* s2 = (__half2*) src2;
+  __half* d = (__half*) dst;
+  __half* s1 = (__half*) src1;
+  __half* s2 = (__half*) src2;
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   int total_threads = blockDim.x * gridDim.x;
-  for (; tid < len/2; tid += total_threads) {
-    d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
-  }
-  // the last thread processes the remaining one element
-  tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if ((tid == total_threads-1) && (len%2 != 0)) {
-    __half* ld = (__half*) dst + len - 1;
-    __half* ls1 = (__half*) src1 + len - 1;
-    __half* ls2 = (__half*) src2 + len - 1;
-    *ld = __hadd(*ls1, *ls2);
+  for(; tid < len; tid += total_threads) {
+    d[tid] = __hadd(__ldg(&s1[tid]), __ldg(&s2[tid]));
   }
 }
 
 __global__ void _SumKernelBFloat16(void* dst, const void* src1, const void* src2, size_t len) {
 #if __CUDA_ARCH__ >= 800
-  __nv_bfloat162* d = (__nv_bfloat162*) dst;
-  __nv_bfloat162* s1 = (__nv_bfloat162*) src1;
-  __nv_bfloat162* s2 = (__nv_bfloat162*) src2;
+  __nv_bfloat16* d = (__nv_bfloat16*) dst;
+  __nv_bfloat16* s1 = (__nv_bfloat16*) src1;
+  __nv_bfloat16* s2 = (__nv_bfloat16*) src2;
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   int total_threads = blockDim.x * gridDim.x;
-  for (; tid < len/2; tid += total_threads) {
-    d[tid] = __hadd2(__ldg(&s1[tid]), __ldg(&s2[tid]));
-  }
-  // the last thread processes the remaining one element
-  tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if ((tid == total_threads-1) && (len%2 != 0)) {
-    __nv_bfloat16* ld = (__nv_bfloat16*) dst + len - 1;
-    __nv_bfloat16* ls1 = (__nv_bfloat16*) src1 + len - 1;
-    __nv_bfloat16* ls2 = (__nv_bfloat16*) src2 + len - 1;
-    *ld = __hadd(*ls1, *ls2);
+  for (; tid < len; tid += total_threads) {
+    d[tid] = __hadd(__ldg(&s1[tid]), __ldg(&s2[tid]));
   }
 #endif
 }
