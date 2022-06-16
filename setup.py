@@ -24,6 +24,7 @@ import traceback
 import sysconfig
 
 import pre_setup as pre_setup
+os.environ['TORCH_BYTECCL'] = "O0"
 
 server_lib = Extension('byteps.server.c_lib', [])
 tensorflow_lib = Extension('byteps.tensorflow.c_lib', [])
@@ -1000,6 +1001,9 @@ def build_torch_extension(build_ext, options, torch_version):
     for k, v in ext.__dict__.items():
         pytorch_lib.__dict__[k] = v
     build_ext.build_extension(pytorch_lib)
+    # patch torch to use the byteps backend
+    if os.getenv('BYTEPS_PATCH_TORCH', '1').lower() in ['1', 'true']:
+        subprocess.call(['bash', './byteps/misc/patch_torch.sh'])
 
 def build_ucx():
     ucx_tarball_path = os.getenv("BYTEPS_UCX_TARBALL_PATH", "")
@@ -1242,6 +1246,7 @@ if os.path.exists('launcher/launch.py'):
     if not os.path.exists('bin'):
         os.mkdir('bin')
     shutil.copyfile('launcher/launch.py', 'bin/bpslaunch')
+    shutil.copyfile('launcher/byteps_launch', 'bin/byteps_launch')
 
 extensions_to_build = [server_lib, tensorflow_lib, mxnet_lib, pytorch_lib]
 extensions_to_exclude = set()
@@ -1326,5 +1331,5 @@ setup(
     # which is undesirable.  Luckily, `install` action will install cffi before executing build,
     # so it's only necessary for `build*` or `bdist*` actions.
     setup_requires=[],
-    scripts=['bin/bpslaunch']
+    scripts=['bin/bpslaunch', 'bin/byteps_launch']
 )

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+if [[ "$ML_PLATFORM_ROLE" == "server" ]]; then
+  export DMLC_ENABLE_RDMA=${DMLC_ENABLE_RDMA:-ibverbs}
+  python3 -c 'import byteps.server'
+elif [[ "$ML_PLATFORM_ROLE" == "worker" ]]; then
+  $@
+else
+  echo "scheduler node is not allowed."
+  exit 1
+fi
