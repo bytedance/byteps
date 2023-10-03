@@ -943,7 +943,7 @@ def is_torch_cuda(build_ext, include_dirs, extra_compile_args):
 
 
 def build_torch_extension(build_ext, options, torch_version):
-    pytorch_compile_flags = ["-std=c++14" if flag == "-std=c++11" 
+    pytorch_compile_flags = ["-std=c++17" if flag == "-std=c++11"
                              else flag for flag in options['COMPILE_FLAGS']]
     pytorch_compile_flags += ['-Wno-error=terminate']
     have_cuda = is_torch_cuda(build_ext, include_dirs=options['INCLUDES'],
