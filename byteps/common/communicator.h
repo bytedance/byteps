@@ -32,6 +32,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <memory>
 #include "logging.h"
 
 #define BYTEPS_DEFAULT_BASE_SOCKET_PATH_RECV "/tmp/socket_recv_"
